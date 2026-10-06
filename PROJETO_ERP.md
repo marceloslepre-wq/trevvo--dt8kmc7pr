@@ -126,6 +126,64 @@ import { SelectCodigoFiscal } from '@/components/SelectCodigoFiscal'
 
 Tipos disponíveis padrão: `ORIGEM`, `CST_ICMS`, `CSOSN`, `MOD_BC_ICMS`, `MOD_BC_ICMS_ST`, `CST_IPI`, `CST_PIS_COFINS`, `TIPO_ITEM_SPED`, `CRT`, `IND_IE_DEST`, `CST_IBS_CBS`, `CCLASSTRIB`.
 
+### Como usar os componentes SelectNcm, SelectCest e SelectCfop
+
+Para cadastros de produtos, notas fiscais e regras fiscais:
+
+#### 1. SelectNcm (`<SelectNcm />`)
+
+Combobox com busca por código (com ou sem pontos) e descrição, exibindo `"código - descrição"`:
+
+```tsx
+import { SelectNcm } from '@/components/SelectNcm'
+;<SelectNcm
+  value={ncmCodigo}
+  onChange={(codigo, item) => {
+    setNcmCodigo(codigo)
+    console.log('NCM selecionada:', item?.descricao)
+  }}
+  placeholder="Selecione ou busque a NCM..."
+/>
+```
+
+#### 2. SelectCest (`<SelectCest />`)
+
+Combobox com busca por código CEST, NCMs vinculados e descrição. Permite vincular a uma NCM para sugestão automática:
+
+```tsx
+import { SelectCest } from '@/components/SelectCest'
+;<SelectCest
+  value={cestCodigo}
+  ncmVinculado={ncmCodigo} // opcional: filtra/sugere CESTs compatíveis com a NCM informada
+  onChange={(codigo, item) => setCestCodigo(codigo)}
+  placeholder="Selecione o CEST..."
+/>
+```
+
+#### 3. SelectCfop (`<SelectCfop />`)
+
+Combobox com busca por código e descrição. Aceita filtro por `tipoMovimento` ("Entrada" ou "Saída"):
+
+```tsx
+import { SelectCfop } from '@/components/SelectCfop'
+;<SelectCfop
+  tipoMovimento="Saída" // "Entrada", "Saída" ou "todos"
+  value={cfopCodigo}
+  onChange={(codigo, item) => setCfopCodigo(codigo)}
+  placeholder="Selecione o CFOP de saída..."
+/>
+```
+
+#### 4. Função `sugerirCestPorNcm(ncm)`
+
+Função reutilizável de `@/services/cest` que busca todos os CESTs ativos cujo `ncm_codigos` contém o NCM exato ou um prefixo compatível:
+
+```tsx
+import { sugerirCestPorNcm } from '@/services/cest'
+
+const cestsSugeridos = await sugerirCestPorNcm('22021000')
+```
+
 ## Tabelas
 
 (acrescentar aqui cada tabela criada, com seus campos)
@@ -320,6 +378,59 @@ Vínculo de quais empresas e filiais cada colaborador tem autorização para vis
 - ativo (boolean, padrão true)
 - usuario_id (relation -> usuarios, obrigatório, cascadeDelete)
 - empresa_id (relation -> empresas, obrigatório, cascadeDelete)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### ncm
+
+Nomenclatura Comum do Mercosul utilizada na classificação fiscal de produtos e serviços do comércio exterior e nacional.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (texto obrigatório, único, exatamente 8 dígitos numéricos, ex: "22021000")
+- descricao (texto obrigatório com a nomenclatura oficial)
+- ex_tipi (texto opcional com o código da Exceção da TIPI)
+- aliquota_ipi (número percentual opcional)
+- unidade_tributavel (texto opcional com a unidade padrão tributária, ex: "UN", "KG")
+- data_inicio (texto opcional com início da vigência AAAA-MM-DD)
+- data_fim (texto opcional com término da vigência AAAA-MM-DD)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### cest
+
+Código Especificador da Substituição Tributária que identifica mercadorias e bens passíveis de sujeição aos regimes de substituição tributária e de antecipação de recolhimento do ICMS.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (texto obrigatório, único, exatamente 7 dígitos numéricos, ex: "0300100")
+- ncm_codigos (texto com NCMs ou prefixos de NCM relacionados separados por vírgula, ex: "2202, 22030000")
+- segmento (texto com a descrição do segmento oficial, ex: "Bebidas alcoólicas")
+- item (texto com o número do item do anexo, ex: "1.0")
+- descricao (texto obrigatório com a especificação do produto)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### cfop
+
+Código Fiscal de Operações e Prestações com regras de tributação, impacto financeiro, movimentação de estoque e devoluções.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (texto obrigatório, único, exatamente 4 dígitos numéricos, iniciado por 1, 2, 3, 5, 6 ou 7)
+- descricao (texto obrigatório com a descrição legal da operação)
+- aplicacao (texto longo opcional detalhando o enquadramento fiscal)
+- tipo_movimento (select: "Entrada" [1xxx, 2xxx, 3xxx] ou "Saída" [5xxx, 6xxx, 7xxx], automático a partir do código)
+- abrangencia (select: "Estadual" [1xxx/5xxx], "Interestadual" [2xxx/6xxx] ou "Exterior" [3xxx/7xxx], automático a partir do código)
+- gera_financeiro (boolean: se a operação gera títulos a receber ou pagar)
+- movimenta_estoque (boolean: se a operação movimenta fisicamente o estoque de produtos)
+- devolucao (boolean: se a operação caracteriza devolução de compras ou vendas)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)

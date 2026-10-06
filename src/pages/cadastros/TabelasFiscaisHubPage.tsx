@@ -1,6 +1,14 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { FileCode, ArrowRight, Calculator, Percent, Layers, FileCheck } from 'lucide-react'
+import {
+  FileCode,
+  Layers,
+  FileCheck,
+  Percent,
+  Calculator,
+  ArrowRight,
+  FileSpreadsheet,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,20 +16,18 @@ import { Button } from '@/components/ui/button'
 export const TabelasFiscaisHubPage: React.FC = () => {
   return (
     <div className="space-y-6">
-      {/* Top Header */}
+      {/* Header */}
       <div>
-        <div className="flex items-center gap-2">
-          <FileCode className="h-6 w-6 text-blue-600" />
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Tabelas Fiscais</h1>
-        </div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Tabelas Fiscais</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Parâmetros tributários, códigos fiscais padrão SEFAZ, alíquotas de ICMS e regras por
-          operação.
+          Gestão centralizada de parâmetros fiscais, classificações, NCM, CEST, CFOP e códigos
+          tributários brasileiros.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Card Códigos Fiscais - Ativo */}
+      {/* Grid de Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {/* Card Códigos Fiscais */}
         <Card className="border-slate-200 shadow-xs hover:border-blue-300 transition-colors flex flex-col justify-between">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between mb-2">
@@ -48,58 +54,89 @@ export const TabelasFiscaisHubPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Card CFOP - Em breve */}
-        <Card className="border-slate-200 shadow-xs bg-slate-50/50 flex flex-col justify-between opacity-80">
+        {/* Card NCM */}
+        <Card className="border-slate-200 shadow-xs hover:border-blue-300 transition-colors flex flex-col justify-between">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="p-2.5 bg-slate-100 text-slate-400 rounded-lg">
-                <Layers className="h-6 w-6" />
+              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                <FileCheck className="h-6 w-6" />
               </div>
-              <Badge
-                variant="outline"
-                className="text-[10px] uppercase font-semibold text-slate-400 border-slate-200"
-              >
-                Em breve
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium">
+                Ativo
               </Badge>
             </div>
-            <CardTitle className="text-lg font-bold text-slate-700">
-              CFOP (Naturezas de Operação)
+            <CardTitle className="text-lg font-bold text-slate-900">
+              Classificação Fiscal (NCM)
             </CardTitle>
-            <CardDescription className="text-xs text-slate-400">
-              Códigos Fiscais de Operações e Prestações de entradas e saídas estaduais,
-              interestaduais e exterior.
+            <CardDescription className="text-xs text-slate-500">
+              Nomenclatura Comum do Mercosul de 8 dígitos, alíquotas IPI, vigências e importação
+              oficial do Siscomex ou planilha CSV.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            <Button disabled variant="outline" className="w-full text-xs">
-              Módulo em desenvolvimento
+            <Button asChild className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Link to="/cadastros/tabelas-fiscais/ncm">
+                Acessar NCM
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
           </CardContent>
         </Card>
 
-        {/* Card NCM e CEST - Em breve */}
-        <Card className="border-slate-200 shadow-xs bg-slate-50/50 flex flex-col justify-between opacity-80">
+        {/* Card CEST */}
+        <Card className="border-slate-200 shadow-xs hover:border-blue-300 transition-colors flex flex-col justify-between">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="p-2.5 bg-slate-100 text-slate-400 rounded-lg">
-                <FileCheck className="h-6 w-6" />
+              <div className="p-2.5 bg-amber-50 text-amber-600 rounded-lg">
+                <Layers className="h-6 w-6" />
               </div>
-              <Badge
-                variant="outline"
-                className="text-[10px] uppercase font-semibold text-slate-400 border-slate-200"
-              >
-                Em breve
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium">
+                Ativo
               </Badge>
             </div>
-            <CardTitle className="text-lg font-bold text-slate-700">NCM e CEST</CardTitle>
-            <CardDescription className="text-xs text-slate-400">
-              Nomenclatura Comum do Mercosul e Código Especificador da Substituição Tributária com
-              alíquotas IBPT.
+            <CardTitle className="text-lg font-bold text-slate-900">
+              Substituição Tributária (CEST)
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Código Especificador da Substituição Tributária (7 dígitos), relacionamento com NCMs
+              ou prefixos e importação CSV.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            <Button disabled variant="outline" className="w-full text-xs">
-              Módulo em desenvolvimento
+            <Button asChild className="w-full bg-amber-600 hover:bg-amber-700 text-white">
+              <Link to="/cadastros/tabelas-fiscais/cest">
+                Acessar CEST
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Card CFOP */}
+        <Card className="border-slate-200 shadow-xs hover:border-blue-300 transition-colors flex flex-col justify-between">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                <FileSpreadsheet className="h-6 w-6" />
+              </div>
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium">
+                Ativo
+              </Badge>
+            </div>
+            <CardTitle className="text-lg font-bold text-slate-900">
+              CFOP (Naturezas de Operação)
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Códigos de 4 dígitos com determinação automática de tipo de movimento, abrangência,
+              impacto no estoque e financeiro.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button asChild className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
+              <Link to="/cadastros/tabelas-fiscais/cfop">
+                Acessar CFOP
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
           </CardContent>
         </Card>

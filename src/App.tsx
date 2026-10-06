@@ -28,6 +28,9 @@ import UsuarioForm from '@/pages/cadastros/UsuarioForm'
 import UnidadesMedidaPage from '@/pages/cadastros/UnidadesMedidaPage'
 import CodigosFiscaisPage from '@/pages/cadastros/CodigosFiscaisPage'
 import TabelasFiscaisHubPage from '@/pages/cadastros/TabelasFiscaisHubPage'
+import NcmPage from '@/pages/cadastros/NcmPage'
+import CestPage from '@/pages/cadastros/CestPage'
+import CfopPage from '@/pages/cadastros/CfopPage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
 
 const App = () => (
@@ -233,6 +236,30 @@ const App = () => (
                   element={
                     <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
                       <CodigosFiscaisPage />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/tabelas-fiscais/ncm"
+                  element={
+                    <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
+                      <NcmPage />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/tabelas-fiscais/cest"
+                  element={
+                    <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
+                      <CestPage />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/tabelas-fiscais/cfop"
+                  element={
+                    <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
+                      <CfopPage />
                     </PermissaoGuard>
                   }
                 />
