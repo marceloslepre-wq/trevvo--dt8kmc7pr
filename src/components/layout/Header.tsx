@@ -1,6 +1,7 @@
 import React from 'react'
 import { Menu, LogOut, Building, User } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -25,6 +26,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
   const { user, logout } = useAuth()
+  const { empresas, empresaAtiva, selecionarEmpresa, carregando } = useEmpresaAtiva()
 
   const getInitials = (name?: string, email?: string) => {
     if (name && name.trim()) {
@@ -61,22 +63,56 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
       </div>
 
       {/* Centro: Seletor de Empresa Ativa */}
-      <div className="flex items-center gap-2 max-w-xs w-full mx-2 md:mx-4">
+      <div className="flex items-center gap-2 max-w-md w-full mx-2 md:mx-4">
         <div className="w-full">
-          <Select disabled>
+          <Select
+            value={empresaAtiva ? empresaAtiva.id : ''}
+            onValueChange={(val) => selecionarEmpresa(val)}
+            disabled={carregando || empresas.length === 0}
+          >
             <SelectTrigger
-              className="h-9 text-xs bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
-              title="Nenhuma empresa cadastrada no momento"
+              className={`h-9 text-xs border-slate-200 ${
+                empresas.length === 0
+                  ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
+                  : 'bg-white hover:bg-slate-50 font-medium text-slate-800'
+              }`}
+              title={
+                empresas.length === 0
+                  ? 'Nenhuma empresa cadastrada ou ativa'
+                  : 'Selecione a empresa ativa para operações'
+              }
             >
               <div className="flex items-center gap-2 truncate">
-                <Building size={14} className="text-slate-400 flex-shrink-0" />
-                <SelectValue placeholder="Selecione a empresa" />
+                <Building size={14} className="text-blue-600 flex-shrink-0" />
+                <SelectValue
+                  placeholder={carregando ? 'Carregando empresas...' : 'Selecione a empresa'}
+                >
+                  {empresaAtiva ? (
+                    <span className="truncate">
+                      {empresaAtiva.codigo} -{' '}
+                      {empresaAtiva.nome_fantasia || empresaAtiva.razao_social} ({empresaAtiva.tipo}
+                      )
+                    </span>
+                  ) : (
+                    'Nenhuma empresa cadastrada'
+                  )}
+                </SelectValue>
               </div>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="nenhuma" disabled>
-                Nenhuma empresa cadastrada
-              </SelectItem>
+              {empresas.length === 0 ? (
+                <SelectItem value="nenhuma" disabled>
+                  Nenhuma empresa cadastrada
+                </SelectItem>
+              ) : (
+                empresas.map((emp) => (
+                  <SelectItem key={emp.id} value={emp.id} className="text-xs">
+                    <span className="font-semibold text-slate-700">{emp.codigo}</span> -{' '}
+                    <span>{emp.nome_fantasia || emp.razao_social}</span>{' '}
+                    <span className="text-slate-400 text-[11px]">({emp.tipo})</span>
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </div>

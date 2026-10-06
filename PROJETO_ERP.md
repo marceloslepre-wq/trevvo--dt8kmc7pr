@@ -58,3 +58,98 @@
 ## Tabelas
 
 (acrescentar aqui cada tabela criada, com seus campos)
+
+### empresas
+
+Tabela que armazena os estabelecimentos (Matriz e Filiais), cada um com seu CNPJ próprio.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+#### Identificação
+
+- tipo: "Matriz" ou "Filial" (obrigatório, só pode existir uma Matriz)
+- matriz_id: referência à empresa matriz (obrigatório quando tipo = Filial)
+- codigo: número sequencial curto para exibir (1, 2, 3...)
+- razao_social: texto obrigatório, até 60 caracteres
+- nome_fantasia: texto, até 60 caracteres
+- cnpj: texto obrigatório, único, validado com DV conforme especificação alfanumérica
+- inscricao_estadual: texto, obrigatório para contribuinte de ICMS; aceita "ISENTO"; validação com pesos 9 a 2 para UF ES
+- inscricao_estadual_st: texto opcional, IE de substituto tributário em outra UF
+- inscricao_municipal: texto
+- cnae_principal: 7 dígitos
+- cnaes_secundarios: lista de textos (JSON)
+- data_abertura: data
+- logo: arquivo de imagem (até 2 MB)
+
+#### Regime tributário
+
+- crt: 1 Simples Nacional; 2 Simples Nacional - excesso de sublimite de receita bruta; 3 Regime Normal; 4 Simples Nacional - MEI (obrigatório)
+- regime_apuracao: "Simples Nacional", "Lucro Presumido", "Lucro Real" ou "MEI"
+- regime_pis_cofins: "Cumulativo" ou "Não cumulativo" (aparece só quando crt = 3)
+- aliquota_credito_simples: percentual de crédito de ICMS permitido ao Simples (aparece só quando crt = 1 ou 2)
+- contribuinte_ipi: sim/não (indústria ou equiparada)
+- indicador_atividade_sped: 0 Industrial ou equiparado a industrial; 1 Outros
+- perfil_sped: A, B ou C (perfil do arquivo da EFD ICMS/IPI definido pela SEFAZ)
+- obrigado_efd_icms_ipi: sim/não (padrão: sim quando crt = 3, não quando crt = 1 ou 4)
+
+#### Endereço
+
+- cep: texto (00000-000)
+- logradouro: texto
+- numero: texto
+- complemento: texto
+- bairro: texto
+- municipio: texto
+- codigo_municipio_ibge: 7 dígitos, obrigatório
+- uf: 2 letras
+- codigo_pais: padrão 1058 (Brasil)
+- pais: padrão Brasil
+
+#### Contato
+
+- telefone: texto
+- celular: texto
+- email: email
+- email_fiscal: email (para recebimento/envio de XML)
+- site: texto
+
+#### Responsável legal
+
+- responsavel_nome: texto
+- responsavel_cpf: texto (validado com módulo 11)
+- responsavel_cargo: texto
+
+#### Contabilidade (SPED 0100)
+
+- contador_nome: texto
+- contador_cpf: texto (validado com módulo 11)
+- contador_crc: texto
+- contador_cnpj_escritorio: texto (validado com DV)
+- contador_cep: texto
+- contador_logradouro: texto
+- contador_numero: texto
+- contador_complemento: texto
+- contador_bairro: texto
+- contador_codigo_municipio_ibge: 7 dígitos
+- contador_telefone: texto
+- contador_email: email
+
+### logs_auditoria
+
+Tabela central de auditoria que registra inclusões, alterações e inativações de cadastros.
+
+- id (text, PK)
+- usuario_id (relation -> users, opcional)
+- usuario_nome (texto)
+- tabela (texto obrigatório, ex: "empresas")
+- registro_id (texto obrigatório)
+- acao (select: inclusao, alteracao, inativacao, ativacao, exclusao)
+- valores_antes (json)
+- valores_depois (json)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
