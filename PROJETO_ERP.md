@@ -184,6 +184,50 @@ import { sugerirCestPorNcm } from '@/services/cest'
 const cestsSugeridos = await sugerirCestPorNcm('22021000')
 ```
 
+### Como usar os componentes SelectMarca e SelectGrupoCategoria
+
+Para formulários de produtos e regras mercadológicas:
+
+#### 1. SelectMarca (`<SelectMarca />`)
+
+Combobox com busca rápida por nome de marca ou fabricante, exibindo o botão **"+ Nova marca"** no rodapé para cadastrar uma nova marca via modal imediatamente sem sair do formulário:
+
+```tsx
+import { SelectMarca } from '@/components/SelectMarca'
+
+;<SelectMarca
+  value={marcaId}
+  onChange={(id, marca) => {
+    setMarcaId(id)
+    console.log('Marca selecionada:', marca?.nome)
+  }}
+  placeholder="Selecione a marca do produto..."
+/>
+```
+
+#### 2. SelectGrupoCategoria (`<SelectGrupoCategoria />`)
+
+Seleção encadeada (Grupo Nível 1 → Categoria Nível 2). Ao selecionar ou trocar o grupo, a lista de categorias é automaticamente recarregada e filtrada apenas com as categorias ativas pertencentes àquele grupo:
+
+```tsx
+import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
+
+;<SelectGrupoCategoria
+  grupoId={grupoId}
+  categoriaId={categoriaId}
+  onGrupoChange={(novoGrupoId, grupo) => {
+    setGrupoId(novoGrupoId)
+    console.log('Grupo alterado:', grupo?.nome)
+  }}
+  onCategoriaChange={(novaCategoriaId, categoria) => {
+    setCategoriaId(novaCategoriaId)
+    console.log('Categoria alterada:', categoria?.nome)
+  }}
+  requiredGrupo
+  layout="horizontal" // ou "vertical"
+/>
+```
+
 ## Tabelas
 
 (acrescentar aqui cada tabela criada, com seus campos)
@@ -431,6 +475,50 @@ Código Fiscal de Operações e Prestações com regras de tributação, impacto
 - gera_financeiro (boolean: se a operação gera títulos a receber ou pagar)
 - movimenta_estoque (boolean: se a operação movimenta fisicamente o estoque de produtos)
 - devolucao (boolean: se a operação caracteriza devolução de compras ou vendas)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### marcas
+
+Tabela de marcas e fabricantes de produtos comercializados. Cadastro compartilhado entre todas as empresas.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- nome (texto obrigatório, único)
+- fabricante (texto opcional com o nome/razão social do fabricante)
+- observacao (texto opcional com anotações e contatos)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### grupos
+
+Tabela de grupos mercadológicos (nível 1 da classificação em árvore de produtos). Compartilhada entre todas as empresas.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (texto obrigatório, único, ex: "01", "ALIM")
+- nome (texto obrigatório, único, ex: "Alimentos", "Bebidas")
+- margem_padrao_percentual (número percentual opcional para sugestão futura de preço de venda)
+- perfil_tributario_id (texto opcional preparado para vincular a perfis tributários futuros)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### categorias
+
+Tabela de categorias mercadológicas (nível 2 da classificação, pertencente a um grupo). Compartilhada entre todas as empresas.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- grupo_id (relation -> grupos, obrigatório)
+- codigo (texto opcional, ex: "01.01", "SUC")
+- nome (texto obrigatório, único DENTRO do grupo pai)
+- margem_padrao_percentual (número percentual opcional; se vazio, herda a margem do grupo)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)

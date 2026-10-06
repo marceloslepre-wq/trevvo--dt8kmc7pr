@@ -31,6 +31,8 @@ import TabelasFiscaisHubPage from '@/pages/cadastros/TabelasFiscaisHubPage'
 import NcmPage from '@/pages/cadastros/NcmPage'
 import CestPage from '@/pages/cadastros/CestPage'
 import CfopPage from '@/pages/cadastros/CfopPage'
+import MarcasPage from '@/pages/cadastros/MarcasPage'
+import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
 
 const App = () => (
@@ -200,7 +202,7 @@ const App = () => (
                   path="/cadastros/marcas"
                   element={
                     <PermissaoGuard modulo="marcas" acao="ver">
-                      <PlaceholderPage title="Marcas" subtitle="Marcas e fabricantes de produtos" />
+                      <MarcasPage />
                     </PermissaoGuard>
                   }
                 />
@@ -208,10 +210,7 @@ const App = () => (
                   path="/cadastros/grupos-categorias"
                   element={
                     <PermissaoGuard modulo="grupos_categorias" acao="ver">
-                      <PlaceholderPage
-                        title="Grupos e Categorias"
-                        subtitle="Classificação e árvore mercadológica"
-                      />
+                      <GruposCategoriasPage />
                     </PermissaoGuard>
                   }
                 />
