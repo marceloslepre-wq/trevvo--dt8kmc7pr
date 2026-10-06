@@ -194,7 +194,6 @@ Combobox com busca rápida por nome de marca ou fabricante, exibindo o botão **
 
 ```tsx
 import { SelectMarca } from '@/components/SelectMarca'
-
 ;<SelectMarca
   value={marcaId}
   onChange={(id, marca) => {
@@ -211,7 +210,6 @@ Seleção encadeada (Grupo Nível 1 → Categoria Nível 2). Ao selecionar ou tr
 
 ```tsx
 import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
-
 ;<SelectGrupoCategoria
   grupoId={grupoId}
   categoriaId={categoriaId}
@@ -523,3 +521,73 @@ Tabela de categorias mercadológicas (nível 2 da classificação, pertencente a
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
+
+### clientes
+
+Cadastro de clientes para faturamento, documentos fiscais (NF-e, NFC-e) e SPED Fiscal (registro 0150). Compartilhado entre todas as empresas.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (número sequencial automático exibido na listagem)
+- tipo_pessoa (select obrigatório: "Física", "Jurídica" ou "Estrangeiro")
+- cpf_cnpj (texto obrigatório para Física e Jurídica, único entre clientes ATIVOS, validado com dígitos verificadores; CPF módulo 11 rejeitando sequências repetidas; CNPJ alfanumérico com os pesos oficiais)
+- id_estrangeiro (texto obrigatório quando tipo_pessoa = Estrangeiro)
+- nome_razao_social (texto obrigatório, até 60 caracteres)
+- nome_fantasia (texto até 60 caracteres)
+- rg (texto, só para Física)
+- data_nascimento (texto, só para Física)
+- indicador_ie (select obrigatório tipo IND_IE_DEST: 1 Contribuinte ICMS; 2 Contribuinte isento de inscrição; 9 Não contribuinte; padrão 9 para Física)
+- inscricao_estadual (texto obrigatório quando indicador_ie = 1; aceita "ISENTO"; validação para UF ES: 9 dígitos, módulo 11, pesos 9 a 2)
+- inscricao_municipal (texto opcional)
+- inscricao_suframa (texto opcional)
+- consumidor_final (boolean; padrão true para Física, false para Jurídica contribuinte)
+- regime_tributario_cliente (select opcional com CRT do cliente: 1, 2, 3 ou 4)
+
+#### Endereço principal (obrigatório para NF-e)
+
+- cep, logradouro, numero, complemento, bairro, municipio, codigo_municipio_ibge, uf: endereço do destinatário
+- codigo_pais (texto padrão "1058"), pais (texto padrão "Brasil")
+- Para Estrangeiro: uf "EX", municipio "EXTERIOR", codigo_municipio_ibge "9999999" e país escolhido de lista
+
+#### Endereço de entrega (opcional)
+
+- entrega_mesmo_endereco (boolean; padrão true — quando marcado, usa o endereço principal)
+- entrega_cep, entrega_logradouro, entrega_numero, entrega_complemento, entrega_bairro, entrega_municipio, entrega_codigo_municipio_ibge, entrega_uf
+
+#### Contato
+
+- telefone, celular, email, contato_nome
+- whatsapp (boolean)
+- email_nfe (texto com um ou vários e-mails separados por ponto e vírgula, para envio do XML e DANFE)
+
+#### Comercial
+
+- vendedor_id (relation -> usuarios; somente usuários com e_vendedor = true)
+- limite_credito (número em R$)
+- dia_vencimento_preferencial (número 1 a 31)
+- condicao_pagamento_padrao (texto livre, ex: "30/60/90")
+- desconto_padrao_percentual (número percentual 0 a 100)
+- bloqueado (boolean: bloqueia vendas a prazo) e motivo_bloqueio (texto obrigatório quando bloqueado = true)
+- observacoes (texto longo interno)
+- observacao_nota (texto que sai automaticamente nas notas desse cliente)
+
+Regras: quando indicador_ie = 1 e a UF do cliente for diferente da UF da empresa ativa, o formulário exibe a observação "Operação interestadual com contribuinte". CPF/CNPJ único somente entre clientes ativos; se o mesmo documento existir em cliente inativo, a tela exibe aviso (não bloqueio) com botão "Reativar". Todas as ações (incluir, alterar, inativar, reativar) gravam em logs_auditoria com valores antes/depois.
+
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+#### Componentes reutilizáveis
+
+- `<ClienteCadastroRapido />` (`@/components/ClienteCadastroRapido`): modal de cadastro rápido com só nome/razão social, CPF/CNPJ, telefone e CEP (com busca ViaCEP), aviso de cliente inativo com mesmo documento e botão reativar. Usado na listagem de Clientes e pronto para ser reutilizado no PDV e em outros módulos de venda:
+
+```tsx
+import { ClienteCadastroRapido } from '@/components/ClienteCadastroRapido'
+;<ClienteCadastroRapido
+  aberto={modalAberto}
+  onOpenChange={setModalAberto}
+  onSucesso={(cliente) => console.log('Cliente criado:', cliente)}
+  tipoPessoaInicial="Física" // opcional
+/>
+```

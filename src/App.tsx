@@ -34,6 +34,8 @@ import CfopPage from '@/pages/cadastros/CfopPage'
 import MarcasPage from '@/pages/cadastros/MarcasPage'
 import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
+import ClientesLista from '@/pages/cadastros/ClientesLista'
+import ClienteForm from '@/pages/cadastros/ClienteForm'
 
 const App = () => (
   <BrowserRouter>
@@ -169,10 +171,23 @@ const App = () => (
                   path="/cadastros/clientes"
                   element={
                     <PermissaoGuard modulo="clientes" acao="ver">
-                      <PlaceholderPage
-                        title="Clientes"
-                        subtitle="Cadastro unificado de clientes compartilhados"
-                      />
+                      <ClientesLista />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/clientes/novo"
+                  element={
+                    <PermissaoGuard modulo="clientes" acao="criar">
+                      <ClienteForm />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/clientes/:id/editar"
+                  element={
+                    <PermissaoGuard modulo="clientes" acao="editar">
+                      <ClienteForm />
                     </PermissaoGuard>
                   }
                 />
