@@ -653,11 +653,85 @@ Regras: Botão "Consultar CNPJ" (BrasilAPI) na aba Dados preenchendo razão soci
 
 ```tsx
 import { SelectFornecedor } from '@/components/SelectFornecedor'
-
 ;<SelectFornecedor
   value={fornecedorId}
   onChange={(id, fornecedor) => setFornecedorId(id)}
   filtroTipo="Mercadorias" // opcional
   placeholder="Selecione o fornecedor..."
+/>
+```
+
+### perfis_tributarios
+
+Tabela de cabeçalho de perfis tributários. Um perfil é um modelo de tributação aplicável a vários produtos do catálogo.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- nome (texto obrigatório, único; ex: "Revenda tributada 17%", "Revenda com ST", "Isento")
+- descricao (texto opcional)
+- regime (select obrigatório: "Simples Nacional" ou "Regime Normal" — define se os campos de ICMS usam CSOSN ou CST)
+- origem_padrao (texto, código de origem padrão tipo ORIGEM em tabelas_fiscais_codigos)
+- tipo_item_sped_padrao (texto, tipo do item SPED padrão tipo TIPO_ITEM_SPED em tabelas_fiscais_codigos)
+- c_benef (texto opcional, até 10 caracteres, código de benefício fiscal na SEFAZ)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### perfis_tributarios_regras
+
+Linhas de regras tributárias associadas ao perfil, configuradas para 8 cenários comerciais oficiais.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- perfil_id (relation -> perfis_tributarios, obrigatório, cascadeDelete)
+- cenario (select obrigatório com 8 opções: "VENDA_INTERNA_CONTRIBUINTE", "VENDA_INTERNA_CONSUMIDOR", "VENDA_INTERESTADUAL_CONTRIBUINTE", "VENDA_INTERESTADUAL_CONSUMIDOR", "DEVOLUCAO_COMPRA", "TRANSFERENCIA", "COMPRA_INTERNA", "COMPRA_INTERESTADUAL")
+- cfop (relation -> cfop, opcional; cenários de saída aceitam grupos 5 e 6, cenários de entrada aceitam 1 e 2)
+- cst_icms (texto, CST do ICMS quando regime Normal)
+- csosn (texto, CSOSN do ICMS quando Simples Nacional)
+- mod_bc_icms (texto, modalidade de determinação da BC do ICMS)
+- aliquota_icms (número percentual)
+- reducao_bc_icms_percentual (número percentual, visível para CST 20, 70 ou 90)
+- aliquota_fcp (número percentual do Fundo de Combate à Pobreza)
+- mod_bc_icms_st (texto, modalidade de determinação da BC do ICMS ST)
+- mva_percentual (número percentual da margem de valor agregado ST)
+- reducao_bc_icms_st_percentual (número percentual de redução na BC ST)
+- aliquota_icms_st (número percentual do ICMS ST)
+- aliquota_fcp_st (número percentual do FCP ST)
+- percentual_diferimento (número percentual de diferimento do ICMS)
+- motivo_desoneracao (texto, código do motivo de desoneração do ICMS)
+- cst_ipi (texto, código da situação tributária do IPI)
+- codigo_enquadramento_ipi (texto de 3 dígitos, padrão 999)
+- aliquota_ipi (número percentual do IPI)
+- cst_pis (texto, código da situação tributária do PIS)
+- aliquota_pis (número percentual do PIS)
+- cst_cofins (texto, código da situação tributária da COFINS)
+- aliquota_cofins (número percentual da COFINS)
+- natureza_receita_pis_cofins (texto de 3 dígitos, exigido quando CST de PIS/COFINS for 04, 05, 06, 07, 08 ou 09)
+- cst_ibs_cbs (texto, CST da Reforma Tributária EC 132/23)
+- c_class_trib (texto, classificação tributária cClassTrib)
+- aliquota_ibs_uf (número percentual do IBS Estadual)
+- aliquota_ibs_municipio (número percentual do IBS Municipal)
+- aliquota_cbs (número percentual da CBS Federal)
+- reducao_ibs_cbs_percentual (número percentual de redução do IBS/CBS)
+- observacao_fiscal (texto livre para dados complementares do documento fiscal)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Restrição de unicidade: par `perfil_id + cenario`.
+Auditoria: gravação em `logs_auditoria` para inclusão, alteração e inativação do perfil e de suas regras.
+
+#### Componentes reutilizáveis
+
+- `<SelectPerfilTributario />` (`@/components/SelectPerfilTributario`): combobox com busca de perfis tributários ativos exibindo nome, regime e descrição, permitindo filtro opcional por `regimeFiltro`. Integrado no cadastro de grupos mercadológicos (`Grupos e categorias`) no campo `perfil_tributario_id` e pronto para o cadastro de produtos:
+
+```tsx
+import { SelectPerfilTributario } from '@/components/SelectPerfilTributario'
+;<SelectPerfilTributario
+  value={perfilId}
+  onChange={(id, perfil) => setPerfilId(id)}
+  placeholder="Selecione o perfil tributário..."
 />
 ```

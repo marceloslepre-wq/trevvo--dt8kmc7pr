@@ -31,6 +31,7 @@ import TabelasFiscaisHubPage from '@/pages/cadastros/TabelasFiscaisHubPage'
 import NcmPage from '@/pages/cadastros/NcmPage'
 import CestPage from '@/pages/cadastros/CestPage'
 import CfopPage from '@/pages/cadastros/CfopPage'
+import PerfisTributariosPage from '@/pages/cadastros/PerfisTributariosPage'
 import MarcasPage from '@/pages/cadastros/MarcasPage'
 import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
@@ -289,6 +290,14 @@ const App = () => (
                   element={
                     <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
                       <CfopPage />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/tabelas-fiscais/perfis"
+                  element={
+                    <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
+                      <PerfisTributariosPage />
                     </PermissaoGuard>
                   }
                 />

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-06T23:31:32.914Z",
+  "generatedAt": "2026-10-06T23:40:49.342Z",
   "collections": [
     {
       "name": "users",
@@ -2204,6 +2204,346 @@
         "CREATE INDEX idx_fornecedores_tipo_pessoa ON fornecedores (tipo_pessoa)",
         "CREATE INDEX idx_fornecedores_ativo ON fornecedores (ativo)",
         "CREATE INDEX idx_fornecedores_uf ON fornecedores (uf)"
+      ]
+    },
+    {
+      "name": "perfis_tributarios",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "regime",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Simples Nacional", "Regime Normal"]
+        },
+        {
+          "name": "origem_padrao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_item_sped_padrao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "c_benef",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_perfis_trib_nome ON perfis_tributarios (nome)",
+        "CREATE INDEX idx_perfis_trib_regime ON perfis_tributarios (regime)",
+        "CREATE INDEX idx_perfis_trib_ativo ON perfis_tributarios (ativo)"
+      ]
+    },
+    {
+      "name": "perfis_tributarios_regras",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "perfil_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "perfis_tributarios"
+        },
+        {
+          "name": "cenario",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "VENDA_INTERNA_CONTRIBUINTE",
+            "VENDA_INTERNA_CONSUMIDOR",
+            "VENDA_INTERESTADUAL_CONTRIBUINTE",
+            "VENDA_INTERESTADUAL_CONSUMIDOR",
+            "DEVOLUCAO_COMPRA",
+            "TRANSFERENCIA",
+            "COMPRA_INTERNA",
+            "COMPRA_INTERESTADUAL"
+          ]
+        },
+        {
+          "name": "cfop",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "cfop"
+        },
+        {
+          "name": "cst_icms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "csosn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mod_bc_icms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reducao_bc_icms_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_fcp",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mod_bc_icms_st",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mva_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reducao_bc_icms_st_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_icms_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_fcp_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "percentual_diferimento",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_desoneracao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_ipi",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_enquadramento_ipi",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_pis",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_pis",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_cofins",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_cofins",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_receita_pis_cofins",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_ibs_cbs",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "c_class_trib",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_ibs_uf",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_ibs_municipio",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_cbs",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reducao_ibs_cbs_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao_fiscal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_regras_perfil_cenario ON perfis_tributarios_regras (perfil_id, cenario)",
+        "CREATE INDEX idx_regras_perfil ON perfis_tributarios_regras (perfil_id)",
+        "CREATE INDEX idx_regras_cenario ON perfis_tributarios_regras (cenario)",
+        "CREATE INDEX idx_regras_ativo ON perfis_tributarios_regras (ativo)"
       ]
     }
   ]

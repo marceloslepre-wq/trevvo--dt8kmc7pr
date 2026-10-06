@@ -170,31 +170,29 @@ export const TabelasFiscaisHubPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Card Regras Tributárias Automáticas - Em breve */}
-        <Card className="border-slate-200 shadow-xs bg-slate-50/50 flex flex-col justify-between opacity-80">
+        {/* Card Perfis Tributários - Ativo */}
+        <Card className="border-slate-200 shadow-xs hover:border-blue-300 transition-colors flex flex-col justify-between">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="p-2.5 bg-slate-100 text-slate-400 rounded-lg">
+              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-lg">
                 <Calculator className="h-6 w-6" />
               </div>
-              <Badge
-                variant="outline"
-                className="text-[10px] uppercase font-semibold text-slate-400 border-slate-200"
-              >
-                Em breve
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium">
+                Ativo
               </Badge>
             </div>
-            <CardTitle className="text-lg font-bold text-slate-700">
-              Regras e Perfis Tributários
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-400">
-              Motor de regras fiscais automáticas por tipo de operação, destinatário (consumidor
-              final / revenda) e UF.
+            <CardTitle className="text-lg font-bold text-slate-900">Perfis Tributários</CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Modelos de tributação completos com 8 cenários (venda interna, interestadual,
+              devolução e compra) para ICMS, ST, IPI, PIS, COFINS e IBS/CBS.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            <Button disabled variant="outline" className="w-full text-xs">
-              Módulo em desenvolvimento
+            <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+              <Link to="/cadastros/tabelas-fiscais/perfis">
+                Acessar Perfis Tributários
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
           </CardContent>
         </Card>

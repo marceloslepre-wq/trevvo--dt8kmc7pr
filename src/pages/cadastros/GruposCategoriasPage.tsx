@@ -61,6 +61,7 @@ import {
   ativarCategoria,
   listarTodosGruposAtivos,
 } from '@/services/gruposCategorias'
+import { SelectPerfilTributario } from '@/components/SelectPerfilTributario'
 
 export const GruposCategoriasPage: React.FC = () => {
   const { pode } = usePermissoes()
@@ -88,6 +89,7 @@ export const GruposCategoriasPage: React.FC = () => {
   const [codigoGrupo, setCodigoGrupo] = useState('')
   const [nomeGrupo, setNomeGrupo] = useState('')
   const [margemGrupo, setMargemGrupo] = useState<string>('')
+  const [perfilTributarioGrupo, setPerfilTributarioGrupo] = useState<string>('')
   const [errosGrupo, setErrosGrupo] = useState<{ codigo?: string; nome?: string }>({})
 
   // Modal Categoria
@@ -181,6 +183,7 @@ export const GruposCategoriasPage: React.FC = () => {
     setCodigoGrupo('')
     setNomeGrupo('')
     setMargemGrupo('')
+    setPerfilTributarioGrupo('')
     setErrosGrupo({})
     setModalGrupoAberto(true)
   }
@@ -194,6 +197,7 @@ export const GruposCategoriasPage: React.FC = () => {
         ? String(g.margem_padrao_percentual)
         : '',
     )
+    setPerfilTributarioGrupo(g.perfil_tributario_id || '')
     setErrosGrupo({})
     setModalGrupoAberto(true)
   }
@@ -221,6 +225,7 @@ export const GruposCategoriasPage: React.FC = () => {
         codigo: codLimpo,
         nome: nomeLimpo,
         margem_padrao_percentual: isNaN(margemNum as number) ? null : margemNum,
+        perfil_tributario_id: perfilTributarioGrupo.trim() || undefined,
       })
 
       toast({
@@ -924,7 +929,20 @@ export const GruposCategoriasPage: React.FC = () => {
                 </p>
               </div>
 
-              {/* Nota sobre perfil_tributario_id: preparado no schema, oculto até a tabela existir */}
+              <div className="space-y-1.5">
+                <Label htmlFor="grupo-perfil" className="text-xs font-semibold text-slate-700">
+                  Perfil Tributário Padrão
+                </Label>
+                <SelectPerfilTributario
+                  id="grupo-perfil"
+                  value={perfilTributarioGrupo}
+                  onChange={(id) => setPerfilTributarioGrupo(id)}
+                  placeholder="Selecione o perfil tributário para os produtos deste grupo..."
+                />
+                <p className="text-[11px] text-slate-400">
+                  Produtos cadastrados neste grupo herdarão automaticamente este modelo tributário.
+                </p>
+              </div>
             </div>
 
             <DialogFooter className="gap-2 sm:gap-0">
