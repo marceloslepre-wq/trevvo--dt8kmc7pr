@@ -1,0 +1,154 @@
+import React, { createContext, useContext, useEffect, useState } from 'react'
+import type { AuthRecord } from 'pocketbase'
+import pb from '@/lib/pocketbase/client'
+
+export interface UserProfile {
+  id: string
+  email: string
+  name: string
+  avatar?: string
+  verified: boolean
+}
+
+interface AuthContextType {
+  user: UserProfile | null
+  token: string
+  isLoading: boolean
+  isAuthenticated: boolean
+  login: (email: string, password: string) => Promise<UserProfile>
+  logout: () => void
+  requestPasswordReset: (email: string) => Promise<boolean>
+  confirmPasswordReset: (
+    token: string,
+    password: string,
+    passwordConfirm: string,
+  ) => Promise<boolean>
+  confirmVerification: (token: string) => Promise<boolean>
+  confirmEmailChange: (token: string, password: string) => Promise<boolean>
+  refreshUser: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+function mapRecordToUser(record: AuthRecord | null): UserProfile | null {
+  if (!record) return null
+  return {
+    id: record.id,
+    email: record.email || '',
+    name: (record.name as string) || (record.email?.split('@')[0] ?? 'Usuário'),
+    avatar: (record.avatar as string) || undefined,
+    verified: Boolean(record.verified),
+  }
+}
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    return pb.authStore.isValid ? mapRecordToUser(pb.authStore.record) : null
+  })
+  const [token, setToken] = useState<string>(() => pb.authStore.token)
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+
+  useEffect(() => {
+    // Escuta mudanças de authStore do PocketBase
+    const unsubscribe = pb.authStore.onChange((newToken, model) => {
+      setToken(newToken)
+      setUser(mapRecordToUser(model))
+    })
+
+    // Valida o token salvo no PocketBase
+    const validateSession = async () => {
+      try {
+        if (pb.authStore.isValid) {
+          const authData = await pb.collection('users').authRefresh()
+          setUser(mapRecordToUser(authData.record))
+        } else {
+          setUser(null)
+        }
+      } catch {
+        pb.authStore.clear()
+        setUser(null)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    validateSession()
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
+  const login = async (email: string, password: string): Promise<UserProfile> => {
+    const authData = await pb.collection('users').authWithPassword(email.trim(), password)
+    const profile = mapRecordToUser(authData.record)!
+    setUser(profile)
+    setToken(authData.token)
+    return profile
+  }
+
+  const logout = () => {
+    pb.authStore.clear()
+    setUser(null)
+    setToken('')
+  }
+
+  const requestPasswordReset = async (email: string): Promise<boolean> => {
+    return await pb.collection('users').requestPasswordReset(email.trim())
+  }
+
+  const confirmPasswordReset = async (
+    resetToken: string,
+    password: string,
+    passwordConfirm: string,
+  ): Promise<boolean> => {
+    return await pb.collection('users').confirmPasswordReset(resetToken, password, passwordConfirm)
+  }
+
+  const confirmVerification = async (verificationToken: string): Promise<boolean> => {
+    return await pb.collection('users').confirmVerification(verificationToken)
+  }
+
+  const confirmEmailChange = async (changeToken: string, password: string): Promise<boolean> => {
+    return await pb.collection('users').confirmEmailChange(changeToken, password)
+  }
+
+  const refreshUser = async () => {
+    if (pb.authStore.isValid) {
+      try {
+        const authData = await pb.collection('users').authRefresh()
+        setUser(mapRecordToUser(authData.record))
+      } catch {
+        // Falha no refresh mantém estado até logout manual
+      }
+    }
+  }
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isLoading,
+        isAuthenticated: !!user && !!token,
+        login,
+        logout,
+        requestPasswordReset,
+        confirmPasswordReset,
+        confirmVerification,
+        confirmEmailChange,
+        refreshUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export const useAuth = () => {
+  const context = useContext(AuthContext)
+  if (!context) {
+    throw new Error('useAuth deve ser usado dentro de um AuthProvider')
+  }
+  return context
+}
