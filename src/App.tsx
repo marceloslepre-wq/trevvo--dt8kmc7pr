@@ -36,6 +36,8 @@ import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
 import ClientesLista from '@/pages/cadastros/ClientesLista'
 import ClienteForm from '@/pages/cadastros/ClienteForm'
+import FornecedoresLista from '@/pages/cadastros/FornecedoresLista'
+import FornecedorForm from '@/pages/cadastros/FornecedorForm'
 
 const App = () => (
   <BrowserRouter>
@@ -195,10 +197,23 @@ const App = () => (
                   path="/cadastros/fornecedores"
                   element={
                     <PermissaoGuard modulo="fornecedores" acao="ver">
-                      <PlaceholderPage
-                        title="Fornecedores"
-                        subtitle="Cadastro de fornecedores de mercadorias e serviços"
-                      />
+                      <FornecedoresLista />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/fornecedores/novo"
+                  element={
+                    <PermissaoGuard modulo="fornecedores" acao="criar">
+                      <FornecedorForm />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/fornecedores/:id/editar"
+                  element={
+                    <PermissaoGuard modulo="fornecedores" acao="editar">
+                      <FornecedorForm />
                     </PermissaoGuard>
                   }
                 />

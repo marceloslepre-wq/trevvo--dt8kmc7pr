@@ -591,3 +591,73 @@ import { ClienteCadastroRapido } from '@/components/ClienteCadastroRapido'
   tipoPessoaInicial="Física" // opcional
 />
 ```
+
+### fornecedores
+
+Cadastro de fornecedores de mercadorias, serviços, transportadoras e insumos para entrada de notas fiscais, contas a pagar e SPED Fiscal (registro 0150). Compartilhado entre todas as empresas.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (número sequencial automático exibido na listagem)
+- tipo_pessoa (select obrigatório: "Física", "Jurídica" ou "Estrangeiro")
+- cpf_cnpj (texto obrigatório para Física e Jurídica, único entre fornecedores ATIVOS, validado com dígitos verificadores; CPF módulo 11 sem sequências repetidas; CNPJ alfanumérico com pesos oficiais)
+- id_estrangeiro (texto obrigatório quando tipo_pessoa = Estrangeiro)
+- razao_social (texto obrigatório, até 60 caracteres)
+- nome_fantasia (texto até 60 caracteres)
+- indicador_ie (select obrigatório: 1 Contribuinte ICMS, 2 Contribuinte isento, 9 Não contribuinte)
+- inscricao_estadual (texto obrigatório quando indicador_ie = 1; validação ES módulo 11 pesos 9 a 2; aceita "ISENTO")
+- inscricao_municipal (texto opcional)
+- inscricao_suframa (texto opcional)
+- crt_fornecedor (select opcional: 1 Simples Nacional, 2 Simples excesso sublimite, 3 Regime Normal, 4 MEI - essencial para conferência de crédito de ICMS na entrada)
+- tipo_fornecedor (select múltiplo: "Mercadorias", "Serviços", "Transportadora", "Uso e consumo", "Outros" — permite selecionar mais de um)
+- produtor_rural (boolean)
+
+#### Endereço
+
+- cep, logradouro, numero, complemento, bairro, municipio, codigo_municipio_ibge, uf: endereço fiscal do fornecedor
+- codigo_pais (texto padrão "1058"), pais (texto padrão "Brasil")
+- Para Estrangeiro: uf "EX", municipio "EXTERIOR", codigo_municipio_ibge "9999999" e país da tabela de países
+
+#### Contato
+
+- telefone, celular, email, email_financeiro, site, contato_nome, contato_cargo, contato_telefone
+
+#### Comercial
+
+- prazo_entrega_dias (número inteiro em dias)
+- condicao_pagamento_padrao (texto livre, ex: "28 DDL", "30/60/90")
+- pedido_minimo (número em R$)
+- representante_nome, representante_telefone, representante_email
+
+#### Dados bancários
+
+- banco_codigo (texto com 3 dígitos), banco_nome, agencia, conta
+- tipo_conta (select opcional: "Corrente", "Poupança")
+- titular, cpf_cnpj_titular
+- pix_tipo (select opcional: "CPF/CNPJ", "E-mail", "Telefone", "Chave aleatória")
+- pix_chave (texto)
+
+#### Outros
+
+- observacoes (texto longo interno)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras: Botão "Consultar CNPJ" (BrasilAPI) na aba Dados preenchendo razão social, fantasia, endereço e telefone quando o CNPJ for de 14 dígitos. Consulta de endereço automática por CEP via ViaCEP. CPF/CNPJ único somente entre fornecedores ativos; se o mesmo documento existir em fornecedor inativo, a tela exibe aviso e botão para reativação direta. Todas as ações (inclusão, alteração, inativação e reativação) gravam em logs_auditoria com valores antes e depois. Permissões via `pode('fornecedores', acao)`.
+
+#### Componentes reutilizáveis
+
+- `<SelectFornecedor />` (`@/components/SelectFornecedor`): combobox com busca de fornecedores ativos exibindo `"código - razão social"` e permitindo filtro opcional por `filtroTipo` ("Mercadorias", "Serviços", "Transportadora", "Uso e consumo", "Outros"). Registrado para uso nos próximos formulários (notas fiscais de entrada, compras e contas a pagar):
+
+```tsx
+import { SelectFornecedor } from '@/components/SelectFornecedor'
+
+;<SelectFornecedor
+  value={fornecedorId}
+  onChange={(id, fornecedor) => setFornecedorId(id)}
+  filtroTipo="Mercadorias" // opcional
+  placeholder="Selecione o fornecedor..."
+/>
+```
