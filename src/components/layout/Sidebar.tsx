@@ -110,7 +110,7 @@ const navItems: NavGroupItem[] = [
       },
       {
         title: 'Tabelas fiscais',
-        path: '/cadastros/tabelas-fiscais',
+        path: '/cadastros/tabelas-fiscais/codigos',
         icon: FileCode,
         modulo: 'tabelas_fiscais',
       },

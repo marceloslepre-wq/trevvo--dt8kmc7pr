@@ -25,6 +25,9 @@ import PerfisAcessoLista from '@/pages/cadastros/PerfisAcessoLista'
 import PerfilAcessoForm from '@/pages/cadastros/PerfilAcessoForm'
 import UsuariosLista from '@/pages/cadastros/UsuariosLista'
 import UsuarioForm from '@/pages/cadastros/UsuarioForm'
+import UnidadesMedidaPage from '@/pages/cadastros/UnidadesMedidaPage'
+import CodigosFiscaisPage from '@/pages/cadastros/CodigosFiscaisPage'
+import TabelasFiscaisHubPage from '@/pages/cadastros/TabelasFiscaisHubPage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
 
 const App = () => (
@@ -213,10 +216,7 @@ const App = () => (
                   path="/cadastros/unidades-medida"
                   element={
                     <PermissaoGuard modulo="unidades_medida" acao="ver">
-                      <PlaceholderPage
-                        title="Unidades de Medida"
-                        subtitle="Unidades comerciais e tributárias (UN, KG, CX, etc.)"
-                      />
+                      <UnidadesMedidaPage />
                     </PermissaoGuard>
                   }
                 />
@@ -224,10 +224,15 @@ const App = () => (
                   path="/cadastros/tabelas-fiscais"
                   element={
                     <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                      <PlaceholderPage
-                        title="Tabelas Fiscais"
-                        subtitle="CFOP, CST, CSOSN, NCM e regras tributárias"
-                      />
+                      <TabelasFiscaisHubPage />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/tabelas-fiscais/codigos"
+                  element={
+                    <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
+                      <CodigosFiscaisPage />
                     </PermissaoGuard>
                   }
                 />

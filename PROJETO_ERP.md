@@ -76,7 +76,6 @@ Para proteger páginas inteiras no roteador ou blocos de interface:
 
 ```tsx
 import PermissaoGuard from '@/components/PermissaoGuard'
-
 ;<PermissaoGuard modulo="clientes" acao="ver">
   <ClientesLista />
 </PermissaoGuard>
@@ -94,6 +93,39 @@ Se o perfil possuir `administrador = true` (ou for o usuário master administrad
 - Nenhuma alíquota fica fixa no código: tudo vem de cadastro.
 - Códigos fiscais (CST, CSOSN, CFOP, NCM, CEST, origem) sempre validados contra as tabelas fiscais do sistema.
 
+### Como usar o componente SelectCodigoFiscal (`<SelectCodigoFiscal />`)
+
+O componente `@/components/SelectCodigoFiscal` provê um combobox com busca e seleção amigável dos códigos fiscais cadastrados na tabela `tabelas_fiscais_codigos`, exibindo `"codigo - descricao"`:
+
+```tsx
+import { SelectCodigoFiscal } from '@/components/SelectCodigoFiscal'
+
+// Exemplo em formulário de produtos ou regras fiscais:
+<SelectCodigoFiscal
+  tipo="CST_ICMS"
+  value={cstIcms}
+  onChange={(codigo, item) => {
+    setCstIcms(codigo)
+    console.log('Item selecionado:', item?.descricao)
+  }}
+  placeholder="Selecione o CST do ICMS..."
+/>
+
+<SelectCodigoFiscal
+  tipo="CSOSN"
+  value={csosn}
+  onChange={(codigo) => setCsosn(codigo)}
+/>
+
+<SelectCodigoFiscal
+  tipo="ORIGEM"
+  value={origem}
+  onChange={(codigo) => setOrigem(codigo)}
+/>
+```
+
+Tipos disponíveis padrão: `ORIGEM`, `CST_ICMS`, `CSOSN`, `MOD_BC_ICMS`, `MOD_BC_ICMS_ST`, `CST_IPI`, `CST_PIS_COFINS`, `TIPO_ITEM_SPED`, `CRT`, `IND_IE_DEST`, `CST_IBS_CBS`, `CCLASSTRIB`.
+
 ## Tabelas
 
 (acrescentar aqui cada tabela criada, com seus campos)
@@ -108,6 +140,37 @@ Tabela que armazena os estabelecimentos (Matriz e Filiais), cada um com seu CNPJ
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
+
+### unidades_medida
+
+Tabela de unidades comerciais e tributárias utilizadas no cadastro de produtos e na emissão de documentos fiscais.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- sigla (texto obrigatório, único, até 6 caracteres, sempre maiúsculas, ex: "UN", "KG", "CX")
+- descricao (texto obrigatório, ex: "Quilograma", "Unidade")
+- aceita_fracionado (boolean: permite quantidade com decimais nas movimentações e notas)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### tabelas_fiscais_codigos
+
+Tabela única para listas auxiliares de códigos fiscais oficiais (SEFAZ, SPED e Reforma Tributária).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- tipo (texto obrigatório, ex: "ORIGEM", "CST_ICMS", "CSOSN", "MOD_BC_ICMS", "MOD_BC_ICMS_ST", "CST_IPI", "CST_PIS_COFINS", "TIPO_ITEM_SPED", "CRT", "IND_IE_DEST", "CST_IBS_CBS", "CCLASSTRIB")
+- codigo (texto obrigatório, ex: "00", "101", "0", "01")
+- descricao (texto obrigatório com a descrição oficial)
+- observacao (texto opcional com orientações tributárias)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Restrição de unicidade: par `tipo + codigo`.
 
 #### Identificação
 

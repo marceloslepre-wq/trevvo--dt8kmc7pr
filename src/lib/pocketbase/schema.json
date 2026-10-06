@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-06T20:04:56.697Z",
+  "generatedAt": "2026-10-06T20:35:06.484Z",
   "collections": [
     {
       "name": "users",
@@ -869,6 +869,151 @@
         "CREATE UNIQUE INDEX idx_usuarios_empresas_pair ON usuarios_empresas (usuario_id, empresa_id)",
         "CREATE INDEX idx_usuarios_empresas_user ON usuarios_empresas (usuario_id)",
         "CREATE INDEX idx_usuarios_empresas_empresa ON usuarios_empresas (empresa_id)"
+      ]
+    },
+    {
+      "name": "unidades_medida",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sigla",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "aceita_fracionado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_unidades_medida_sigla ON unidades_medida (sigla)",
+        "CREATE INDEX idx_unidades_medida_ativo ON unidades_medida (ativo)"
+      ]
+    },
+    {
+      "name": "tabelas_fiscais_codigos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "codigo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_tabelas_fiscais_tipo_codigo ON tabelas_fiscais_codigos (tipo, codigo)",
+        "CREATE INDEX idx_tabelas_fiscais_tipo ON tabelas_fiscais_codigos (tipo)",
+        "CREATE INDEX idx_tabelas_fiscais_ativo ON tabelas_fiscais_codigos (ativo)"
       ]
     }
   ]
