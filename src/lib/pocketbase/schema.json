@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-06T19:39:04.881Z",
+  "generatedAt": "2026-10-06T20:04:56.697Z",
   "collections": [
     {
       "name": "users",
@@ -112,6 +112,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "empresas"
         }
       ],
       "indexes": [
@@ -480,6 +487,388 @@
         "CREATE UNIQUE INDEX idx_empresas_codigo ON empresas (codigo)",
         "CREATE INDEX idx_empresas_tipo ON empresas (tipo)",
         "CREATE INDEX idx_empresas_ativo ON empresas (ativo)"
+      ]
+    },
+    {
+      "name": "perfis_acesso",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "administrador",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_perfis_acesso_nome ON perfis_acesso (nome)",
+        "CREATE INDEX idx_perfis_acesso_ativo ON perfis_acesso (ativo)"
+      ]
+    },
+    {
+      "name": "permissoes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "perfil_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "perfis_acesso"
+        },
+        {
+          "name": "modulo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "painel",
+            "empresas",
+            "usuarios",
+            "perfis_acesso",
+            "clientes",
+            "fornecedores",
+            "produtos",
+            "marcas",
+            "grupos_categorias",
+            "unidades_medida",
+            "tabelas_fiscais",
+            "estoque",
+            "compras",
+            "notas_entrada",
+            "financeiro_pagar",
+            "financeiro_receber",
+            "vendas",
+            "pdv",
+            "caixa",
+            "notas_saida",
+            "sped",
+            "relatorios",
+            "configuracoes"
+          ]
+        },
+        {
+          "name": "pode_ver",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pode_criar",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pode_editar",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pode_excluir",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_permissoes_perfil_modulo ON permissoes (perfil_id, modulo)",
+        "CREATE INDEX idx_permissoes_perfil ON permissoes (perfil_id)"
+      ]
+    },
+    {
+      "name": "usuarios",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "auth_user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "telefone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "foto",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "perfil_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "perfis_acesso"
+        },
+        {
+          "name": "empresa_padrao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "desconto_maximo_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "comissao_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "e_vendedor",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "e_caixa",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_acesso",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_usuarios_email ON usuarios (email)",
+        "CREATE INDEX idx_usuarios_auth_user_id ON usuarios (auth_user_id)",
+        "CREATE INDEX idx_usuarios_perfil_id ON usuarios (perfil_id)",
+        "CREATE INDEX idx_usuarios_ativo ON usuarios (ativo)"
+      ]
+    },
+    {
+      "name": "usuarios_empresas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_usuarios_empresas_pair ON usuarios_empresas (usuario_id, empresa_id)",
+        "CREATE INDEX idx_usuarios_empresas_user ON usuarios_empresas (usuario_id)",
+        "CREATE INDEX idx_usuarios_empresas_empresa ON usuarios_empresas (empresa_id)"
       ]
     }
   ]

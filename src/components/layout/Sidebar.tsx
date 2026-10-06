@@ -25,10 +25,13 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  FileText,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Badge } from '@/components/ui/badge'
+import { usePermissoes } from '@/contexts/PermissoesContext'
+import { ModuloSistema } from '@/services/perfis'
 
 interface SidebarProps {
   collapsed: boolean
@@ -41,6 +44,8 @@ interface NavSubItem {
   title: string
   path: string
   icon: React.ComponentType<{ className?: string; size?: number }>
+  modulo?: ModuloSistema
+  adminOnly?: boolean
 }
 
 interface NavGroupItem {
@@ -49,6 +54,8 @@ interface NavGroupItem {
   icon: React.ComponentType<{ className?: string; size?: number }>
   path?: string
   status?: 'active' | 'soon'
+  modulo?: ModuloSistema
+  adminOnly?: boolean
   items?: NavSubItem[]
 }
 
@@ -59,6 +66,7 @@ const navItems: NavGroupItem[] = [
     path: '/painel',
     icon: LayoutDashboard,
     status: 'active',
+    modulo: 'painel',
   },
   {
     id: 'cadastros',
@@ -66,16 +74,46 @@ const navItems: NavGroupItem[] = [
     icon: FolderTree,
     status: 'active',
     items: [
-      { title: 'Empresa e filiais', path: '/cadastros/empresas', icon: Building },
-      { title: 'Usuários', path: '/cadastros/usuarios', icon: Users },
-      { title: 'Perfis de acesso', path: '/cadastros/perfis-acesso', icon: ShieldCheck },
-      { title: 'Clientes', path: '/cadastros/clientes', icon: UserCheck },
-      { title: 'Fornecedores', path: '/cadastros/fornecedores', icon: Truck },
-      { title: 'Produtos', path: '/cadastros/produtos', icon: Box },
-      { title: 'Marcas', path: '/cadastros/marcas', icon: Tag },
-      { title: 'Grupos e categorias', path: '/cadastros/grupos-categorias', icon: Layers },
-      { title: 'Unidades de medida', path: '/cadastros/unidades-medida', icon: Ruler },
-      { title: 'Tabelas fiscais', path: '/cadastros/tabelas-fiscais', icon: FileCode },
+      {
+        title: 'Empresa e filiais',
+        path: '/cadastros/empresas',
+        icon: Building,
+        modulo: 'empresas',
+      },
+      { title: 'Usuários', path: '/cadastros/usuarios', icon: Users, modulo: 'usuarios' },
+      {
+        title: 'Perfis de acesso',
+        path: '/cadastros/perfis-acesso',
+        icon: ShieldCheck,
+        modulo: 'perfis_acesso',
+      },
+      { title: 'Clientes', path: '/cadastros/clientes', icon: UserCheck, modulo: 'clientes' },
+      {
+        title: 'Fornecedores',
+        path: '/cadastros/fornecedores',
+        icon: Truck,
+        modulo: 'fornecedores',
+      },
+      { title: 'Produtos', path: '/cadastros/produtos', icon: Box, modulo: 'produtos' },
+      { title: 'Marcas', path: '/cadastros/marcas', icon: Tag, modulo: 'marcas' },
+      {
+        title: 'Grupos e categorias',
+        path: '/cadastros/grupos-categorias',
+        icon: Layers,
+        modulo: 'grupos_categorias',
+      },
+      {
+        title: 'Unidades de medida',
+        path: '/cadastros/unidades-medida',
+        icon: Ruler,
+        modulo: 'unidades_medida',
+      },
+      {
+        title: 'Tabelas fiscais',
+        path: '/cadastros/tabelas-fiscais',
+        icon: FileCode,
+        modulo: 'tabelas_fiscais',
+      },
     ],
   },
   {
@@ -83,49 +121,70 @@ const navItems: NavGroupItem[] = [
     title: 'Estoque',
     icon: Package,
     status: 'soon',
+    modulo: 'estoque',
   },
   {
     id: 'compras',
     title: 'Compras e entrada de notas',
     icon: ShoppingCart,
     status: 'soon',
+    modulo: 'compras',
   },
   {
     id: 'financeiro',
     title: 'Financeiro',
     icon: DollarSign,
     status: 'soon',
+    modulo: 'financeiro_pagar',
   },
   {
     id: 'vendas',
     title: 'Vendas, PDV e caixa',
     icon: TrendingUp,
     status: 'soon',
+    modulo: 'vendas',
   },
   {
     id: 'fiscal',
     title: 'Fiscal: NF-e e NFC-e',
     icon: Receipt,
     status: 'soon',
+    modulo: 'notas_saida',
   },
   {
     id: 'sped',
     title: 'SPED Fiscal',
     icon: FileSpreadsheet,
     status: 'soon',
+    modulo: 'sped',
   },
   {
     id: 'relatorios',
     title: 'Relatórios',
     icon: BarChart3,
     status: 'soon',
+    modulo: 'relatorios',
   },
   {
     id: 'configuracoes',
     title: 'Configurações',
-    path: '/configuracoes',
     icon: Settings,
     status: 'active',
+    modulo: 'configuracoes',
+    items: [
+      {
+        title: 'Parâmetros Gerais',
+        path: '/configuracoes',
+        icon: Settings,
+        modulo: 'configuracoes',
+      },
+      {
+        title: 'Log de Auditoria',
+        path: '/configuracoes/auditoria',
+        icon: FileText,
+        adminOnly: true,
+      },
+    ],
   },
 ]
 
@@ -137,7 +196,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const location = useLocation()
   const isCadastrosActive = location.pathname.startsWith('/cadastros')
+  const isConfiguracoesActive = location.pathname.startsWith('/configuracoes')
   const [cadastrosOpen, setCadastrosOpen] = useState(true)
+  const [configuracoesOpen, setConfiguracoesOpen] = useState(true)
+
+  const { pode, administrador } = usePermissoes()
+
+  // Filtra itens visíveis conforme permissão
+  const itensVisiveis = navItems
+    .map((group) => {
+      // Se tiver subitens
+      if (group.items) {
+        const subFiltrados = group.items.filter((sub) => {
+          if (sub.adminOnly && !administrador) return false
+          if (sub.modulo && !pode(sub.modulo, 'ver')) return false
+          return true
+        })
+
+        if (subFiltrados.length === 0) return null
+        return {
+          ...group,
+          items: subFiltrados,
+        }
+      }
+
+      // Item raiz direto
+      if (group.adminOnly && !administrador) return null
+      if (group.modulo && !pode(group.modulo, 'ver')) return null
+      return group
+    })
+    .filter(Boolean) as NavGroupItem[]
 
   const renderContent = (isMobileView = false) => {
     const isCollapsed = isMobileView ? false : collapsed
@@ -160,7 +248,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation list */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-1">
-          {navItems.map((item) => {
+          {itensVisiveis.map((item) => {
             const Icon = item.icon
             const isSoon = item.status === 'soon'
 
@@ -208,9 +296,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               return <div key={item.id}>{disabledContent}</div>
             }
 
-            // Grupo com subitens (ex: Cadastros)
+            // Grupo com subitens (ex: Cadastros, Configurações)
             if (item.items) {
-              const isOpen = cadastrosOpen
+              const isGroupActive =
+                item.id === 'cadastros' ? isCadastrosActive : isConfiguracoesActive
+              const isOpen = item.id === 'cadastros' ? cadastrosOpen : configuracoesOpen
+              const setOpen = item.id === 'cadastros' ? setCadastrosOpen : setConfiguracoesOpen
 
               if (isCollapsed) {
                 return (
@@ -219,10 +310,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <button
                         onClick={() => {
                           onToggleCollapse()
-                          setCadastrosOpen(true)
+                          setOpen(true)
                         }}
                         className={`w-full flex items-center justify-center p-2 rounded-lg transition-colors ${
-                          isCadastrosActive
+                          isGroupActive
                             ? 'bg-blue-50 text-blue-700'
                             : 'text-slate-600 hover:bg-slate-200/60'
                         }`}
@@ -240,9 +331,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               return (
                 <div key={item.id} className="space-y-0.5">
                   <button
-                    onClick={() => setCadastrosOpen(!isOpen)}
+                    onClick={() => setOpen(!isOpen)}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-colors ${
-                      isCadastrosActive
+                      isGroupActive
                         ? 'text-blue-700 bg-blue-50/70 font-semibold'
                         : 'text-slate-700 hover:bg-slate-200/60'
                     }`}
@@ -250,7 +341,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div className="flex items-center gap-2.5">
                       <Icon
                         size={18}
-                        className={isCadastrosActive ? 'text-blue-600' : 'text-slate-500'}
+                        className={isGroupActive ? 'text-blue-600' : 'text-slate-500'}
                       />
                       <span>{item.title}</span>
                     </div>

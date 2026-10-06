@@ -22,6 +22,7 @@ import {
   ListarEmpresasParams,
 } from '@/services/empresas'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { usePermissoes } from '@/contexts/PermissoesContext'
 import { formatarCNPJ } from '@/lib/validacoes'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -47,6 +48,11 @@ export const EmpresasLista: React.FC = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { recarregarEmpresas } = useEmpresaAtiva()
+  const { pode } = usePermissoes()
+
+  const podeCriar = pode('empresas', 'criar')
+  const podeEditar = pode('empresas', 'editar')
+  const podeExcluir = pode('empresas', 'excluir')
 
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [totalItems, setTotalItems] = useState(0)
@@ -230,14 +236,16 @@ export const EmpresasLista: React.FC = () => {
             Exportar CSV
           </Button>
 
-          <Button
-            size="sm"
-            onClick={() => navigate('/cadastros/empresas/novo')}
-            className="text-xs h-9 bg-blue-600 hover:bg-blue-700 text-white font-medium"
-          >
-            <Plus size={15} className="mr-1.5" />
-            Nova Empresa
-          </Button>
+          {podeCriar && (
+            <Button
+              size="sm"
+              onClick={() => navigate('/cadastros/empresas/novo')}
+              className="text-xs h-9 bg-blue-600 hover:bg-blue-700 text-white font-medium"
+            >
+              <Plus size={15} className="mr-1.5" />
+              Nova Empresa
+            </Button>
+          )}
         </div>
       </div>
 
@@ -440,28 +448,40 @@ export const EmpresasLista: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
-                          onClick={() => navigate(`/cadastros/empresas/${emp.id}/editar`)}
-                          title="Editar empresa"
-                        >
-                          <Edit size={14} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={`h-7 w-7 ${
-                            emp.ativo
-                              ? 'text-slate-500 hover:text-amber-700 hover:bg-amber-50'
-                              : 'text-slate-500 hover:text-emerald-700 hover:bg-emerald-50'
-                          }`}
-                          onClick={() => abrirConfirmacaoInativar(emp)}
-                          title={emp.ativo ? 'Inativar empresa' : 'Ativar empresa'}
-                        >
-                          <Power size={14} />
-                        </Button>
+                        {podeEditar && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
+                            onClick={() => navigate(`/cadastros/empresas/${emp.id}/editar`)}
+                            title="Editar empresa"
+                          >
+                            <Edit size={14} />
+                          </Button>
+                        )}
+                        {emp.ativo
+                          ? podeExcluir && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-slate-500 hover:text-amber-700 hover:bg-amber-50"
+                                onClick={() => abrirConfirmacaoInativar(emp)}
+                                title="Inativar empresa"
+                              >
+                                <Power size={14} />
+                              </Button>
+                            )
+                          : podeEditar && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50"
+                                onClick={() => abrirConfirmacaoInativar(emp)}
+                                title="Ativar empresa"
+                              >
+                                <Power size={14} />
+                              </Button>
+                            )}
                       </div>
                     </td>
                   </tr>

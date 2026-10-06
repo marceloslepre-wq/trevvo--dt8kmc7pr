@@ -46,6 +46,45 @@
 - Toda tela e ação respeita a matriz de permissões do perfil do usuário (ver, criar, editar, excluir por módulo).
 - Usuário sem permissão não vê o item no menu e recebe "Acesso negado" se abrir a URL.
 
+### Como usar o hook de verificação de permissões (`usePermissoes`)
+
+O hook `usePermissoes` (`@/contexts/PermissoesContext`) provê a checagem reativa de privilégios para componentes e telas do ERP:
+
+```tsx
+import { usePermissoes } from '@/contexts/PermissoesContext'
+
+export const MinhaTela = () => {
+  const { pode, administrador, usuarioERP, perfil } = usePermissoes()
+
+  // pode(modulo, acao)
+  // modulo: 'painel' | 'empresas' | 'usuarios' | 'perfis_acesso' | 'clientes' | 'fornecedores' | ...
+  // acao: 'ver' | 'criar' | 'editar' | 'excluir'
+  const podeCriar = pode('clientes', 'criar')
+  const podeEditar = pode('clientes', 'editar')
+  const podeExcluir = pode('clientes', 'excluir')
+
+  return (
+    <div>
+      {podeCriar && <Button>Novo Cliente</Button>}
+      {/* ... */}
+    </div>
+  )
+}
+```
+
+Para proteger páginas inteiras no roteador ou blocos de interface:
+
+```tsx
+import PermissaoGuard from '@/components/PermissaoGuard'
+
+;<PermissaoGuard modulo="clientes" acao="ver">
+  <ClientesLista />
+</PermissaoGuard>
+```
+
+Se o usuário não tiver permissão `pode_ver`, o guard renderiza automaticamente a tela amigável de `AcessoNegado`.
+Se o perfil possuir `administrador = true` (ou for o usuário master administrador inicial), o método `pode` retorna `true` para todas as ações e módulos.
+
 ## Auditoria
 
 - Inclusões, alterações e inativações de cadastros gravam em logs_auditoria: usuário, data/hora, tabela, registro, ação, valores antes e depois.
@@ -146,10 +185,79 @@ Tabela central de auditoria que registra inclusões, alterações e inativaçõe
 - id (text, PK)
 - usuario_id (relation -> users, opcional)
 - usuario_nome (texto)
+- empresa_id (relation -> empresas, opcional)
 - tabela (texto obrigatório, ex: "empresas")
 - registro_id (texto obrigatório)
 - acao (select: inclusao, alteracao, inativacao, ativacao, exclusao)
 - valores_antes (json)
 - valores_depois (json)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### perfis_acesso
+
+Tabela de níveis de acesso e perfis de operadores do sistema.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- nome (texto obrigatório, único)
+- descricao (texto)
+- administrador (boolean: se true, tem acesso total irrestrito e ignora a matriz)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### permissoes
+
+Matriz detalhada de permissões por módulo associada a cada perfil de acesso.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- perfil_id (relation -> perfis_acesso, obrigatório, cascadeDelete)
+- modulo (select obrigatório com 23 módulos: painel, empresas, usuarios, perfis_acesso, clientes, fornecedores, produtos, marcas, grupos_categorias, unidades_medida, tabelas_fiscais, estoque, compras, notas_entrada, financeiro_pagar, financeiro_receber, vendas, pdv, caixa, notas_saida, sped, relatorios, configuracoes)
+- pode_ver (boolean)
+- pode_criar (boolean)
+- pode_editar (boolean)
+- pode_excluir (boolean)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### usuarios
+
+Cadastro interno do colaborador/operador do ERP, vinculado à conta de login do Skip Cloud (`users`).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- auth_user_id (relation -> users, ligação com a conta de login do Skip Cloud)
+- nome (texto obrigatório)
+- email (email obrigatório, único)
+- cpf (texto com validação de CPF)
+- telefone (texto)
+- foto (arquivo de imagem até 5MB)
+- perfil_id (relation -> perfis_acesso, obrigatório)
+- empresa_padrao_id (relation -> empresas, opcional)
+- desconto_maximo_percentual (número percentual 0 a 100, padrão 0)
+- comissao_percentual (número percentual 0 a 100, padrão 0)
+- e_vendedor (boolean)
+- e_caixa (boolean)
+- ultimo_acesso (data/hora)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### usuarios_empresas
+
+Vínculo de quais empresas e filiais cada colaborador tem autorização para visualizar e trabalhar.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- usuario_id (relation -> usuarios, obrigatório, cascadeDelete)
+- empresa_id (relation -> empresas, obrigatório, cascadeDelete)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)

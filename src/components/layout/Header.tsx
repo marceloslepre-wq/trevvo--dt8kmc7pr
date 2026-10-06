@@ -2,6 +2,7 @@ import React from 'react'
 import { Menu, LogOut, Building, User } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { usePermissoes } from '@/contexts/PermissoesContext'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -27,6 +28,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
   const { user, logout } = useAuth()
   const { empresas, empresaAtiva, selecionarEmpresa, carregando } = useEmpresaAtiva()
+  const { perfil, administrador } = usePermissoes()
 
   const getInitials = (name?: string, email?: string) => {
     if (name && name.trim()) {
@@ -133,8 +135,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
                 <span className="text-xs font-medium text-slate-800 max-w-[130px] truncate">
                   {user?.name || 'Administrador'}
                 </span>
-                <span className="text-[11px] text-slate-500 max-w-[130px] truncate">
-                  {user?.email}
+                <span className="text-[10px] text-blue-600 font-medium max-w-[130px] truncate">
+                  {administrador ? 'Administrador' : perfil?.nome || 'Operador'}
                 </span>
               </div>
             </button>
@@ -144,6 +146,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none text-slate-900">
                   {user?.name || 'Administrador'}
+                </p>
+                <p className="text-xs font-medium text-blue-600">
+                  Perfil: {administrador ? 'Administrador' : perfil?.nome || 'Operador'}
                 </p>
                 <p className="text-xs leading-none text-slate-500 truncate">{user?.email}</p>
               </div>

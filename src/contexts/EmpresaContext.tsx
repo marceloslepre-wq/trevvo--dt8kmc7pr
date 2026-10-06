@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { Empresa, listarEmpresasAtivas } from '@/services/empresas'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePermissoes } from '@/contexts/PermissoesContext'
+import { obterEmpresasDoUsuario } from '@/services/usuarios'
 
 interface EmpresaContextType {
   empresas: Empresa[]
@@ -20,6 +22,8 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [empresaAtiva, setEmpresaAtiva] = useState<Empresa | null>(null)
   const [carregando, setCarregando] = useState(false)
 
+  const { usuarioERP, administrador, carregando: carregandoPerms } = usePermissoes()
+
   const recarregarEmpresas = useCallback(async () => {
     if (!isAuthenticated) {
       setEmpresas([])
@@ -27,12 +31,31 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return
     }
 
+    if (carregandoPerms) {
+      return
+    }
+
     try {
       setCarregando(true)
-      const lista = await listarEmpresasAtivas()
-      setEmpresas(lista)
+      const todasAtivas = await listarEmpresasAtivas()
 
-      if (lista.length === 0) {
+      let listaFiltrada: Empresa[] = []
+
+      // Se for administrador, vê todas as empresas
+      if (administrador) {
+        listaFiltrada = todasAtivas
+      } else if (usuarioERP) {
+        // Obter empresas autorizadas para o usuário em usuarios_empresas
+        const permitidas = await obterEmpresasDoUsuario(usuarioERP.id)
+        const permitidasIds = new Set(permitidas.filter((p) => p.ativo).map((p) => p.empresa_id))
+        listaFiltrada = todasAtivas.filter((e) => permitidasIds.has(e.id))
+      } else {
+        listaFiltrada = todasAtivas
+      }
+
+      setEmpresas(listaFiltrada)
+
+      if (listaFiltrada.length === 0) {
         setEmpresaAtiva(null)
         localStorage.removeItem(CHAVE_STORAGE)
         return
@@ -40,13 +63,23 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // Tenta recuperar do localStorage
       const salvoId = localStorage.getItem(CHAVE_STORAGE)
-      const encontrada = lista.find((e) => e.id === salvoId)
+      const encontrada = listaFiltrada.find((e) => e.id === salvoId)
 
       if (encontrada) {
         setEmpresaAtiva(encontrada)
       } else {
+        // Se usuário tem empresa_padrao_id configurada e autorizada
+        if (usuarioERP?.empresa_padrao_id) {
+          const padrao = listaFiltrada.find((e) => e.id === usuarioERP.empresa_padrao_id)
+          if (padrao) {
+            setEmpresaAtiva(padrao)
+            localStorage.setItem(CHAVE_STORAGE, padrao.id)
+            return
+          }
+        }
+
         // Seleciona a Matriz por padrão, ou a primeira disponível
-        const matriz = lista.find((e) => e.tipo === 'Matriz') || lista[0]
+        const matriz = listaFiltrada.find((e) => e.tipo === 'Matriz') || listaFiltrada[0]
         setEmpresaAtiva(matriz)
         localStorage.setItem(CHAVE_STORAGE, matriz.id)
       }
@@ -55,7 +88,7 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } finally {
       setCarregando(false)
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, administrador, usuarioERP, carregandoPerms])
 
   useEffect(() => {
     recarregarEmpresas()
