@@ -97,7 +97,7 @@ export async function aliquotaInterestadual(
 ): Promise<number> {
   const orig = (ufOrigem || '').toUpperCase().trim()
   const dest = (ufDestino || '').toUpperCase().trim()
-  const origMercStr = String(origMercadoria ?? '').trim()
+  const origMercStr = String(origemMercadoria ?? '').trim()
 
   // Se mesma UF, é operação interna
   if (orig && dest && orig === dest) {

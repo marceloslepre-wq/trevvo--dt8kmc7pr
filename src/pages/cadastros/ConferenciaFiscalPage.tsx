@@ -51,6 +51,7 @@ import {
   verificarPendenciasFiscaisProduto,
   extrairCamposFiscaisDoPerfil,
 } from '@/services/produtos'
+import { RegimeApuracao } from '@/services/empresas'
 import { sugerirCestPorNcm } from '@/services/cest'
 import {
   obterPerfilTributarioCompleto,
@@ -189,7 +190,9 @@ export const ConferenciaFiscalPage: React.FC = () => {
         id: empresaAtiva?.id,
         uf: empresaAtiva?.uf || 'ES',
         crt: empresaAtiva?.crt ?? 1,
-        regime_apuracao: regimeEmpresa,
+        regime_apuracao: (regimeEmpresa === 'Regime Normal'
+          ? 'Lucro Presumido'
+          : 'Simples Nacional') as RegimeApuracao,
       }
 
       await Promise.all(

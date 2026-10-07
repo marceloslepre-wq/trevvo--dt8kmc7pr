@@ -149,7 +149,7 @@ export async function sugerirTributacao(params: {
         })
 
         const perfilCompleto: PerfilTributarioCompleto = {
-          perfil: perfilRec,
+          ...perfilRec,
           regras: regrasPerfil,
         }
 

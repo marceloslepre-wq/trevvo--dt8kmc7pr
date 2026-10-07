@@ -31,6 +31,7 @@ import {
   HelpCircle,
   ChevronDown,
   ChevronUp,
+  Loader2,
 } from 'lucide-react'
 import { SelectPerfilTributario } from '@/components/SelectPerfilTributario'
 import { SelectNcm } from '@/components/SelectNcm'
@@ -277,7 +278,8 @@ export function ProdutoAbaFiscal({
         : {
             crt:
               typeof crtEmpresaAtiva === 'number' ? crtEmpresaAtiva : Number(crtEmpresaAtiva) || 1,
-            regime_apuracao: regimeEmpresaAtiva,
+            regime_apuracao:
+              regimeEmpresaAtiva === 'Regime Normal' ? 'Lucro Presumido' : 'Simples Nacional',
           }
 
       // Chama sugerirTributacao sem itemXml (usa apenas etapas A e B)

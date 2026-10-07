@@ -81,6 +81,27 @@ export interface NotaEntrada {
   }
 }
 
+export interface NotaEntradaItemExpandProduto {
+  id: string
+  codigo: number
+  descricao: string
+  tipo?: TipoProduto
+  ativo?: boolean
+  unidade_id?: string
+  ncm?: string
+  cest?: string
+  cst_icms?: string
+  csosn?: string
+  cfop_venda_interna?: string
+  controla_lote_validade?: boolean
+  dias_validade?: number
+  cst_pis_entrada?: string
+  cst_cofins_entrada?: string
+  expand?: {
+    unidade_id?: { id: string; sigla: string; descricao: string; aceita_fracionado?: boolean }
+  }
+}
+
 export interface NotaEntradaItem {
   id: string
   nota_id: string
@@ -90,12 +111,22 @@ export interface NotaEntradaItem {
   codigo_fornecedor?: string
   descricao_fornecedor: string
   gtin_fornecedor?: string
+  codigo_barras_xml?: string
   ncm_fornecedor?: string
+  ncm_xml?: string
   cest_fornecedor?: string
+  cest_xml?: string
   cfop_fornecedor?: string
+  cfop_xml?: string
   unidade_fornecedor?: string
+  unidade_xml?: string
   quantidade_fornecedor: number
+  quantidade_xml?: number
   valor_unitario_fornecedor: number
+  valor_unitario_xml?: number
+  dados_adicionais_xml?: any
+  origem_mercadoria_xml?: string
+  cst_icms_xml?: string
 
   // Vínculo ERP
   produto_id?: string
@@ -162,21 +193,7 @@ export interface NotaEntradaItem {
   updated?: string
 
   expand?: {
-    produto_id?: {
-      id: string
-      codigo: number
-      descricao: string
-      unidade_id?: string
-      ncm?: string
-      cest?: string
-      controla_lote_validade?: boolean
-      dias_validade?: number
-      cst_pis_entrada?: string
-      cst_cofins_entrada?: string
-      expand?: {
-        unidade_id?: { id: string; sigla: string; descricao: string }
-      }
-    }
+    produto_id?: NotaEntradaItemExpandProduto
   }
 }
 
@@ -631,73 +648,95 @@ export async function executarVinculoAutomaticoNota(
 
     const res = await tentarVincularItemAutomatico(it, fornecedorId)
     if (res.produtoId) {
-      const qtdEstoque = Number((it.quantidade_fornecedor * res.fatorConversao).toFixed(4))
-      const prod = await pb.collection('produtos').getOne<any>(res.produtoId)
-
-      // Sugerir CST PIS e COFINS se ainda em branco ou 50/98
-      const { cstPis, cstCofins } = sugerirCstPisCofinsEntrada({
-        empresa: empresaDados || {},
-        tipoEntrada: tipoEntradaNota || 'Compra para revenda',
-        produtoCstPis: prod.cst_pis_entrada,
-        produtoCstCofins: prod.cst_cofins_entrada,
-      })
-
-      // Recalcula créditos
-      const creditos = calcularCreditosItem({
-        empresa: empresaDados || {},
-        tipoEntrada: tipoEntradaNota || 'Compra para revenda',
-        cstFornecedor: it.cst_icms_fornecedor,
-        valorIcmsItem: it.valor_icms || 0,
-        valorIpiItem: it.valor_ipi || 0,
-        valorProduto: it.valor_produto || 0,
-        desconto: it.valor_desconto || 0,
-        frete: it.valor_frete || 0,
-        seguro: it.valor_seguro || 0,
-        outras: it.valor_outras || 0,
-        cstPisEntrada: cstPis,
-        cstCofinsEntrada: cstCofins,
-        aproveitaCreditoIcms: it.aproveita_credito_icms,
-        aproveitaCreditoIpi: it.aproveita_credito_ipi,
-      })
-
-      // Recalcula custo
-      const { custoTotalItem, custoUnitarioEstoque } = calcularCustoAquisicaoItem({
-        valorProduto: it.valor_produto || 0,
-        valorDesconto: it.valor_desconto || 0,
-        valorFrete: it.valor_frete || 0,
-        valorSeguro: it.valor_seguro || 0,
-        valorOutras: it.valor_outras || 0,
-        valorIpi: it.valor_ipi || 0,
-        valorIcmsSt: it.valor_icms_st || 0,
-        valorFcpSt: it.valor_fcp_st || 0,
-        valorCreditoIcms: creditos.valorCreditoIcms,
-        valorCreditoIpi: creditos.valorCreditoIpi,
-        valorCreditoPis: creditos.valorCreditoPis,
-        valorCreditoCofins: creditos.valorCreditoCofins,
-        quantidadeEstoque: qtdEstoque,
-      })
-
-      await pb.collection('notas_entrada_itens').update(it.id, {
-        produto_id: res.produtoId,
-        fator_conversao: res.fatorConversao,
-        quantidade_estoque: qtdEstoque,
-        cst_pis_entrada: cstPis,
-        cst_cofins_entrada: cstCofins,
-        aproveita_credito_icms: creditos.aproveitaCreditoIcms,
-        valor_credito_icms: creditos.valorCreditoIcms,
-        aproveita_credito_ipi: creditos.aproveitaCreditoIpi,
-        valor_credito_ipi: creditos.valorCreditoIpi,
-        valor_credito_pis: creditos.valorCreditoPis,
-        valor_credito_cofins: creditos.valorCreditoCofins,
-        custo_total_item: custoTotalItem,
-        custo_unitario_estoque: custoUnitarioEstoque,
-        updated_by: pb.authStore.record?.id || null,
-      })
+      await vincularProdutoAoItemNota(
+        it.id,
+        res.produtoId,
+        res.fatorConversao,
+        empresaDados,
+        tipoEntradaNota,
+      )
       vinculados++
     }
   }
 
   return { vinculados, total: itens.length }
+}
+
+/**
+ * Vincula um produto do ERP a um item da nota de entrada e recalcula custos e créditos
+ */
+export async function vincularProdutoAoItemNota(
+  itemId: string,
+  produtoId: string,
+  fatorConversao = 1,
+  empresaDados?: DadosEmpresaCalculo,
+  tipoEntradaNota?: TipoEntradaNota,
+): Promise<NotaEntradaItem> {
+  const item = await pb.collection('notas_entrada_itens').getOne<NotaEntradaItem>(itemId)
+  const prod = await pb.collection('produtos').getOne<any>(produtoId)
+
+  const fator = fatorConversao > 0 ? fatorConversao : 1
+  const qtdEstoque = Number((item.quantidade_fornecedor * fator).toFixed(4))
+
+  // Sugerir CST PIS e COFINS se ainda em branco ou 50/98
+  const { cstPis, cstCofins } = sugerirCstPisCofinsEntrada({
+    empresa: empresaDados || {},
+    tipoEntrada: tipoEntradaNota || 'Compra para revenda',
+    produtoCstPis: prod.cst_pis_entrada,
+    produtoCstCofins: prod.cst_cofins_entrada,
+  })
+
+  // Recalcula créditos
+  const creditos = calcularCreditosItem({
+    empresa: empresaDados || {},
+    tipoEntrada: tipoEntradaNota || 'Compra para revenda',
+    cstFornecedor: item.cst_icms_fornecedor,
+    valorIcmsItem: item.valor_icms || 0,
+    valorIpiItem: item.valor_ipi || 0,
+    valorProduto: item.valor_produto || 0,
+    desconto: item.valor_desconto || 0,
+    frete: item.valor_frete || 0,
+    seguro: item.valor_seguro || 0,
+    outras: item.valor_outras || 0,
+    cstPisEntrada: cstPis,
+    cstCofinsEntrada: cstCofins,
+    aproveitaCreditoIcms: item.aproveita_credito_icms,
+    aproveitaCreditoIpi: item.aproveita_credito_ipi,
+  })
+
+  // Recalcula custo
+  const { custoTotalItem, custoUnitarioEstoque } = calcularCustoAquisicaoItem({
+    valorProduto: item.valor_produto || 0,
+    valorDesconto: item.valor_desconto || 0,
+    valorFrete: item.valor_frete || 0,
+    valorSeguro: item.valor_seguro || 0,
+    valorOutras: item.valor_outras || 0,
+    valorIpi: item.valor_ipi || 0,
+    valorIcmsSt: item.valor_icms_st || 0,
+    valorFcpSt: item.valor_fcp_st || 0,
+    valorCreditoIcms: creditos.valorCreditoIcms,
+    valorCreditoIpi: creditos.valorCreditoIpi,
+    valorCreditoPis: creditos.valorCreditoPis,
+    valorCreditoCofins: creditos.valorCreditoCofins,
+    quantidadeEstoque: qtdEstoque,
+  })
+
+  return await pb.collection('notas_entrada_itens').update<NotaEntradaItem>(itemId, {
+    produto_id: produtoId,
+    fator_conversao: fator,
+    quantidade_estoque: qtdEstoque,
+    cst_pis_entrada: cstPis,
+    cst_cofins_entrada: cstCofins,
+    aproveita_credito_icms: creditos.aproveitaCreditoIcms,
+    valor_credito_icms: creditos.valorCreditoIcms,
+    aproveita_credito_ipi: creditos.aproveitaCreditoIpi,
+    valor_credito_ipi: creditos.valorCreditoIpi,
+    valor_credito_pis: creditos.valorCreditoPis,
+    valor_credito_cofins: creditos.valorCreditoCofins,
+    custo_total_item: custoTotalItem,
+    custo_unitario_estoque: custoUnitarioEstoque,
+    updated_by: pb.authStore.record?.id || null,
+  })
 }
 
 export async function cancelarNotaEntrada(id: string, motivo: string): Promise<NotaEntrada> {

@@ -49,6 +49,7 @@ import {
   sugerirCstPisCofinsEntrada,
   tentarVincularItemAutomatico,
   executarVinculoAutomaticoNota,
+  vincularProdutoAoItemNota,
 } from '@/services/notasEntrada'
 import { salvarProdutoFornecedor, obterProdutoPorId, Produto } from '@/services/produtos'
 import { TIPOS_ENTRADA, TipoEntradaNota, converterCfopEntrada } from '@/services/cfopConversao'
@@ -484,62 +485,14 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
       if (!prod) throw new Error('Produto não encontrado')
 
       const fator = item.fator_conversao && item.fator_conversao > 0 ? item.fator_conversao : 1
-      const qtdEstoque = Number((item.quantidade_fornecedor * fator).toFixed(4))
 
-      const { cstPis, cstCofins } = sugerirCstPisCofinsEntrada({
-        empresa: empresaAtiva as any,
-        tipoEntrada: nota?.tipo_entrada || 'Compra para revenda',
-        produtoCstPis: prod.cst_pis_entrada,
-        produtoCstCofins: prod.cst_cofins_entrada,
-      })
-
-      const creditos = calcularCreditosItem({
-        empresa: empresaAtiva as any,
-        tipoEntrada: nota?.tipo_entrada || 'Compra para revenda',
-        cstFornecedor: item.cst_icms_fornecedor,
-        valorIcmsItem: item.valor_icms || 0,
-        valorIpiItem: item.valor_ipi || 0,
-        valorProduto: item.valor_produto || 0,
-        desconto: item.valor_desconto || 0,
-        frete: item.valor_frete || 0,
-        seguro: item.valor_seguro || 0,
-        outras: item.valor_outras || 0,
-        cstPisEntrada: cstPis,
-        cstCofinsEntrada: cstCofins,
-        aproveitaCreditoIcms: item.aproveita_credito_icms,
-        aproveitaCreditoIpi: item.aproveita_credito_ipi,
-      })
-
-      const { custoTotalItem, custoUnitarioEstoque } = calcularCustoAquisicaoItem({
-        valorProduto: item.valor_produto || 0,
-        valorDesconto: item.valor_desconto || 0,
-        valorFrete: item.valor_frete || 0,
-        valorSeguro: item.valor_seguro || 0,
-        valorOutras: item.valor_outras || 0,
-        valorIpi: item.valor_ipi || 0,
-        valorIcmsSt: item.valor_icms_st || 0,
-        valorFcpSt: item.valor_fcp_st || 0,
-        valorCreditoIcms: creditos.valorCreditoIcms,
-        valorCreditoIpi: creditos.valorCreditoIpi,
-        valorCreditoPis: creditos.valorCreditoPis,
-        valorCreditoCofins: creditos.valorCreditoCofins,
-        quantidadeEstoque: qtdEstoque,
-      })
-
-      await pb.collection('notas_entrada_itens').update(item.id, {
-        produto_id: prod.id,
-        fator_conversao: fator,
-        quantidade_estoque: qtdEstoque,
-        cst_pis_entrada: cstPis,
-        cst_cofins_entrada: cstCofins,
-        valor_credito_icms: creditos.valorCreditoIcms,
-        valor_credito_ipi: creditos.valorCreditoIpi,
-        valor_credito_pis: creditos.valorCreditoPis,
-        valor_credito_cofins: creditos.valorCreditoCofins,
-        custo_total_item: custoTotalItem,
-        custo_unitario_estoque: custoUnitarioEstoque,
-        updated_by: pb.authStore.record?.id || null,
-      })
+      await vincularProdutoAoItemNota(
+        item.id,
+        prod.id,
+        fator,
+        empresaAtiva as any,
+        nota?.tipo_entrada || 'Compra para revenda',
+      )
 
       // Gravar / atualizar produtos_fornecedores para a próxima nota vir vinculada
       if (nota?.fornecedor_id) {
@@ -2471,7 +2424,7 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
           aberto={modalFiscalItemAberto}
           onOpenChange={setModalFiscalItemAberto}
           item={itemFiscalSelecionado}
-          produto={itemFiscalSelecionado.expand?.produto_id || null}
+          produto={(itemFiscalSelecionado.expand?.produto_id as any) || null}
           sugestao={mapaSugestoesFiscais[itemFiscalSelecionado.id] || null}
           onSalvarProduto={async (campos) => {
             if (itemFiscalSelecionado.produto_id) {
