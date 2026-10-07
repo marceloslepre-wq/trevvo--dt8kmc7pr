@@ -8,7 +8,7 @@ export interface DivergenciaEstoque {
   produto_id: string
   produto_codigo: string | number
   produto_descricao: string
-  controla_lote: boolean
+  controla_lote_validade: boolean
   valor_esperado: number
   valor_encontrado: number
   diferenca: number
@@ -31,7 +31,7 @@ export interface ResultadoIntegridadeEstoque {
  * Ferramenta administrativa para verificação de integridade do estoque:
  * 1. Para cada empresa e produto, confere se a soma algébrica dos movimentos (kardex)
  *    bate exatamente com o saldo registrado em `estoque_saldos`.
- * 2. Para produtos configurados com controle de lote (`controla_lote = true`),
+ * 2. Para produtos configurados com controle de lote (`controla_lote_validade = true`),
  *    confere se a soma dos lotes com saldo positivo bate com o saldo registrado em `estoque_saldos`.
  *
  * ⚠ Não realiza nenhuma correção automática — apenas audita e relata divergências.
@@ -55,7 +55,7 @@ export async function verificarIntegridadeEstoque(
 
   // 2. Carregar todos os produtos ativos do catálogo
   const produtos = await pb.collection('produtos').getFullList<any>({
-    fields: 'id,codigo,descricao,controla_lote,ativo',
+    fields: 'id,codigo,descricao,controla_lote_validade,ativo',
   })
   const mapaProdutos = new Map<string, any>()
   produtos.forEach((p) => mapaProdutos.set(p.id, p))
@@ -145,7 +145,7 @@ export async function verificarIntegridadeEstoque(
         produto_id: s.produto_id,
         produto_codigo: prod?.codigo || '-',
         produto_descricao: prod?.descricao || 'Produto não encontrado',
-        controla_lote: Boolean(prod?.controla_lote),
+        controla_lote_validade: Boolean(prod?.controla_lote_validade),
         valor_esperado: somaMov,
         valor_encontrado: saldoRegistrado,
         diferenca: Math.round((saldoRegistrado - somaMov) * 10000) / 10000,
@@ -154,7 +154,7 @@ export async function verificarIntegridadeEstoque(
     }
 
     // Conferência 2: Se o produto controla lote, a soma dos lotes bate com o saldo?
-    if (prod && prod.controla_lote) {
+    if (prod && prod.controla_lote_validade) {
       const somaLoteProd = somaLotes.get(chave) || 0
       const difLote = Math.round(Math.abs(saldoRegistrado - somaLoteProd) * 10000) / 10000
       if (difLote > 0.0001) {
@@ -166,7 +166,7 @@ export async function verificarIntegridadeEstoque(
           produto_id: s.produto_id,
           produto_codigo: prod.codigo || '-',
           produto_descricao: prod.descricao || 'Produto não encontrado',
-          controla_lote: true,
+          controla_lote_validade: true,
           valor_esperado: saldoRegistrado,
           valor_encontrado: somaLoteProd,
           diferenca: Math.round((somaLoteProd - saldoRegistrado) * 10000) / 10000,
@@ -191,7 +191,7 @@ export async function verificarIntegridadeEstoque(
         produto_id: prodId,
         produto_codigo: prod?.codigo || '-',
         produto_descricao: prod?.descricao || 'Produto não encontrado',
-        controla_lote: Boolean(prod?.controla_lote),
+        controla_lote_validade: Boolean(prod?.controla_lote_validade),
         valor_esperado: somaMov,
         valor_encontrado: 0,
         diferenca: -somaMov,

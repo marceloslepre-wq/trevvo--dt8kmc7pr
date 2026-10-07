@@ -37,6 +37,40 @@ export interface Usuario {
   }
 }
 
+const STORAGE_KEY_USUARIO_CACHE = 'erp_usuario_logado_cache'
+
+export function obterUsuarioCacheLocal(authIdOrEmail?: string): Usuario | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_USUARIO_CACHE)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Usuario
+    if (
+      authIdOrEmail &&
+      parsed.auth_user_id !== authIdOrEmail &&
+      parsed.email?.toLowerCase() !== authIdOrEmail.toLowerCase()
+    ) {
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+export function salvarUsuarioCacheLocal(usuario: Usuario | null) {
+  if (typeof window === 'undefined') return
+  try {
+    if (!usuario) {
+      localStorage.removeItem(STORAGE_KEY_USUARIO_CACHE)
+    } else {
+      localStorage.setItem(STORAGE_KEY_USUARIO_CACHE, JSON.stringify(usuario))
+    }
+  } catch {
+    // quota ou storage inacessível
+  }
+}
+
 export interface UsuarioEmpresa {
   id: string
   usuario_id: string
@@ -115,6 +149,7 @@ export async function obterUsuarioPorAuthId(authId: string): Promise<Usuario | n
       .getFirstListItem<Usuario>(`auth_user_id = '${authId}'`, {
         expand: 'perfil_id,empresa_padrao_id',
       })
+    salvarUsuarioCacheLocal(res)
     return res
   } catch {
     // Fallback: se não encontrou por auth_user_id, tentar pelo email do usuário logado
@@ -126,6 +161,7 @@ export async function obterUsuarioPorAuthId(authId: string): Promise<Usuario | n
           .getFirstListItem<Usuario>(`email = '${email.trim().toLowerCase()}'`, {
             expand: 'perfil_id,empresa_padrao_id',
           })
+        salvarUsuarioCacheLocal(porEmail)
         return porEmail
       }
     } catch {

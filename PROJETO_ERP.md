@@ -1453,16 +1453,21 @@ A Etapa 2 (Controle de Estoque e Telas Operacionais) foi oficialmente finalizada
    - Auditoria completa de código confirmando que **nenhuma tela ou serviço externo grava diretamente em `estoque_saldos` ou `estoque_movimentos`**, obedecendo o isolamento central via endpoints transacionais do backend.
    - Ferramenta administrativa "Verificar Integridade do Estoque" (`/configuracoes/integridade-estoque`), disponível para administradores no menu Configurações:
      - Realiza conferência cruzada: para cada empresa e produto, confere se a soma matemática de todos os movimentos do Kardex confere com `estoque_saldos`;
-     - Para produtos com controle de lote (`controla_lote = true`), confere se a soma das quantidades dos lotes ativos confere com o saldo;
+     - Para produtos com controle de lote (`controla_lote_validade = true`), confere se a soma das quantidades dos lotes ativos confere com o saldo;
      - Aponta e lista discrepâncias de forma visual e com exportação CSV, **sem alterar ou corrigir nada automaticamente**.
    - Confirmação das regras de acesso (RLS): tabelas de saldos e movimentos possuem `createRule: null`, `updateRule: null` e `deleteRule: null` para garantir proteção contra manipulações manuais no banco.
 
 4. **Correção Estrutural de Permissões e Hidratação de Sessão (`PermissoesContext.tsx` e `PermissaoGuard.tsx`):**
    - Eliminação definitiva da falha de telas que renderizavam apenas o guard ou tela vazia:
-     - Checagem síncrona determinística no `pb.authStore` para contas administradoras (`marceloslepre@gmail.com`, `admin@erp.local`, usuários com perfil Administrador);
-     - Correção no serviço `obterUsuarioPorAuthId` com fallback automático por e-mail;
+     - Reconhecimento de administrador exclusivamente pelo vínculo: registro em `usuarios` ligado ao auth do login cujo perfil (`perfis_acesso`) tenha `administrador = true` (sem nenhum e-mail fixo no código);
+     - Hidratação com cache síncrono do usuário ERP (`obterUsuarioCacheLocal`), mantendo carregamento instantâneo sem bloqueio ou travamento de telas;
+     - Correção no serviço `obterUsuarioPorAuthId` com fallback automático por e-mail para resolver o vínculo `auth_user_id -> usuarios`;
      - Tratamento tolerante para ações (`ver` e `visualizar`) e normalização nas rotas do sistema.
 
 ## Versão Atual do Projeto
 
-**Versão 0.0.23** — Fechamento oficial da Etapa 2 do Estoque: indicadores de estoque e últimas 10 movimentações no Painel Geral, módulo e tela de Sugestão de Compra com agrupamento por fornecedor e exportação CSV, ferramenta de verificação da integridade física e matemática do estoque em Configurações, auditoria das regras RLS e correção definitiva do `PermissaoGuard` e hidratação de perfis/permissões para administradores e usuários.
+**Versão 0.0.24** — Ajustes pontuais pré-Etapa 3:
+
+1. Remoção de todo e qualquer e-mail fixo escrito no código para reconhecimento de administradores (front e backend hooks) — administrador é reconhecido exclusivamente pelo perfil `perfis_acesso.administrador = true` ligado ao usuário em `usuarios`, preservando liberação síncrona rápida via cache local e o fallback por e-mail na resolução do vínculo auth -> ERP.
+2. Alinhamento e padronização do campo de controle de lote na ferramenta Verificar Integridade do Estoque (`@/services/integridadeEstoque.ts` e `@/pages/configuracoes/IntegridadeEstoquePage.tsx`) para `controla_lote_validade`, em total conformidade com o schema da tabela de produtos.
+3. Verificação no PocketBase confirmando ausência de conta `admin@erp.local`.

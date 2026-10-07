@@ -398,8 +398,7 @@ export const UsuariosLista: React.FC = () => {
               ) : (
                 usuarios.map((u) => {
                   const perfilNome = u.expand?.perfil_id?.nome || 'Sem perfil'
-                  const isAdmin =
-                    u.expand?.perfil_id?.administrador || u.email === 'marceloslepre@gmail.com'
+                  const isAdmin = Boolean(u.expand?.perfil_id?.administrador)
                   const empPadrao = u.expand?.empresa_padrao_id
                   const isCurrentUser = usuarioERP?.id === u.id
 
@@ -528,14 +527,12 @@ export const UsuariosLista: React.FC = () => {
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => setUsuarioParaInativar(u)}
-                                  disabled={u.email === 'marceloslepre@gmail.com' || isCurrentUser}
+                                  disabled={isCurrentUser}
                                   className="h-8 w-8 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:bg-transparent"
                                   title={
                                     isCurrentUser
                                       ? 'Você não pode inativar seu próprio usuário'
-                                      : u.email === 'marceloslepre@gmail.com'
-                                        ? 'O usuário administrador raiz não pode ser inativado'
-                                        : 'Inativar usuário (bloqueia o login)'
+                                      : 'Inativar usuário (bloqueia o login)'
                                   }
                                 >
                                   <Power size={14} />

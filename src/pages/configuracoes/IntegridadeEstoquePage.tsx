@@ -429,7 +429,8 @@ export const IntegridadeEstoquePage: React.FC = () => {
                       <td className="py-2.5 px-4">
                         <div className="font-medium text-slate-900">{div.produto_descricao}</div>
                         <div className="text-[10px] text-slate-400 font-mono">
-                          Cód: #{div.produto_codigo} {div.controla_lote && '• Controla Lote'}
+                          Cód: #{div.produto_codigo}{' '}
+                          {div.controla_lote_validade && '• Controla Lote'}
                         </div>
                       </td>
                       <td className="py-2.5 px-4 whitespace-nowrap">

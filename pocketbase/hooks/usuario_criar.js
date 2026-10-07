@@ -11,15 +11,22 @@ routerAdd(
     // 2. Verificar se o chamador tem permissão de administrador ou pode_criar usuarios
     let isAllowed = false
     try {
-      const callerUser = $app.findFirstRecordByData('usuarios', 'auth_user_id', authRecord.id)
+      let callerUser = null
+      try {
+        callerUser = $app.findFirstRecordByData('usuarios', 'auth_user_id', authRecord.id)
+      } catch (_) {
+        if (authRecord.email) {
+          callerUser = $app.findFirstRecordByData('usuarios', 'email', authRecord.email)
+        }
+      }
+
       if (callerUser && callerUser.getBool('ativo')) {
-        const callerPerfil = $app.findCollectionByNameOrId('perfis_acesso')
         const perfilRec = $app.findFirstRecordByData(
           'perfis_acesso',
           'id',
           callerUser.getString('perfil_id'),
         )
-        if (perfilRec && (perfilRec.getBool('administrador') || callerPerfil)) {
+        if (perfilRec && perfilRec.getBool('ativo')) {
           if (perfilRec.getBool('administrador')) {
             isAllowed = true
           } else {
@@ -37,12 +44,7 @@ routerAdd(
           }
         }
       }
-    } catch (err) {
-      // Se não encontrou usuario, mas o email for marceloslepre@gmail.com, permitir
-      if (authRecord.email === 'marceloslepre@gmail.com') {
-        isAllowed = true
-      }
-    }
+    } catch (_) {}
 
     if (!isAllowed) {
       return e.json(403, { error: 'Acesso negado: permissão insuficiente para criar usuários.' })

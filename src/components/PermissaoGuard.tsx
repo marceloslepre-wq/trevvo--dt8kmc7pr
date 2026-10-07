@@ -20,21 +20,11 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
   const { pode, carregando, administrador, perfil } = usePermissoes()
 
   // Regra Estrutural do ERP:
-  // Administrador tem acesso irrestrito e imediato a todo o sistema, sem depender de fetches assíncronos.
-  const pbRecord = pb.authStore.record
-  const pbEmail = ((pbRecord?.email as string) || '').toLowerCase().trim()
-  const pbName = ((pbRecord?.name as string) || '').toLowerCase()
-  const ehAdminSincrono =
-    pbEmail === 'marceloslepre@gmail.com' ||
-    pbEmail === 'admin@erp.local' ||
-    pbEmail.startsWith('admin@') ||
-    pbEmail.includes('admin') ||
-    pbName.includes('admin') ||
-    administrador ||
-    Boolean(perfil?.administrador) ||
-    perfil?.nome?.toLowerCase() === 'administrador'
+  // Administrador tem acesso irrestrito a todo o sistema reconhecido exclusivamente
+  // pelo perfil (perfis_acesso.administrador = true) do registro em usuarios.
+  const ehAdmin = administrador || Boolean(perfil?.administrador)
 
-  if (ehAdminSincrono) {
+  if (ehAdmin) {
     return <>{children}</>
   }
 

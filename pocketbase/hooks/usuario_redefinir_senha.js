@@ -7,39 +7,42 @@ routerAdd(
       return e.json(401, { error: 'Não autorizado.' })
     }
 
-    // Checar admin
+    // Checar admin exclusivamente pelo perfil do registro em usuarios ligado ao login
     let isAllowed = false
     try {
-      const callerUser = $app.findFirstRecordByData('usuarios', 'auth_user_id', authRecord.id)
+      let callerUser = null
+      try {
+        callerUser = $app.findFirstRecordByData('usuarios', 'auth_user_id', authRecord.id)
+      } catch (_) {
+        if (authRecord.email) {
+          callerUser = $app.findFirstRecordByData('usuarios', 'email', authRecord.email)
+        }
+      }
+
       if (callerUser && callerUser.getBool('ativo')) {
         const perfilRec = $app.findFirstRecordByData(
           'perfis_acesso',
           'id',
           callerUser.getString('perfil_id'),
         )
-        if (
-          perfilRec &&
-          (perfilRec.getBool('administrador') || perfilRec.getString('nome') === 'Administrador')
-        ) {
-          isAllowed = true
-        } else {
-          const perms = $app.findRecordsByFilter(
-            'permissoes',
-            `perfil_id = '${perfilRec.id}' && modulo = 'usuarios' && pode_editar = true && ativo = true`,
-            '',
-            1,
-            0,
-          )
-          if (perms && perms.length > 0) {
+        if (perfilRec && perfilRec.getBool('ativo')) {
+          if (perfilRec.getBool('administrador')) {
             isAllowed = true
+          } else {
+            const perms = $app.findRecordsByFilter(
+              'permissoes',
+              `perfil_id = '${perfilRec.id}' && modulo = 'usuarios' && pode_editar = true && ativo = true`,
+              '',
+              1,
+              0,
+            )
+            if (perms && perms.length > 0) {
+              isAllowed = true
+            }
           }
         }
       }
-    } catch (_) {
-      if (authRecord.email === 'marceloslepre@gmail.com') {
-        isAllowed = true
-      }
-    }
+    } catch (_) {}
 
     if (!isAllowed) {
       return e.json(403, { error: 'Acesso negado: permissão insuficiente para redefinir senha.' })

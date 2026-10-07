@@ -1,7 +1,12 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
-import { obterUsuarioPorAuthId, Usuario } from '@/services/usuarios'
+import {
+  obterUsuarioPorAuthId,
+  obterUsuarioCacheLocal,
+  salvarUsuarioCacheLocal,
+  Usuario,
+} from '@/services/usuarios'
 import {
   obterPermissoesPorPerfil,
   PermissaoModulo,
@@ -25,7 +30,14 @@ const PermissoesContext = createContext<PermissoesContextType | undefined>(undef
 
 export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-  const [usuarioERP, setUsuarioERP] = useState<Usuario | null>(null)
+
+  // Hidratação síncrona inicial a partir do cache local do usuário ERP
+  // Permite liberação síncrona sem travar a tela logo no primeiro frame
+  const [usuarioERP, setUsuarioERP] = useState<Usuario | null>(() => {
+    const authId = pb.authStore.record?.id
+    const email = pb.authStore.record?.email
+    return obterUsuarioCacheLocal(authId || email || undefined)
+  })
   const [permissoes, setPermissoes] = useState<Record<string, PermissaoModulo>>({})
   const [carregandoInterno, setCarregandoInterno] = useState<boolean>(true)
 
@@ -37,6 +49,7 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     if (!isAuthenticated || !user?.id) {
       setUsuarioERP(null)
+      salvarUsuarioCacheLocal(null)
       setPermissoes({})
       setCarregandoInterno(false)
       return
@@ -69,39 +82,14 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return (usuarioERP?.expand?.perfil_id as unknown as PerfilAcesso) || null
   }, [usuarioERP])
 
-  // Identificação determinística e imediata do Administrador (síncrona)
-  // Regra do PROJETO_ERP.md: "O primeiro usuário do ERP (semeado via migration com senha padrão) é o administrador"
-  // Funciona mesmo antes do término da requisição assíncrona ao banco.
-  const isEmailAdminMaster = (email?: string | null) => {
-    if (!email) return false
-    const e = email.toLowerCase().trim()
-    return (
-      e === 'marceloslepre@gmail.com' ||
-      e === 'admin@erp.local' ||
-      e.startsWith('admin@') ||
-      e.includes('admin')
-    )
-  }
-
+  // Reconhecimento de administrador EXCLUSIVAMENTE pelo vínculo:
+  // registro em `usuarios` ligado ao login cujo perfil (`perfis_acesso`) tenha `administrador = true`.
+  // Sem nenhum e-mail escrito no código.
   const administrador = useMemo(() => {
-    // 1. Checagem direta via pb.authStore (síncrono e imune a atrasos de renderização de hooks)
-    const pbRecord = pb.authStore.record
-    const pbEmail = (pbRecord?.email as string) || ''
-    const pbName = ((pbRecord?.name as string) || '').toLowerCase()
-    if (isEmailAdminMaster(pbEmail)) return true
-    if (pbName.includes('admin')) return true
+    return Boolean(perfil?.administrador)
+  }, [perfil?.administrador])
 
-    // 2. Checagem via state user
-    if (isEmailAdminMaster(user?.email)) return true
-    if (user?.name?.toLowerCase().includes('admin')) return true
-    if (usuarioERP?.nome?.toLowerCase().includes('admin')) return true
-    if (isEmailAdminMaster(usuarioERP?.email)) return true
-    if (perfil?.administrador) return true
-    if (perfil?.nome?.toLowerCase() === 'administrador') return true
-    return false
-  }, [user?.email, user?.name, usuarioERP?.nome, usuarioERP?.email, perfil])
-
-  // Se o usuário já é deterministicamente administrador por dados de sessão/auth,
+  // Se o perfil do usuário ERP já é administrador (inclusive via cache síncrono inicial),
   // não deixamos o estado 'carregando' bloquear guards ou a interface.
   const carregando = useMemo(() => {
     if (administrador) return false
@@ -110,23 +98,8 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const pode = useCallback(
     (modulo: ModuloSistema | string, acao?: AcaoPermissao | string): boolean => {
-      // 0. Se for administrador (flag no perfil, nome Administrador, ou email master inicial), tem permissão irrestrita total
-      const pbRecord = pb.authStore.record
-      const pbEmail = (pbRecord?.email as string) || ''
-      const pbName = ((pbRecord?.name as string) || '').toLowerCase()
-      if (isEmailAdminMaster(pbEmail) || pbName.includes('admin')) {
-        return true
-      }
-
-      if (
-        administrador ||
-        isEmailAdminMaster(user?.email) ||
-        user?.name?.toLowerCase().includes('admin') ||
-        usuarioERP?.nome?.toLowerCase().includes('admin') ||
-        isEmailAdminMaster(usuarioERP?.email) ||
-        perfil?.administrador ||
-        perfil?.nome?.toLowerCase() === 'administrador'
-      ) {
+      // 0. Se for administrador (perfis_acesso.administrador = true), tem permissão irrestrita total
+      if (administrador || Boolean(perfil?.administrador)) {
         return true
       }
 
@@ -152,15 +125,7 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return Boolean(perm.pode_ver)
       }
     },
-    [
-      administrador,
-      user?.email,
-      user?.name,
-      usuarioERP?.nome,
-      usuarioERP?.email,
-      perfil,
-      permissoes,
-    ],
+    [administrador, perfil, permissoes],
   )
 
   return (
