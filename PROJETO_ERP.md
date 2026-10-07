@@ -230,6 +230,27 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### lotes
+
+Tabela de controle de lotes e datas de validade por produto e empresa. Bloqueada para criação, edição ou exclusão direta pela aplicação — a alteração do saldo de quantidade é feita SOMENTE pelo serviço central de estoque (`movimentarEstoque` e `estornarMovimento`).
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório)
+- produto_id (relation -> produtos, obrigatório)
+- numero_lote (texto obrigatório, único por empresa + produto + numero_lote)
+- data_fabricacao (texto/data opcional)
+- data_validade (data/hora texto obrigatória)
+- quantidade (número com 4 casas decimais, saldo do lote — alterado SOMENTE pelo serviço central de estoque; criação/edição/exclusão direta bloqueadas pelas regras do banco)
+- observacao (texto opcional)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Restrição de unicidade: par triplo `empresa_id + produto_id + numero_lote`.
+Índices adicionais: `data_validade`, par `produto_id + ativo`.
+
 ### estoque_saldos
 
 Tabela de saldos consolidados de estoque por empresa (filial) e produto. Bloqueada para gravação, edição ou exclusão direta — apenas o serviço central transacional atualiza os registros.
@@ -1049,12 +1070,13 @@ Tabela central de parâmetros visuais e operacionais gerais do ERP comercial.
 - nome_sistema (texto obrigatório, até 60 caracteres, padrão "ERP Gestão Comercial")
 - logo (arquivo de imagem até 5 MB, tipos PNG/JPEG/WEBP/SVG)
 - cor_principal (texto opcional com código hexadecimal, ex: "#2563eb", refletido no tema da interface)
+- dias_alerta_validade (inteiro, padrão 30, define a janela em dias para destaque amarelo de lote a vencer)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
 
-Regras: Armazena a identidade visual e nome que personalizam cabeçalho, tela de login e menu lateral. A cor principal alimenta as variáveis CSS globais (`--primary`, `--sidebar-primary`, `--ring`, `--brand-color`). Alterações gravam em `logs_auditoria`.
+Regras: Armazena a identidade visual e nome que personalizam cabeçalho, tela de login e menu lateral. A cor principal alimenta as variáveis CSS globais (`--primary`, `--sidebar-primary`, `--ring`, `--brand-color`). O campo `dias_alerta_validade` parametriza o cálculo de advertência de produtos próximos ao vencimento na tela de Lotes e Validade (`/estoque/lotes`). Alterações gravam em `logs_auditoria`.
 
 #### Componentes reutilizáveis
 
@@ -1102,8 +1124,9 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 24. `/configuracoes/geral` (`@/pages/configuracoes/ConfiguracoesGeralPage.tsx`): Nome do sistema, upload do logotipo e paleta de cores do tema dinâmico.
 25. `/configuracoes/auditoria` (`@/pages/configuracoes/LogAuditoriaPage.tsx`): Consulta detalhada de logs de auditoria com diff de antes/depois e filtros por tabela, usuário e período.
 26. `/cadastros/condicoes-pagamento` (`@/pages/cadastros/CondicoesPagamentoPage.tsx`): Gestão de condições de pagamento com listagem, busca, filtros de tipo/uso/situação, simulação interativa de parcelas com cálculo em tempo real e exportação CSV.
+27. `/estoque/lotes` (`@/pages/estoque/LotesValidadePage.tsx`): Gestão e rastreabilidade de lotes e datas de validade com classificação automática (Vencido, Vence em até X dias, OK), contagem regressiva em dias, filtros por produto/situação/período e exportação CSV.
 
-### Todas as Tabelas Criadas (26 tabelas)
+### Todas as Tabelas Criadas (27 tabelas)
 
 1. `users`: Coleção de autenticação do Skip Cloud / PocketBase com e-mail, senha e verificação.
 2. `logs_auditoria`: Trilha de auditoria com usuário, tabela, registro, ação (inclusao, alteracao, inativacao, ativacao) e diff JSON.
@@ -1129,8 +1152,9 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 22. `produtos_fornecedores`: Relacionamento de-para de produtos com fornecedores e cProd.
 23. `produtos_conversoes_unidade`: Fatores de conversão e unidades alternativas (SPED 0220).
 24. `produtos_historico`: Registro histórico de alterações de código e descrição (SPED 0205).
-25. `configuracoes`: Nome do sistema, arquivo de logotipo e cor temática primária.
+25. `configuracoes`: Nome do sistema, logotipo, cor temática primária e dias de alerta de validade de lotes.
 26. `condicoes_pagamento`: Condições de pagamento com prazos, entrada, juros, desconto e dia fixo.
+27. `lotes`: Controle de lotes, datas de fabricação/validade e saldos segregados por empresa e produto.
 
 ### Todos os Componentes Reutilizáveis e Funções Utilitárias
 
@@ -1149,6 +1173,7 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 - `extrairCamposFiscaisDoPerfil(perfil)` (`@/services/produtos`): Converte as regras do perfil tributário nos campos fiscais padrão aplicados ao produto.
 - `<SelectCondicaoPagamento />` (`@/components/SelectCondicaoPagamento`): Combobox com busca de condições de pagamento, filtro contextual de uso ("Vendas" ou "Compras") e atalho inline para cadastro rápido via modal.
 - `gerarParcelas(condicao, valorTotal, dataBase)` (`@/services/condicoesPagamento`): Função para geração do cronograma de parcelas com arredondamento em 2 casas, ajuste de centavos na última parcela, entrada, juros, desconto e dia fixo.
+- Serviço de Lotes e Validade (`@/services/lotes.ts`): Funções utilitárias `calcularDiasParaVencer(dataValidade)` (retorna dias inteiros até o vencimento, negativo para vencidos) e `classificarSituacaoLote(dataValidade, diasAlerta)` (classifica em `vencido`, `alerta` ou `ok` e fornece o rótulo formatado), além de `listarLotes`, `listarLotesDisponiveisProduto` e `listarTodosLotesProduto`.
 
 ### Serviços Centrais de Estoque (`@/services/estoque.ts`)
 
@@ -1158,6 +1183,13 @@ Nenhuma tela ou componente do sistema tem permissão para gravar, editar ou excl
 #### 1. `movimentarEstoque(itens)`
 
 Movimenta o estoque de múltiplos itens em transação atômica. Valida permissões do usuário, consistência de unidades inteiras/fracionadas, estoque negativo (respeitando `permite_estoque_negativo`), expande automaticamente componentes de produtos do tipo "Kit" por meio de `produtos_kit_itens`, calcula o custo médio ponderado e atualiza `estoque_saldos` e `estoque_movimentos` com auditoria.
+
+**Comportamento com Lotes e Validade:**
+
+- **Entrada de produtos com lote:** exige identificação do lote (`lote_id` existente OU `numero_lote` + `data_validade`). Se o lote já existir para a empresa e produto, seu saldo é incrementado; caso contrário, um novo registro na tabela `lotes` é criado automaticamente.
+- **Saída de produtos com lote:** exige `lote_id` específico ou opera com **FEFO automático** (_First Expire, First Out_ — o lote com vencimento mais próximo sai primeiro). Quando a quantidade demandada supera o saldo do lote mais antigo, o serviço divide a saída entre múltiplos lotes disponíveis, gerando um movimento no Kardex para cada lote com o mesmo identificador de documento.
+- **Bloqueio de lote vencido:** lotes com data de validade anterior à data da movimentação são considerados vencidos. O serviço recusa qualquer saída com a mensagem `"Lote X vencido em dd/mm/aaaa"`, **exceto** quando a origem da saída for `PERDA` ou `AJUSTE_SAIDA` (operações legítimas de descarte/baixa de avarias).
+- **Invariante de integridade:** ao final da movimentação de qualquer produto que controle lote, a soma dos saldos de todos os seus lotes ativos na filial deve bater rigorosamente com `estoque_saldos.quantidade`. Se houver divergência, a transação sofre rollback imediato.
 
 ```ts
 import { movimentarEstoque } from '@/services/estoque'
@@ -1179,6 +1211,12 @@ const resultado = await movimentarEstoque([
 #### 2. `estornarMovimento(movimentoId, motivo)`
 
 Estorna um movimento de estoque com rastreabilidade total: gera um movimento contraposto de origem "ESTORNO", inverte a operação (Entrada ↔ Saída), recalcula o saldo e o custo médio, marca o movimento original como estornado (`estornado = true`) e faz a amarração biunívoca entre ambos. Movimentos originados de documentos fiscais/vendas só podem ser estornados pelo cancelamento do próprio documento.
+
+**Comportamento do estorno com Lotes:**
+
+- Se o movimento estornado possuía lote vinculado (`lote_id`), a quantidade é revertida diretamente no saldo daquele lote específico (estorno de entrada subtrai a quantidade do lote; estorno de saída devolve a quantidade ao lote).
+- Valida a integridade para não deixar o saldo do lote negativo (salvo filial com `permite_estoque_negativo = true`).
+- A invariante de que a soma dos saldos de todos os lotes ativos deve ser idêntica a `estoque_saldos.quantidade` é novamente validada na transação de estorno.
 
 ```ts
 import { estornarMovimento } from '@/services/estoque'
@@ -1216,10 +1254,10 @@ A base e as telas completas do módulo Estoque estão operacionais:
    - Ficha físico-financeira completa do produto com busca rápida (`<SelectProduto />`) e seletor de período (padrão: mês atual).
    - Recomposição exata do Saldo Inicial do período pela função `saldoEmData(empresa_id, produto_id, dataAnterior)`.
    - Cards de resumo: Saldo Inicial, Volume de Entradas, Volume de Saídas e Saldo Final resultante.
-   - Grade cronológica imutável com: Data/Hora, Origem, Documento (tipo e número), Entrada, Saída, Saldo Resultante, Custo Unitário, Custo Médio Ponderado, Valor Total e Operador/Motivo.
+   - Grade cronológica imutável com: Data/Hora, Origem, Documento (tipo e número), Coluna Lote (exibe o número do lote ou "—"), Entrada, Saída, Saldo Resultante, Custo Unitário, Custo Médio Ponderado, Valor Total e Operador/Motivo.
    - Movimentos estornados aparecem riscados e com link para o identificador do estorno.
    - Botão "Estornar" em lançamentos manuais e ajustes, solicitando motivo detalhado, exclusivo para usuários com permissão de excluir em estoque (`pode('estoque', 'excluir')`).
-   - Exportação para planilha CSV e botão de impressão formatada para ficha física.
+   - Exportação para planilha CSV (incluindo coluna Lote) e botão de impressão formatada para ficha física.
 
 3. `/estoque/lancamentos` (`@/pages/estoque/LancamentosEstoquePage.tsx`):
    - Aba "Novo Lançamento": formulário ágil com tipos mapeados para origens do Kardex:
@@ -1230,14 +1268,24 @@ A base e as telas completas do módulo Estoque estão operacionais:
      - _Consumo interno_ → `CONSUMO_INTERNO` (motivo obrigatório, custo oculto);
      - _Bonificação recebida_ → `BONIFICACAO_ENTRADA` (custo obrigatório);
      - _Bonificação enviada_ → `BONIFICACAO_SAIDA` (custo oculto).
+   - Grade de itens com suporte a Lote/Validade para produtos com `controla_lote_validade = true`:
+     - **Entradas:** exibe campos obrigatórios de Número do Lote e Data de Validade (além de Fabricação opcional);
+     - **Saídas:** exibe seletor de lotes com opção padrão "Automático (FEFO)" ou escolha de um lote específico com saldo disponível;
    - Grade de itens com leitor de código de barras GTIN integrado: bipar com leitor ou pressionar Enter adiciona o item com quantidade 1 ou soma 1 caso já esteja na grade.
    - Exibe saldo atual (só leitura) e calcula o saldo após em tempo real.
    - Gravação em lote através da função `movimentarEstoque(itens)` com modal de resumo pós-gravação.
    - Aba "Lançamentos Realizados": histórico agrupado por documento de lote com filtros de período, tipo de operação e usuário operador.
    - Modal de Importação de Saldo Inicial por CSV (`<ImportarSaldoInicialModal />`) com colunas `codigo_ou_gtin;quantidade;custo_unitario`, validação linha a linha, prévia e acusação de erros antes de gravar.
 
-4. Aba "Estoque" no Cadastro de Produtos (`@/components/ProdutoAbaEstoque.tsx`):
+4. `/estoque/lotes` (`@/pages/estoque/LotesValidadePage.tsx`):
+   - Listagem completa de lotes da empresa ativa com cards de resumo: Total de Lotes (com saldo consolidado), Vencidos (vermelho), Vencem em até X dias (alerta amarelo parametrizado por `dias_alerta_validade`) e Regulares / Dentro da validade (verde).
+   - Filtros dinâmicos: Busca textual por número do lote ou produto, seletor de produto (`<SelectProduto />`), filtro de situação (Vencido / Alerta / OK / Todos), checkbox "Apenas com saldo > 0" e período de data de validade (início e fim).
+   - Colunas: Produto (código e descrição), Número do Lote, Data de Fabricação, Data de Validade, Dias para Vencer (com contagem regressiva), Saldo do Lote, Badge de Situação e Observações.
+   - Exportação completa para planilha CSV.
+
+5. Aba "Estoque" no Cadastro de Produtos (`@/components/ProdutoAbaEstoque.tsx`):
    - Exibe, em modo só leitura no formulário do produto, a tabela com saldo físico, custo médio e valor em estoque em cada filial autorizada ao usuário.
+   - Seção dedicada de **Saldo por Lote e Validade na Filial Atual** quando `controla_lote_validade = true`: grade com Número do Lote, Fabricação, Validade, Dias p/ Vencer, Saldo do Lote e Situação (OK, Vence em breve, Vencido), com botão de atalho direto para a tela de Lotes (`/estoque/lotes`).
    - Exibe os últimos 10 movimentos na filial ativa com badge de tipo/origem, quantidades e link direto para o Kardex completo.
 
 ### Novos Componentes Reutilizáveis de Estoque
@@ -1245,14 +1293,14 @@ A base e as telas completas do módulo Estoque estão operacionais:
 - `<BuscaProdutoGtin />` (`@/components/BuscaProdutoGtin`): Campo de busca com suporte prioritário para bipagem de código de barras (GTIN/EAN) ou digitação de código numérico, com dropdown de sugestões e gatilho imediato de seleção.
 - `<SaldoTodasFiliaisModal />` (`@/components/SaldoTodasFiliaisModal`): Modal que recebe um produto e lista o saldo físico, custo médio e situação em todas as empresas acessíveis pelo usuário logado.
 - `<ImportarSaldoInicialModal />` (`@/components/ImportarSaldoInicialModal`): Modal completo para importação de saldo inicial de implantação via planilha CSV, com modelo para download, verificação de consistência e gravação transacional.
-- `<ProdutoAbaEstoque />` (`@/components/ProdutoAbaEstoque`): Componente para abas de formulários de produtos com saldo por filial e histórico recente de movimentos.
+- `<ProdutoAbaEstoque />` (`@/components/ProdutoAbaEstoque`): Componente para abas de formulários de produtos com saldo por filial, saldo detalhado por lote e histórico recente de movimentos.
 
 ### Permissões do Módulo Estoque
 
-- `pode('estoque', 'ver')`: acesso às telas de Posição de Estoque, Kardex e consulta de lançamentos.
+- `pode('estoque', 'ver')`: acesso às telas de Posição de Estoque, Kardex, Lotes e Validade (`/estoque/lotes`) e consulta de lançamentos.
 - `pode('estoque', 'criar')`: permissão para efetuar lançamentos manuais e importar saldo inicial.
 - `pode('estoque', 'excluir')`: permissão para realizar o estorno de lançamentos e ajustes no Kardex.
 
 ## Versão Atual do Projeto
 
-**Versão 0.0.18** — Implementação completa das telas e fluxos do módulo Estoque: Posição de Estoque com filtros e saldos por filial, Kardex com recomposição retroativa e estornos, Lançamentos manuais de ajustes com leitor de código de barras GTIN e importação de saldo inicial por CSV, aba Estoque no formulário de produtos e ativação do menu Estoque.
+**Versão 0.0.19** — Implementação do controle de Lotes e Validade: criação da tabela `lotes`, campo `dias_alerta_validade` nas configurações gerais, suporte completo no serviço central de movimentação de estoque (`movimentarEstoque` com entrada vinculada/criação de lotes, saídas com seletor ou FEFO automático, divisão de múltiplos lotes no Kardex, bloqueio de lotes vencidos exceto PERDA/AJUSTE_SAIDA e invariante de consistência), reversão de saldo por lote no estorno, tela de Lotes e Validade (`/estoque/lotes`) com badges de situação, filtros e exportação CSV, coluna Lote no Kardex, campos de lote/validade e seletor FEFO nos lançamentos e painel de saldos por lote na aba Estoque do produto.
