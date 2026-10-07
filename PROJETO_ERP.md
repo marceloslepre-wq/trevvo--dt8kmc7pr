@@ -304,6 +304,53 @@ Tabela do histórico físico-financeiro (Kardex imutável) de movimentações de
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
 
+### transferencias
+
+Tabela de remessas e transferências de mercadorias entre empresas do grupo econômico (matriz e filiais).
+
+- id (text, PK)
+- numero (number, sequencial automático por empresa de origem)
+- empresa_origem_id (relation -> empresas, obrigatório)
+- empresa_destino_id (relation -> empresas, obrigatório; validado diferente da origem)
+- data_envio (texto data/hora)
+- data_recebimento (texto data/hora)
+- status (select: "Rascunho", "Enviada", "Recebida", "Cancelada", obrigatório)
+- nota_fiscal_numero (texto opcional)
+- nota_fiscal_chave (texto opcional, 44 dígitos)
+- observacao (texto)
+- usuario_envio_id (relation -> usuarios, opcional)
+- usuario_recebimento_id (relation -> usuarios, opcional)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Fluxo de status:
+
+1. **Rascunho:** Inclusão de itens com bipagem GTIN e visualização de saldo atual e custo médio da origem.
+2. **Enviada:** Disparado exclusivamente pela empresa de origem. Chama o serviço central gerando `TRANSFERENCIA_SAIDA` no estoque da origem com o custo médio ponderado atual. Documento: "Transferência", id e número TR-N.
+3. **Recebida:** Disparado exclusivamente pela empresa de destino ativa. Confere quantidade recebida. Se recebido < enviado, gera entrada integral da quantidade enviada e lança perda imediata de divergência no destino (`Divergência na transferência N`). Se produto controla lote, vincula/cria lote equivalente no destino.
+4. **Cancelada:** Rascunho é cancelado livremente. Transferência Enviada só pode ser cancelada pela empresa de origem antes do recebimento, estornando atomicamente todas as saídas geradas através do endpoint central `/estoque/estornar`. Transferências no status "Recebida" são definitivas e não podem ser canceladas.
+
+### transferencias_itens
+
+Itens de produtos que compõem cada transferência entre empresas.
+
+- id (text, PK)
+- transferencia_id (relation -> transferencias, obrigatório, cascadeDelete)
+- produto_id (relation -> produtos, obrigatório)
+- lote_id (relation -> lotes, opcional; obrigatório quando o produto controla lote)
+- quantidade (número com 4 casas decimais, obrigatório)
+- custo_unitario (número com 4 casas decimais — custo médio da origem no envio)
+- quantidade_recebida (número com 4 casas decimais, padrão 0)
+- divergencia (número com 4 casas decimais — quantidade - quantidade_recebida)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
 ### condicoes_pagamento
 
 Tabela de condições e planos de pagamento para comercialização e faturamento. Utilizada de forma integrada por clientes, fornecedores, compras, pedidos de venda, PDV e financeiro (contas a pagar e receber).

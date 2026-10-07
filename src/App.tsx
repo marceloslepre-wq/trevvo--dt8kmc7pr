@@ -42,6 +42,8 @@ import PosicaoEstoquePage from '@/pages/estoque/PosicaoEstoquePage'
 import KardexPage from '@/pages/estoque/KardexPage'
 import LancamentosEstoquePage from '@/pages/estoque/LancamentosEstoquePage'
 import LotesValidadePage from '@/pages/estoque/LotesValidadePage'
+import TransferenciasListaPage from '@/pages/estoque/TransferenciasListaPage'
+import TransferenciaFormPage from '@/pages/estoque/TransferenciaFormPage'
 import ClientesLista from '@/pages/cadastros/ClientesLista'
 import ClienteForm from '@/pages/cadastros/ClienteForm'
 import FornecedoresLista from '@/pages/cadastros/FornecedoresLista'
@@ -364,6 +366,30 @@ const App = () => (
                     }
                   />
                   <Route
+                    path="/estoque/transferencias"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <TransferenciasListaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/estoque/transferencias/novo"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="criar">
+                        <TransferenciaFormPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/estoque/transferencias/:id"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <TransferenciaFormPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
                     path="/estoque/lotes"
                     element={
                       <PermissaoGuard modulo="estoque" acao="ver">
@@ -371,7 +397,6 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
-
                   {/* Configurações */}
                   <Route
                     path="/configuracoes"

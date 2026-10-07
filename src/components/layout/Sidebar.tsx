@@ -20,6 +20,7 @@ import {
   Box,
   Tag,
   Layers,
+  ArrowLeftRight,
   Ruler,
   FileCode,
   FileCheck,
@@ -166,6 +167,12 @@ const navItems: NavGroupItem[] = [
         title: 'Posição de estoque',
         path: '/estoque/posicao',
         icon: Box,
+        modulo: 'estoque',
+      },
+      {
+        title: 'Transferências',
+        path: '/estoque/transferencias',
+        icon: ArrowLeftRight,
         modulo: 'estoque',
       },
       {

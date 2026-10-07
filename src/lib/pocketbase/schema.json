@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T15:39:10.946Z",
+  "generatedAt": "2026-10-07T17:54:57.776Z",
   "collections": [
     {
       "name": "users",
@@ -4156,6 +4156,229 @@
         "CREATE UNIQUE INDEX idx_lotes_empresa_produto_numero ON lotes (empresa_id, produto_id, numero_lote)",
         "CREATE INDEX idx_lotes_data_validade ON lotes (data_validade)",
         "CREATE INDEX idx_lotes_produto_ativo ON lotes (produto_id, ativo)"
+      ]
+    },
+    {
+      "name": "transferencias",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "numero",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "empresa_origem_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "empresa_destino_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "data_envio",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_recebimento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Rascunho", "Enviada", "Recebida", "Cancelada"]
+        },
+        {
+          "name": "nota_fiscal_numero",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nota_fiscal_chave",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_envio_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "usuario_recebimento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_transf_origem ON transferencias (empresa_origem_id)",
+        "CREATE INDEX idx_transf_destino ON transferencias (empresa_destino_id)",
+        "CREATE INDEX idx_transf_status ON transferencias (status)",
+        "CREATE INDEX idx_transf_origem_num ON transferencias (empresa_origem_id, numero)",
+        "CREATE INDEX idx_transf_ativo ON transferencias (ativo)"
+      ]
+    },
+    {
+      "name": "transferencias_itens",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "transferencia_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "transferencias"
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "lote_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "lotes"
+        },
+        {
+          "name": "quantidade",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "custo_unitario",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quantidade_recebida",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "divergencia",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_transf_itens_transf ON transferencias_itens (transferencia_id)",
+        "CREATE INDEX idx_transf_itens_prod ON transferencias_itens (produto_id)",
+        "CREATE INDEX idx_transf_itens_lote ON transferencias_itens (lote_id)",
+        "CREATE INDEX idx_transf_itens_ativo ON transferencias_itens (ativo)"
       ]
     }
   ]

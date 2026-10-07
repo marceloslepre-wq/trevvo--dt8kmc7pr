@@ -23,21 +23,26 @@ interface PermissoesContextType {
 const PermissoesContext = createContext<PermissoesContextType | undefined>(undefined)
 
 export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [usuarioERP, setUsuarioERP] = useState<Usuario | null>(null)
   const [permissoes, setPermissoes] = useState<Record<string, PermissaoModulo>>({})
-  const [carregando, setCarregando] = useState<boolean>(true)
+  const [carregandoInterno, setCarregandoInterno] = useState<boolean>(true)
 
   const recarregarPermissoes = useCallback(async () => {
+    // Se ainda está validando o auth token inicial do PocketBase, aguarda
+    if (authLoading) {
+      return
+    }
+
     if (!isAuthenticated || !user?.id) {
       setUsuarioERP(null)
       setPermissoes({})
-      setCarregando(false)
+      setCarregandoInterno(false)
       return
     }
 
     try {
-      setCarregando(true)
+      setCarregandoInterno(true)
       const u = await obterUsuarioPorAuthId(user.id)
       setUsuarioERP(u)
 
@@ -51,9 +56,9 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.error('Erro ao carregar permissões do usuário:', err)
       setPermissoes({})
     } finally {
-      setCarregando(false)
+      setCarregandoInterno(false)
     }
-  }, [isAuthenticated, user?.id])
+  }, [authLoading, isAuthenticated, user?.id])
 
   useEffect(() => {
     recarregarPermissoes()
@@ -63,10 +68,11 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return (usuarioERP?.expand?.perfil_id as unknown as PerfilAcesso) || null
   }, [usuarioERP])
 
+  // Identificação determinística e imediata do Administrador (síncrona)
+  // Regra do PROJETO_ERP.md: "O primeiro usuário do ERP (semeado via migration com senha padrão) é o administrador"
+  // Funciona mesmo antes do término da requisição assíncrona ao banco.
   const administrador = useMemo(() => {
-    // Regra do PROJETO_ERP.md: "O primeiro usuário do ERP (semeado via migration com senha padrão) é o administrador"
-    // Todo usuário com flag administrador, nome Administrador no perfil, ou usuário inicial/master é administrador irrestrito.
-    const emailNormalizado = user?.email?.toLowerCase().trim()
+    const emailNormalizado = user?.email?.toLowerCase().trim() || ''
     if (emailNormalizado === 'marceloslepre@gmail.com') return true
     if (user?.name?.toLowerCase().includes('admin')) return true
     if (usuarioERP?.nome?.toLowerCase().includes('admin')) return true
@@ -74,6 +80,13 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (perfil?.nome?.toLowerCase() === 'administrador') return true
     return false
   }, [user?.email, user?.name, usuarioERP?.nome, perfil])
+
+  // Se o usuário já é deterministicamente administrador por dados de sessão/auth,
+  // não deixamos o estado 'carregando' bloquear guards ou a interface.
+  const carregando = useMemo(() => {
+    if (administrador) return false
+    return authLoading || carregandoInterno
+  }, [administrador, authLoading, carregandoInterno])
 
   const pode = useCallback(
     (modulo: ModuloSistema | string, acao: AcaoPermissao): boolean => {

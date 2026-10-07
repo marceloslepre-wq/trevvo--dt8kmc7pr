@@ -18,20 +18,22 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
 }) => {
   const { pode, carregando, administrador, perfil } = usePermissoes()
 
-  // 1. Administrador tem liberação instantânea e irrestrita sem aguardar nada
+  // ESTADO 1: Administrador ou permissão já confirmada → Conteúdo imediato
   if (administrador || perfil?.administrador || perfil?.nome?.toLowerCase() === 'administrador') {
     return <>{children}</>
   }
 
-  // 2. Se a permissão já foi checada e concedida
   if (pode(modulo, acao)) {
     return <>{children}</>
   }
 
-  // 3. Enquanto estiver carregando as permissões do perfil
+  // ESTADO 2: Carregando assincronamente as permissões → Spinner explícito
   if (carregando) {
     return (
-      <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-slate-500 text-sm">
+      <div
+        data-testid="permissao-guard-loading"
+        className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-slate-500 text-sm"
+      >
         <div className="h-7 w-7 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
         <p className="font-medium text-slate-700">Carregando permissões...</p>
         <p className="text-xs text-slate-400 mt-1">
@@ -41,7 +43,7 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     )
   }
 
-  // 4. Se carregou e não tem permissão
+  // ESTADO 3: Carregou e não possui a permissão requerida → Tela de Acesso Negado (ou fallback)
   if (fallback !== undefined) {
     return <>{fallback}</>
   }

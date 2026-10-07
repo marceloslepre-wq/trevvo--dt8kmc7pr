@@ -15,7 +15,9 @@ import {
   Calculator,
   Layers,
   FileSpreadsheet,
+  ArrowLeftRight,
 } from 'lucide-react'
+import { contarTransferenciasAguardandoRecebimento } from '@/services/transferencias'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,6 +61,7 @@ export default function Index() {
   const [totalProdutosAtivos, setTotalProdutosAtivos] = useState<number>(0)
   const [totalProdutosFiscalIncompleto, setTotalProdutosFiscalIncompleto] = useState<number>(0)
   const [totalUsuariosAtivos, setTotalUsuariosAtivos] = useState<number>(0)
+  const [totalTransferenciasReceber, setTotalTransferenciasReceber] = useState<number>(0)
 
   // Últimos cadastros
   const [ultimosCadastros, setUltimosCadastros] = useState<UltimoCadastro[]>([])
@@ -73,6 +76,7 @@ export default function Index() {
   const podeVerUsuarios = pode('usuarios', 'ver')
   const podeVerEmpresas = pode('empresas', 'ver')
   const podeVerTabelasFiscais = pode('tabelas_fiscais', 'ver')
+  const podeVerEstoque = pode('estoque', 'ver')
 
   const carregarDadosPainel = useCallback(async () => {
     try {
@@ -127,6 +131,14 @@ export default function Index() {
             .getList(1, 1, { filter: 'ativo = true' })
             .then((res) => setTotalUsuariosAtivos(res.totalItems))
             .catch(() => setTotalUsuariosAtivos(0)),
+        )
+      }
+
+      if (podeVerEstoque && empresaAtiva?.id) {
+        promisesContagens.push(
+          contarTransferenciasAguardandoRecebimento(empresaAtiva.id)
+            .then((tot) => setTotalTransferenciasReceber(tot))
+            .catch(() => setTotalTransferenciasReceber(0)),
         )
       }
 
@@ -321,6 +333,7 @@ export default function Index() {
     podeVerUsuarios,
     podeVerEmpresas,
     podeVerTabelasFiscais,
+    podeVerEstoque,
     empresaAtiva,
   ])
 
@@ -333,6 +346,7 @@ export default function Index() {
     podeVerClientes ||
     podeVerFornecedores ||
     podeVerProdutos ||
+    podeVerEstoque ||
     podeVerUsuarios ||
     podeVerEmpresas ||
     podeVerTabelasFiscais
@@ -493,6 +507,55 @@ export default function Index() {
                     </div>
                     <span className="text-[11px] text-amber-700/80 underline decoration-amber-300">
                       Abrir conferência fiscal →
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          )}
+
+          {/* Transferências a Receber (Clicável -> /estoque/transferencias?status=Enviada) */}
+          {podeVerEstoque && (
+            <Link
+              to="/estoque/transferencias"
+              className="group block focus:outline-none"
+              title="Clique para abrir as transferências entre filiais"
+            >
+              <Card
+                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                  totalTransferenciasReceber > 0
+                    ? 'border-amber-300 bg-amber-50/30 ring-1 ring-amber-200'
+                    : 'hover:border-slate-300'
+                }`}
+              >
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-700">
+                      Aguardando Recebimento
+                    </span>
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        totalTransferenciasReceber > 0
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-blue-50 text-blue-600'
+                      }`}
+                    >
+                      <ArrowLeftRight size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2">
+                      {carregando ? '—' : totalTransferenciasReceber}
+                      {totalTransferenciasReceber > 0 && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 animate-pulse">
+                          Chegando
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-slate-500">
+                      {totalTransferenciasReceber > 0
+                        ? 'transferências em trânsito'
+                        : 'nenhuma remessa em trânsito'}
                     </span>
                   </div>
                 </CardContent>
