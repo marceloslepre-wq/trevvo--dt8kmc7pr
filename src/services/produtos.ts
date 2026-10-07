@@ -417,6 +417,31 @@ export async function buscarProdutoPorCodigoOuGtin(termo: string): Promise<Produ
   }
 }
 
+/**
+ * Busca produtos ativos para o modal de vínculo de itens da nota de entrada (por termo: código, descrição, GTIN ou ref)
+ */
+export async function buscarProdutosParaVinculo(termo: string, limite = 20): Promise<Produto[]> {
+  const t = termo.trim().replace(/['"]/g, '')
+  if (!t) return []
+
+  const isNum = !isNaN(Number(t))
+  const filterBusca = isNum
+    ? `codigo = ${Number(t)} || gtin ~ '${t}' || referencia ~ '${t}' || descricao ~ '${t}'`
+    : `gtin ~ '${t}' || referencia ~ '${t}' || descricao ~ '${t}'`
+
+  try {
+    const res = await pb.collection('produtos').getList<Produto>(1, limite, {
+      filter: `ativo = true && (${filterBusca})`,
+      sort: 'descricao',
+      expand: 'marca_id,grupo_id,categoria_id,unidade_id',
+    })
+    return res.items
+  } catch (err) {
+    console.error('Erro ao buscar produtos para vínculo:', err)
+    return []
+  }
+}
+
 export interface ValidarProdutoOptions {
   ignorarValidacoesFiscais?: boolean
   regimeEmpresa?: 'Simples Nacional' | 'Regime Normal'

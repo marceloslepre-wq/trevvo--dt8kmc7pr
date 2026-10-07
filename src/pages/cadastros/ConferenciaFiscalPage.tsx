@@ -63,10 +63,13 @@ import { SelectCodigoFiscal } from '@/components/SelectCodigoFiscal'
 import { SelectCfop } from '@/components/SelectCfop'
 import { SelectPerfilTributario } from '@/components/SelectPerfilTributario'
 
+import { sugerirTributacao, NivelConfiancaSugestao } from '@/services/motorFiscal'
+
 // Tipo de pendência fiscal para filtro
 type TipoPendenciaFiltro =
   | 'todas'
   | 'pendentes_geral'
+  | 'criados_por_entrada_nota'
   | 'sem_ncm'
   | 'sem_cest_sugerido'
   | 'sem_tributacao_icms'
@@ -92,6 +95,10 @@ export const ConferenciaFiscalPage: React.FC = () => {
   const [alteracoesGrade, setAlteracoesGrade] = useState<Record<string, Partial<Produto>>>({})
   // Mapa de NCMs que possuem CEST sugerido no sistema
   const [cestsSugeridosMap, setCestsSugeridosMap] = useState<Record<string, boolean>>({})
+  // Mapa de confiança da sugestão fiscal calculada para cada produto (Alta / Média / Baixa / '-')
+  const [confiancaMap, setConfiancaMap] = useState<
+    Record<string, { nivel: NivelConfiancaSugestao | '-'; motivo: string }>
+  >({})
 
   // Filtros
   const [filtroPendencia, setFiltroPendencia] = useState<TipoPendenciaFiltro>('pendentes_geral')
@@ -146,6 +153,8 @@ export const ConferenciaFiscalPage: React.FC = () => {
         paramsBusca.sem_ncm = true
       } else if (filtroPendencia === 'nao_revisado') {
         paramsBusca.fiscal_nao_revisado = true
+      } else if (filtroPendencia === 'criados_por_entrada_nota') {
+        paramsBusca.criados_por_entrada_nota = true
       }
 
       const res = await listarProdutos(paramsBusca)
@@ -172,6 +181,46 @@ export const ConferenciaFiscalPage: React.FC = () => {
         }),
       )
       setCestsSugeridosMap(mapaCest)
+
+      // Calcular Confiança da Sugestão Fiscal para os produtos
+      const mapaConfianca: Record<string, { nivel: NivelConfiancaSugestao | '-'; motivo: string }> =
+        {}
+      const empresaParaMotor = {
+        id: empresaAtiva?.id,
+        uf: empresaAtiva?.uf || 'ES',
+        crt: empresaAtiva?.crt ?? 1,
+        regime_apuracao: regimeEmpresa,
+      }
+
+      await Promise.all(
+        res.items.map(async (p) => {
+          try {
+            if (p.fiscal_revisado) {
+              mapaConfianca[p.id] = { nivel: 'Alta', motivo: 'Produto revisado pelo contador' }
+              return
+            }
+
+            const cleanNcm = (p.ncm || '').replace(/\D/g, '')
+            if (!cleanNcm) {
+              mapaConfianca[p.id] = { nivel: 'Baixa', motivo: 'Sem NCM preenchido' }
+              return
+            }
+
+            const sugestao = await sugerirTributacao({
+              empresa: empresaParaMotor,
+              produtoExistente: p,
+            })
+
+            mapaConfianca[p.id] = {
+              nivel: sugestao.confianca,
+              motivo: sugestao.motivoGeral,
+            }
+          } catch {
+            mapaConfianca[p.id] = { nivel: 'Baixa', motivo: 'Não foi possível consultar motor' }
+          }
+        }),
+      )
+      setConfiancaMap(mapaConfianca)
     } catch (err) {
       console.error('Erro ao carregar produtos para conferência:', err)
       toast({
@@ -182,7 +231,7 @@ export const ConferenciaFiscalPage: React.FC = () => {
     } finally {
       setCarregando(false)
     }
-  }, [pagina, itensPorPagina, busca, filtroPendencia, toast])
+  }, [pagina, itensPorPagina, busca, filtroPendencia, regimeEmpresa, empresaAtiva, toast])
 
   useEffect(() => {
     carregarProdutos()
@@ -208,6 +257,9 @@ export const ConferenciaFiscalPage: React.FC = () => {
 
       if (filtroPendencia === 'todas') return true
       if (filtroPendencia === 'pendentes_geral') return info.temPendencia
+      if (filtroPendencia === 'criados_por_entrada_nota') {
+        return (p.observacoes || '').includes('Criado automaticamente pela NF')
+      }
       if (filtroPendencia === 'sem_ncm') return info.semNcm
       if (filtroPendencia === 'sem_cest_sugerido') return info.semCestSugerido
       if (filtroPendencia === 'sem_tributacao_icms') return info.semTributacaoIcms
@@ -783,6 +835,9 @@ export const ConferenciaFiscalPage: React.FC = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="pendentes_geral">Todas as Pendências Fiscais</SelectItem>
+                <SelectItem value="criados_por_entrada_nota">
+                  Criados pela entrada de notas
+                </SelectItem>
                 <SelectItem value="sem_ncm">Sem NCM preenchido</SelectItem>
                 <SelectItem value="sem_cest_sugerido">
                   Sem CEST (mas possui NCM c/ sugestão)
@@ -877,6 +932,7 @@ export const ConferenciaFiscalPage: React.FC = () => {
                 </th>
                 <th className="py-2.5 px-2 w-16 text-center">Código</th>
                 <th className="py-2.5 px-3 min-w-[200px]">Identificação / Produto</th>
+                <th className="py-2.5 px-2 w-28 text-center">Confiança</th>
                 <th className="py-2.5 px-2 min-w-[150px]">NCM</th>
                 <th className="py-2.5 px-2 min-w-[130px]">CEST</th>
                 <th className="py-2.5 px-2 w-28">Origem</th>
@@ -895,7 +951,7 @@ export const ConferenciaFiscalPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {carregando ? (
                 <tr>
-                  <td colSpan={14} className="py-16 text-center text-slate-400">
+                  <td colSpan={15} className="py-16 text-center text-slate-400">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                       <span>Carregando dados fiscais dos produtos...</span>
@@ -904,7 +960,7 @@ export const ConferenciaFiscalPage: React.FC = () => {
                 </tr>
               ) : produtosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="py-16 text-center text-slate-500">
+                  <td colSpan={15} className="py-16 text-center text-slate-500">
                     <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto mb-2" />
                     <p className="font-semibold text-slate-800 text-sm">
                       Nenhuma pendência fiscal encontrada com o filtro selecionado!
@@ -1008,9 +1064,57 @@ export const ConferenciaFiscalPage: React.FC = () => {
                                   Não revisado
                                 </Badge>
                               )}
+                              {(p.observacoes || '').includes('Criado automaticamente pela NF') && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] px-1 py-0 bg-indigo-50 text-indigo-700 border-indigo-200"
+                                >
+                                  Via NF-e
+                                </Badge>
+                              )}
                             </div>
                           )}
                         </div>
+                      </td>
+
+                      {/* Coluna Confiança da Sugestão Fiscal */}
+                      <td className="py-2 px-2 text-center">
+                        {(() => {
+                          const conf = confiancaMap[p.id]
+                          const nivel = conf?.nivel ?? 'Baixa'
+                          const motivo = conf?.motivo ?? ''
+
+                          let badgeColor = 'bg-slate-100 text-slate-600 border-slate-200'
+                          if (nivel === 'Alta') {
+                            badgeColor =
+                              'bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold'
+                          } else if (nivel === 'Média') {
+                            badgeColor = 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
+                          } else if (nivel === 'Baixa') {
+                            badgeColor = 'bg-rose-50 text-rose-700 border-rose-200'
+                          }
+
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-block cursor-help">
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[10px] px-2 py-0.5 ${badgeColor}`}
+                                  >
+                                    {nivel}
+                                  </Badge>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="text-xs max-w-xs">
+                                <p className="font-semibold">Confiança da sugestão: {nivel}</p>
+                                {motivo && (
+                                  <p className="text-slate-300 text-[11px] mt-0.5">{motivo}</p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          )
+                        })()}
                       </td>
 
                       {/* NCM (Editável c/ seletor) */}

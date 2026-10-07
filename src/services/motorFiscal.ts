@@ -6,10 +6,8 @@ import { obterConfigFiscalEmpresa } from '@/services/configFiscal'
 import { sugerirCestPorNcm } from '@/services/cest'
 import { obterNcmPorCodigo } from '@/services/ncm'
 import { ItemXmlParsed } from '@/services/notasEntrada'
-import {
-  extrairCamposFiscaisDoPerfil,
-  PerfilTributarioCompleto,
-} from '@/services/perfisTributarios'
+import { PerfilTributarioCompleto } from '@/services/perfisTributarios'
+import { extrairCamposFiscaisDoPerfil } from '@/services/produtos'
 
 export type NivelConfiancaSugestao = 'Alta' | 'Média' | 'Baixa'
 
