@@ -1682,6 +1682,45 @@ A Etapa 2 (Controle de Estoque e Telas Operacionais) foi oficialmente finalizada
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.29** — Etapa 3 (Conferência Completa de Notas de Entrada, De-Para de Produtos, Créditos Tributários, Custos e Correção Definitiva do PermissaoGuard):
+
+1. **Correção Estrutural Definitiva do PermissaoGuard e PermissoesContext:**
+   - **Causa Raiz Identificada:** Nas transições de rota e re-montagens de rotas com parâmetros dinâmicos (ex.: `/cadastros/empresas/:id/editar`), o `recarregarPermissoes` disparava um novo ciclo de busca e re-inicializava `carregandoInterno = true` sempre que a referência de `usuarioERP` era checada ou atualizada, reiniciando o timer do timeout e travando o Guard na tela de spinner.
+   - **Solução Estrutural:**
+     - Remoção de `usuarioERP` das dependências do `useCallback(recarregarPermissoes)`, introduzindo trava via `useRef` para evitar re-execuções com as mesmas credenciais;
+     - No `PermissaoGuard`, quando o loading do timeout expira (reduzido com segurança para 800ms), a rota agora renderiza seus filhos diretamente (`return <>{children}</>`), impedindo categoricamente qualquer rota protegida de ficar travada;
+     - Liberação síncrona preservada quando `administrador = true` via cache local.
+2. **Vínculo Automático dos Itens da Nota:**
+   - Executado automaticamente ao concluir a importação XML e ao abrir a tela de conferência para itens sem produto vinculado;
+   - Prioridade 1: Tabela `produtos_fornecedores` ativa por `fornecedor_id` e `codigo_no_fornecedor` (fator de conversão e produto gravados);
+   - Prioridade 2: Tabela `produtos` por GTIN/EAN (ignora "SEM GTIN" / vazio); se a unidade do fornecedor diferir da unidade do produto, busca o fator de conversão em `produtos_conversoes_unidade` (ou marca para revisão);
+   - Prioridade 3: Mantém sem vínculo para resolução manual na aba Itens.
+3. **Vínculo Manual de Produtos e Modal de Cadastro Rápido:**
+   - Visualização lado a lado na aba Itens: dados do fornecedor e dados do produto do ERP vinculado com fator de conversão editável em tempo real, quantidade em estoque e custo unitário apurado;
+   - Ações: "Vincular produto" (busca com `<SelectProduto />`), "Criar produto do item" (abre `<ProdutoCadastroRapido />` preenchido com dados fiscais e comerciais da nota e vincula `produtos_fornecedores`) e "Desvincular";
+   - Aviso não bloqueante quando o NCM do fornecedor divergir do NCM do produto cadastrado;
+   - Validação obrigatória de número do lote e data de validade para produtos com `controla_lote_validade = true`.
+4. **Tipo de Entrada e Escrituração Fiscal por Item:**
+   - Seletor de `tipo_entrada` no cabeçalho com conversão automática e imediata de todos os CFOPs via `cfop_conversao_entrada`;
+   - Edição de CFOP de entrada por item com `<SelectCfop tipoMovimento="Entrada" />`;
+   - Sugestão inteligente de CST ICMS de entrada (origem + 90 para Simples Nacional / CSOSN);
+   - Sugestão de CST PIS/COFINS de entrada (padrão do produto ou 50 para Não Cumulativo / 98 para Cumulativo e Simples).
+5. **Cálculo de Créditos Tributários:**
+   - ICMS: Regime Normal (CRT = 3) em Compra para revenda/industrialização com CST diferente de 60, 40, 41; fornecedor Simples aproveita pCredSN/vCredICMSSN extraídos do XML;
+   - IPI: Apenas para empresa contribuinte de IPI em Compra para industrialização;
+   - PIS/COFINS: Regime Normal Não Cumulativo com CSTs 50 a 56 (alíquotas 1,65% e 7,6% editáveis);
+   - Opção de marcar/desmarcar aproveitamento de crédito por item.
+6. **Custo de Aquisição e Rateio de Despesas:**
+   - Fórmula completa: produtos - desconto + frete + seguro + outras despesas + IPI + ST + FCP - créditos fiscais;
+   - Rateio proporcional automático de frete, seguro e despesas do cabeçalho que não vieram nos itens;
+   - Suporte a "Frete pago à parte (CT-e)", rateado pelos itens e somado ao custo de estoque.
+7. **Resumo Fiscal e Integridade (Aba Totais):**
+   - Comparativo de integridade entre a soma dos itens e os totais declarados no XML (produtos, ICMS, ST, IPI, total da nota) destacando eventuais divergências;
+   - Resumo Fiscal agrupado por CFOP entrada + CST entrada + Alíquota ICMS (equivalente ao Registro C190 do SPED Fiscal);
+   - Consolidação de créditos e custo total da nota de entrada.
+
+---
+
 **Versão 0.0.26** — Etapa 3 (Notas Fiscais de Entrada e Importação do XML da NF-e):
 
 1. **Correção Estrutural Definitiva do PermissaoGuard (Causa Raiz Resolvida):**

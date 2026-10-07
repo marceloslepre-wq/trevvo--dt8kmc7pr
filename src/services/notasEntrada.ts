@@ -162,7 +162,21 @@ export interface NotaEntradaItem {
   updated?: string
 
   expand?: {
-    produto_id?: { id: string; codigo: string; descricao: string; unidade_medida?: string }
+    produto_id?: {
+      id: string
+      codigo: number
+      descricao: string
+      unidade_id?: string
+      ncm?: string
+      cest?: string
+      controla_lote_validade?: boolean
+      dias_validade?: number
+      cst_pis_entrada?: string
+      cst_cofins_entrada?: string
+      expand?: {
+        unidade_id?: { id: string; sigla: string; descricao: string }
+      }
+    }
   }
 }
 
@@ -268,7 +282,7 @@ export async function obterNotaEntradaPorId(id: string): Promise<{
   const itens = await pb.collection('notas_entrada_itens').getFullList<NotaEntradaItem>({
     filter: `nota_id = '${id}' && ativo = true`,
     sort: 'numero_item',
-    expand: 'produto_id',
+    expand: 'produto_id.unidade_id',
   })
 
   const parcelas = await pb.collection('notas_entrada_parcelas').getFullList<NotaEntradaParcela>({
@@ -294,6 +308,396 @@ export async function buscarNotaPorChave(
   } catch {
     return null
   }
+}
+
+// ==========================================
+// SERVIÇOS DE CÁLCULO FISCAL, CRÉDITOS E CUSTO
+// ==========================================
+
+export interface DadosEmpresaCalculo {
+  crt?: number
+  regime_apuracao?: string
+  regime_pis_cofins?: string
+  contribuinte_ipi?: boolean
+}
+
+/**
+ * Calcula créditos de ICMS, IPI, PIS e COFINS para um item da nota com base na empresa ativa
+ */
+export function calcularCreditosItem(params: {
+  empresa: DadosEmpresaCalculo
+  tipoEntrada: TipoEntradaNota
+  cstFornecedor?: string
+  valorIcmsItem: number
+  pCredSN?: number
+  vCredICMSSN?: number
+  valorIpiItem: number
+  cstIpiFornecedor?: string
+  valorProduto: number
+  desconto: number
+  frete: number
+  seguro: number
+  outras: number
+  cstPisEntrada?: string
+  cstCofinsEntrada?: string
+  aliquotaPis?: number
+  aliquotaCofins?: number
+  aproveitaCreditoIcms?: boolean
+  aproveitaCreditoIpi?: boolean
+}): {
+  aproveitaCreditoIcms: boolean
+  valorCreditoIcms: number
+  aproveitaCreditoIpi: boolean
+  valorCreditoIpi: number
+  valorCreditoPis: number
+  valorCreditoCofins: number
+} {
+  const {
+    empresa,
+    tipoEntrada,
+    cstFornecedor = '',
+    valorIcmsItem,
+    pCredSN = 0,
+    vCredICMSSN = 0,
+    valorIpiItem,
+    valorProduto,
+    desconto,
+    frete,
+    seguro,
+    outras,
+    cstPisEntrada = '50',
+    cstCofinsEntrada = '50',
+    aliquotaPis = 1.65,
+    aliquotaCofins = 7.6,
+    aproveitaCreditoIcms: usuarioPermitiuIcms = true,
+    aproveitaCreditoIpi: usuarioPermitiuIpi = true,
+  } = params
+
+  const ehRegimeNormal = empresa.crt === 3
+  const ehRevendaOuInd =
+    tipoEntrada === 'Compra para revenda' || tipoEntrada === 'Compra para industrialização'
+  const ehIndustrializacao = tipoEntrada === 'Compra para industrialização'
+
+  // 1. Crédito ICMS
+  let aproveitaIcms = false
+  let valorCreditoIcms = 0
+
+  if (ehRegimeNormal && ehRevendaOuInd && usuarioPermitiuIcms) {
+    const cst2 = cstFornecedor.slice(-2)
+    // Fornecedor Simples (CSOSN 101, 201, 900)
+    if (['101', '201', '900'].includes(cstFornecedor)) {
+      aproveitaIcms = true
+      valorCreditoIcms = vCredICMSSN > 0 ? vCredICMSSN : (valorProduto * pCredSN) / 100
+    } else if (!['60', '40', '41'].includes(cst2)) {
+      aproveitaIcms = true
+      valorCreditoIcms = valorIcmsItem
+    }
+  }
+
+  // 2. Crédito IPI
+  let aproveitaIpi = false
+  let valorCreditoIpi = 0
+  if (empresa.contribuinte_ipi && ehIndustrializacao && usuarioPermitiuIpi) {
+    aproveitaIpi = true
+    valorCreditoIpi = valorIpiItem
+  }
+
+  // 3. Crédito PIS e COFINS
+  let valorCreditoPis = 0
+  let valorCreditoCofins = 0
+  const pisEntre50e56 = ['50', '51', '52', '53', '54', '55', '56'].includes(cstPisEntrada)
+  const cofinsEntre50e56 = ['50', '51', '52', '53', '54', '55', '56'].includes(cstCofinsEntrada)
+
+  if (ehRegimeNormal && empresa.regime_pis_cofins === 'Não cumulativo') {
+    const baseCalculo = Math.max(0, valorProduto - desconto + frete + seguro + outras)
+    if (pisEntre50e56) {
+      valorCreditoPis = Number(((baseCalculo * (aliquotaPis || 1.65)) / 100).toFixed(2))
+    }
+    if (cofinsEntre50e56) {
+      valorCreditoCofins = Number(((baseCalculo * (aliquotaCofins || 7.6)) / 100).toFixed(2))
+    }
+  }
+
+  return {
+    aproveitaCreditoIcms: aproveitaIcms,
+    valorCreditoIcms: Number(valorCreditoIcms.toFixed(2)),
+    aproveitaCreditoIpi: aproveitaIpi,
+    valorCreditoIpi: Number(valorCreditoIpi.toFixed(2)),
+    valorCreditoPis,
+    valorCreditoCofins,
+  }
+}
+
+/**
+ * Calcula custo total e unitário de um item
+ */
+export function calcularCustoAquisicaoItem(params: {
+  valorProduto: number
+  valorDesconto: number
+  valorFrete: number
+  valorSeguro: number
+  valorOutras: number
+  valorIpi: number
+  valorIcmsSt: number
+  valorFcpSt: number
+  valorCreditoIcms: number
+  valorCreditoIpi: number
+  valorCreditoPis: number
+  valorCreditoCofins: number
+  quantidadeEstoque: number
+}): { custoTotalItem: number; custoUnitarioEstoque: number } {
+  const {
+    valorProduto,
+    valorDesconto,
+    valorFrete,
+    valorSeguro,
+    valorOutras,
+    valorIpi,
+    valorIcmsSt,
+    valorFcpSt,
+    valorCreditoIcms,
+    valorCreditoIpi,
+    valorCreditoPis,
+    valorCreditoCofins,
+    quantidadeEstoque,
+  } = params
+
+  const custoTotal =
+    valorProduto -
+    valorDesconto +
+    valorFrete +
+    valorSeguro +
+    valorOutras +
+    valorIpi +
+    valorIcmsSt +
+    valorFcpSt -
+    valorCreditoIcms -
+    valorCreditoIpi -
+    valorCreditoPis -
+    valorCreditoCofins
+
+  const custoTotalArred = Number(custoTotal.toFixed(2))
+  const custoUnit =
+    quantidadeEstoque > 0 ? Number((custoTotal / quantidadeEstoque).toFixed(4)) : custoTotalArred
+
+  return {
+    custoTotalItem: custoTotalArred,
+    custoUnitarioEstoque: custoUnit,
+  }
+}
+
+/**
+ * Sugere CST PIS e COFINS padrão
+ */
+export function sugerirCstPisCofinsEntrada(params: {
+  empresa: DadosEmpresaCalculo
+  tipoEntrada: TipoEntradaNota
+  produtoCstPis?: string
+  produtoCstCofins?: string
+}): { cstPis: string; cstCofins: string } {
+  const { empresa, tipoEntrada, produtoCstPis, produtoCstCofins } = params
+
+  if (produtoCstPis && produtoCstCofins) {
+    return { cstPis: produtoCstPis, cstCofins: produtoCstCofins }
+  }
+
+  const ehRegimeNormal = empresa.crt === 3
+  const naoCumulativo = empresa.regime_pis_cofins === 'Não cumulativo'
+  const ehRevendaOuInd =
+    tipoEntrada === 'Compra para revenda' || tipoEntrada === 'Compra para industrialização'
+
+  if (ehRegimeNormal && naoCumulativo && ehRevendaOuInd) {
+    return {
+      cstPis: produtoCstPis || '50',
+      cstCofins: produtoCstCofins || '50',
+    }
+  }
+
+  return {
+    cstPis: produtoCstPis || '98',
+    cstCofins: produtoCstCofins || '98',
+  }
+}
+
+/**
+ * Executa o vínculo automático para um item individual
+ */
+export async function tentarVincularItemAutomatico(
+  item: NotaEntradaItem,
+  fornecedorId?: string,
+): Promise<{
+  produtoId: string | null
+  fatorConversao: number
+  marcarRevisao: boolean
+  metodo: 'fornecedor' | 'gtin' | 'nenhum'
+}> {
+  // 1. produtos_fornecedores com fornecedor_id e codigo_no_fornecedor
+  if (fornecedorId && item.codigo_fornecedor) {
+    const codLimpo = item.codigo_fornecedor.trim().replace(/['"]/g, '')
+    try {
+      const pf = await pb
+        .collection('produtos_fornecedores')
+        .getFirstListItem<any>(
+          `fornecedor_id = '${fornecedorId}' && codigo_no_fornecedor = '${codLimpo}' && ativo = true`,
+        )
+      if (pf && pf.produto_id) {
+        return {
+          produtoId: pf.produto_id,
+          fatorConversao: pf.fator_conversao && pf.fator_conversao > 0 ? pf.fator_conversao : 1,
+          marcarRevisao: false,
+          metodo: 'fornecedor',
+        }
+      }
+    } catch {
+      // continua para o gtin
+    }
+  }
+
+  // 2. produtos com gtin = gtin_fornecedor (ignorar vazio, "SEM GTIN", "SEMGTIN")
+  const gtin = (item.gtin_fornecedor || '').trim().toUpperCase()
+  if (gtin && gtin !== 'SEM GTIN' && gtin !== 'SEMGTIN') {
+    try {
+      const prod = await pb
+        .collection('produtos')
+        .getFirstListItem<any>(`gtin = '${gtin}' && ativo = true`, {
+          expand: 'unidade_id',
+        })
+      if (prod) {
+        let fator = 1
+        let marcarRevisao = false
+        const unForn = (item.unidade_fornecedor || '').trim().toUpperCase()
+        const unProdSigla = (prod.expand?.unidade_id?.sigla || '').trim().toUpperCase()
+
+        if (unForn && unProdSigla && unForn !== unProdSigla) {
+          // Procurar em produtos_conversoes_unidade
+          try {
+            const convs = await pb.collection('produtos_conversoes_unidade').getFullList<any>({
+              filter: `produto_id = '${prod.id}' && ativo = true`,
+              expand: 'unidade_id',
+            })
+            const encontrada = convs.find(
+              (c) =>
+                (c.expand?.unidade_id?.sigla || '').trim().toUpperCase() === unForn ||
+                (c.gtin_unidade && c.gtin_unidade.trim().toUpperCase() === gtin),
+            )
+            if (encontrada && encontrada.fator_conversao > 0) {
+              fator = encontrada.fator_conversao
+            } else {
+              fator = 1
+              marcarRevisao = true
+            }
+          } catch {
+            fator = 1
+            marcarRevisao = true
+          }
+        }
+
+        return {
+          produtoId: prod.id,
+          fatorConversao: fator,
+          marcarRevisao,
+          metodo: 'gtin',
+        }
+      }
+    } catch {
+      // sem vinculo
+    }
+  }
+
+  return {
+    produtoId: null,
+    fatorConversao: 1,
+    marcarRevisao: false,
+    metodo: 'nenhum',
+  }
+}
+
+/**
+ * Executa o vínculo automático para todos os itens da nota que estiverem sem produto_id
+ */
+export async function executarVinculoAutomaticoNota(
+  notaId: string,
+  fornecedorId?: string,
+  empresaDados?: DadosEmpresaCalculo,
+  tipoEntradaNota?: TipoEntradaNota,
+): Promise<{ vinculados: number; total: number }> {
+  const itens = await pb.collection('notas_entrada_itens').getFullList<NotaEntradaItem>({
+    filter: `nota_id = '${notaId}' && ativo = true`,
+  })
+
+  let vinculados = 0
+  for (const it of itens) {
+    if (it.produto_id) continue
+
+    const res = await tentarVincularItemAutomatico(it, fornecedorId)
+    if (res.produtoId) {
+      const qtdEstoque = Number((it.quantidade_fornecedor * res.fatorConversao).toFixed(4))
+      const prod = await pb.collection('produtos').getOne<any>(res.produtoId)
+
+      // Sugerir CST PIS e COFINS se ainda em branco ou 50/98
+      const { cstPis, cstCofins } = sugerirCstPisCofinsEntrada({
+        empresa: empresaDados || {},
+        tipoEntrada: tipoEntradaNota || 'Compra para revenda',
+        produtoCstPis: prod.cst_pis_entrada,
+        produtoCstCofins: prod.cst_cofins_entrada,
+      })
+
+      // Recalcula créditos
+      const creditos = calcularCreditosItem({
+        empresa: empresaDados || {},
+        tipoEntrada: tipoEntradaNota || 'Compra para revenda',
+        cstFornecedor: it.cst_icms_fornecedor,
+        valorIcmsItem: it.valor_icms || 0,
+        valorIpiItem: it.valor_ipi || 0,
+        valorProduto: it.valor_produto || 0,
+        desconto: it.valor_desconto || 0,
+        frete: it.valor_frete || 0,
+        seguro: it.valor_seguro || 0,
+        outras: it.valor_outras || 0,
+        cstPisEntrada: cstPis,
+        cstCofinsEntrada: cstCofins,
+        aproveitaCreditoIcms: it.aproveita_credito_icms,
+        aproveitaCreditoIpi: it.aproveita_credito_ipi,
+      })
+
+      // Recalcula custo
+      const { custoTotalItem, custoUnitarioEstoque } = calcularCustoAquisicaoItem({
+        valorProduto: it.valor_produto || 0,
+        valorDesconto: it.valor_desconto || 0,
+        valorFrete: it.valor_frete || 0,
+        valorSeguro: it.valor_seguro || 0,
+        valorOutras: it.valor_outras || 0,
+        valorIpi: it.valor_ipi || 0,
+        valorIcmsSt: it.valor_icms_st || 0,
+        valorFcpSt: it.valor_fcp_st || 0,
+        valorCreditoIcms: creditos.valorCreditoIcms,
+        valorCreditoIpi: creditos.valorCreditoIpi,
+        valorCreditoPis: creditos.valorCreditoPis,
+        valorCreditoCofins: creditos.valorCreditoCofins,
+        quantidadeEstoque: qtdEstoque,
+      })
+
+      await pb.collection('notas_entrada_itens').update(it.id, {
+        produto_id: res.produtoId,
+        fator_conversao: res.fatorConversao,
+        quantidade_estoque: qtdEstoque,
+        cst_pis_entrada: cstPis,
+        cst_cofins_entrada: cstCofins,
+        aproveita_credito_icms: creditos.aproveitaCreditoIcms,
+        valor_credito_icms: creditos.valorCreditoIcms,
+        aproveita_credito_ipi: creditos.aproveitaCreditoIpi,
+        valor_credito_ipi: creditos.valorCreditoIpi,
+        valor_credito_pis: creditos.valorCreditoPis,
+        valor_credito_cofins: creditos.valorCreditoCofins,
+        custo_total_item: custoTotalItem,
+        custo_unitario_estoque: custoUnitarioEstoque,
+        updated_by: pb.authStore.record?.id || null,
+      })
+      vinculados++
+    }
+  }
+
+  return { vinculados, total: itens.length }
 }
 
 export async function cancelarNotaEntrada(id: string, motivo: string): Promise<NotaEntrada> {
@@ -1008,8 +1412,11 @@ export async function importarXmlNotaEntrada(params: {
     // Conversão de CFOP
     const { cfopEntrada } = await converterCfopEntrada(it.cfop, tipoEntrada)
 
-    // Formata CST de entrada padrão: 3 dígitos (origem + CST do fornecedor)
-    const cstEntrada = `${it.origem || '0'}${it.cstIcms.padStart(2, '0').slice(-2)}`
+    // Formata CST de entrada: se fornecedor for do Simples Nacional (veio CSOSN 3 dígitos), sugere origem + "90"
+    let cstEntrada = `${it.origem || '0'}${it.cstIcms.padStart(2, '0').slice(-2)}`
+    if (it.cstIcms && it.cstIcms.length === 3) {
+      cstEntrada = `${it.origem || '0'}90`
+    }
 
     const payloadItem: Record<string, unknown> = {
       nota_id: notaCriada.id,
@@ -1109,6 +1516,14 @@ export async function importarXmlNotaEntrada(params: {
       created_by: user?.id || null,
       updated_by: user?.id || null,
     })
+  }
+
+  // Executa o vínculo automático inicial ao concluir a importação
+  try {
+    const emp = await pb.collection('empresas').getOne<any>(empresaId)
+    await executarVinculoAutomaticoNota(notaCriada.id, fId, emp, tipoEntrada)
+  } catch (err) {
+    console.warn('Falha no vínculo automático pós-importação:', err)
   }
 
   await registrarAuditoria({

@@ -37,21 +37,53 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import {
   NotaEntrada,
   NotaEntradaItem,
   NotaEntradaParcela,
   obterNotaEntradaPorId,
   cancelarNotaEntrada,
+  calcularCreditosItem,
+  calcularCustoAquisicaoItem,
+  sugerirCstPisCofinsEntrada,
+  tentarVincularItemAutomatico,
+  executarVinculoAutomaticoNota,
 } from '@/services/notasEntrada'
+import { salvarProdutoFornecedor, obterProdutoPorId, Produto } from '@/services/produtos'
+import { TIPOS_ENTRADA, TipoEntradaNota, converterCfopEntrada } from '@/services/cfopConversao'
+import { SelectCfop } from '@/components/SelectCfop'
+import { SelectProduto } from '@/components/SelectProduto'
+import { ProdutoCadastroRapido } from '@/components/ProdutoCadastroRapido'
 import { formatarCNPJ, formatarCPF } from '@/lib/validacoes'
 import pb from '@/lib/pocketbase/client'
+import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Unlink,
+  Link2,
+  Sparkles,
+  RefreshCw,
+  Search,
+  Plus,
+  HelpCircle,
+  Truck,
+  Calculator,
+} from 'lucide-react'
 
 export const NotaEntradaConferenciaPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { toast } = useToast()
   const { pode } = usePermissoes()
+  const { empresaAtiva } = useEmpresaAtiva()
 
   const podeEditar = pode('notas_entrada', 'editar')
   const podeCancelar = pode('notas_entrada', 'excluir')
@@ -62,6 +94,17 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
   const [carregando, setCarregando] = useState(true)
   const [conteudoXmlTexto, setConteudoXmlTexto] = useState<string>('')
   const [copiadoXml, setCopiadoXml] = useState(false)
+  const [processandoAcao, setProcessandoAcao] = useState(false)
+
+  // Frete à parte (CT-e)
+  const [fretePagoParte, setFretePagoParte] = useState(false)
+  const [valorFreteParte, setValorFreteParte] = useState<number>(0)
+
+  // Modais de Vínculo de Produto
+  const [modalBuscaAberto, setModalBuscaAberto] = useState(false)
+  const [modalCriacaoAberto, setModalCriacaoAberto] = useState(false)
+  const [itemSelecionadoParaVinculo, setItemSelecionadoParaVinculo] =
+    useState<NotaEntradaItem | null>(null)
 
   // Dialog Cancelar
   const [cancelarModalAberto, setCancelarModalAberto] = useState(false)
@@ -105,6 +148,416 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
     carregarDados()
   }, [carregarDados])
 
+  // Vínculo automático inicial ao abrir a conferência se houver itens com produto_id nulo
+  useEffect(() => {
+    if (!nota || !itens.length || carregando) return
+    const itensSemProduto = itens.filter((i) => !i.produto_id)
+    if (itensSemProduto.length === 0) return
+
+    let ativo = true
+    const autoVincular = async () => {
+      try {
+        const res = await executarVinculoAutomaticoNota(
+          nota.id,
+          nota.fornecedor_id,
+          empresaAtiva as any,
+          nota.tipo_entrada,
+        )
+        if (res.vinculados > 0 && ativo) {
+          toast({
+            title: 'Vínculo automático aplicado',
+            description: `${res.vinculados} item(ns) vinculado(s) automaticamente pelo catálogo/histórico.`,
+          })
+          carregarDados()
+        }
+      } catch (err) {
+        console.warn('Erro ao auto-vincular itens na abertura:', err)
+      }
+    }
+
+    autoVincular()
+
+    return () => {
+      ativo = false
+    }
+  }, [nota?.id, nota?.fornecedor_id, nota?.tipo_entrada, itens.length, empresaAtiva, carregando])
+
+  // ==========================================
+  // HANDLERS DE ALTERAÇÃO FISCAL E PRODUTOS
+  // ==========================================
+
+  // Recalcular custos e rateios de toda a nota (incluindo frete à parte do CT-e se informado)
+  const recalcularTudo = useCallback(
+    async (tipoEntradaParam?: TipoEntradaNota, freteCTeParam?: number) => {
+      if (!nota || !itens.length) return
+      setProcessandoAcao(true)
+
+      try {
+        const tipoEntrada = tipoEntradaParam || nota.tipo_entrada || 'Compra para revenda'
+        const freteCTe = freteCTeParam !== undefined ? freteCTeParam : valorFreteParte
+
+        const somaProdutos = itens.reduce((acc, i) => acc + (i.valor_produto || 0), 0) || 1
+
+        // Rateio de despesas do cabeçalho que não vieram nos itens
+        const somaFreteItens = itens.reduce((acc, i) => acc + (i.valor_frete || 0), 0)
+        const freteCabecalhoNaoRateado = Math.max(0, (nota.valor_frete || 0) - somaFreteItens)
+
+        const somaSeguroItens = itens.reduce((acc, i) => acc + (i.valor_seguro || 0), 0)
+        const seguroCabecalhoNaoRateado = Math.max(0, (nota.valor_seguro || 0) - somaSeguroItens)
+
+        const somaOutrasItens = itens.reduce((acc, i) => acc + (i.valor_outras || 0), 0)
+        const outrasCabecalhoNaoRateado = Math.max(
+          0,
+          (nota.valor_outras_despesas || 0) - somaOutrasItens,
+        )
+
+        for (const it of itens) {
+          const proporcao = (it.valor_produto || 0) / somaProdutos
+
+          const freteEfetivo =
+            (it.valor_frete || 0) +
+            freteCabecalhoNaoRateado * proporcao +
+            (freteCTe > 0 ? freteCTe * proporcao : 0)
+
+          const seguroEfetivo = (it.valor_seguro || 0) + seguroCabecalhoNaoRateado * proporcao
+          const outrasEfetivo = (it.valor_outras || 0) + outrasCabecalhoNaoRateado * proporcao
+
+          const creditos = calcularCreditosItem({
+            empresa: empresaAtiva as any,
+            tipoEntrada,
+            cstFornecedor: it.cst_icms_fornecedor,
+            valorIcmsItem: it.valor_icms || 0,
+            valorIpiItem: it.valor_ipi || 0,
+            valorProduto: it.valor_produto || 0,
+            desconto: it.valor_desconto || 0,
+            frete: freteEfetivo,
+            seguro: seguroEfetivo,
+            outras: outrasEfetivo,
+            cstPisEntrada: it.cst_pis_entrada,
+            cstCofinsEntrada: it.cst_cofins_entrada,
+            aproveitaCreditoIcms: it.aproveita_credito_icms,
+            aproveitaCreditoIpi: it.aproveita_credito_ipi,
+          })
+
+          const qtdEstoque =
+            it.quantidade_estoque ||
+            Number(((it.quantidade_fornecedor || 0) * (it.fator_conversao || 1)).toFixed(4))
+
+          const { custoTotalItem, custoUnitarioEstoque } = calcularCustoAquisicaoItem({
+            valorProduto: it.valor_produto || 0,
+            valorDesconto: it.valor_desconto || 0,
+            valorFrete: freteEfetivo,
+            valorSeguro: seguroEfetivo,
+            valorOutras: outrasEfetivo,
+            valorIpi: it.valor_ipi || 0,
+            valorIcmsSt: it.valor_icms_st || 0,
+            valorFcpSt: it.valor_fcp_st || 0,
+            valorCreditoIcms: creditos.valorCreditoIcms,
+            valorCreditoIpi: creditos.valorCreditoIpi,
+            valorCreditoPis: creditos.valorCreditoPis,
+            valorCreditoCofins: creditos.valorCreditoCofins,
+            quantidadeEstoque: qtdEstoque,
+          })
+
+          await pb.collection('notas_entrada_itens').update(it.id, {
+            valor_credito_icms: creditos.valorCreditoIcms,
+            valor_credito_ipi: creditos.valorCreditoIpi,
+            valor_credito_pis: creditos.valorCreditoPis,
+            valor_credito_cofins: creditos.valorCreditoCofins,
+            custo_total_item: custoTotalItem,
+            custo_unitario_estoque: custoUnitarioEstoque,
+            updated_by: pb.authStore.record?.id || null,
+          })
+        }
+
+        // Atualiza cabeçalho da nota
+        const novosItens = await pb.collection('notas_entrada_itens').getFullList<NotaEntradaItem>({
+          filter: `nota_id = '${nota.id}' && ativo = true`,
+          sort: 'numero_item',
+          expand: 'produto_id.unidade_id',
+        })
+
+        const totalCredIcms = novosItens.reduce((acc, i) => acc + (i.valor_credito_icms || 0), 0)
+        const totalCredIpi = novosItens.reduce((acc, i) => acc + (i.valor_credito_ipi || 0), 0)
+        const totalCredPis = novosItens.reduce((acc, i) => acc + (i.valor_credito_pis || 0), 0)
+        const totalCredCofins = novosItens.reduce(
+          (acc, i) => acc + (i.valor_credito_cofins || 0),
+          0,
+        )
+        const totalCustoNota = novosItens.reduce((acc, i) => acc + (i.custo_total_item || 0), 0)
+
+        const notaAtualizada = await pb.collection('notas_entrada').update<NotaEntrada>(nota.id, {
+          tipo_entrada: tipoEntrada,
+          credito_icms: Number(totalCredIcms.toFixed(2)),
+          credito_ipi: Number(totalCredIpi.toFixed(2)),
+          credito_pis: Number(totalCredPis.toFixed(2)),
+          credito_cofins: Number(totalCredCofins.toFixed(2)),
+          custo_total: Number(totalCustoNota.toFixed(2)),
+          updated_by: pb.authStore.record?.id || null,
+        })
+
+        setNota(notaAtualizada)
+        setItens(novosItens)
+        toast({ title: 'Cálculos fiscais e de custo atualizados!' })
+      } catch (err: unknown) {
+        toast({
+          title: 'Erro ao recalcular',
+          description: err instanceof Error ? err.message : 'Falha nos cálculos fiscais',
+          variant: 'destructive',
+        })
+      } finally {
+        setProcessandoAcao(false)
+      }
+    },
+    [nota, itens, valorFreteParte, empresaAtiva, toast],
+  )
+
+  // Mudar Tipo de Entrada da Nota
+  const handleMudarTipoEntrada = async (novoTipo: TipoEntradaNota) => {
+    if (!nota) return
+    setProcessandoAcao(true)
+    try {
+      // Atualizar CFOP de entrada de cada item baseado no novo tipo de entrada
+      for (const it of itens) {
+        if (it.cfop_fornecedor) {
+          const resConv = await converterCfopEntrada(it.cfop_fornecedor, novoTipo)
+          await pb.collection('notas_entrada_itens').update(it.id, {
+            cfop_entrada: resConv.cfopEntrada,
+          })
+        }
+      }
+
+      await recalcularTudo(novoTipo)
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao alterar tipo de entrada',
+        description: err instanceof Error ? err.message : 'Falha na conversão de CFOPs',
+        variant: 'destructive',
+      })
+      setProcessandoAcao(false)
+    }
+  }
+
+  // Vincular produto manualmente
+  const handleVincularProdutoManual = async (item: NotaEntradaItem, produtoId: string) => {
+    setProcessandoAcao(true)
+    try {
+      const prod = await obterProdutoPorId(produtoId)
+      if (!prod) throw new Error('Produto não encontrado')
+
+      const fator = item.fator_conversao && item.fator_conversao > 0 ? item.fator_conversao : 1
+      const qtdEstoque = Number((item.quantidade_fornecedor * fator).toFixed(4))
+
+      const { cstPis, cstCofins } = sugerirCstPisCofinsEntrada({
+        empresa: empresaAtiva as any,
+        tipoEntrada: nota?.tipo_entrada || 'Compra para revenda',
+        produtoCstPis: prod.cst_pis_entrada,
+        produtoCstCofins: prod.cst_cofins_entrada,
+      })
+
+      const creditos = calcularCreditosItem({
+        empresa: empresaAtiva as any,
+        tipoEntrada: nota?.tipo_entrada || 'Compra para revenda',
+        cstFornecedor: item.cst_icms_fornecedor,
+        valorIcmsItem: item.valor_icms || 0,
+        valorIpiItem: item.valor_ipi || 0,
+        valorProduto: item.valor_produto || 0,
+        desconto: item.valor_desconto || 0,
+        frete: item.valor_frete || 0,
+        seguro: item.valor_seguro || 0,
+        outras: item.valor_outras || 0,
+        cstPisEntrada: cstPis,
+        cstCofinsEntrada: cstCofins,
+        aproveitaCreditoIcms: item.aproveita_credito_icms,
+        aproveitaCreditoIpi: item.aproveita_credito_ipi,
+      })
+
+      const { custoTotalItem, custoUnitarioEstoque } = calcularCustoAquisicaoItem({
+        valorProduto: item.valor_produto || 0,
+        valorDesconto: item.valor_desconto || 0,
+        valorFrete: item.valor_frete || 0,
+        valorSeguro: item.valor_seguro || 0,
+        valorOutras: item.valor_outras || 0,
+        valorIpi: item.valor_ipi || 0,
+        valorIcmsSt: item.valor_icms_st || 0,
+        valorFcpSt: item.valor_fcp_st || 0,
+        valorCreditoIcms: creditos.valorCreditoIcms,
+        valorCreditoIpi: creditos.valorCreditoIpi,
+        valorCreditoPis: creditos.valorCreditoPis,
+        valorCreditoCofins: creditos.valorCreditoCofins,
+        quantidadeEstoque: qtdEstoque,
+      })
+
+      await pb.collection('notas_entrada_itens').update(item.id, {
+        produto_id: prod.id,
+        fator_conversao: fator,
+        quantidade_estoque: qtdEstoque,
+        cst_pis_entrada: cstPis,
+        cst_cofins_entrada: cstCofins,
+        valor_credito_icms: creditos.valorCreditoIcms,
+        valor_credito_ipi: creditos.valorCreditoIpi,
+        valor_credito_pis: creditos.valorCreditoPis,
+        valor_credito_cofins: creditos.valorCreditoCofins,
+        custo_total_item: custoTotalItem,
+        custo_unitario_estoque: custoUnitarioEstoque,
+        updated_by: pb.authStore.record?.id || null,
+      })
+
+      // Gravar / atualizar produtos_fornecedores para a próxima nota vir vinculada
+      if (nota?.fornecedor_id) {
+        try {
+          await salvarProdutoFornecedor({
+            produto_id: prod.id,
+            fornecedor_id: nota.fornecedor_id,
+            codigo_no_fornecedor: item.codigo_fornecedor || '',
+            descricao_no_fornecedor: item.descricao_fornecedor || prod.descricao,
+            unidade_fornecedor: item.unidade_fornecedor || 'UN',
+            fator_conversao: fator,
+            ultimo_preco_compra: item.valor_unitario_fornecedor,
+            data_ultima_compra: nota.data_emissao || new Date().toISOString().slice(0, 10),
+          })
+        } catch (errPf) {
+          console.warn('Falha ao atualizar produtos_fornecedores:', errPf)
+        }
+      }
+
+      toast({
+        title: 'Produto vinculado com sucesso!',
+        description: `${prod.descricao} associado ao item #${item.numero_item}. Histórico gravado para próximas notas.`,
+      })
+
+      setModalBuscaAberto(false)
+      setItemSelecionadoParaVinculo(null)
+      await carregarDados()
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao vincular produto',
+        description: err instanceof Error ? err.message : 'Falha na associação',
+        variant: 'destructive',
+      })
+    } finally {
+      setProcessandoAcao(false)
+    }
+  }
+
+  // Desvincular produto do item
+  const handleDesvincularProduto = async (item: NotaEntradaItem) => {
+    setProcessandoAcao(true)
+    try {
+      await pb.collection('notas_entrada_itens').update(item.id, {
+        produto_id: null,
+        fator_conversao: 1,
+        quantidade_estoque: item.quantidade_fornecedor,
+        custo_total_item: item.valor_produto,
+        custo_unitario_estoque: item.valor_unitario_fornecedor,
+        updated_by: pb.authStore.record?.id || null,
+      })
+      toast({
+        title: 'Vínculo removido',
+        description: `O item #${item.numero_item} agora está sem produto do ERP.`,
+      })
+      await carregarDados()
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao desvincular',
+        description: err instanceof Error ? err.message : 'Falha ao remover vínculo',
+        variant: 'destructive',
+      })
+    } finally {
+      setProcessandoAcao(false)
+    }
+  }
+
+  // Alteração de campos do item na tabela (fator conversão, CFOP, CST, créditos, lote, validade)
+  const handleAtualizarItemInline = async (
+    item: NotaEntradaItem,
+    campos: Partial<NotaEntradaItem>,
+  ) => {
+    try {
+      let qtdEstoque = item.quantidade_estoque
+      let fator = item.fator_conversao || 1
+
+      if (campos.fator_conversao !== undefined) {
+        fator = campos.fator_conversao > 0 ? campos.fator_conversao : 1
+        qtdEstoque = Number((item.quantidade_fornecedor * fator).toFixed(4))
+        campos.quantidade_estoque = qtdEstoque
+      }
+
+      // Se alterou algum valor fiscal ou crédito, recalcula custos
+      const cstPis =
+        campos.cst_pis_entrada !== undefined ? campos.cst_pis_entrada : item.cst_pis_entrada
+      const cstCofins =
+        campos.cst_cofins_entrada !== undefined
+          ? campos.cst_cofins_entrada
+          : item.cst_cofins_entrada
+      const aproveitaIcms =
+        campos.aproveita_credito_icms !== undefined
+          ? campos.aproveita_credito_icms
+          : item.aproveita_credito_icms
+      const aproveitaIpi =
+        campos.aproveita_credito_ipi !== undefined
+          ? campos.aproveita_credito_ipi
+          : item.aproveita_credito_ipi
+
+      const creditos = calcularCreditosItem({
+        empresa: empresaAtiva as any,
+        tipoEntrada: nota?.tipo_entrada || 'Compra para revenda',
+        cstFornecedor: item.cst_icms_fornecedor,
+        valorIcmsItem: item.valor_icms || 0,
+        valorIpiItem: item.valor_ipi || 0,
+        valorProduto: item.valor_produto || 0,
+        desconto: item.valor_desconto || 0,
+        frete: item.valor_frete || 0,
+        seguro: item.valor_seguro || 0,
+        outras: item.valor_outras || 0,
+        cstPisEntrada: cstPis,
+        cstCofinsEntrada: cstCofins,
+        aproveitaCreditoIcms: aproveitaIcms,
+        aproveitaCreditoIpi: aproveitaIpi,
+      })
+
+      const { custoTotalItem, custoUnitarioEstoque } = calcularCustoAquisicaoItem({
+        valorProduto: item.valor_produto || 0,
+        valorDesconto: item.valor_desconto || 0,
+        valorFrete: item.valor_frete || 0,
+        valorSeguro: item.valor_seguro || 0,
+        valorOutras: item.valor_outras || 0,
+        valorIpi: item.valor_ipi || 0,
+        valorIcmsSt: item.valor_icms_st || 0,
+        valorFcpSt: item.valor_fcp_st || 0,
+        valorCreditoIcms: creditos.valorCreditoIcms,
+        valorCreditoIpi: creditos.valorCreditoIpi,
+        valorCreditoPis: creditos.valorCreditoPis,
+        valorCreditoCofins: creditos.valorCreditoCofins,
+        quantidadeEstoque: qtdEstoque,
+      })
+
+      const payloadAtualizar: any = {
+        ...campos,
+        fator_conversao: fator,
+        quantidade_estoque: qtdEstoque,
+        valor_credito_icms: creditos.valorCreditoIcms,
+        valor_credito_ipi: creditos.valorCreditoIpi,
+        valor_credito_pis: creditos.valorCreditoPis,
+        valor_credito_cofins: creditos.valorCreditoCofins,
+        custo_total_item: custoTotalItem,
+        custo_unitario_estoque: custoUnitarioEstoque,
+        updated_by: pb.authStore.record?.id || null,
+      }
+
+      await pb.collection('notas_entrada_itens').update(item.id, payloadAtualizar)
+
+      // Atualiza estado local
+      setItens((prev) => prev.map((i) => (i.id === item.id ? { ...i, ...payloadAtualizar } : i)))
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao atualizar item',
+        description: err instanceof Error ? err.message : 'Falha na atualização',
+        variant: 'destructive',
+      })
+    }
+  }
+
   // ==========================================
   // AVISOS DE AUDITORIA E CONFERÊNCIA
   // ==========================================
@@ -125,11 +578,37 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
     if (semProduto.length > 0) {
       lista.push({
         tipo: 'aviso',
-        texto: `${semProduto.length} item(ns) ainda sem produto do catálogo vinculado (de-para pendente para próxima etapa).`,
+        texto: `${semProduto.length} item(ns) ainda sem produto do catálogo vinculado. Vincule ou crie o produto antes de efetivar o lançamento.`,
       })
     }
 
-    // 3. Parcela criada automaticamente
+    // 3. NCM divergente entre fornecedor e produto cadastrado
+    for (const it of itens) {
+      if (it.expand?.produto_id?.ncm && it.ncm_fornecedor) {
+        const ncmProd = it.expand.produto_id.ncm.replace(/\D/g, '')
+        const ncmForn = it.ncm_fornecedor.replace(/\D/g, '')
+        if (ncmProd && ncmForn && ncmProd !== ncmForn) {
+          lista.push({
+            tipo: 'aviso',
+            texto: `Item #${it.numero_item} (${it.descricao_fornecedor}): NCM da nota (${it.ncm_fornecedor}) difere do NCM cadastrado no produto (${it.expand.produto_id.ncm}).`,
+          })
+        }
+      }
+    }
+
+    // 4. Validação de Lote e Validade
+    for (const it of itens) {
+      if (it.expand?.produto_id?.controla_lote_validade) {
+        if (!it.lote_numero || !it.lote_validade) {
+          lista.push({
+            tipo: 'alerta',
+            texto: `Item #${it.numero_item} vinculado ao produto "${it.expand.produto_id.descricao}" exige controle de Lote e Data de Validade.`,
+          })
+        }
+      }
+    }
+
+    // 5. Parcela criada automaticamente
     if (
       parcelas.length === 1 &&
       parcelas[0].numero === '001' &&
@@ -142,7 +621,7 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
       })
     }
 
-    // 4. Divergência de totais
+    // 6. Divergência de totais
     const somaItens = itens.reduce((acc, i) => acc + (i.valor_produto || 0), 0)
     const diff = Math.abs(somaItens - (nota.valor_produtos || 0))
     if (diff > 0.05 && itens.length > 0) {
@@ -154,6 +633,67 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
 
     return lista
   }, [nota, itens, parcelas])
+
+  // ==========================================
+  // RESUMO FISCAL SPED C190 (Aba Totais)
+  // ==========================================
+  const resumoSpedC190 = React.useMemo(() => {
+    // Agrupamento por CFOP entrada + CST ICMS entrada + Alíquota ICMS
+    const mapa = new Map<
+      string,
+      {
+        cfop: string
+        cst: string
+        aliquota: number
+        valorOperacao: number
+        baseIcms: number
+        valorIcms: number
+        baseIcmsSt: number
+        valorIcmsSt: number
+        valorIpi: number
+      }
+    >()
+
+    for (const it of itens) {
+      const cfop = it.cfop_entrada || it.cfop_fornecedor || '0000'
+      const cst = it.cst_icms_entrada || it.cst_icms_fornecedor || '00'
+      const aliq = it.aliquota_icms || 0
+      const chave = `${cfop}_${cst}_${aliq.toFixed(2)}`
+
+      const valorOp =
+        (it.valor_produto || 0) -
+        (it.valor_desconto || 0) +
+        (it.valor_frete || 0) +
+        (it.valor_seguro || 0) +
+        (it.valor_outras || 0) +
+        (it.valor_ipi || 0) +
+        (it.valor_icms_st || 0)
+
+      if (!mapa.has(chave)) {
+        mapa.set(chave, {
+          cfop,
+          cst,
+          aliquota: aliq,
+          valorOperacao: valorOp,
+          baseIcms: it.base_icms || 0,
+          valorIcms: it.valor_icms || 0,
+          baseIcmsSt: it.base_icms_st || 0,
+          valorIcmsSt: it.valor_icms_st || 0,
+          valorIpi: it.valor_ipi || 0,
+        })
+      } else {
+        const itemExistente = mapa.get(chave)!
+        itemExistente.valorOperacao += valorOp
+        itemExistente.baseIcms += it.base_icms || 0
+        itemExistente.valorIcms += it.valor_icms || 0
+        itemExistente.baseIcmsSt += it.base_icms_st || 0
+        itemExistente.valorIcmsSt += it.valor_icms_st || 0
+        itemExistente.valorIpi += it.valor_ipi || 0
+      }
+    }
+
+    return Array.from(mapa.values())
+  }, [itens])
 
   const copiarChave = (chave: string) => {
     navigator.clipboard.writeText(chave)
@@ -443,9 +983,26 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                     </Badge>
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <span className="text-slate-500">Tipo de Entrada:</span>
-                  <span className="col-span-2 font-medium text-blue-700">{nota.tipo_entrada}</span>
+                <div className="grid grid-cols-3 gap-2 items-center">
+                  <span className="text-slate-500 font-semibold">Tipo de Entrada:</span>
+                  <div className="col-span-2">
+                    <Select
+                      value={nota.tipo_entrada}
+                      onValueChange={(val) => handleMudarTipoEntrada(val as TipoEntradaNota)}
+                      disabled={nota.status !== 'Em conferência' || !podeEditar || processandoAcao}
+                    >
+                      <SelectTrigger className="h-8 text-xs bg-white font-semibold text-blue-700 border-blue-200">
+                        <SelectValue placeholder="Selecione o tipo de entrada" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIPOS_ENTRADA.map((tipo) => (
+                          <SelectItem key={tipo} value={tipo} className="text-xs">
+                            {tipo}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <span className="text-slate-500">Natureza da Operação:</span>
@@ -473,114 +1030,834 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                             : String(nota.modalidade_frete)}
                   </span>
                 </div>
+
+                {/* Opção Frete pago à parte (CT-e) */}
+                <div className="pt-2 border-t border-slate-100">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="frete_pago_parte"
+                      checked={fretePagoParte}
+                      onCheckedChange={(checked) => {
+                        const ativo = Boolean(checked)
+                        setFretePagoParte(ativo)
+                        if (!ativo) {
+                          setValorFreteParte(0)
+                          recalcularTudo(undefined, 0)
+                        }
+                      }}
+                      disabled={nota.status !== 'Em conferência' || !podeEditar}
+                    />
+                    <label
+                      htmlFor="frete_pago_parte"
+                      className="text-xs font-semibold text-slate-700 cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Truck className="h-3.5 w-3.5 text-blue-600" />
+                      Frete pago à parte (CT-e recebido separadamente)
+                    </label>
+                  </div>
+
+                  {fretePagoParte && (
+                    <div className="mt-2 pl-6 flex items-center gap-2">
+                      <Label className="text-[11px] text-slate-600">
+                        Valor do Frete CT-e (R$):
+                      </Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={valorFreteParte || ''}
+                        onChange={(e) => setValorFreteParte(parseFloat(e.target.value) || 0)}
+                        className="w-32 h-7 text-xs font-mono font-medium"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => recalcularTudo(undefined, valorFreteParte)}
+                        disabled={processandoAcao}
+                        className="h-7 text-xs gap-1"
+                      >
+                        <Calculator className="h-3 w-3" />
+                        Ratear no Custo
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
         </TabsContent>
 
         {/* ================= ABA ITENS ================= */}
-        <TabsContent value="itens" className="mt-4">
-          <Card className="border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/70 font-semibold text-slate-600">
-                    <th className="py-2.5 px-3 w-10 text-center">#</th>
-                    <th className="py-2.5 px-3 w-28">Cód. Fornec.</th>
-                    <th className="py-2.5 px-3">Descrição do Fornecedor</th>
-                    <th className="py-2.5 px-3 w-24 font-mono">NCM</th>
-                    <th className="py-2.5 px-3 w-20 font-mono">CFOP Forn.</th>
-                    <th className="py-2.5 px-3 w-20 font-mono text-blue-700">CFOP Entr.</th>
-                    <th className="py-2.5 px-3 w-16 text-center">Un.</th>
-                    <th className="py-2.5 px-3 w-24 text-right">Qtd.</th>
-                    <th className="py-2.5 px-3 w-24 text-right">Vlr. Unit.</th>
-                    <th className="py-2.5 px-3 w-28 text-right">Total</th>
-                    <th className="py-2.5 px-3 w-36">Vínculo Produto (ERP)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {itens.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-2.5 px-3 text-center text-slate-400 font-mono font-medium">
-                        {item.numero_item}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600">
-                        {item.codigo_fornecedor || '—'}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="font-medium text-slate-900">
-                          {item.descricao_fornecedor}
+        <TabsContent value="itens" className="mt-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
+            <div className="flex items-center gap-2 text-slate-700">
+              <Sparkles className="h-4 w-4 text-blue-600" />
+              <span>
+                Conferência individual dos itens: dados do fornecedor, de-para do catálogo,
+                tributação de entrada e custo unitário apurado.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  if (!nota) return
+                  setProcessandoAcao(true)
+                  try {
+                    const res = await executarVinculoAutomaticoNota(
+                      nota.id,
+                      nota.fornecedor_id,
+                      empresaAtiva as any,
+                      nota.tipo_entrada,
+                    )
+                    toast({
+                      title: 'Vínculo automático executado',
+                      description: `${res.vinculados} item(ns) vinculado(s) de ${res.total}.`,
+                    })
+                    await carregarDados()
+                  } finally {
+                    setProcessandoAcao(false)
+                  }
+                }}
+                disabled={processandoAcao || nota.status !== 'Em conferência'}
+                className="h-7 text-xs gap-1 text-blue-700 border-blue-200 hover:bg-blue-50"
+              >
+                <RefreshCw className={`h-3 w-3 ${processandoAcao ? 'animate-spin' : ''}`} />
+                Reprocessar Vínculos Automáticos
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {itens.map((item) => {
+              const prod = item.expand?.produto_id
+              const ncmDivergente =
+                prod?.ncm &&
+                item.ncm_fornecedor &&
+                prod.ncm.replace(/\D/g, '') !== item.ncm_fornecedor.replace(/\D/g, '')
+              const exigeLote = Boolean(prod?.controla_lote_validade)
+              const lotePendente = exigeLote && (!item.lote_numero || !item.lote_validade)
+
+              return (
+                <Card
+                  key={item.id}
+                  className={`border transition-all overflow-hidden ${
+                    !prod
+                      ? 'border-amber-300 bg-amber-50/20'
+                      : lotePendente
+                        ? 'border-rose-300 bg-rose-50/20'
+                        : 'border-slate-200'
+                  }`}
+                >
+                  <CardHeader className="py-2.5 px-4 bg-slate-50/80 border-b border-slate-200 flex flex-row items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-xs bg-white text-slate-700"
+                      >
+                        Item #{item.numero_item}
+                      </Badge>
+                      <span className="font-semibold text-slate-900 text-xs">
+                        {item.descricao_fornecedor}
+                      </span>
+                      {item.codigo_fornecedor && (
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          (Cód. Forn: {item.codigo_fornecedor})
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {prod ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDesvincularProduto(item)}
+                          disabled={
+                            nota.status !== 'Em conferência' || !podeEditar || processandoAcao
+                          }
+                          className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 gap-1"
+                        >
+                          <Unlink className="h-3 w-3" />
+                          Desvincular
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setItemSelecionadoParaVinculo(item)
+                              setModalBuscaAberto(true)
+                            }}
+                            disabled={
+                              nota.status !== 'Em conferência' || !podeEditar || processandoAcao
+                            }
+                            className="h-7 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 gap-1"
+                          >
+                            <Search className="h-3 w-3" />
+                            Vincular Produto
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setItemSelecionadoParaVinculo(item)
+                              setModalCriacaoAberto(true)
+                            }}
+                            disabled={
+                              nota.status !== 'Em conferência' || !podeEditar || processandoAcao
+                            }
+                            className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Criar Produto do Item
+                          </Button>
                         </div>
-                        {item.gtin_fornecedor && item.gtin_fornecedor !== 'SEM GTIN' && (
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            EAN: {item.gtin_fornecedor}
-                          </div>
-                        )}
-                        {item.lote_numero && (
-                          <div className="text-[10px] text-amber-700 font-medium">
-                            Lote: {item.lote_numero} (Validade: {item.lote_validade || '—'})
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-700">
-                        {item.ncm_fornecedor || '—'}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-700">
-                        {item.cfop_fornecedor || '—'}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-blue-700">
-                        {item.cfop_entrada || '—'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-mono text-slate-600">
-                        {item.unidade_fornecedor || 'UN'}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-medium">
-                        {item.quantidade_fornecedor.toFixed(2)}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono">
-                        R$ {item.valor_unitario_fornecedor.toFixed(2)}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                        R${' '}
-                        {(
-                          item.valor_produto ||
-                          item.quantidade_fornecedor * item.valor_unitario_fornecedor
-                        ).toFixed(2)}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        {item.expand?.produto_id ? (
-                          <div className="text-[11px]">
-                            <span className="font-semibold text-emerald-700">
-                              [{item.expand.produto_id.codigo}]
-                            </span>{' '}
-                            <span className="text-slate-800 truncate block max-w-xs">
-                              {item.expand.produto_id.descricao}
+                      )}
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-4 space-y-3 text-xs">
+                    {/* Alertas específicos do item */}
+                    {ncmDivergente && (
+                      <Alert className="py-1.5 px-3 bg-amber-50 border-amber-300 text-amber-900 text-xs flex items-center gap-2">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                        <span className="text-[11px]">
+                          <strong>Aviso Fiscal:</strong> NCM da nota (
+                          <code>{item.ncm_fornecedor}</code>) diverge do produto cadastrado (
+                          <code>{prod?.ncm}</code>).
+                        </span>
+                      </Alert>
+                    )}
+
+                    {lotePendente && (
+                      <Alert className="py-1.5 px-3 bg-rose-50 border-rose-300 text-rose-900 text-xs flex items-center gap-2">
+                        <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                        <span className="text-[11px]">
+                          <strong>Atenção:</strong> O produto exige controle de lote e data de
+                          validade. Preencha os campos abaixo antes de lançar a nota.
+                        </span>
+                      </Alert>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* LADO ESQUERDO: Dados do Fornecedor */}
+                      <div className="p-3 bg-slate-50/70 rounded-lg border border-slate-200 space-y-2">
+                        <h4 className="font-semibold text-slate-700 text-[11px] uppercase tracking-wide border-b border-slate-200 pb-1">
+                          Dados da Nota (Fornecedor)
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div>
+                            <span className="text-slate-500">Cód. Fornecedor:</span>{' '}
+                            <span className="font-mono text-slate-800">
+                              {item.codigo_fornecedor || '—'}
                             </span>
                           </div>
+                          <div>
+                            <span className="text-slate-500">GTIN/EAN:</span>{' '}
+                            <span className="font-mono text-slate-800">
+                              {item.gtin_fornecedor || 'SEM GTIN'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">NCM / CEST:</span>{' '}
+                            <span className="font-mono text-slate-800">
+                              {item.ncm_fornecedor || '—'}{' '}
+                              {item.cest_fornecedor ? `(${item.cest_fornecedor})` : ''}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">CFOP Fornec.:</span>{' '}
+                            <span className="font-mono text-slate-800">
+                              {item.cfop_fornecedor || '—'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">Unidade / Qtd:</span>{' '}
+                            <span className="font-mono font-bold text-slate-800">
+                              {item.quantidade_fornecedor} {item.unidade_fornecedor}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">Valor Unit.:</span>{' '}
+                            <span className="font-mono text-slate-800">
+                              R$ {item.valor_unitario_fornecedor.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="col-span-2 pt-1 border-t border-slate-200 flex justify-between items-center">
+                            <span className="text-slate-600 font-medium">Subtotal Item:</span>
+                            <span className="font-mono font-bold text-slate-900 text-xs">
+                              R${' '}
+                              {(
+                                item.valor_produto ||
+                                item.quantidade_fornecedor * item.valor_unitario_fornecedor
+                              ).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* LADO DIREITO: Produto Vinculado no ERP & Conversão */}
+                      <div className="p-3 bg-blue-50/30 rounded-lg border border-blue-200 space-y-2">
+                        <h4 className="font-semibold text-blue-900 text-[11px] uppercase tracking-wide border-b border-blue-200 pb-1">
+                          Vínculo e Estoque (ERP)
+                        </h4>
+
+                        {prod ? (
+                          <div className="space-y-2 text-[11px]">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-slate-900">
+                                [{prod.codigo}] {prod.descricao}
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[10px]"
+                              >
+                                Vinculado
+                              </Badge>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 items-center">
+                              <div>
+                                <Label className="text-[10px] text-slate-500">Unidade ERP</Label>
+                                <div className="font-mono font-bold text-slate-800">
+                                  {prod.expand?.unidade_id?.sigla || 'UN'}
+                                </div>
+                              </div>
+                              <div>
+                                <Label className="text-[10px] text-slate-500">
+                                  Fator Conversão
+                                </Label>
+                                <Input
+                                  type="number"
+                                  step="0.0001"
+                                  min="0.0001"
+                                  value={item.fator_conversao || 1}
+                                  onChange={(e) =>
+                                    handleAtualizarItemInline(item, {
+                                      fator_conversao: parseFloat(e.target.value) || 1,
+                                    })
+                                  }
+                                  disabled={nota.status !== 'Em conferência' || !podeEditar}
+                                  className="h-7 text-xs font-mono"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-[10px] text-slate-500">Qtd. Estoque</Label>
+                                <div className="font-mono font-bold text-blue-700 text-xs">
+                                  {(
+                                    item.quantidade_estoque ||
+                                    item.quantidade_fornecedor * (item.fator_conversao || 1)
+                                  ).toFixed(2)}{' '}
+                                  {prod.expand?.unidade_id?.sigla || 'UN'}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-blue-100 flex justify-between items-center bg-blue-50/50 p-2 rounded">
+                              <div>
+                                <span className="text-[11px] text-slate-600">
+                                  Custo Unitário Estoque:
+                                </span>
+                                <div className="text-[10px] text-slate-400">
+                                  (Líquido de créditos e rateios)
+                                </div>
+                              </div>
+                              <span className="font-mono font-bold text-sm text-emerald-700">
+                                R$ {(item.custo_unitario_estoque || 0).toFixed(4)}
+                              </span>
+                            </div>
+                          </div>
                         ) : (
-                          <Badge
-                            variant="outline"
-                            className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]"
-                          >
-                            Não vinculado (Etapa 4)
-                          </Badge>
+                          <div className="py-4 text-center text-slate-500 space-y-2">
+                            <Package className="h-6 w-6 text-amber-500 mx-auto" />
+                            <p className="text-xs">Nenhum produto do ERP vinculado a este item.</p>
+                            <p className="text-[10px] text-slate-400">
+                              Vincule a um produto existente ou crie um novo para apurar o custo
+                              unitário de estoque.
+                            </p>
+                          </div>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                      </div>
+                    </div>
+
+                    {/* Lotes e Validade se aplicável */}
+                    {prod?.controla_lote_validade && (
+                      <div className="p-3 bg-amber-50/50 rounded-lg border border-amber-200">
+                        <h5 className="font-semibold text-amber-900 text-xs mb-2">
+                          Rastreabilidade: Controle de Lote e Data de Validade *
+                        </h5>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <Label className="text-[11px] text-slate-700">Número do Lote *</Label>
+                            <Input
+                              value={item.lote_numero || ''}
+                              onChange={(e) =>
+                                handleAtualizarItemInline(item, { lote_numero: e.target.value })
+                              }
+                              placeholder="Ex: LOTE-2025"
+                              disabled={nota.status !== 'Em conferência' || !podeEditar}
+                              className="h-8 text-xs font-mono"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[11px] text-slate-700">Data de Validade *</Label>
+                            <Input
+                              type="date"
+                              value={item.lote_validade || ''}
+                              onChange={(e) =>
+                                handleAtualizarItemInline(item, { lote_validade: e.target.value })
+                              }
+                              disabled={nota.status !== 'Em conferência' || !podeEditar}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[11px] text-slate-700">Data de Fabricação</Label>
+                            <Input
+                              type="date"
+                              value={item.lote_fabricacao || ''}
+                              onChange={(e) =>
+                                handleAtualizarItemInline(item, { lote_fabricacao: e.target.value })
+                              }
+                              disabled={nota.status !== 'Em conferência' || !podeEditar}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* BLOCO FISCAL E ESCRITURAÇÃO (CFOP, CST, PIS/COFINS, CRÉDITOS) */}
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                        <span className="font-semibold text-slate-700 text-[11px] uppercase tracking-wide">
+                          Escrituração Fiscal e Aproveitamento de Créditos
+                        </span>
+                        <span className="text-[10px] text-slate-500 italic">
+                          Confirme com o contador o CST e CFOP de entrada usados na escrituração
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">
+                            CFOP Entrada
+                          </Label>
+                          <SelectCfop
+                            value={item.cfop_entrada}
+                            onChange={(val) =>
+                              handleAtualizarItemInline(item, { cfop_entrada: val || '' })
+                            }
+                            tipoMovimento="Entrada"
+                            disabled={nota.status !== 'Em conferência' || !podeEditar}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">
+                            CST ICMS Entrada
+                          </Label>
+                          <Input
+                            value={item.cst_icms_entrada || ''}
+                            onChange={(e) =>
+                              handleAtualizarItemInline(item, { cst_icms_entrada: e.target.value })
+                            }
+                            placeholder="Ex: 000, 090"
+                            maxLength={3}
+                            disabled={nota.status !== 'Em conferência' || !podeEditar}
+                            className="h-8 text-xs font-mono"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">
+                            CST PIS Entrada
+                          </Label>
+                          <Input
+                            value={item.cst_pis_entrada || ''}
+                            onChange={(e) =>
+                              handleAtualizarItemInline(item, { cst_pis_entrada: e.target.value })
+                            }
+                            placeholder="Ex: 50, 98"
+                            maxLength={2}
+                            disabled={nota.status !== 'Em conferência' || !podeEditar}
+                            className="h-8 text-xs font-mono"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">
+                            CST COFINS Entrada
+                          </Label>
+                          <Input
+                            value={item.cst_cofins_entrada || ''}
+                            onChange={(e) =>
+                              handleAtualizarItemInline(item, {
+                                cst_cofins_entrada: e.target.value,
+                              })
+                            }
+                            placeholder="Ex: 50, 98"
+                            maxLength={2}
+                            disabled={nota.status !== 'Em conferência' || !podeEditar}
+                            className="h-8 text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Créditos detalhados do item */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-200 text-[11px]">
+                        <div className="p-2 bg-white rounded border border-slate-200">
+                          <div className="flex items-center space-x-1.5 mb-1">
+                            <Checkbox
+                              id={`cred_icms_${item.id}`}
+                              checked={item.aproveita_credito_icms}
+                              onCheckedChange={(c) =>
+                                handleAtualizarItemInline(item, {
+                                  aproveita_credito_icms: Boolean(c),
+                                })
+                              }
+                              disabled={nota.status !== 'Em conferência' || !podeEditar}
+                            />
+                            <label
+                              htmlFor={`cred_icms_${item.id}`}
+                              className="text-[11px] font-medium text-slate-700 cursor-pointer"
+                            >
+                              Crédito ICMS
+                            </label>
+                          </div>
+                          <div className="font-mono font-bold text-slate-800">
+                            R$ {(item.valor_credito_icms || 0).toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div className="p-2 bg-white rounded border border-slate-200">
+                          <div className="flex items-center space-x-1.5 mb-1">
+                            <Checkbox
+                              id={`cred_ipi_${item.id}`}
+                              checked={item.aproveita_credito_ipi}
+                              onCheckedChange={(c) =>
+                                handleAtualizarItemInline(item, {
+                                  aproveita_credito_ipi: Boolean(c),
+                                })
+                              }
+                              disabled={nota.status !== 'Em conferência' || !podeEditar}
+                            />
+                            <label
+                              htmlFor={`cred_ipi_${item.id}`}
+                              className="text-[11px] font-medium text-slate-700 cursor-pointer"
+                            >
+                              Crédito IPI
+                            </label>
+                          </div>
+                          <div className="font-mono font-bold text-slate-800">
+                            R$ {(item.valor_credito_ipi || 0).toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div className="p-2 bg-white rounded border border-slate-200">
+                          <div className="text-[11px] font-medium text-slate-600 mb-1">
+                            Crédito PIS (1,65%)
+                          </div>
+                          <div className="font-mono font-bold text-slate-800">
+                            R$ {(item.valor_credito_pis || 0).toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div className="p-2 bg-white rounded border border-slate-200">
+                          <div className="text-[11px] font-medium text-slate-600 mb-1">
+                            Crédito COFINS (7,6%)
+                          </div>
+                          <div className="font-mono font-bold text-slate-800">
+                            R$ {(item.valor_credito_cofins || 0).toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
         </TabsContent>
 
-        {/* ================= ABA TOTAIS ================= */}
+        {/* ================= ABA TOTAIS & RESUMO FISCAL ================= */}
         <TabsContent value="totais" className="mt-4 space-y-4">
+          {/* Card de Divergências entre Soma dos Itens e Cabeçalho XML */}
+          {(() => {
+            const somaProd = itens.reduce((acc, i) => acc + (i.valor_produto || 0), 0)
+            const somaIcms = itens.reduce((acc, i) => acc + (i.valor_icms || 0), 0)
+            const somaSt = itens.reduce((acc, i) => acc + (i.valor_icms_st || 0), 0)
+            const somaIpi = itens.reduce((acc, i) => acc + (i.valor_ipi || 0), 0)
+            const somaTotalItens = itens.reduce(
+              (acc, i) =>
+                acc +
+                (i.valor_produto || 0) -
+                (i.valor_desconto || 0) +
+                (i.valor_frete || 0) +
+                (i.valor_seguro || 0) +
+                (i.valor_outras || 0) +
+                (i.valor_ipi || 0) +
+                (i.valor_icms_st || 0),
+              0,
+            )
+
+            const diffProd = Math.abs(somaProd - (nota.valor_produtos || 0))
+            const diffIcms = Math.abs(somaIcms - (nota.valor_icms || 0))
+            const diffSt = Math.abs(somaSt - (nota.valor_icms_st || 0))
+            const diffIpi = Math.abs(somaIpi - (nota.valor_ipi || 0))
+            const diffTotal = Math.abs(somaTotalItens - (nota.valor_total || 0))
+
+            return (
+              <Card className="border-slate-200">
+                <CardHeader className="py-2.5 px-4 bg-slate-50 border-b border-slate-100">
+                  <CardTitle className="text-sm font-semibold text-slate-800 flex items-center justify-between">
+                    <span>Conferência de Integridade: Soma dos Itens vs. Totais do XML</span>
+                    {diffProd < 0.05 && diffTotal < 0.05 ? (
+                      <Badge className="bg-emerald-50 text-emerald-700 border-emerald-300 font-normal text-xs">
+                        Valores Batem Perfeitamente
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-amber-50 text-amber-700 border-amber-300 font-normal text-xs">
+                        Divergências Detectadas
+                      </Badge>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 text-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-500 font-medium">
+                          <th className="py-1.5 px-3">Campo Fiscal</th>
+                          <th className="py-1.5 px-3 text-right">Declarado no XML</th>
+                          <th className="py-1.5 px-3 text-right">Soma dos Itens</th>
+                          <th className="py-1.5 px-3 text-right">Diferença</th>
+                          <th className="py-1.5 px-3 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono">
+                        <tr>
+                          <td className="py-2 px-3 font-sans font-medium text-slate-800">
+                            Valor dos Produtos
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            R$ {(nota.valor_produtos || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-right">R$ {somaProd.toFixed(2)}</td>
+                          <td
+                            className={`py-2 px-3 text-right ${diffProd > 0.05 ? 'text-rose-600 font-bold' : 'text-slate-500'}`}
+                          >
+                            R$ {(somaProd - (nota.valor_produtos || 0)).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {diffProd <= 0.05 ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-emerald-700 bg-emerald-50 border-emerald-200"
+                              >
+                                OK
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-rose-700 bg-rose-50 border-rose-200"
+                              >
+                                Divergência
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 px-3 font-sans font-medium text-slate-800">
+                            ICMS Normal
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            R$ {(nota.valor_icms || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-right">R$ {somaIcms.toFixed(2)}</td>
+                          <td
+                            className={`py-2 px-3 text-right ${diffIcms > 0.05 ? 'text-rose-600 font-bold' : 'text-slate-500'}`}
+                          >
+                            R$ {(somaIcms - (nota.valor_icms || 0)).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {diffIcms <= 0.05 ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-emerald-700 bg-emerald-50 border-emerald-200"
+                              >
+                                OK
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-rose-700 bg-rose-50 border-rose-200"
+                              >
+                                Divergência
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 px-3 font-sans font-medium text-slate-800">
+                            ICMS-ST
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            R$ {(nota.valor_icms_st || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-right">R$ {somaSt.toFixed(2)}</td>
+                          <td
+                            className={`py-2 px-3 text-right ${diffSt > 0.05 ? 'text-rose-600 font-bold' : 'text-slate-500'}`}
+                          >
+                            R$ {(somaSt - (nota.valor_icms_st || 0)).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {diffSt <= 0.05 ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-emerald-700 bg-emerald-50 border-emerald-200"
+                              >
+                                OK
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-rose-700 bg-rose-50 border-rose-200"
+                              >
+                                Divergência
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 px-3 font-sans font-medium text-slate-800">IPI</td>
+                          <td className="py-2 px-3 text-right">
+                            R$ {(nota.valor_ipi || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-right">R$ {somaIpi.toFixed(2)}</td>
+                          <td
+                            className={`py-2 px-3 text-right ${diffIpi > 0.05 ? 'text-rose-600 font-bold' : 'text-slate-500'}`}
+                          >
+                            R$ {(somaIpi - (nota.valor_ipi || 0)).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {diffIpi <= 0.05 ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-emerald-700 bg-emerald-50 border-emerald-200"
+                              >
+                                OK
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-rose-700 bg-rose-50 border-rose-200"
+                              >
+                                Divergência
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                        <tr className="bg-slate-50/60 font-bold">
+                          <td className="py-2 px-3 font-sans text-slate-900">Total da Nota</td>
+                          <td className="py-2 px-3 text-right text-blue-700">
+                            R$ {(nota.valor_total || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-right text-blue-700">
+                            R$ {somaTotalItens.toFixed(2)}
+                          </td>
+                          <td
+                            className={`py-2 px-3 text-right ${diffTotal > 0.05 ? 'text-rose-600' : 'text-slate-600'}`}
+                          >
+                            R$ {(somaTotalItens - (nota.valor_total || 0)).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {diffTotal <= 0.05 ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-emerald-700 bg-emerald-50 border-emerald-200"
+                              >
+                                OK
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-rose-700 bg-rose-50 border-rose-200"
+                              >
+                                Divergência
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
+          {/* Resumo Fiscal por CFOP + CST + Alíquota (Registro SPED Fiscal C190) */}
+          <Card className="border-slate-200">
+            <CardHeader className="py-3 px-4 border-b border-slate-100 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold text-slate-800">
+                  Resumo Fiscal por CFOP e Tributação (SPED Registro C190)
+                </CardTitle>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Consolidação dos itens por CFOP de Entrada, CST ICMS e Alíquota aplicável na
+                  escrituração.
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 text-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600 font-semibold">
+                      <th className="py-2 px-3 font-mono">CFOP</th>
+                      <th className="py-2 px-3 font-mono">CST</th>
+                      <th className="py-2 px-3 text-right font-mono">Aliq. ICMS</th>
+                      <th className="py-2 px-3 text-right font-mono">Vlr. Operação</th>
+                      <th className="py-2 px-3 text-right font-mono">BC ICMS</th>
+                      <th className="py-2 px-3 text-right font-mono">Vlr. ICMS</th>
+                      <th className="py-2 px-3 text-right font-mono">BC ST</th>
+                      <th className="py-2 px-3 text-right font-mono">Vlr. ST</th>
+                      <th className="py-2 px-3 text-right font-mono">Vlr. IPI</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                    {resumoSpedC190.map((reg, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2 px-3 font-bold text-blue-700">{reg.cfop}</td>
+                        <td className="py-2 px-3 font-bold text-slate-800">{reg.cst}</td>
+                        <td className="py-2 px-3 text-right">{reg.aliquota.toFixed(2)}%</td>
+                        <td className="py-2 px-3 text-right font-medium">
+                          R$ {reg.valorOperacao.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-3 text-right">R$ {reg.baseIcms.toFixed(2)}</td>
+                        <td className="py-2 px-3 text-right text-emerald-700 font-medium">
+                          R$ {reg.valorIcms.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-3 text-right">R$ {reg.baseIcmsSt.toFixed(2)}</td>
+                        <td className="py-2 px-3 text-right">R$ {reg.valorIcmsSt.toFixed(2)}</td>
+                        <td className="py-2 px-3 text-right">R$ {reg.valorIpi.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Cards de Totais, Créditos e Custo da Nota */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="border-slate-200">
               <CardHeader className="py-3 px-4 border-b border-slate-100">
                 <CardTitle className="text-sm font-semibold text-slate-800">
-                  Composição do Valor Total
+                  Composição do Valor da NF-e
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 space-y-2 text-xs">
@@ -591,7 +1868,7 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">(+) Frete:</span>
+                  <span className="text-slate-600">(+) Frete da Nota:</span>
                   <span className="font-mono">R$ {nota.valor_frete?.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
@@ -626,69 +1903,108 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
             <Card className="border-slate-200">
               <CardHeader className="py-3 px-4 border-b border-slate-100">
                 <CardTitle className="text-sm font-semibold text-slate-800">
-                  Bases e Tributos Destacados
+                  Créditos Tributários Totais
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 space-y-2 text-xs">
+                <p className="text-[11px] text-slate-500 mb-2">
+                  Créditos fiscais aproveitados na apuração do regime tributário (CRT da empresa
+                  ativa).
+                </p>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Base de Cálculo ICMS:</span>
-                  <span className="font-mono">R$ {nota.base_icms?.toFixed(2)}</span>
+                  <span className="text-slate-600">Total Crédito ICMS:</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    R$ {itens.reduce((acc, i) => acc + (i.valor_credito_icms || 0), 0).toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Valor ICMS Normal:</span>
-                  <span className="font-mono font-medium">R$ {nota.valor_icms?.toFixed(2)}</span>
+                  <span className="text-slate-600">Total Crédito IPI:</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    R$ {itens.reduce((acc, i) => acc + (i.valor_credito_ipi || 0), 0).toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Base ICMS-ST:</span>
-                  <span className="font-mono">R$ {nota.base_icms_st?.toFixed(2)}</span>
+                  <span className="text-slate-600">Total Crédito PIS:</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    R$ {itens.reduce((acc, i) => acc + (i.valor_credito_pis || 0), 0).toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Valor ICMS-ST:</span>
-                  <span className="font-mono">R$ {nota.valor_icms_st?.toFixed(2)}</span>
+                  <span className="text-slate-600">Total Crédito COFINS:</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    R$ {itens.reduce((acc, i) => acc + (i.valor_credito_cofins || 0), 0).toFixed(2)}
+                  </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Valor PIS:</span>
-                  <span className="font-mono">R$ {nota.valor_pis?.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Valor COFINS:</span>
-                  <span className="font-mono">R$ {nota.valor_cofins?.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100 text-slate-400">
-                  <span>Reforma IBS / CBS:</span>
-                  <span className="font-mono">
-                    R$ {((nota.valor_ibs || 0) + (nota.valor_cbs || 0)).toFixed(2)}
+                <div className="flex justify-between py-2 pt-3 font-bold text-xs text-slate-900 border-t border-slate-200">
+                  <span>Total de Créditos Fiscais:</span>
+                  <span className="font-mono text-emerald-700">
+                    R${' '}
+                    {itens
+                      .reduce(
+                        (acc, i) =>
+                          acc +
+                          (i.valor_credito_icms || 0) +
+                          (i.valor_credito_ipi || 0) +
+                          (i.valor_credito_pis || 0) +
+                          (i.valor_credito_cofins || 0),
+                        0,
+                      )
+                      .toFixed(2)}
                   </span>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-slate-200">
+            <Card className="border-slate-200 bg-slate-50/50">
               <CardHeader className="py-3 px-4 border-b border-slate-100">
                 <CardTitle className="text-sm font-semibold text-slate-800">
-                  Créditos Calculados
+                  Custo Efetivo de Aquisição
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 space-y-2 text-xs">
                 <p className="text-[11px] text-slate-500 mb-2">
-                  Créditos fiscais aproveitados na apuração do regime tributário (configuráveis na
-                  conferência fiscal avançada).
+                  Valor líquido investido que formará o custo médio unitário no estoque.
                 </p>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Crédito ICMS:</span>
-                  <span className="font-mono">R$ {(nota.credito_icms || 0).toFixed(2)}</span>
+                  <span className="text-slate-600">Total dos Produtos:</span>
+                  <span className="font-mono">R$ {nota.valor_produtos?.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Crédito IPI:</span>
-                  <span className="font-mono">R$ {(nota.credito_ipi || 0).toFixed(2)}</span>
+                  <span className="text-slate-600">(+) Despesas e IPI / ST:</span>
+                  <span className="font-mono">
+                    R${' '}
+                    {(
+                      (nota.valor_frete || 0) +
+                      (nota.valor_seguro || 0) +
+                      (nota.valor_outras_despesas || 0) +
+                      (nota.valor_ipi || 0) +
+                      (nota.valor_icms_st || 0) +
+                      (valorFreteParte || 0)
+                    ).toFixed(2)}
+                  </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Crédito PIS:</span>
-                  <span className="font-mono">R$ {(nota.credito_pis || 0).toFixed(2)}</span>
+                <div className="flex justify-between py-1 border-b border-slate-100 text-emerald-700">
+                  <span>(-) Créditos Fiscais:</span>
+                  <span className="font-mono">
+                    R${' '}
+                    {itens
+                      .reduce(
+                        (acc, i) =>
+                          acc +
+                          (i.valor_credito_icms || 0) +
+                          (i.valor_credito_ipi || 0) +
+                          (i.valor_credito_pis || 0) +
+                          (i.valor_credito_cofins || 0),
+                        0,
+                      )
+                      .toFixed(2)}
+                  </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Crédito COFINS:</span>
-                  <span className="font-mono">R$ {(nota.credito_cofins || 0).toFixed(2)}</span>
+                <div className="flex justify-between py-2 pt-3 font-bold text-sm text-slate-900 border-t border-slate-200">
+                  <span>Custo Total da Entrada:</span>
+                  <span className="font-mono text-emerald-800">
+                    R$ {itens.reduce((acc, i) => acc + (i.custo_total_item || 0), 0).toFixed(2)}
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -786,6 +2102,65 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Modal Buscar Produto para Vincular */}
+      <Dialog open={modalBuscaAberto} onOpenChange={setModalBuscaAberto}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Vincular Produto do Catálogo</DialogTitle>
+            <DialogDescription>
+              Selecione o produto correspondente para o item #
+              {itemSelecionadoParaVinculo?.numero_item} (
+              <strong>{itemSelecionadoParaVinculo?.descricao_fornecedor}</strong>).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2">
+            <Label className="text-xs font-semibold mb-1 block">Pesquisar Produto (ERP)</Label>
+            <SelectProduto
+              value=""
+              onChange={(prodId) => {
+                if (prodId && itemSelecionadoParaVinculo) {
+                  handleVincularProdutoManual(itemSelecionadoParaVinculo, prodId)
+                }
+              }}
+              placeholder="Digite código, descrição ou GTIN do produto..."
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setModalBuscaAberto(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Cadastro Rápido de Produto a partir do Item */}
+      {modalCriacaoAberto && itemSelecionadoParaVinculo && (
+        <ProdutoCadastroRapido
+          aberto={modalCriacaoAberto}
+          onClose={() => {
+            setModalCriacaoAberto(false)
+            setItemSelecionadoParaVinculo(null)
+          }}
+          onSucesso={async (prodCriado) => {
+            if (itemSelecionadoParaVinculo) {
+              await handleVincularProdutoManual(itemSelecionadoParaVinculo, prodCriado.id)
+            }
+          }}
+          fornecedorId={nota.fornecedor_id}
+          dadosIniciais={{
+            descricao: itemSelecionadoParaVinculo.descricao_fornecedor,
+            codigoNoFornecedor: itemSelecionadoParaVinculo.codigo_fornecedor,
+            gtin: itemSelecionadoParaVinculo.gtin_fornecedor,
+            ncm: itemSelecionadoParaVinculo.ncm_fornecedor,
+            cest: itemSelecionadoParaVinculo.cest_fornecedor,
+            unidadeSigla: itemSelecionadoParaVinculo.unidade_fornecedor,
+            precoCusto: itemSelecionadoParaVinculo.valor_unitario_fornecedor,
+          }}
+        />
+      )}
 
       {/* Modal Cancelar Nota */}
       <Dialog open={cancelarModalAberto} onOpenChange={setCancelarModalAberto}>

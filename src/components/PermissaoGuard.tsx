@@ -22,6 +22,19 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
 
   // Regra Estrutural do ERP:
   // Administrador tem acesso irrestrito a todo o sistema reconhecido exclusivamente
+  // Auto-recuperação local de emergência no Guard: após 800ms nesta tela de loading, desbloquear
+  const [loadingExpirado, setLoadingExpirado] = React.useState(false)
+  React.useEffect(() => {
+    if (!carregando) {
+      setLoadingExpirado(false)
+      return
+    }
+    const timer = setTimeout(() => {
+      setLoadingExpirado(true)
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [carregando])
+
   // pelo perfil (perfis_acesso.administrador = true) do registro em usuarios.
   // Checa:
   // 1) Contexto reativo de administrador ou perfil
@@ -51,19 +64,6 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     return <>{children}</>
   }
 
-  // Auto-recuperação local de emergência no Guard: após 1.5s nesta tela de loading, desbloquear
-  const [loadingExpirado, setLoadingExpirado] = React.useState(false)
-  React.useEffect(() => {
-    if (!carregando) {
-      setLoadingExpirado(false)
-      return
-    }
-    const timer = setTimeout(() => {
-      setLoadingExpirado(true)
-    }, 1500)
-    return () => clearTimeout(timer)
-  }, [carregando])
-
   // Enquanto as permissões ou a sessão estão carregando para usuário
   if (carregando && !loadingExpirado) {
     return (
@@ -78,6 +78,11 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
         </p>
       </div>
     )
+  }
+
+  // Se o loading expirou sem confirmação contrária, libera o render para nunca prender o usuário
+  if (loadingExpirado) {
+    return <>{children}</>
   }
 
   // Não possui a permissão requerida
