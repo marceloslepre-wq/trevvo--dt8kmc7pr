@@ -1583,6 +1583,7 @@ export const ProdutoForm: React.FC = () => {
             produtoId={ehEdicao ? id : undefined}
             unidadeSigla={unidadesMedida.find((u) => u.id === formData.unidade_id)?.sigla || 'UN'}
             controlaEstoque={formData.controla_estoque}
+            controlaLote={formData.controla_lote_validade}
           />
         </TabsContent>
 

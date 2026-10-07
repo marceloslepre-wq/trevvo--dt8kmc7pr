@@ -39,6 +39,9 @@ export interface ItemMovimentacaoEstoque {
   custo_unitario?: number
   data_movimento?: string
   lote_id?: string
+  numero_lote?: string
+  data_fabricacao?: string
+  data_validade?: string
   documento_tipo?: string
   documento_id?: string
   documento_numero?: string
@@ -48,19 +51,21 @@ export interface ItemMovimentacaoEstoque {
 
 export interface MovimentoEstoqueResultado {
   id: string
-  empresa_id: string
+  empresa_id?: string
   produto_id: string
   produto_descricao: string
   tipo: TipoMovimentoEstoque
   origem: OrigemMovimentoEstoque
   quantidade: number
-  custo_unitario: number
-  valor_total: number
-  saldo_anterior: number
+  custo_unitario?: number
+  valor_total?: number
+  saldo_anterior?: number
   saldo_posterior: number
-  custo_medio_anterior: number
+  custo_medio_anterior?: number
   custo_medio_posterior: number
-  data_movimento: string
+  data_movimento?: string
+  lote_id?: string | null
+  numero_lote?: string | null
 }
 
 export interface RespostaMovimentarEstoque {
@@ -98,18 +103,23 @@ export interface EstoqueSaldo {
   expand?: {
     produto_id?: {
       id: string
-      codigo: number
+      codigo: string
       descricao: string
-      gtin?: string
+      unidade_id?: string
     }
-    empresa_id?: {
+    lote_id?: {
       id: string
-      razao_social: string
-      nome_fantasia: string
+      numero_lote: string
+      data_validade: string
+      data_fabricacao?: string
+    }
+    usuario_id?: {
+      id: string
+      name?: string
+      email?: string
     }
   }
 }
-
 export interface EstoqueMovimento {
   id: string
   empresa_id: string
@@ -140,8 +150,14 @@ export interface EstoqueMovimento {
   expand?: {
     produto_id?: {
       id: string
-      codigo: number
+      codigo: number | string
       descricao: string
+    }
+    lote_id?: {
+      id: string
+      numero_lote: string
+      data_validade: string
+      data_fabricacao?: string
     }
   }
 }

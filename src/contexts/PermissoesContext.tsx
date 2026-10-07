@@ -64,25 +64,28 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [usuarioERP])
 
   const administrador = useMemo(() => {
-    // Admin mestre permanente garantido pelo email oficial, nome ou flag no perfil
+    // Regra do PROJETO_ERP.md: "O primeiro usuário do ERP (semeado via migration com senha padrão) é o administrador"
+    // Todo usuário com flag administrador, nome Administrador no perfil, ou usuário inicial/master é administrador irrestrito.
     const emailNormalizado = user?.email?.toLowerCase().trim()
     if (emailNormalizado === 'marceloslepre@gmail.com') return true
     if (user?.name?.toLowerCase().includes('admin')) return true
     if (usuarioERP?.nome?.toLowerCase().includes('admin')) return true
     if (perfil?.administrador) return true
+    if (perfil?.nome?.toLowerCase() === 'administrador') return true
     return false
   }, [user?.email, user?.name, usuarioERP?.nome, perfil])
 
   const pode = useCallback(
     (modulo: ModuloSistema | string, acao: AcaoPermissao): boolean => {
-      // Se for administrador (flag no perfil ou email master inicial), tem permissão irrestrita total
+      // Se for administrador (flag no perfil, nome Administrador, ou email master inicial), tem permissão irrestrita total
       const emailNormalizado = user?.email?.toLowerCase().trim()
       if (
         administrador ||
         emailNormalizado === 'marceloslepre@gmail.com' ||
         user?.name?.toLowerCase().includes('admin') ||
         usuarioERP?.nome?.toLowerCase().includes('admin') ||
-        perfil?.administrador
+        perfil?.administrador ||
+        perfil?.nome?.toLowerCase() === 'administrador'
       ) {
         return true
       }
@@ -103,7 +106,7 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return false
       }
     },
-    [administrador, user?.email, permissoes],
+    [administrador, user?.email, user?.name, usuarioERP?.nome, perfil, permissoes],
   )
 
   return (

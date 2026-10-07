@@ -41,6 +41,7 @@ import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
 import PosicaoEstoquePage from '@/pages/estoque/PosicaoEstoquePage'
 import KardexPage from '@/pages/estoque/KardexPage'
 import LancamentosEstoquePage from '@/pages/estoque/LancamentosEstoquePage'
+import LotesValidadePage from '@/pages/estoque/LotesValidadePage'
 import ClientesLista from '@/pages/cadastros/ClientesLista'
 import ClienteForm from '@/pages/cadastros/ClienteForm'
 import FornecedoresLista from '@/pages/cadastros/FornecedoresLista'
@@ -106,14 +107,6 @@ const App = () => (
                   <Route path="/painel" element={<Index />} />
 
                   {/* Cadastros */}
-                  <Route
-                    path="/cadastros/empresas"
-                    element={
-                      <PermissaoGuard modulo="empresas" acao="ver">
-                        <EmpresasLista />
-                      </PermissaoGuard>
-                    }
-                  />
                   <Route
                     path="/cadastros/empresas/novo"
                     element={
@@ -365,8 +358,16 @@ const App = () => (
                   <Route
                     path="/estoque/lancamentos"
                     element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
+                      <PermissaoGuard modulo="estoque" acao="criar">
                         <LancamentosEstoquePage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/estoque/lotes"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <LotesValidadePage />
                       </PermissaoGuard>
                     }
                   />

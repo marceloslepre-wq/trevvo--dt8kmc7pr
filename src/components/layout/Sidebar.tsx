@@ -180,6 +180,12 @@ const navItems: NavGroupItem[] = [
         icon: Layers,
         modulo: 'estoque',
       },
+      {
+        title: 'Lotes e Validade',
+        path: '/estoque/lotes',
+        icon: Tag,
+        modulo: 'estoque',
+      },
     ],
   },
   {

@@ -1,262 +1,201 @@
-// Endpoint para estorno de movimento de estoque
-routerAdd(
-  'POST',
-  '/backend/v1/estoque/estornar',
-  (e) => {
-    const authRecord = e.auth
-    if (!authRecord) {
-      return e.json(401, { message: 'Não autorizado' })
-    }
+/**
+ * Hook de estorno de movimento de estoque
+ * Endpoint: POST /estoque/estornar
+ *
+ * Regras:
+ * - Localiza o movimento original
+ * - Verifica se já foi estornado
+ * - Cria um novo movimento inverso com origem 'ESTORNO', vinculando movimento_estornado_id
+ * - Marca o movimento original com estornado = true e movimento_estorno_id
+ * - Atualiza a quantidade do lote correspondente se movimento tiver lote_id vinculado
+ * - Atualiza estoque_saldos com o novo saldo resultante
+ * - Se produto controla lote, preserva a invariante (soma dos lotes = saldo geral)
+ * - Tudo executado dentro de uma transação atômica do SQLite (runInTransaction)
+ */
 
-    const body = e.requestInfo().body || {}
-    const movimentoId = body.movimento_id
-    const motivo = body.motivo
+routerAdd('POST', '/estoque/estornar', (c) => {
+  const authRecord = c.get('authRecord')
+  if (!authRecord) {
+    return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
+  }
 
-    if (!movimentoId) {
-      return e.json(400, { message: 'movimento_id é obrigatório' })
-    }
+  let body = {}
+  try {
+    body = $apis.requestInfo(c).data || {}
+  } catch (err) {
+    return c.json(400, { sucesso: false, message: 'Corpo da requisição inválido.' })
+  }
 
-    if (!motivo || !motivo.trim()) {
-      return e.json(400, { message: 'O motivo do estorno é obrigatório' })
-    }
+  const movimentoId = body.movimento_id
+  const motivo = body.motivo || 'Estorno manual'
 
-    // 1. Validar permissão
-    const authId = authRecord.id
-    const userEmail = (authRecord.getString('email') || '').toLowerCase().trim()
-    const userName = (authRecord.getString('name') || '').toLowerCase().trim()
-    const isMasterEmail = userEmail === 'marceloslepre@gmail.com' || userName.includes('admin')
+  if (!movimentoId) {
+    return c.json(400, { sucesso: false, message: 'movimento_id é obrigatório.' })
+  }
 
-    let podeEstornar = isMasterEmail
+  const userId = authRecord.id
+  let novoMovimentoId = ''
 
-    if (!podeEstornar) {
-      try {
-        const uERP = $app.findFirstRecordByData('usuarios', 'auth_user_id', authId)
-        if (uERP) {
-          const uNome = (uERP.getString('nome') || '').toLowerCase()
-          if (uNome.includes('admin')) {
-            podeEstornar = true
-          } else if (uERP.getString('perfil_id')) {
-            const perfil = $app.findRecordById('perfis_acesso', uERP.getString('perfil_id'))
-            if (perfil && perfil.getBool('administrador')) {
-              podeEstornar = true
-            } else {
-              const perms = $app.findRecordsByFilter(
-                'permissoes',
-                `perfil_id = '${perfil.id}' && modulo = 'estoque'`,
-                '',
-                1,
-                0,
+  try {
+    $app.runInTransaction((txApp) => {
+      // 1. Buscar movimento original
+      const movOrig = txApp.findRecordById('estoque_movimentos', movimentoId)
+      if (!movOrig) {
+        throw new Error('Movimento de estoque não encontrado.')
+      }
+
+      if (movOrig.getBool('estornado')) {
+        throw new Error('Este movimento já foi estornado anteriormente.')
+      }
+
+      if (movOrig.getString('origem') === 'ESTORNO') {
+        throw new Error('Não é possível estornar um movimento que já é um estorno.')
+      }
+
+      const empresaId = movOrig.getString('empresa_id')
+      const produtoId = movOrig.getString('produto_id')
+      const tipoOriginal = movOrig.getString('tipo') // 'Entrada' ou 'Saída'
+      const qtdOriginal = movOrig.getFloat('quantidade') || 0
+      const custoUnitario = movOrig.getFloat('custo_unitario') || 0
+      const loteIdOriginal = movOrig.getString('lote_id')
+
+      const prod = txApp.findRecordById('produtos', produtoId)
+      const descProd = prod ? prod.getString('descricao') : 'Produto'
+      const controlaLote = prod ? prod.getBool('controla_lote_validade') : false
+
+      // 2. Tipo inverso para o estorno
+      const tipoEstorno = tipoOriginal === 'Entrada' ? 'Saída' : 'Entrada'
+
+      // 3. Atualizar estoque_saldos
+      const saldos = txApp.findRecordsByFilter(
+        'estoque_saldos',
+        `empresa_id = '${empresaId}' && produto_id = '${produtoId}'`,
+        '',
+        1,
+        0,
+      )
+
+      if (saldos.length === 0) {
+        throw new Error('Saldo de estoque do produto não encontrado.')
+      }
+
+      const saldoRec = saldos[0]
+      const saldoAnterior = saldoRec.getFloat('quantidade') || 0
+      const custoMedio = saldoRec.getFloat('custo_medio') || 0
+
+      // Se original foi entrada, estorno é saída (subtrai)
+      // Se original foi saída, estorno é entrada (soma)
+      const saldoPosterior =
+        tipoEstorno === 'Entrada' ? saldoAnterior + qtdOriginal : saldoAnterior - qtdOriginal
+
+      // Se estorno resultar em negativo, checar regra da filial
+      const emp = txApp.findRecordById('empresas', empresaId)
+      if (saldoPosterior < 0 && (!emp || !emp.getBool('permite_estoque_negativo'))) {
+        throw new Error(
+          `Não é possível estornar: o saldo ficaria negativo (${saldoPosterior.toFixed(4)}), o que não é permitido nesta filial.`,
+        )
+      }
+
+      saldoRec.set('quantidade', saldoPosterior)
+      saldoRec.set('valor_total', Math.max(0, saldoPosterior * custoMedio))
+      saldoRec.set('updated_by', userId)
+      txApp.save(saldoRec)
+
+      // 4. Se o movimento possui lote vinculado, reverte a quantidade no lote correto
+      if (loteIdOriginal) {
+        try {
+          const loteRec = txApp.findRecordById('lotes', loteIdOriginal)
+          if (loteRec) {
+            const saldoLoteAtual = loteRec.getFloat('quantidade') || 0
+            // Se o original foi Entrada, o estorno retira do lote (- qtdOriginal)
+            // Se o original foi Saída, o estorno devolve ao lote (+ qtdOriginal)
+            const novoSaldoLote =
+              tipoEstorno === 'Entrada'
+                ? saldoLoteAtual + qtdOriginal
+                : saldoLoteAtual - qtdOriginal
+
+            if (novoSaldoLote < 0 && (!emp || !emp.getBool('permite_estoque_negativo'))) {
+              throw new Error(
+                `Não é possível estornar: o saldo do lote ${loteRec.getString('numero_lote')} ficaria negativo (${novoSaldoLote.toFixed(4)}).`,
               )
-              if (perms && perms.length > 0) {
-                const p = perms[0]
-                if (p.getBool('pode_editar') || p.getBool('pode_excluir')) {
-                  podeEstornar = true
-                }
-              }
             }
+
+            loteRec.set('quantidade', novoSaldoLote)
+            loteRec.set('updated_by', userId)
+            txApp.save(loteRec)
           }
+        } catch (errLote) {
+          throw new Error(`Erro ao estornar lote vinculado: ${errLote.message || errLote}`)
         }
-      } catch (_) {}
-    }
+      }
 
-    if (!podeEstornar) {
-      return e.json(403, {
-        message: 'Acesso negado: você não tem permissão para estornar movimentos de estoque',
-      })
-    }
-
-    let resultadoEstorno = null
-
-    try {
-      $app.runInTransaction((txApp) => {
-        const movOriginal = txApp.findRecordById('estoque_movimentos', movimentoId)
-        if (!movOriginal) {
-          throw new Error('Movimento não encontrado')
+      // 5. Invariante de integridade: se produto controla lote, valida a soma
+      if (controlaLote) {
+        const todosLotes = txApp.findRecordsByFilter(
+          'lotes',
+          `empresa_id = '${empresaId}' && produto_id = '${produtoId}' && ativo = true`,
+        )
+        let somaLotes = 0
+        for (let s = 0; s < todosLotes.length; s++) {
+          somaLotes += todosLotes[s].getFloat('quantidade') || 0
         }
 
-        if (movOriginal.getBool('estornado')) {
-          throw new Error('Este movimento já foi estornado anteriormente')
-        }
-
-        if (movOriginal.getString('origem') === 'ESTORNO') {
-          throw new Error('Não é permitido estornar um movimento de ESTORNO')
-        }
-
-        const docTipo = movOriginal.getString('documento_tipo') || ''
-        if (docTipo && docTipo !== 'Ajuste') {
+        const dif = Math.abs(somaLotes - saldoPosterior)
+        if (dif > 0.001) {
           throw new Error(
-            `Este movimento possui documento de origem "${docTipo}". Movimentos vinculados a documentos só podem ser estornados pelo cancelamento/estorno do próprio documento (${docTipo}).`,
+            `Invariante de estoque violada no estorno de "${descProd}": soma dos lotes (${somaLotes.toFixed(4)}) difere do saldo geral (${saldoPosterior.toFixed(4)}).`,
           )
         }
+      }
 
-        const empresaId = movOriginal.getString('empresa_id')
-        const produtoId = movOriginal.getString('produto_id')
-        const tipoOriginal = movOriginal.getString('tipo') // "Entrada" ou "Saída"
-        const tipoInvertido = tipoOriginal === 'Entrada' ? 'Saída' : 'Entrada'
-        const qtdMov = movOriginal.getFloat('quantidade')
-        const custoUnitario = movOriginal.getFloat('custo_unitario') || 0
+      // 6. Criar movimento inverso de estorno
+      const movsCol = txApp.findCollectionByNameOrId('estoque_movimentos')
+      const movEstorno = new Record(movsCol)
+      movEstorno.set('empresa_id', empresaId)
+      movEstorno.set('produto_id', produtoId)
+      movEstorno.set('data_movimento', new Date().toISOString())
+      movEstorno.set('tipo', tipoEstorno)
+      movEstorno.set('origem', 'ESTORNO')
+      movEstorno.set('quantidade', qtdOriginal)
+      movEstorno.set('custo_unitario', custoUnitario)
+      movEstorno.set('valor_total', qtdOriginal * custoUnitario)
+      movEstorno.set('saldo_anterior', saldoAnterior)
+      movEstorno.set('saldo_posterior', saldoPosterior)
+      movEstorno.set('custo_medio_anterior', custoMedio)
+      movEstorno.set('custo_medio_posterior', custoMedio)
+      movEstorno.set('lote_id', loteIdOriginal || '')
+      movEstorno.set('documento_tipo', 'Estorno')
+      movEstorno.set('documento_id', movOrig.id)
+      movEstorno.set('documento_numero', movOrig.getString('documento_numero') || '')
+      movEstorno.set('motivo', motivo)
+      movEstorno.set('observacao', `Estorno referente ao movimento #${movOrig.id}`)
+      movEstorno.set('movimento_estornado_id', movOrig.id)
+      movEstorno.set('usuario_id', userId)
+      movEstorno.set('estornado', false)
+      movEstorno.set('ativo', true)
+      movEstorno.set('created_by', userId)
+      movEstorno.set('updated_by', userId)
+      txApp.save(movEstorno)
 
-        const produto = txApp.findRecordById('produtos', produtoId)
-        const empresa = txApp.findRecordById('empresas', empresaId)
+      novoMovimentoId = movEstorno.id
 
-        // Buscar saldo atual
-        let saldoRecord = null
-        try {
-          const saldos = txApp.findRecordsByFilter(
-            'estoque_saldos',
-            `empresa_id = '${empresaId}' && produto_id = '${produtoId}'`,
-            '',
-            1,
-            0,
-          )
-          if (saldos && saldos.length > 0) {
-            saldoRecord = saldos[0]
-          }
-        } catch (_) {}
+      // 7. Marcar movimento original como estornado
+      movOrig.set('estornado', true)
+      movOrig.set('movimento_estorno_id', novoMovimentoId)
+      movOrig.set('updated_by', userId)
+      txApp.save(movOrig)
+    })
 
-        let saldoAnt = 0
-        let custoMedioAnt = 0
-        if (saldoRecord) {
-          saldoAnt = saldoRecord.getFloat('quantidade') || 0
-          custoMedioAnt = saldoRecord.getFloat('custo_medio') || 0
-        } else {
-          custoMedioAnt = produto.getFloat('preco_custo') || 0
-        }
-
-        // Validação de saldo negativo se o estorno resultar em Saída
-        if (tipoInvertido === 'Saída') {
-          const saldoAposSaida = Math.round((saldoAnt - qtdMov) * 10000) / 10000
-          const permiteNegativo = empresa.getBool('permite_estoque_negativo')
-          if (saldoAposSaida < 0 && !permiteNegativo) {
-            throw new Error(
-              `Estoque insuficiente para estorno: produto ${produto.getString(
-                'descricao',
-              )}, saldo atual ${saldoAnt.toFixed(4)}, necessário ${qtdMov.toFixed(4)}`,
-            )
-          }
-        }
-
-        let saldoPos = 0
-        let custoMedioPos = custoMedioAnt
-
-        if (tipoInvertido === 'Entrada') {
-          saldoPos = Math.round((saldoAnt + qtdMov) * 10000) / 10000
-          if (saldoAnt <= 0) {
-            custoMedioPos = custoUnitario
-          } else {
-            const somaVal = saldoAnt * custoMedioAnt + qtdMov * custoUnitario
-            const div = saldoAnt + qtdMov
-            custoMedioPos = div > 0 ? somaVal / div : custoUnitario
-          }
-        } else {
-          saldoPos = Math.round((saldoAnt - qtdMov) * 10000) / 10000
-          custoMedioPos = custoMedioAnt
-        }
-
-        saldoPos = Math.round(saldoPos * 10000) / 10000
-        custoMedioPos = Math.round(custoMedioPos * 10000) / 10000
-        const valorTotalMov = Math.round(qtdMov * custoUnitario * 100) / 100
-        const valorTotalSaldo = Math.round(saldoPos * custoMedioPos * 100) / 100
-
-        const saldosCol = txApp.findCollectionByNameOrId('estoque_saldos')
-        const movsCol = txApp.findCollectionByNameOrId('estoque_movimentos')
-        const logsCol = txApp.findCollectionByNameOrId('logs_auditoria')
-        const dataHoraAgora = new Date().toISOString()
-
-        // 1. Atualizar ou criar estoque_saldos
-        if (!saldoRecord) {
-          saldoRecord = new Record(saldosCol)
-          saldoRecord.set('empresa_id', empresaId)
-          saldoRecord.set('produto_id', produtoId)
-          saldoRecord.set('ativo', true)
-          saldoRecord.set('created_by', authId)
-        }
-
-        saldoRecord.set('quantidade', saldoPos)
-        saldoRecord.set('custo_medio', custoMedioPos)
-        saldoRecord.set('valor_total', valorTotalSaldo)
-        if (tipoInvertido === 'Entrada') {
-          saldoRecord.set('data_ultima_entrada', dataHoraAgora)
-        } else {
-          saldoRecord.set('data_ultima_saida', dataHoraAgora)
-        }
-        saldoRecord.set('updated_by', authId)
-        txApp.save(saldoRecord)
-
-        // 2. Criar novo movimento de ESTORNO
-        const movEstorno = new Record(movsCol)
-        movEstorno.set('empresa_id', empresaId)
-        movEstorno.set('produto_id', produtoId)
-        movEstorno.set('data_movimento', dataHoraAgora)
-        movEstorno.set('tipo', tipoInvertido)
-        movEstorno.set('origem', 'ESTORNO')
-        movEstorno.set('quantidade', qtdMov)
-        movEstorno.set('custo_unitario', custoUnitario)
-        movEstorno.set('valor_total', valorTotalMov)
-        movEstorno.set('saldo_anterior', saldoAnt)
-        movEstorno.set('saldo_posterior', saldoPos)
-        movEstorno.set('custo_medio_anterior', custoMedioAnt)
-        movEstorno.set('custo_medio_posterior', custoMedioPos)
-        movEstorno.set('motivo', motivo.trim())
-        movEstorno.set('observacao', `Estorno referente ao movimento #${movOriginal.id}`)
-        movEstorno.set('movimento_estornado_id', movOriginal.id)
-        movEstorno.set('documento_tipo', docTipo || 'Ajuste')
-        movEstorno.set('documento_id', movOriginal.getString('documento_id'))
-        movEstorno.set('documento_numero', movOriginal.getString('documento_numero'))
-        movEstorno.set('usuario_id', authId)
-        movEstorno.set('estornado', false)
-        movEstorno.set('ativo', true)
-        movEstorno.set('created_by', authId)
-        movEstorno.set('updated_by', authId)
-        txApp.save(movEstorno)
-
-        // 3. Atualizar o movimento original como estornado
-        movOriginal.set('estornado', true)
-        movOriginal.set('movimento_estorno_id', movEstorno.id)
-        movOriginal.set('updated_by', authId)
-        txApp.save(movOriginal)
-
-        // 4. Auditoria
-        try {
-          const logRec = new Record(logsCol)
-          logRec.set('usuario_id', authId)
-          logRec.set('usuario_nome', authRecord.getString('name') || userEmail)
-          logRec.set('empresa_id', empresaId)
-          logRec.set('tabela', 'estoque_movimentos')
-          logRec.set('registro_id', movEstorno.id)
-          logRec.set('acao', 'inclusao')
-          logRec.set('valores_depois', {
-            movimento_estornado_id: movOriginal.id,
-            movimento_estorno_id: movEstorno.id,
-            motivo: motivo.trim(),
-            quantidade: qtdMov,
-            tipo: tipoInvertido,
-          })
-          txApp.save(logRec)
-        } catch (_) {}
-
-        resultadoEstorno = {
-          movimento_estorno_id: movEstorno.id,
-          movimento_original_id: movOriginal.id,
-          tipo: tipoInvertido,
-          quantidade: qtdMov,
-          saldo_posterior: saldoPos,
-          custo_medio_posterior: custoMedioPos,
-        }
-      })
-
-      return e.json(200, {
-        sucesso: true,
-        message: 'Movimento estornado com sucesso',
-        resultado: resultadoEstorno,
-      })
-    } catch (errEstorno) {
-      const msg = errEstorno instanceof Error ? errEstorno.message : String(errEstorno)
-      return e.json(400, {
-        sucesso: false,
-        message: msg,
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
+    return c.json(200, {
+      sucesso: true,
+      message: 'Movimento estornado com sucesso.',
+      movimento_estorno_id: novoMovimentoId,
+    })
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err)
+    return c.json(400, {
+      sucesso: false,
+      message: msg,
+    })
+  }
+})

@@ -52,6 +52,7 @@ import {
 import { Produto } from '@/services/produtos'
 import { BuscaProdutoGtin } from '@/components/BuscaProdutoGtin'
 import { ImportarSaldoInicialModal } from '@/components/ImportarSaldoInicialModal'
+import { listarLotesDisponiveisProduto, Lote } from '@/services/lotes'
 import pb from '@/lib/pocketbase/client'
 
 // Tipos de lançamentos da tela conforme solicitado:
@@ -140,6 +141,11 @@ export interface ItemGradeLancamento {
   custoUnitario?: number
   saldoAtual: number
   custoMedioAtual: number
+  // Campos de controle de lote
+  numeroLote?: string
+  dataFabricacao?: string
+  dataValidade?: string
+  loteId?: string // para saídas com lote selecionado
 }
 
 export const LancamentosEstoquePage: React.FC = () => {
@@ -190,6 +196,9 @@ export const LancamentosEstoquePage: React.FC = () => {
 
   const configAtual = CONFIG_TIPOS[tipoLancamento]
 
+  // Cache de lotes disponíveis por produto para saídas
+  const [lotesPorProduto, setLotesPorProduto] = useState<Record<string, Lote[]>>({})
+
   // Carrega lista de usuários para filtro de histórico
   useEffect(() => {
     pb.collection('usuarios')
@@ -200,6 +209,16 @@ export const LancamentosEstoquePage: React.FC = () => {
       .catch(console.error)
   }, [])
 
+  // Carregar lotes disponíveis quando um produto que controla lote é adicionado na grade
+  const carregarLotesDoProduto = useCallback(
+    async (prodId: string) => {
+      if (!empresaAtiva || lotesPorProduto[prodId]) return
+      const lots = await listarLotesDisponiveisProduto(empresaAtiva.id, prodId)
+      setLotesPorProduto((prev) => ({ ...prev, [prodId]: lots }))
+    },
+    [empresaAtiva, lotesPorProduto],
+  )
+
   // Adicionar produto na grade via seletor ou código de barras
   const handleAdicionarProduto = async (prod: Produto, quantidadeInicial = 1) => {
     if (!empresaAtiva) return
@@ -208,6 +227,11 @@ export const LancamentosEstoquePage: React.FC = () => {
     const saldoRec = await obterSaldoAtual(empresaAtiva.id, prod.id)
     const saldoAtual = saldoRec ? saldoRec.quantidade : 0
     const custoMedioAtual = saldoRec ? saldoRec.custo_medio : prod.preco_custo || 0
+
+    // Se o produto controla lote e for saída, carrega lotes disponíveis
+    if (prod.controla_lote_validade && configAtual.tipo === 'Saída') {
+      carregarLotesDoProduto(prod.id)
+    }
 
     setGradeItens((antiga) => {
       // Verifica se o item já está na grade
@@ -231,6 +255,10 @@ export const LancamentosEstoquePage: React.FC = () => {
         custoUnitario: configAtual.custoOculto ? undefined : custoMedioAtual || undefined,
         saldoAtual,
         custoMedioAtual,
+        numeroLote: '',
+        dataFabricacao: '',
+        dataValidade: '',
+        loteId: '',
       }
       return [...antiga, novoItem]
     })
@@ -254,6 +282,19 @@ export const LancamentosEstoquePage: React.FC = () => {
       ant.map((item) => {
         if (item.idTemp !== idTemp) return item
         return { ...item, custoUnitario: custo }
+      }),
+    )
+  }
+
+  const handleAtualizarCampoItem = (
+    idTemp: string,
+    campo: keyof ItemGradeLancamento,
+    valor: string,
+  ) => {
+    setGradeItens((ant) =>
+      ant.map((item) => {
+        if (item.idTemp !== idTemp) return item
+        return { ...item, [campo]: valor }
       }),
     )
   }
@@ -323,6 +364,44 @@ export const LancamentosEstoquePage: React.FC = () => {
         }
       }
 
+      // Validação de controle de lote/validade para produtos com controla_lote_validade = true
+      if (item.produto.controla_lote_validade) {
+        if (configAtual.tipo === 'Entrada') {
+          if (!item.numeroLote?.trim()) {
+            toast({
+              title: 'Número do lote obrigatório',
+              description: `O produto "${item.produto.descricao}" exige número do lote na entrada.`,
+              variant: 'destructive',
+            })
+            return
+          }
+          if (!item.dataValidade) {
+            toast({
+              title: 'Data de validade obrigatória',
+              description: `O produto "${item.produto.descricao}" exige data de validade na entrada.`,
+              variant: 'destructive',
+            })
+            return
+          }
+        } else {
+          // Saída: se selecionou um lote específico, valida que a quantidade não excede o saldo do lote
+          if (item.loteId) {
+            const lots = lotesPorProduto[item.produto.id] || []
+            const loteSel = lots.find((l) => l.id === item.loteId)
+            if (loteSel && item.quantidade > loteSel.quantidade) {
+              toast({
+                title: 'Quantidade excede o saldo do lote',
+                description: `Produto "${item.produto.descricao}": lote ${loteSel.numero_lote} possui apenas ${loteSel.quantidade.toFixed(
+                  4,
+                )} em saldo.`,
+                variant: 'destructive',
+              })
+              return
+            }
+          }
+        }
+      }
+
       // Se for saída e a empresa não permite negativo, validação prévia na tela
       if (configAtual.tipo === 'Saída' && !empresaAtiva.permite_estoque_negativo) {
         const saldoApos = item.saldoAtual - item.quantidade
@@ -358,6 +437,11 @@ export const LancamentosEstoquePage: React.FC = () => {
         documento_numero: docNumeroUnico,
         motivo: motivo.trim() || undefined,
         observacao: observacao.trim() || undefined,
+        // Lote/Validade
+        lote_id: item.loteId || undefined,
+        numero_lote: item.numeroLote?.trim() || undefined,
+        data_fabricacao: item.dataFabricacao || undefined,
+        data_validade: item.dataValidade || undefined,
       }))
 
       // Dispara chamada atômica
@@ -714,6 +798,11 @@ export const LancamentosEstoquePage: React.FC = () => {
                       <th className="p-2.5 text-center">Unid.</th>
                       <th className="p-2.5 text-right">Saldo Atual</th>
                       <th className="p-2.5 text-right w-32">Quantidade *</th>
+                      <th className="p-2.5 w-64">
+                        {configAtual.tipo === 'Entrada'
+                          ? 'Lote e Validade *'
+                          : 'Seletor de Lote (FEFO)'}
+                      </th>
                       {!configAtual.custoOculto && (
                         <th className="p-2.5 text-right w-36">
                           Custo Unitário (R$) {configAtual.custoObrigatorio ? '*' : '(Opcional)'}
@@ -727,7 +816,7 @@ export const LancamentosEstoquePage: React.FC = () => {
                     {gradeItens.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={configAtual.custoOculto ? 6 : 7}
+                          colSpan={configAtual.custoOculto ? 7 : 8}
                           className="py-10 text-center text-slate-400"
                         >
                           <Layers className="h-8 w-8 mx-auto mb-2 text-slate-300" />
@@ -784,6 +873,98 @@ export const LancamentosEstoquePage: React.FC = () => {
                                 }
                                 className="h-8 text-xs text-right font-mono font-bold"
                               />
+                            </td>
+                            {/* Coluna de Lote e Validade */}
+                            <td className="p-2.5">
+                              {p.controla_lote_validade ? (
+                                configAtual.tipo === 'Entrada' ? (
+                                  <div className="space-y-1.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <Input
+                                        type="text"
+                                        placeholder="Nº Lote *"
+                                        value={item.numeroLote || ''}
+                                        onChange={(e) =>
+                                          handleAtualizarCampoItem(
+                                            item.idTemp,
+                                            'numeroLote',
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="h-7 text-[11px] font-mono"
+                                      />
+                                      <Input
+                                        type="date"
+                                        title="Data de Validade (obrigatória)"
+                                        value={item.dataValidade || ''}
+                                        onChange={(e) =>
+                                          handleAtualizarCampoItem(
+                                            item.idTemp,
+                                            'dataValidade',
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="h-7 text-[11px] font-mono"
+                                      />
+                                    </div>
+                                    <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                                      <span>Fabricação:</span>
+                                      <input
+                                        type="date"
+                                        value={item.dataFabricacao || ''}
+                                        onChange={(e) =>
+                                          handleAtualizarCampoItem(
+                                            item.idTemp,
+                                            'dataFabricacao',
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="h-6 text-[10px] rounded border border-slate-200 px-1 font-mono"
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <Select
+                                      value={item.loteId || 'auto_fefo'}
+                                      onValueChange={(val) =>
+                                        handleAtualizarCampoItem(
+                                          item.idTemp,
+                                          'loteId',
+                                          val === 'auto_fefo' ? '' : val,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="h-7 text-[11px] font-mono">
+                                        <SelectValue placeholder="Automático (FEFO)" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="auto_fefo">
+                                          ⚡ Automático (FEFO - vence primeiro)
+                                        </SelectItem>
+                                        {(lotesPorProduto[p.id] || []).map((lote) => {
+                                          const vParte = lote.data_validade.slice(0, 10)
+                                          return (
+                                            <SelectItem key={lote.id} value={lote.id}>
+                                              Lote: {lote.numero_lote} (Saldo:{' '}
+                                              {lote.quantidade.toFixed(2)} | Venc: {vParte})
+                                            </SelectItem>
+                                          )
+                                        })}
+                                      </SelectContent>
+                                    </Select>
+                                    <span className="text-[9px] text-slate-400 block mt-0.5">
+                                      {item.loteId
+                                        ? 'Lote específico selecionado'
+                                        : 'Sugestão FEFO ativa: consumirá lotes mais antigos'}
+                                    </span>
+                                  </div>
+                                )
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">
+                                  Sem controle de lote
+                                </span>
+                              )}
                             </td>
                             {/* Custo Unitário (editável quando visível) */}
                             {!configAtual.custoOculto && (

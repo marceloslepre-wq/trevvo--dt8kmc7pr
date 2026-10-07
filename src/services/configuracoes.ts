@@ -7,6 +7,7 @@ export interface ConfiguracaoGeral {
   nome_sistema: string
   logo?: string
   cor_principal?: string
+  dias_alerta_validade?: number
   created_by?: string
   updated_by?: string
   created?: string
@@ -18,6 +19,7 @@ export const CONFIG_PADRAO: ConfiguracaoGeral = {
   ativo: true,
   nome_sistema: 'ERP Gestão Comercial',
   cor_principal: '#2563eb',
+  dias_alerta_validade: 30,
 }
 
 /**
@@ -44,6 +46,7 @@ export async function salvarConfiguracaoGeral(
   dados: {
     nome_sistema: string
     cor_principal?: string
+    dias_alerta_validade?: number
     logoFile?: File | null
     removerLogo?: boolean
   },
@@ -75,6 +78,9 @@ export async function salvarConfiguracaoGeral(
   const formData = new FormData()
   formData.append('nome_sistema', dados.nome_sistema.trim())
   formData.append('cor_principal', dados.cor_principal || '#2563eb')
+  if (dados.dias_alerta_validade !== undefined && dados.dias_alerta_validade !== null) {
+    formData.append('dias_alerta_validade', String(dados.dias_alerta_validade))
+  }
   formData.append('ativo', 'true')
   formData.append('updated_by', pb.authStore.record?.id || '')
 

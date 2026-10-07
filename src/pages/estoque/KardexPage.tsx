@@ -118,7 +118,7 @@ export const KardexPage: React.FC = () => {
       const res = await pb.collection('estoque_movimentos').getFullList<EstoqueMovimento>({
         filter: `empresa_id = '${empresaAtiva.id}' && produto_id = '${produtoId}' && data_movimento >= '${dataInicioIso}' && data_movimento <= '${dataFimIso}'`,
         sort: 'data_movimento,created',
-        expand: 'usuario_id',
+        expand: 'usuario_id,lote_id',
       })
 
       setMovimentos(res)
@@ -248,6 +248,7 @@ export const KardexPage: React.FC = () => {
       'Data/Hora',
       'Tipo',
       'Origem',
+      'Lote',
       'Documento',
       'Número',
       'Entrada (Qtd)',
@@ -263,6 +264,7 @@ export const KardexPage: React.FC = () => {
 
     const linhas = movimentos.map((m) => {
       const dataFormatada = new Date(m.data_movimento).toLocaleString('pt-BR')
+      const numLote = m.expand?.lote_id?.numero_lote || ''
       const entrada = m.tipo === 'Entrada' ? m.quantidade.toFixed(4).replace('.', ',') : ''
       const saida = m.tipo === 'Saída' ? m.quantidade.toFixed(4).replace('.', ',') : ''
       const saldo = (m.saldo_posterior || 0).toFixed(4).replace('.', ',')
@@ -276,6 +278,7 @@ export const KardexPage: React.FC = () => {
         `"${dataFormatada}"`,
         `"${m.tipo}"`,
         `"${m.origem}"`,
+        `"${numLote}"`,
         `"${m.documento_tipo || ''}"`,
         `"${m.documento_numero || ''}"`,
         entrada,
@@ -295,6 +298,7 @@ export const KardexPage: React.FC = () => {
       `"Saldo Inicial (${dataInicio})"`,
       '""',
       '"SALDO_ANTERIOR"',
+      '""',
       '""',
       '""',
       '""',
@@ -609,6 +613,7 @@ export const KardexPage: React.FC = () => {
               <tr>
                 <th className="p-2.5">Data / Hora</th>
                 <th className="p-2.5">Origem / Operação</th>
+                <th className="p-2.5">Lote</th>
                 <th className="p-2.5">Documento</th>
                 <th className="p-2.5 text-right text-emerald-700">Entrada</th>
                 <th className="p-2.5 text-right text-rose-700">Saída</th>
@@ -623,7 +628,7 @@ export const KardexPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {!produtoId ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={12} className="py-12 text-center text-slate-400">
                     <Package className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                     <p className="font-semibold text-slate-600">Selecione um produto</p>
                     <p className="text-[11px] mt-0.5">
@@ -633,7 +638,7 @@ export const KardexPage: React.FC = () => {
                 </tr>
               ) : carregando ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={12} className="py-12 text-center text-slate-400">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                     <span>Calculando saldo retroativo e carregando movimentos...</span>
                   </td>
@@ -650,6 +655,7 @@ export const KardexPage: React.FC = () => {
                         SALDO ANTERIOR
                       </Badge>
                     </td>
+                    <td className="p-2.5 text-slate-400 font-mono text-[11px]">—</td>
                     <td className="p-2.5 text-slate-400">—</td>
                     <td className="p-2.5 text-right text-slate-400">—</td>
                     <td className="p-2.5 text-right text-slate-400">—</td>
@@ -674,7 +680,7 @@ export const KardexPage: React.FC = () => {
                   {/* Movimentações do Período */}
                   {movimentos.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="py-8 text-center text-slate-400">
+                      <td colSpan={12} className="py-8 text-center text-slate-400">
                         Nenhuma movimentação registrada no período selecionado.
                       </td>
                     </tr>
@@ -723,6 +729,16 @@ export const KardexPage: React.FC = () => {
                                 </Badge>
                               )}
                             </div>
+                          </td>
+                          {/* Coluna Lote */}
+                          <td className="p-2.5 font-mono text-[11px]">
+                            {mov.expand?.lote_id?.numero_lote ? (
+                              <span className="font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded">
+                                {mov.expand.lote_id.numero_lote}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
                           </td>
                           <td className="p-2.5 text-slate-600">
                             {mov.documento_tipo ? (
@@ -812,7 +828,7 @@ export const KardexPage: React.FC = () => {
             {produto && (
               <tfoot className="bg-slate-100 font-bold border-t border-slate-300 text-xs">
                 <tr>
-                  <td colSpan={3} className="p-3 text-slate-800">
+                  <td colSpan={4} className="p-3 text-slate-800">
                     Posição Final Consolidada:
                   </td>
                   <td className="p-3 text-right font-mono text-emerald-800">

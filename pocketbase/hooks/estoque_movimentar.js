@@ -1,397 +1,516 @@
-// Endpoint transacional para movimentação de estoque
-routerAdd(
-  'POST',
-  '/backend/v1/estoque/movimentar',
-  (e) => {
-    const authRecord = e.auth
-    if (!authRecord) {
-      return e.json(401, { message: 'Não autorizado' })
-    }
+/**
+ * Hook do serviço central de movimentação de estoque
+ * Endpoint: POST /estoque/movimentar
+ *
+ * Executa todas as movimentações de um ou múltiplos itens dentro de uma
+ * transação atômica do SQLite (runInTransaction).
+ *
+ * Regras implementadas:
+ * - Controle de lote/validade para produtos com controla_lote_validade = true:
+ *   - Entrada: exige lote_id OU numero_lote + data_validade (cria lote ou aproveita se já existir)
+ *   - Saída: exige lote_id OU busca automaticamente por FEFO (vence primeiro, sai primeiro)
+ *   - Lote vencido: permitido apenas para origens PERDA e AJUSTE_SAIDA; outras origens recusam com erro formatado
+ *   - Invariante: a quantidade do lote é atualizada rigorosamente dentro da transação
+ * - Não permite estoque negativo se empresa.permite_estoque_negativo === false
+ * - Custo médio ponderado atualizado nas entradas com novo custo
+ * - Gravação imutável no kardex (estoque_movimentos) com lote_id
+ * - Atualização do saldo consolidado em estoque_saldos
+ * - Expansão automática de produtos do tipo "kit"
+ */
 
-    const body = e.requestInfo().body || {}
-    const itensEntrada = Array.isArray(body.itens) ? body.itens : []
-    if (itensEntrada.length === 0) {
-      return e.json(400, { message: 'Nenhum item informado para movimentação de estoque' })
-    }
+routerAdd('POST', '/estoque/movimentar', (c) => {
+  const authRecord = c.get('authRecord')
+  if (!authRecord) {
+    return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
+  }
 
-    // 1. Validar permissão do módulo estoque para o usuário autenticado
-    const authId = authRecord.id
-    const userEmail = (authRecord.getString('email') || '').toLowerCase().trim()
-    const userName = (authRecord.getString('name') || '').toLowerCase().trim()
-    const isMasterEmail = userEmail === 'marceloslepre@gmail.com' || userName.includes('admin')
+  let body = {}
+  try {
+    body = $apis.requestInfo(c).data || {}
+  } catch (err) {
+    return c.json(400, { sucesso: false, message: 'Corpo da requisição inválido.' })
+  }
 
-    let podeMovimentar = isMasterEmail
+  const rawItens = body.itens
+  if (!Array.isArray(rawItens) || rawItens.length === 0) {
+    return c.json(400, {
+      sucesso: false,
+      message: 'Lista de itens vazia. Envie ao menos um item em "itens".',
+    })
+  }
 
-    if (!podeMovimentar) {
-      try {
-        const uERP = $app.findFirstRecordByData('usuarios', 'auth_user_id', authId)
-        if (uERP) {
-          const uNome = (uERP.getString('nome') || '').toLowerCase()
-          if (uNome.includes('admin')) {
-            podeMovimentar = true
-          } else if (uERP.getString('perfil_id')) {
-            const perfil = $app.findRecordById('perfis_acesso', uERP.getString('perfil_id'))
-            if (perfil && perfil.getBool('administrador')) {
-              podeMovimentar = true
-            } else {
-              const perms = $app.findRecordsByFilter(
-                'permissoes',
-                `perfil_id = '${perfil.id}' && modulo = 'estoque'`,
+  const userId = authRecord.id
+  const movimentosGravados = []
+  const lotesCol = $app.findCollectionByNameOrId('lotes')
+  const saldosCol = $app.findCollectionByNameOrId('estoque_saldos')
+  const movsCol = $app.findCollectionByNameOrId('estoque_movimentos')
+
+  // Formata data ISO para dd/mm/aaaa
+  function formatarDataBR(isoStr) {
+    if (!isoStr) return ''
+    try {
+      const parts = isoStr.split('T')[0].split('-')
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`
+      }
+    } catch (_) {}
+    return isoStr
+  }
+
+  // Verifica se uma data de validade está vencida em relação ao dia de hoje (UTC)
+  function isLoteVencido(dataValidadeStr) {
+    if (!dataValidadeStr) return false
+    const hojeStr = new Date().toISOString().slice(0, 10)
+    const valStr = dataValidadeStr.slice(0, 10)
+    return valStr < hojeStr
+  }
+
+  try {
+    $app.runInTransaction((txApp) => {
+      // 1. Expandir kits e preparar lista atômica de itens a movimentar
+      const itensPlanos = []
+
+      for (let i = 0; i < rawItens.length; i++) {
+        const item = rawItens[i]
+
+        if (!item.empresa_id) throw new Error(`Item ${i + 1}: empresa_id é obrigatório.`)
+        if (!item.produto_id) throw new Error(`Item ${i + 1}: produto_id é obrigatório.`)
+        if (!item.tipo || (item.tipo !== 'Entrada' && item.tipo !== 'Saída')) {
+          throw new Error(`Item ${i + 1}: tipo deve ser 'Entrada' ou 'Saída'.`)
+        }
+        if (!item.origem) throw new Error(`Item ${i + 1}: origem é obrigatória.`)
+
+        const qtd = Number(item.quantidade)
+        if (isNaN(qtd) || qtd <= 0) {
+          throw new Error(`Item ${i + 1}: quantidade deve ser maior que zero.`)
+        }
+
+        // Buscar produto para checar tipo (kit ou simples) e flag controla_lote_validade
+        const prod = txApp.findRecordById('produtos', item.produto_id)
+        if (!prod || !prod.getBool('ativo')) {
+          throw new Error(`Item ${i + 1}: produto inexistente ou inativo.`)
+        }
+
+        const tipoProduto = prod.getString('tipo')
+        const controlaEstoque = prod.getBool('controla_estoque')
+        const controlaLote = prod.getBool('controla_lote_validade')
+
+        if (tipoProduto === 'kit') {
+          // Explode itens do kit
+          const kitItens = txApp.findRecordsByFilter(
+            'produtos_kit_itens',
+            `produto_kit_id = '${prod.id}' && ativo = true`,
+          )
+          if (kitItens.length === 0) {
+            throw new Error(
+              `O produto kit "${prod.getString('descricao')}" não possui componentes cadastrados.`,
+            )
+          }
+
+          for (let k = 0; k < kitItens.length; k++) {
+            const ki = kitItens[k]
+            const compId = ki.getString('produto_item_id')
+            const compQtd = ki.getInt('quantidade') || 1
+            const compProd = txApp.findRecordById('produtos', compId)
+
+            if (compProd && compProd.getBool('controla_estoque')) {
+              itensPlanos.push({
+                empresa_id: item.empresa_id,
+                produto_id: compId,
+                tipo: item.tipo,
+                origem: item.origem,
+                quantidade: qtd * compQtd,
+                custo_unitario: item.custo_unitario,
+                data_movimento: item.data_movimento || new Date().toISOString(),
+                documento_tipo: item.documento_tipo || 'Kit',
+                documento_id: item.documento_id || '',
+                documento_numero: item.documento_numero || '',
+                motivo: item.motivo || `Componente do kit: ${prod.getString('descricao')}`,
+                observacao: item.observacao || '',
+                prodRecord: compProd,
+                controlaLote: compProd.getBool('controla_lote_validade'),
+                lote_id: item.lote_id,
+                numero_lote: item.numero_lote,
+                data_fabricacao: item.data_fabricacao,
+                data_validade: item.data_validade,
+              })
+            }
+          }
+        } else {
+          // Produto normal ou matéria-prima
+          if (controlaEstoque) {
+            itensPlanos.push({
+              empresa_id: item.empresa_id,
+              produto_id: item.produto_id,
+              tipo: item.tipo,
+              origem: item.origem,
+              quantidade: qtd,
+              custo_unitario: item.custo_unitario,
+              data_movimento: item.data_movimento || new Date().toISOString(),
+              documento_tipo: item.documento_tipo || '',
+              documento_id: item.documento_id || '',
+              documento_numero: item.documento_numero || '',
+              motivo: item.motivo || '',
+              observacao: item.observacao || '',
+              prodRecord: prod,
+              controlaLote: controlaLote,
+              lote_id: item.lote_id,
+              numero_lote: item.numero_lote,
+              data_fabricacao: item.data_fabricacao,
+              data_validade: item.data_validade,
+            })
+          }
+        }
+      }
+
+      // 2. Processar cada item plano dentro da transação com suporte a Lotes e FEFO
+      for (let j = 0; j < itensPlanos.length; j++) {
+        const it = itensPlanos[j]
+        const prod = it.prodRecord
+        const emp = txApp.findRecordById('empresas', it.empresa_id)
+        if (!emp) throw new Error(`Empresa ${it.empresa_id} não encontrada.`)
+
+        const permiteNegativo = emp.getBool('permite_estoque_negativo')
+        const dataMov = it.data_movimento || new Date().toISOString()
+        const descProd = prod.getString('descricao')
+
+        // Se o produto controla lote, definimos as alocações de lote
+        // Uma movimentação de saída pode ser fracionada em múltiplos lotes pelo FEFO
+        // Cada alocação terá { loteId, numeroLote, dataValidade, quantidade }
+        const alocacoesLote = []
+
+        if (it.controlaLote) {
+          if (it.tipo === 'Entrada') {
+            // Regra Entrada: exige lote_id existente OU numero_lote + data_validade
+            let loteRec = null
+
+            if (it.lote_id) {
+              try {
+                loteRec = txApp.findRecordById('lotes', it.lote_id)
+              } catch (_) {
+                loteRec = null
+              }
+              if (!loteRec) {
+                throw new Error(`Produto "${descProd}": lote_id informado não existe.`)
+              }
+            } else if (it.numero_lote && it.data_validade) {
+              const numLimpo = it.numero_lote.trim()
+              // Procura se já existe para a mesma empresa + produto + numero_lote
+              const lotesExistentes = txApp.findRecordsByFilter(
+                'lotes',
+                `empresa_id = '${it.empresa_id}' && produto_id = '${prod.id}' && numero_lote = '${numLimpo}'`,
                 '',
                 1,
                 0,
               )
-              if (perms && perms.length > 0) {
-                const p = perms[0]
-                // Pode criar ou editar no módulo estoque
-                if (p.getBool('pode_criar') || p.getBool('pode_editar')) {
-                  podeMovimentar = true
+
+              if (lotesExistentes.length > 0) {
+                loteRec = lotesExistentes[0]
+              } else {
+                // Cria novo lote
+                loteRec = new Record(lotesCol)
+                loteRec.set('empresa_id', it.empresa_id)
+                loteRec.set('produto_id', prod.id)
+                loteRec.set('numero_lote', numLimpo)
+                if (it.data_fabricacao) {
+                  loteRec.set('data_fabricacao', it.data_fabricacao)
                 }
+                loteRec.set('data_validade', it.data_validade)
+                loteRec.set('quantidade', 0)
+                loteRec.set('observacao', it.observacao || '')
+                loteRec.set('ativo', true)
+                loteRec.set('created_by', userId)
+                loteRec.set('updated_by', userId)
+                txApp.save(loteRec)
               }
-            }
-          }
-        }
-      } catch (errAuth) {
-        // Ignora ou trata abaixo
-      }
-    }
-
-    if (!podeMovimentar) {
-      return e.json(403, {
-        message: 'Acesso negado: você não tem permissão para movimentar estoque',
-      })
-    }
-
-    // 2. Processar itens dentro de uma transação atômica
-    const resultadosMovimentos = []
-
-    try {
-      $app.runInTransaction((txApp) => {
-        // Expandir kits
-        const itensProcessar = []
-
-        for (let i = 0; i < itensEntrada.length; i++) {
-          const item = itensEntrada[i]
-          if (!item.empresa_id || !item.produto_id) {
-            throw new Error(`Item ${i + 1}: empresa_id e produto_id são obrigatórios`)
-          }
-
-          const produto = txApp.findRecordById('produtos', item.produto_id)
-          if (!produto) {
-            throw new Error(`Produto não encontrado: ${item.produto_id}`)
-          }
-
-          if (!produto.getBool('ativo')) {
-            throw new Error(
-              `Produto inativo não pode ser movimentado: ${produto.getString('descricao')}`,
-            )
-          }
-
-          // Se controla_estoque for false, ignora sem erro
-          if (!produto.getBool('controla_estoque')) {
-            continue
-          }
-
-          const qtdItem = parseFloat(item.quantidade)
-          if (isNaN(qtdItem) || qtdItem <= 0) {
-            throw new Error(
-              `Quantidade inválida para o produto ${produto.getString('descricao')}: deve ser maior que 0`,
-            )
-          }
-
-          const tipoProd = produto.getString('tipo')
-          if (tipoProd === 'Kit') {
-            // Kit não possui saldo próprio: expande componentes de produtos_kit_itens
-            const kitItens = txApp.findRecordsByFilter(
-              'produtos_kit_itens',
-              `produto_kit_id = '${produto.id}' && ativo = true`,
-              '',
-              100,
-              0,
-            )
-
-            if (!kitItens || kitItens.length === 0) {
+            } else {
               throw new Error(
-                `O kit "${produto.getString('descricao')}" não possui componentes ativos cadastrados`,
+                `Produto "${descProd}" controla lote e validade: informe o número do lote e a data de validade na entrada.`,
               )
             }
 
-            for (let k = 0; k < kitItens.length; k++) {
-              const kitComponente = kitItens[k]
-              const componenteProdId = kitComponente.getString('produto_item_id')
-              const qtdCompPorKit = kitComponente.getFloat('quantidade') || 1
-              const qtdTotalComp = qtdItem * qtdCompPorKit
+            // Atualiza saldo do lote na entrada
+            const saldoLoteAnt = loteRec.getFloat('quantidade') || 0
+            const novoSaldoLote = saldoLoteAnt + it.quantidade
+            loteRec.set('quantidade', novoSaldoLote)
+            loteRec.set('updated_by', userId)
+            txApp.save(loteRec)
 
-              itensProcessar.push({
-                ...item,
-                produto_id: componenteProdId,
-                quantidade: qtdTotalComp,
-                observacao:
-                  (item.observacao ? item.observacao + ' ' : '') +
-                  `(Componente do kit: ${produto.getString('descricao')})`,
-              })
-            }
-          } else {
-            itensProcessar.push({
-              ...item,
-              quantidade: qtdItem,
+            alocacoesLote.push({
+              loteId: loteRec.id,
+              numeroLote: loteRec.getString('numero_lote'),
+              dataValidade: loteRec.getString('data_validade'),
+              quantidade: it.quantidade,
             })
-          }
-        }
+          } else {
+            // Regra Saída: exige lote_id OU FEFO automático
+            if (it.lote_id) {
+              // Saída com lote específico informado
+              let loteRec = null
+              try {
+                loteRec = txApp.findRecordById('lotes', it.lote_id)
+              } catch (_) {
+                loteRec = null
+              }
+              if (!loteRec) {
+                throw new Error(`Produto "${descProd}": lote selecionado não encontrado.`)
+              }
 
-        // Processar cada item expandido
-        const saldosCol = txApp.findCollectionByNameOrId('estoque_saldos')
-        const movsCol = txApp.findCollectionByNameOrId('estoque_movimentos')
-        const logsCol = txApp.findCollectionByNameOrId('logs_auditoria')
+              const numLote = loteRec.getString('numero_lote')
+              const dataVal = loteRec.getString('data_validade')
+              const saldoLote = loteRec.getFloat('quantidade') || 0
 
-        for (let j = 0; j < itensProcessar.length; j++) {
-          const item = itensProcessar[j]
-          const produto = txApp.findRecordById('produtos', item.produto_id)
-          const empresa = txApp.findRecordById('empresas', item.empresa_id)
+              // Verificação de lote vencido:
+              // Permitir saída de lote vencido apenas para PERDA ou AJUSTE_SAIDA
+              if (isLoteVencido(dataVal) && it.origem !== 'PERDA' && it.origem !== 'AJUSTE_SAIDA') {
+                const dataValFmt = formatarDataBR(dataVal)
+                throw new Error(`Lote ${numLote} vencido em ${dataValFmt}`)
+              }
 
-          if (!empresa) {
-            throw new Error(`Empresa não encontrada: ${item.empresa_id}`)
-          }
+              if (it.quantidade > saldoLote && !permiteNegativo) {
+                throw new Error(
+                  `Produto "${descProd}": quantidade solicitada (${it.quantidade}) excede o saldo do lote ${numLote} (${saldoLote}).`,
+                )
+              }
 
-          const unidadeId = produto.getString('unidade_id')
-          if (unidadeId) {
-            try {
-              const unidade = txApp.findRecordById('unidades_medida', unidadeId)
-              if (unidade && !unidade.getBool('aceita_fracionado')) {
-                if (Math.floor(item.quantidade) !== item.quantidade) {
+              const novoSaldoLote = saldoLote - it.quantidade
+              loteRec.set('quantidade', novoSaldoLote)
+              loteRec.set('updated_by', userId)
+              txApp.save(loteRec)
+
+              alocacoesLote.push({
+                loteId: loteRec.id,
+                numeroLote: numLote,
+                dataValidade: dataVal,
+                quantidade: it.quantidade,
+              })
+            } else {
+              // FEFO: First Expire, First Out
+              // Busca lotes com saldo > 0 da empresa + produto, ordenados por data_validade ASC
+              const lotesDisponiveis = txApp.findRecordsByFilter(
+                'lotes',
+                `empresa_id = '${it.empresa_id}' && produto_id = '${prod.id}' && ativo = true && quantidade > 0`,
+                'data_validade,created',
+              )
+
+              if (lotesDisponiveis.length === 0) {
+                throw new Error(
+                  `Produto "${descProd}": nenhum lote com saldo disponível para atender a saída.`,
+                )
+              }
+
+              let qtdRestante = it.quantidade
+
+              for (let li = 0; li < lotesDisponiveis.length && qtdRestante > 0; li++) {
+                const loteRec = lotesDisponiveis[li]
+                const numLote = loteRec.getString('numero_lote')
+                const dataVal = loteRec.getString('data_validade')
+                const saldoLote = loteRec.getFloat('quantidade') || 0
+
+                // Se o lote está vencido e a operação não for PERDA / AJUSTE_SAIDA, recusa
+                if (
+                  isLoteVencido(dataVal) &&
+                  it.origem !== 'PERDA' &&
+                  it.origem !== 'AJUSTE_SAIDA'
+                ) {
+                  const dataValFmt = formatarDataBR(dataVal)
+                  throw new Error(`Lote ${numLote} vencido em ${dataValFmt}`)
+                }
+
+                const qtdDescontar = Math.min(saldoLote, qtdRestante)
+                const novoSaldo = saldoLote - qtdDescontar
+
+                loteRec.set('quantidade', novoSaldo)
+                loteRec.set('updated_by', userId)
+                txApp.save(loteRec)
+
+                alocacoesLote.push({
+                  loteId: loteRec.id,
+                  numeroLote: numLote,
+                  dataValidade: dataVal,
+                  quantidade: qtdDescontar,
+                })
+
+                qtdRestante -= qtdDescontar
+              }
+
+              if (qtdRestante > 0.00001) {
+                if (!permiteNegativo) {
                   throw new Error(
-                    `A unidade de medida "${unidade.getString('sigla')}" do produto "${produto.getString(
-                      'descricao',
-                    )}" não aceita quantidade fracionada (${item.quantidade})`,
+                    `Produto "${descProd}": saldo insuficiente nos lotes para cobrir a saída solicitada (${it.quantidade}). Restante sem lote: ${qtdRestante.toFixed(4)}.`,
                   )
                 }
               }
-            } catch (_) {}
-          }
-
-          const tipoMov = item.tipo // "Entrada" | "Saída"
-          if (tipoMov !== 'Entrada' && tipoMov !== 'Saída') {
-            throw new Error(`Tipo de movimento inválido: ${tipoMov}. Use "Entrada" ou "Saída"`)
-          }
-
-          const origensValidas = [
-            'SALDO_INICIAL',
-            'AJUSTE_ENTRADA',
-            'AJUSTE_SAIDA',
-            'PERDA',
-            'CONSUMO_INTERNO',
-            'BONIFICACAO_ENTRADA',
-            'BONIFICACAO_SAIDA',
-            'TRANSFERENCIA_ENTRADA',
-            'TRANSFERENCIA_SAIDA',
-            'INVENTARIO_ENTRADA',
-            'INVENTARIO_SAIDA',
-            'COMPRA',
-            'DEVOLUCAO_COMPRA',
-            'VENDA',
-            'DEVOLUCAO_VENDA',
-            'ESTORNO',
-          ]
-
-          if (!origensValidas.includes(item.origem)) {
-            throw new Error(`Origem de movimento inválida: ${item.origem}`)
-          }
-
-          // Motivo obrigatório para AJUSTE_*, PERDA, CONSUMO_INTERNO
-          const exigeMotivo =
-            item.origem.startsWith('AJUSTE_') ||
-            item.origem === 'PERDA' ||
-            item.origem === 'CONSUMO_INTERNO'
-          if (exigeMotivo && (!item.motivo || !item.motivo.trim())) {
-            throw new Error(`O motivo é obrigatório para operações do tipo ${item.origem}`)
-          }
-
-          // Buscar saldo atual em estoque_saldos
-          let saldoRecord = null
-          try {
-            const saldos = txApp.findRecordsByFilter(
-              'estoque_saldos',
-              `empresa_id = '${item.empresa_id}' && produto_id = '${item.produto_id}'`,
-              '',
-              1,
-              0,
-            )
-            if (saldos && saldos.length > 0) {
-              saldoRecord = saldos[0]
-            }
-          } catch (_) {}
-
-          let saldoAnt = 0
-          let custoMedioAnt = 0
-
-          if (saldoRecord) {
-            saldoAnt = saldoRecord.getFloat('quantidade') || 0
-            custoMedioAnt = saldoRecord.getFloat('custo_medio') || 0
-          } else {
-            // Se não existe registro de saldo ainda, pega o preco_custo cadastrado no produto
-            custoMedioAnt = produto.getFloat('preco_custo') || 0
-          }
-
-          const qtdMov = item.quantidade
-
-          // Validação de saldo negativo para Saída
-          if (tipoMov === 'Saída') {
-            const saldoAposSaida = Math.round((saldoAnt - qtdMov) * 10000) / 10000
-            const permiteNegativo = empresa.getBool('permite_estoque_negativo')
-            if (saldoAposSaida < 0 && !permiteNegativo) {
-              throw new Error(
-                `Estoque insuficiente: produto ${produto.getString(
-                  'descricao',
-                )}, saldo ${saldoAnt.toFixed(4)}, solicitado ${qtdMov.toFixed(4)}`,
-              )
             }
           }
-
-          // Cálculo de custo médio ponderado
-          let custoUnitarioMov = 0
-          let custoMedioPos = custoMedioAnt
-          let saldoPos = 0
-
-          if (tipoMov === 'Entrada') {
-            saldoPos = Math.round((saldoAnt + qtdMov) * 10000) / 10000
-            if (
-              item.custo_unitario !== undefined &&
-              item.custo_unitario !== null &&
-              item.custo_unitario !== ''
-            ) {
-              custoUnitarioMov = parseFloat(item.custo_unitario) || 0
-              if (saldoAnt <= 0) {
-                custoMedioPos = custoUnitarioMov
-              } else {
-                const somaValores = saldoAnt * custoMedioAnt + qtdMov * custoUnitarioMov
-                const divisor = saldoAnt + qtdMov
-                custoMedioPos = divisor > 0 ? somaValores / divisor : custoUnitarioMov
-              }
-            } else {
-              // Entrada sem custo informado: mantém o custo médio atual
-              custoUnitarioMov = custoMedioAnt
-              custoMedioPos = custoMedioAnt
-            }
-          } else {
-            // Saída: custo unitário é sempre o custo médio atual (não altera o custo médio do saldo)
-            saldoPos = Math.round((saldoAnt - qtdMov) * 10000) / 10000
-            custoUnitarioMov = custoMedioAnt
-            custoMedioPos = custoMedioAnt
-          }
-
-          // Arredondamentos regulamentares (4 casas para qtd/custo, 2 para valor_total)
-          saldoPos = Math.round(saldoPos * 10000) / 10000
-          custoMedioPos = Math.round(custoMedioPos * 10000) / 10000
-          custoUnitarioMov = Math.round(custoUnitarioMov * 10000) / 10000
-
-          const valorTotalMov = Math.round(qtdMov * custoUnitarioMov * 100) / 100
-          const valorTotalSaldo = Math.round(saldoPos * custoMedioPos * 100) / 100
-
-          const dataHoraAgora = item.data_movimento || new Date().toISOString()
-
-          // 1. Gravar/atualizar estoque_saldos
-          if (!saldoRecord) {
-            saldoRecord = new Record(saldosCol)
-            saldoRecord.set('empresa_id', item.empresa_id)
-            saldoRecord.set('produto_id', item.produto_id)
-            saldoRecord.set('ativo', true)
-            saldoRecord.set('created_by', authId)
-          }
-
-          saldoRecord.set('quantidade', saldoPos)
-          saldoRecord.set('custo_medio', custoMedioPos)
-          saldoRecord.set('valor_total', valorTotalSaldo)
-          if (tipoMov === 'Entrada') {
-            saldoRecord.set('data_ultima_entrada', dataHoraAgora)
-          } else {
-            saldoRecord.set('data_ultima_saida', dataHoraAgora)
-          }
-          saldoRecord.set('updated_by', authId)
-          txApp.save(saldoRecord)
-
-          // 2. Gravar estoque_movimentos (kardex)
-          const movRecord = new Record(movsCol)
-          movRecord.set('empresa_id', item.empresa_id)
-          movRecord.set('produto_id', item.produto_id)
-          movRecord.set('data_movimento', dataHoraAgora)
-          movRecord.set('tipo', tipoMov)
-          movRecord.set('origem', item.origem)
-          movRecord.set('quantidade', qtdMov)
-          movRecord.set('custo_unitario', custoUnitarioMov)
-          movRecord.set('valor_total', valorTotalMov)
-          movRecord.set('saldo_anterior', saldoAnt)
-          movRecord.set('saldo_posterior', saldoPos)
-          movRecord.set('custo_medio_anterior', custoMedioAnt)
-          movRecord.set('custo_medio_posterior', custoMedioPos)
-          if (item.lote_id) movRecord.set('lote_id', item.lote_id)
-          if (item.documento_tipo) movRecord.set('documento_tipo', item.documento_tipo)
-          if (item.documento_id) movRecord.set('documento_id', item.documento_id)
-          if (item.documento_numero) movRecord.set('documento_numero', item.documento_numero)
-          if (item.motivo) movRecord.set('motivo', item.motivo.trim())
-          if (item.observacao) movRecord.set('observacao', item.observacao.trim())
-          movRecord.set('usuario_id', authId)
-          movRecord.set('estornado', false)
-          movRecord.set('ativo', true)
-          movRecord.set('created_by', authId)
-          movRecord.set('updated_by', authId)
-
-          txApp.save(movRecord)
-
-          // 3. Gravar log de auditoria
-          try {
-            const logRec = new Record(logsCol)
-            logRec.set('usuario_id', authId)
-            logRec.set('usuario_nome', authRecord.getString('name') || userEmail)
-            logRec.set('empresa_id', item.empresa_id)
-            logRec.set('tabela', 'estoque_movimentos')
-            logRec.set('registro_id', movRecord.id)
-            logRec.set('acao', 'inclusao')
-            logRec.set('valores_depois', {
-              empresa_id: item.empresa_id,
-              produto_id: item.produto_id,
-              tipo: tipoMov,
-              origem: item.origem,
-              quantidade: qtdMov,
-              custo_unitario: custoUnitarioMov,
-              saldo_anterior: saldoAnt,
-              saldo_posterior: saldoPos,
-              custo_medio_anterior: custoMedioAnt,
-              custo_medio_posterior: custoMedioPos,
-            })
-            txApp.save(logRec)
-          } catch (_) {}
-
-          resultadosMovimentos.push({
-            id: movRecord.id,
-            empresa_id: item.empresa_id,
-            produto_id: item.produto_id,
-            produto_descricao: produto.getString('descricao'),
-            tipo: tipoMov,
-            origem: item.origem,
-            quantidade: qtdMov,
-            custo_unitario: custoUnitarioMov,
-            valor_total: valorTotalMov,
-            saldo_anterior: saldoAnt,
-            saldo_posterior: saldoPos,
-            custo_medio_anterior: custoMedioAnt,
-            custo_medio_posterior: custoMedioPos,
-            data_movimento: dataHoraAgora,
+        } else {
+          // Produto não controla lote: alocação única sem lote_id
+          alocacoesLote.push({
+            loteId: '',
+            numeroLote: '',
+            dataValidade: '',
+            quantidade: it.quantidade,
           })
         }
-      })
 
-      return e.json(200, {
-        sucesso: true,
-        total: resultadosMovimentos.length,
-        movimentos: resultadosMovimentos,
-      })
-    } catch (errTx) {
-      const errMsg = errTx instanceof Error ? errTx.message : String(errTx)
-      return e.json(400, {
-        sucesso: false,
-        message: errMsg,
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
+        // 3. Atualizar estoque_saldos do produto na empresa
+        let saldoRec = null
+        const saldosExistentes = txApp.findRecordsByFilter(
+          'estoque_saldos',
+          `empresa_id = '${it.empresa_id}' && produto_id = '${prod.id}'`,
+          '',
+          1,
+          0,
+        )
+
+        if (saldosExistentes.length > 0) {
+          saldoRec = saldosExistentes[0]
+        } else {
+          saldoRec = new Record(saldosCol)
+          saldoRec.set('empresa_id', it.empresa_id)
+          saldoRec.set('produto_id', prod.id)
+          saldoRec.set('quantidade', 0)
+          saldoRec.set('custo_medio', prod.getFloat('preco_custo') || 0)
+          saldoRec.set('valor_total', 0)
+          saldoRec.set('ativo', true)
+          saldoRec.set('created_by', userId)
+        }
+
+        const saldoAnterior = saldoRec.getFloat('quantidade') || 0
+        const custoMedioAnterior =
+          saldoRec.getFloat('custo_medio') || prod.getFloat('preco_custo') || 0
+        const isEntrada = it.tipo === 'Entrada'
+        const saldoPosterior = isEntrada
+          ? saldoAnterior + it.quantidade
+          : saldoAnterior - it.quantidade
+
+        // Validar estoque negativo geral na filial
+        if (saldoPosterior < 0 && !permiteNegativo) {
+          throw new Error(
+            `Produto "${descProd}": saldo insuficiente no estoque geral (${saldoAnterior.toFixed(4)}). A empresa não permite saldo negativo.`,
+          )
+        }
+
+        // Recalcular custo médio ponderado
+        let novoCustoMedio = custoMedioAnterior
+        if (isEntrada) {
+          const custoUnitarioEntrada =
+            it.custo_unitario !== undefined && it.custo_unitario !== null
+              ? Number(it.custo_unitario)
+              : custoMedioAnterior
+
+          if (saldoAnterior <= 0) {
+            novoCustoMedio = custoUnitarioEntrada
+          } else {
+            const valorEstoqueAnterior = saldoAnterior * custoMedioAnterior
+            const valorEntrada = it.quantidade * custoUnitarioEntrada
+            novoCustoMedio = (valorEstoqueAnterior + valorEntrada) / saldoPosterior
+          }
+        }
+
+        const novoValorTotal = Math.max(0, saldoPosterior * novoCustoMedio)
+
+        saldoRec.set('quantidade', saldoPosterior)
+        saldoRec.set('custo_medio', novoCustoMedio)
+        saldoRec.set('valor_total', novoValorTotal)
+        if (isEntrada) {
+          saldoRec.set('data_ultima_entrada', dataMov)
+        } else {
+          saldoRec.set('data_ultima_saida', dataMov)
+        }
+        saldoRec.set('updated_by', userId)
+        txApp.save(saldoRec)
+
+        // 4. Invariante de integridade: se produto controla lote, a soma dos lotes
+        // deve bater rigorosamente com o saldo total do produto na filial
+        if (it.controlaLote) {
+          const todosLotes = txApp.findRecordsByFilter(
+            'lotes',
+            `empresa_id = '${it.empresa_id}' && produto_id = '${prod.id}' && ativo = true`,
+          )
+          let somaLotes = 0
+          for (let s = 0; s < todosLotes.length; s++) {
+            somaLotes += todosLotes[s].getFloat('quantidade') || 0
+          }
+
+          const difLotes = Math.abs(somaLotes - saldoPosterior)
+          if (difLotes > 0.001) {
+            throw new Error(
+              `Invariante de estoque violada para "${descProd}": soma dos lotes (${somaLotes.toFixed(4)}) difere do saldo geral (${saldoPosterior.toFixed(4)}).`,
+            )
+          }
+        }
+
+        // 5. Gravar movimentos no Kardex (estoque_movimentos)
+        // Se a saída foi dividida pelo FEFO em múltiplos lotes, grava UM movimento por lote
+        // Todos compartilham o mesmo documento_tipo/id/numero
+        let saldoAcumuladoLinha = saldoAnterior
+
+        for (let a = 0; a < alocacoesLote.length; a++) {
+          const aloc = alocacoesLote[a]
+          const qtdAloc = aloc.quantidade
+          const saldoAntAloc = saldoAcumuladoLinha
+          const saldoPosAloc = isEntrada ? saldoAntAloc + qtdAloc : saldoAntAloc - qtdAloc
+          saldoAcumuladoLinha = saldoPosAloc
+
+          const custoUnitarioEfetivo =
+            it.custo_unitario !== undefined && it.custo_unitario !== null
+              ? Number(it.custo_unitario)
+              : custoMedioAnterior
+
+          const movRec = new Record(movsCol)
+          movRec.set('empresa_id', it.empresa_id)
+          movRec.set('produto_id', prod.id)
+          movRec.set('data_movimento', dataMov)
+          movRec.set('tipo', it.tipo)
+          movRec.set('origem', it.origem)
+          movRec.set('quantidade', qtdAloc)
+          movRec.set('custo_unitario', custoUnitarioEfetivo)
+          movRec.set('valor_total', qtdAloc * custoUnitarioEfetivo)
+          movRec.set('saldo_anterior', saldoAntAloc)
+          movRec.set('saldo_posterior', saldoPosAloc)
+          movRec.set('custo_medio_anterior', custoMedioAnterior)
+          movRec.set('custo_medio_posterior', novoCustoMedio)
+          movRec.set('lote_id', aloc.loteId || '')
+          movRec.set('documento_tipo', it.documento_tipo || '')
+          movRec.set('documento_id', it.documento_id || '')
+          movRec.set('documento_numero', it.documento_numero || '')
+          movRec.set('motivo', it.motivo || '')
+          movRec.set('observacao', it.observacao || '')
+          movRec.set('usuario_id', userId)
+          movRec.set('estornado', false)
+          movRec.set('ativo', true)
+          movRec.set('created_by', userId)
+          movRec.set('updated_by', userId)
+          txApp.save(movRec)
+
+          movimentosGravados.push({
+            id: movRec.id,
+            produto_id: prod.id,
+            produto_descricao: descProd,
+            quantidade: qtdAloc,
+            tipo: it.tipo,
+            origem: it.origem,
+            lote_id: aloc.loteId || null,
+            numero_lote: aloc.numeroLote || null,
+            saldo_posterior: saldoPosAloc,
+            custo_medio_posterior: novoCustoMedio,
+          })
+        }
+      }
+    })
+
+    return c.json(200, {
+      sucesso: true,
+      message: 'Movimentação de estoque realizada com sucesso.',
+      total: movimentosGravados.length,
+      movimentos: movimentosGravados,
+    })
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err)
+    return c.json(400, {
+      sucesso: false,
+      message: msg,
+    })
+  }
+})

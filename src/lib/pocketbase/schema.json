@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T15:09:31.047Z",
+  "generatedAt": "2026-10-07T15:39:10.946Z",
   "collections": [
     {
       "name": "users",
@@ -3621,6 +3621,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "dias_alerta_validade",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_configuracoes_ativo ON configuracoes (ativo)"]
@@ -4054,6 +4060,102 @@
         "CREATE INDEX idx_mov_doc ON estoque_movimentos (documento_tipo, documento_id)",
         "CREATE INDEX idx_mov_estornado ON estoque_movimentos (estornado)",
         "CREATE INDEX idx_mov_ativo ON estoque_movimentos (ativo)"
+      ]
+    },
+    {
+      "name": "lotes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "numero_lote",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_fabricacao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_validade",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "quantidade",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_lotes_empresa_produto_numero ON lotes (empresa_id, produto_id, numero_lote)",
+        "CREATE INDEX idx_lotes_data_validade ON lotes (data_validade)",
+        "CREATE INDEX idx_lotes_produto_ativo ON lotes (produto_id, ativo)"
       ]
     }
   ]

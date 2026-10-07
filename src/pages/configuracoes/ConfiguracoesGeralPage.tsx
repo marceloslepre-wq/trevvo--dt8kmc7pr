@@ -41,6 +41,9 @@ export default function ConfiguracoesGeralPage() {
 
   const [nomeSistema, setNomeSistema] = useState(config.nome_sistema || 'ERP Gestão Comercial')
   const [corPrincipal, setCorPrincipal] = useState(config.cor_principal || '#2563eb')
+  const [diasAlertaValidade, setDiasAlertaValidade] = useState<number>(
+    config.dias_alerta_validade || 30,
+  )
   const [arquivoLogo, setArquivoLogo] = useState<File | null>(null)
   const [previewLogo, setPreviewLogo] = useState<string | null>(logoUrl)
   const [removerLogo, setRemoverLogo] = useState(false)
@@ -50,6 +53,7 @@ export default function ConfiguracoesGeralPage() {
   useEffect(() => {
     setNomeSistema(config.nome_sistema || 'ERP Gestão Comercial')
     setCorPrincipal(config.cor_principal || '#2563eb')
+    setDiasAlertaValidade(config.dias_alerta_validade || 30)
     setPreviewLogo(logoUrl)
     setArquivoLogo(null)
     setRemoverLogo(false)
@@ -110,6 +114,7 @@ export default function ConfiguracoesGeralPage() {
         {
           nome_sistema: nomeSistema.trim(),
           cor_principal: corPrincipal,
+          dias_alerta_validade: diasAlertaValidade || 30,
           logoFile: arquivoLogo,
           removerLogo: removerLogo,
         },
@@ -171,6 +176,46 @@ export default function ConfiguracoesGeralPage() {
       </div>
 
       <form onSubmit={handleSalvar} className="space-y-6">
+        {/* Parâmetros Operacionais de Estoque e Validade */}
+        <Card className="border-slate-200 shadow-xs">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-primary" />
+              <CardTitle className="text-base font-semibold text-slate-900">
+                Parâmetros de Estoque e Validade
+              </CardTitle>
+            </div>
+            <CardDescription className="text-xs text-slate-500">
+              Configure a antecedência em dias para alertas preventivos de produtos com data de
+              validade próxima do vencimento.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2 max-w-xs">
+              <Label
+                htmlFor="dias_alerta_validade"
+                className="text-xs font-semibold text-slate-700"
+              >
+                Dias de antecedência para alerta de validade <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="dias_alerta_validade"
+                type="number"
+                min={1}
+                max={365}
+                value={diasAlertaValidade}
+                onChange={(e) => setDiasAlertaValidade(parseInt(e.target.value, 10) || 30)}
+                disabled={!podeEditar || salvando}
+                className="text-sm font-mono"
+              />
+              <p className="text-[11px] text-slate-400">
+                Lotes com vencimento em até este número de dias receberão destaque amarelo
+                (&quot;Vence em até X dias&quot;) na tela de Lotes e Validade.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Identificação do Sistema */}
         <Card className="border-slate-200 shadow-xs">
           <CardHeader>

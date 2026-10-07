@@ -16,10 +16,10 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
   children,
   fallback,
 }) => {
-  const { pode, carregando, administrador } = usePermissoes()
+  const { pode, carregando, administrador, perfil } = usePermissoes()
 
   // 1. Administrador tem liberação instantânea e irrestrita sem aguardar nada
-  if (administrador) {
+  if (administrador || perfil?.administrador || perfil?.nome?.toLowerCase() === 'administrador') {
     return <>{children}</>
   }
 

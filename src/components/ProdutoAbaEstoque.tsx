@@ -1,26 +1,30 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Building, History, ExternalLink, Loader2, AlertCircle, Package } from 'lucide-react'
+import { Building, History, ExternalLink, Loader2, AlertCircle, Package, Tag } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { EstoqueSaldo, EstoqueMovimento } from '@/services/estoque'
+import { Lote, listarTodosLotesProduto, classificarSituacaoLote } from '@/services/lotes'
 import pb from '@/lib/pocketbase/client'
 
 export interface ProdutoAbaEstoqueProps {
   produtoId?: string
   unidadeSigla?: string
   controlaEstoque?: boolean
+  controlaLote?: boolean
 }
 
 export const ProdutoAbaEstoque: React.FC<ProdutoAbaEstoqueProps> = ({
   produtoId,
   unidadeSigla = 'UN',
   controlaEstoque = true,
+  controlaLote = false,
 }) => {
   const { empresaAtiva, empresas } = useEmpresaAtiva()
   const [carregando, setCarregando] = useState(false)
+  const [lotesDoProduto, setLotesDoProduto] = useState<Lote[]>([])
   const [saldosFiliais, setSaldosFiliais] = useState<
     Array<{
       empresaId: string
@@ -67,9 +71,17 @@ export const ProdutoAbaEstoque: React.FC<ProdutoAbaEstoqueProps> = ({
             .getList<EstoqueMovimento>(1, 10, {
               filter: `empresa_id = '${empresaAtiva.id}' && produto_id = '${produtoId}'`,
               sort: '-data_movimento,-created',
-              expand: 'usuario_id',
+              expand: 'usuario_id,lote_id',
             })
           setUltimosMovimentos(resMovimentos.items)
+
+          // 3. Se controla lote, carrega os lotes na empresa ativa
+          if (controlaLote) {
+            const lotes = await listarTodosLotesProduto(empresaAtiva.id, produtoId)
+            setLotesDoProduto(lotes)
+          } else {
+            setLotesDoProduto([])
+          }
         }
       } catch (err) {
         console.error('Erro ao carregar dados de estoque do produto:', err)
@@ -79,7 +91,7 @@ export const ProdutoAbaEstoque: React.FC<ProdutoAbaEstoqueProps> = ({
     }
 
     carregarDadosEstoque()
-  }, [produtoId, empresaAtiva, empresas])
+  }, [produtoId, empresaAtiva, empresas, controlaLote])
 
   const formatarQtd = (val?: number) => {
     return (val || 0).toLocaleString('pt-BR', {
@@ -198,6 +210,132 @@ export const ProdutoAbaEstoque: React.FC<ProdutoAbaEstoqueProps> = ({
           )}
         </CardContent>
       </Card>
+
+      {/* 1.1 Se o produto controla lote, exibe o Saldo por Lote */}
+      {controlaLote && (
+        <Card className="border-slate-200 bg-white">
+          <CardContent className="pt-4 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-blue-600" />
+                <h4 className="font-semibold text-slate-900 text-sm">
+                  Saldo por Lote e Validade na Filial Atual (
+                  {empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social})
+                </h4>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                asChild
+                className="h-8 text-xs text-blue-700 border-blue-200 hover:bg-blue-50"
+              >
+                <Link to="/estoque/lotes">
+                  <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                  Gerenciar Lotes
+                </Link>
+              </Button>
+            </div>
+
+            {carregando ? (
+              <div className="py-6 text-center text-slate-400 flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                <span>Consultando lotes cadastrados...</span>
+              </div>
+            ) : lotesDoProduto.length === 0 ? (
+              <div className="py-6 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                <Tag className="h-6 w-6 mx-auto mb-1 text-slate-300" />
+                <p>Nenhum lote registrado para este produto nesta filial.</p>
+                <p className="text-[11px] mt-0.5">
+                  Os lotes são gerados automaticamente nas entradas com número do lote e validade.
+                </p>
+              </div>
+            ) : (
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[10px] border-b border-slate-200">
+                    <tr>
+                      <th className="p-2.5">Número do Lote</th>
+                      <th className="p-2.5 text-center">Fabricação</th>
+                      <th className="p-2.5 text-center">Validade</th>
+                      <th className="p-2.5 text-center">Dias p/ Vencer</th>
+                      <th className="p-2.5 text-right">Saldo do Lote</th>
+                      <th className="p-2.5 text-center">Situação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {lotesDoProduto.map((lote) => {
+                      const cls = classificarSituacaoLote(lote.data_validade)
+                      const valFormatada = lote.data_validade
+                        ? lote.data_validade.slice(0, 10).split('-').reverse().join('/')
+                        : '—'
+                      const fabFormatada = lote.data_fabricacao
+                        ? lote.data_fabricacao.slice(0, 10).split('-').reverse().join('/')
+                        : '—'
+
+                      return (
+                        <tr
+                          key={lote.id}
+                          className={`hover:bg-slate-50 transition-colors ${
+                            cls.situacao === 'vencido' ? 'bg-rose-50/20' : ''
+                          }`}
+                        >
+                          <td className="p-2.5 font-mono font-bold text-slate-900">
+                            {lote.numero_lote}
+                          </td>
+                          <td className="p-2.5 text-center font-mono text-slate-500">
+                            {fabFormatada}
+                          </td>
+                          <td className="p-2.5 text-center font-mono font-bold text-slate-900">
+                            {valFormatada}
+                          </td>
+                          <td className="p-2.5 text-center font-mono">
+                            {cls.diasParaVencer < 0 ? (
+                              <span className="text-rose-600 font-bold">
+                                Vencido ({Math.abs(cls.diasParaVencer)}d)
+                              </span>
+                            ) : cls.diasParaVencer === 0 ? (
+                              <span className="text-amber-600 font-bold">Vence hoje</span>
+                            ) : (
+                              <span
+                                className={
+                                  cls.situacao === 'alerta'
+                                    ? 'text-amber-700 font-bold'
+                                    : 'text-slate-700'
+                                }
+                              >
+                                {cls.diasParaVencer} dia(s)
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-right font-mono font-bold text-blue-700">
+                            {formatarQtd(lote.quantidade)} {unidadeSigla}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            {cls.situacao === 'vencido' ? (
+                              <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[9px]">
+                                Vencido
+                              </Badge>
+                            ) : cls.situacao === 'alerta' ? (
+                              <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[9px]">
+                                Vence em breve
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[9px]">
+                                OK
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 2. Últimos 10 movimentos da empresa ativa com link para o Kardex */}
       <Card className="border-slate-200 bg-white">
