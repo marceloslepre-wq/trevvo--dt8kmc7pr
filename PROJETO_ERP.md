@@ -1197,16 +1197,62 @@ const saldoHistorico = await saldoEmData('empresa_id', 'produto_id', '2025-12-31
 // Retorno: { quantidade: 42.0000, custo_medio: 15.7500, valor_total: 661.50 }
 ```
 
-## Etapa 2 em andamento: Base do Controle de Estoque
+## Etapa 2: Controle de Estoque e Telas Operacionais
 
-Concluída a fundação da Etapa 2:
+A base e as telas completas do módulo Estoque estão operacionais:
 
-- Parâmetro `permite_estoque_negativo` na tabela `empresas` (interface na aba Regime Tributário, bloco "Estoque");
-- Tabela `estoque_saldos` com chave única por empresa e produto, quantidade e custo médio com 4 decimais e valor total com 2 decimais;
-- Tabela `estoque_movimentos` (Kardex imutável) com todas as 16 origens padrão de mercado e rastreabilidade total de saldo/custo anterior e posterior;
-- Serviços centrais transacionais no backend (`/backend/v1/estoque/movimentar` e `/backend/v1/estoque/estornar`);
-- Funções reutilizáveis no frontend (`movimentarEstoque`, `estornarMovimento`, `saldoEmData`, `obterSaldoAtual`, `listarMovimentosKardex`).
+### Telas do Módulo Estoque
+
+1. `/estoque/posicao` (`@/pages/estoque/PosicaoEstoquePage.tsx`):
+   - Exibe a lista de todos os produtos com `controla_estoque = true` na filial ativa.
+   - Colunas: Código, Descrição, Unidade, Grupo/Categoria, Marca, Localização física, Quantidade física (4 casas), Custo médio (4 casas), Valor total (2 casas), Estoque mínimo e máximo, e Situação em badges coloridos ("Abaixo do mínimo" em vermelho, "Acima do máximo" em amarelo, "Zerado" em cinza, "Normal" em verde).
+   - Filtros dinâmicos: Grupo, Categoria encadeada, Marca, Fornecedor principal, Situação do estoque e checkbox "Somente com saldo > 0".
+   - Totais no rodapé: Total de produtos, soma do volume de quantidades físicas e valor total consolidado em estoque.
+   - Botão "Filiais" na linha: abre modal interativo exibindo a quantidade física, custo médio e valor total do produto em cada filial que o usuário tem permissão de acesso.
+   - Clique em qualquer linha do produto redireciona automaticamente para o Kardex dele.
+   - Exportação completa para CSV.
+
+2. `/estoque/kardex` (`@/pages/estoque/KardexPage.tsx`):
+   - Ficha físico-financeira completa do produto com busca rápida (`<SelectProduto />`) e seletor de período (padrão: mês atual).
+   - Recomposição exata do Saldo Inicial do período pela função `saldoEmData(empresa_id, produto_id, dataAnterior)`.
+   - Cards de resumo: Saldo Inicial, Volume de Entradas, Volume de Saídas e Saldo Final resultante.
+   - Grade cronológica imutável com: Data/Hora, Origem, Documento (tipo e número), Entrada, Saída, Saldo Resultante, Custo Unitário, Custo Médio Ponderado, Valor Total e Operador/Motivo.
+   - Movimentos estornados aparecem riscados e com link para o identificador do estorno.
+   - Botão "Estornar" em lançamentos manuais e ajustes, solicitando motivo detalhado, exclusivo para usuários com permissão de excluir em estoque (`pode('estoque', 'excluir')`).
+   - Exportação para planilha CSV e botão de impressão formatada para ficha física.
+
+3. `/estoque/lancamentos` (`@/pages/estoque/LancamentosEstoquePage.tsx`):
+   - Aba "Novo Lançamento": formulário ágil com tipos mapeados para origens do Kardex:
+     - _Saldo inicial_ → `SALDO_INICIAL` (permite data retroativa de implantação, custo obrigatório);
+     - _Ajuste de entrada_ → `AJUSTE_ENTRADA` (motivo obrigatório, custo opcional herdando custo médio);
+     - _Ajuste de saída_ → `AJUSTE_SAIDA` (motivo obrigatório, valida saldo negativo se filial não permitir);
+     - _Perda/avaria_ → `PERDA` (motivo obrigatório, custo oculto);
+     - _Consumo interno_ → `CONSUMO_INTERNO` (motivo obrigatório, custo oculto);
+     - _Bonificação recebida_ → `BONIFICACAO_ENTRADA` (custo obrigatório);
+     - _Bonificação enviada_ → `BONIFICACAO_SAIDA` (custo oculto).
+   - Grade de itens com leitor de código de barras GTIN integrado: bipar com leitor ou pressionar Enter adiciona o item com quantidade 1 ou soma 1 caso já esteja na grade.
+   - Exibe saldo atual (só leitura) e calcula o saldo após em tempo real.
+   - Gravação em lote através da função `movimentarEstoque(itens)` com modal de resumo pós-gravação.
+   - Aba "Lançamentos Realizados": histórico agrupado por documento de lote com filtros de período, tipo de operação e usuário operador.
+   - Modal de Importação de Saldo Inicial por CSV (`<ImportarSaldoInicialModal />`) com colunas `codigo_ou_gtin;quantidade;custo_unitario`, validação linha a linha, prévia e acusação de erros antes de gravar.
+
+4. Aba "Estoque" no Cadastro de Produtos (`@/components/ProdutoAbaEstoque.tsx`):
+   - Exibe, em modo só leitura no formulário do produto, a tabela com saldo físico, custo médio e valor em estoque em cada filial autorizada ao usuário.
+   - Exibe os últimos 10 movimentos na filial ativa com badge de tipo/origem, quantidades e link direto para o Kardex completo.
+
+### Novos Componentes Reutilizáveis de Estoque
+
+- `<BuscaProdutoGtin />` (`@/components/BuscaProdutoGtin`): Campo de busca com suporte prioritário para bipagem de código de barras (GTIN/EAN) ou digitação de código numérico, com dropdown de sugestões e gatilho imediato de seleção.
+- `<SaldoTodasFiliaisModal />` (`@/components/SaldoTodasFiliaisModal`): Modal que recebe um produto e lista o saldo físico, custo médio e situação em todas as empresas acessíveis pelo usuário logado.
+- `<ImportarSaldoInicialModal />` (`@/components/ImportarSaldoInicialModal`): Modal completo para importação de saldo inicial de implantação via planilha CSV, com modelo para download, verificação de consistência e gravação transacional.
+- `<ProdutoAbaEstoque />` (`@/components/ProdutoAbaEstoque`): Componente para abas de formulários de produtos com saldo por filial e histórico recente de movimentos.
+
+### Permissões do Módulo Estoque
+
+- `pode('estoque', 'ver')`: acesso às telas de Posição de Estoque, Kardex e consulta de lançamentos.
+- `pode('estoque', 'criar')`: permissão para efetuar lançamentos manuais e importar saldo inicial.
+- `pode('estoque', 'excluir')`: permissão para realizar o estorno de lançamentos e ajustes no Kardex.
 
 ## Versão Atual do Projeto
 
-**Versão 0.0.16** — Correção prioritária do PermissaoGuard e do contexto de permissões, base de dados do controle de estoque da Etapa 2 (`estoque_saldos`, `estoque_movimentos`), endpoints transacionais de movimentação e estorno de estoque, função de recomposição de saldo em data retroativa `saldoEmData()` e campo `permite_estoque_negativo` em empresas.
+**Versão 0.0.18** — Implementação completa das telas e fluxos do módulo Estoque: Posição de Estoque com filtros e saldos por filial, Kardex com recomposição retroativa e estornos, Lançamentos manuais de ajustes com leitor de código de barras GTIN e importação de saldo inicial por CSV, aba Estoque no formulário de produtos e ativação do menu Estoque.

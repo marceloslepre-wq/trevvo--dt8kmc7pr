@@ -159,8 +159,28 @@ const navItems: NavGroupItem[] = [
     id: 'estoque',
     title: 'Estoque',
     icon: Package,
-    status: 'soon',
+    status: 'active',
     modulo: 'estoque',
+    items: [
+      {
+        title: 'Posição de estoque',
+        path: '/estoque/posicao',
+        icon: Box,
+        modulo: 'estoque',
+      },
+      {
+        title: 'Kardex',
+        path: '/estoque/kardex',
+        icon: FileSpreadsheet,
+        modulo: 'estoque',
+      },
+      {
+        title: 'Lançamentos',
+        path: '/estoque/lancamentos',
+        icon: Layers,
+        modulo: 'estoque',
+      },
+    ],
   },
   {
     id: 'compras',
@@ -235,8 +255,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const location = useLocation()
   const isCadastrosActive = location.pathname.startsWith('/cadastros')
+  const isEstoqueActive = location.pathname.startsWith('/estoque')
   const isConfiguracoesActive = location.pathname.startsWith('/configuracoes')
   const [cadastrosOpen, setCadastrosOpen] = useState(true)
+  const [estoqueOpen, setEstoqueOpen] = useState(true)
   const [configuracoesOpen, setConfiguracoesOpen] = useState(true)
 
   const { pode, administrador } = usePermissoes()
@@ -335,12 +357,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
               return <div key={item.id}>{disabledContent}</div>
             }
 
-            // Grupo com subitens (ex: Cadastros, Configurações)
+            // Grupo com subitens (ex: Cadastros, Estoque, Configurações)
             if (item.items) {
               const isGroupActive =
-                item.id === 'cadastros' ? isCadastrosActive : isConfiguracoesActive
-              const isOpen = item.id === 'cadastros' ? cadastrosOpen : configuracoesOpen
-              const setOpen = item.id === 'cadastros' ? setCadastrosOpen : setConfiguracoesOpen
+                item.id === 'cadastros'
+                  ? isCadastrosActive
+                  : item.id === 'estoque'
+                    ? isEstoqueActive
+                    : isConfiguracoesActive
+              const isOpen =
+                item.id === 'cadastros'
+                  ? cadastrosOpen
+                  : item.id === 'estoque'
+                    ? estoqueOpen
+                    : configuracoesOpen
+              const setOpen =
+                item.id === 'cadastros'
+                  ? setCadastrosOpen
+                  : item.id === 'estoque'
+                    ? setEstoqueOpen
+                    : setConfiguracoesOpen
 
               if (isCollapsed) {
                 return (

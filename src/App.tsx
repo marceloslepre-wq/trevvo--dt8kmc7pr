@@ -38,6 +38,9 @@ import MarcasPage from '@/pages/cadastros/MarcasPage'
 import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import ConfiguracoesGeralPage from '@/pages/configuracoes/ConfiguracoesGeralPage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
+import PosicaoEstoquePage from '@/pages/estoque/PosicaoEstoquePage'
+import KardexPage from '@/pages/estoque/KardexPage'
+import LancamentosEstoquePage from '@/pages/estoque/LancamentosEstoquePage'
 import ClientesLista from '@/pages/cadastros/ClientesLista'
 import ClienteForm from '@/pages/cadastros/ClienteForm'
 import FornecedoresLista from '@/pages/cadastros/FornecedoresLista'
@@ -337,6 +340,33 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
                         <PerfisTributariosPage />
+                      </PermissaoGuard>
+                    }
+                  />
+
+                  {/* Estoque */}
+                  <Route path="/estoque" element={<Navigate to="/estoque/posicao" replace />} />
+                  <Route
+                    path="/estoque/posicao"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <PosicaoEstoquePage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/estoque/kardex"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <KardexPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/estoque/lancamentos"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <LancamentosEstoquePage />
                       </PermissaoGuard>
                     }
                   />

@@ -45,6 +45,7 @@ import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import pb from '@/lib/pocketbase/client'
 import { ProdutoAbaFiscal } from '@/components/ProdutoAbaFiscal'
+import { ProdutoAbaEstoque } from '@/components/ProdutoAbaEstoque'
 
 import {
   Produto,
@@ -1377,11 +1378,6 @@ export const ProdutoForm: React.FC = () => {
         <TabsContent value="estoque" className="space-y-4">
           <Card>
             <CardContent className="pt-6 space-y-5 text-xs">
-              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 text-xs">
-                <strong>Parâmetros de controle:</strong> Saldos em estoque e movimentações (kardex)
-                serão gerenciados nos módulos de compras, inventário e expedição.
-              </div>
-
               {/* Controles Principais */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-slate-200">
@@ -1581,6 +1577,13 @@ export const ProdutoForm: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Seção Físico-Financeira: Saldo em Todas as Filiais e Últimos 10 Movimentos da Filial Ativa */}
+          <ProdutoAbaEstoque
+            produtoId={ehEdicao ? id : undefined}
+            unidadeSigla={unidadesMedida.find((u) => u.id === formData.unidade_id)?.sigla || 'UN'}
+            controlaEstoque={formData.controla_estoque}
+          />
         </TabsContent>
 
         {/* ======================================================== */}
