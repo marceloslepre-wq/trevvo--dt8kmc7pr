@@ -3,6 +3,7 @@ import { usePermissoes, AcaoPermissao } from '@/contexts/PermissoesContext'
 import { ModuloSistema } from '@/services/perfis'
 import AcessoNegado from '@/components/AcessoNegado'
 import pb from '@/lib/pocketbase/client'
+import { obterUsuarioCacheLocal } from '@/services/usuarios'
 
 interface PermissaoGuardProps {
   modulo: ModuloSistema | string
@@ -22,17 +23,30 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
   // Regra Estrutural do ERP:
   // Administrador tem acesso irrestrito a todo o sistema reconhecido exclusivamente
   // pelo perfil (perfis_acesso.administrador = true) do registro em usuarios.
-  // Também checa diretamente o cache síncrono para garantir liberação imediata sem flash.
-  const ehAdmin =
-    administrador ||
-    Boolean(perfil?.administrador) ||
-    Boolean(usuarioERP?.expand?.perfil_id?.administrador)
+  // Checa:
+  // 1) Contexto reativo de administrador ou perfil
+  // 2) Cache do usuarioERP e expand.perfil_id.administrador
+  // 3) Cache síncrono local no primeiro render se o contexto ainda estiver inicializando
+  const ehAdmin = (() => {
+    if (
+      administrador ||
+      Boolean(perfil?.administrador) ||
+      Boolean(usuarioERP?.expand?.perfil_id?.administrador)
+    ) {
+      return true
+    }
+    // Verificação síncrona no cache caso o React Context ainda não tenha completado ciclo
+    const authId = pb.authStore.record?.id
+    const email = pb.authStore.record?.email
+    const cached = obterUsuarioCacheLocal(authId || email || undefined)
+    return Boolean(cached?.expand?.perfil_id?.administrador)
+  })()
 
   if (ehAdmin) {
     return <>{children}</>
   }
 
-  // Se já possui permissão concedida
+  // Se já possui permissão concedida pelo hook pode(modulo, acao)
   if (pode(modulo, acao)) {
     return <>{children}</>
   }

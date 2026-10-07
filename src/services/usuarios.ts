@@ -142,32 +142,38 @@ export async function obterEmpresasDoUsuario(usuarioId: string): Promise<Usuario
   })
 }
 
-export async function obterUsuarioPorAuthId(authId: string): Promise<Usuario | null> {
-  try {
-    const res = await pb
-      .collection('usuarios')
-      .getFirstListItem<Usuario>(`auth_user_id = '${authId}'`, {
-        expand: 'perfil_id,empresa_padrao_id',
-      })
-    if (res) {
-      salvarUsuarioCacheLocal(res)
-      return res
+export async function obterUsuarioPorAuthId(
+  authId: string,
+  emailParam?: string,
+): Promise<Usuario | null> {
+  if (authId) {
+    try {
+      const res = await pb
+        .collection('usuarios')
+        .getFirstListItem<Usuario>(`auth_user_id = '${authId}'`, {
+          expand: 'perfil_id,empresa_padrao_id',
+        })
+      if (res) {
+        salvarUsuarioCacheLocal(res)
+        return res
+      }
+    } catch {
+      // Fallback: tentar por e-mail
     }
-  } catch {
-    // Fallback: se não encontrou por auth_user_id, tentar pelo email do usuário logado
   }
 
   try {
-    const email = pb.authStore.record?.email
+    const email = (emailParam || pb.authStore.record?.email || '').trim().toLowerCase()
     if (email) {
+      const safeEmail = email.replace(/['"]/g, '')
       const porEmail = await pb
         .collection('usuarios')
-        .getFirstListItem<Usuario>(`email = '${email.trim().toLowerCase()}'`, {
+        .getFirstListItem<Usuario>(`email = '${safeEmail}'`, {
           expand: 'perfil_id,empresa_padrao_id',
         })
       if (porEmail) {
         // Se encontramos por e-mail e auth_user_id estava vazio ou desatualizado, auto-vincula
-        if (porEmail.auth_user_id !== authId) {
+        if (authId && porEmail.auth_user_id !== authId) {
           try {
             await pb.collection('usuarios').update(porEmail.id, {
               auth_user_id: authId,

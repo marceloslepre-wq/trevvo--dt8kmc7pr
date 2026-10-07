@@ -150,6 +150,12 @@ const navItems: NavGroupItem[] = [
         modulo: 'tabelas_fiscais',
       },
       {
+        title: 'Conversão CFOP Entrada',
+        path: '/cadastros/tabelas-fiscais/conversao-cfop',
+        icon: ArrowLeftRight,
+        modulo: 'tabelas_fiscais',
+      },
+      {
         title: 'Perfis tributários',
         path: '/cadastros/tabelas-fiscais/perfis',
         icon: Calculator,
@@ -220,6 +226,12 @@ const navItems: NavGroupItem[] = [
         path: '/compras/pedidos',
         icon: ShoppingCart,
         modulo: 'compras',
+      },
+      {
+        title: 'Notas de entrada',
+        path: '/compras/notas-entrada',
+        icon: FileText,
+        modulo: 'notas_entrada',
       },
     ],
   },

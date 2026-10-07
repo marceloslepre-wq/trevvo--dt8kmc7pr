@@ -141,31 +141,31 @@ export const TabelasFiscaisHubPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Card Alíquotas de ICMS por Estado - Em breve */}
-        <Card className="border-slate-200 shadow-xs bg-slate-50/50 flex flex-col justify-between opacity-80">
+        {/* Card Conversão de CFOP de Entrada - Ativo */}
+        <Card className="border-slate-200 shadow-xs hover:border-blue-300 transition-colors flex flex-col justify-between">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="p-2.5 bg-slate-100 text-slate-400 rounded-lg">
-                <Percent className="h-6 w-6" />
+              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-lg">
+                <ArrowRight className="h-6 w-6" />
               </div>
-              <Badge
-                variant="outline"
-                className="text-[10px] uppercase font-semibold text-slate-400 border-slate-200"
-              >
-                Em breve
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium">
+                Ativo
               </Badge>
             </div>
-            <CardTitle className="text-lg font-bold text-slate-700">
-              Matriz de ICMS Interestadual
+            <CardTitle className="text-lg font-bold text-slate-900">
+              Conversão de CFOP de Entrada
             </CardTitle>
-            <CardDescription className="text-xs text-slate-400">
-              Tabela de alíquotas internas e interestaduais (4%, 7%, 12%, 18%) e FCP (Fundo de
-              Combate à Pobreza).
+            <CardDescription className="text-xs text-slate-500">
+              De-para fiscal automático do CFOP do fornecedor para escrituração interna na
+              importação de NF-e por finalidade.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            <Button disabled variant="outline" className="w-full text-xs">
-              Módulo em desenvolvimento
+            <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+              <Link to="/cadastros/tabelas-fiscais/conversao-cfop">
+                Acessar Conversão de CFOP
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
           </CardContent>
         </Card>

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T20:29:28.677Z",
+  "generatedAt": "2026-10-07T20:52:11.758Z",
   "collections": [
     {
       "name": "users",
@@ -4911,6 +4911,907 @@
         "CREATE INDEX idx_pedidos_itens_pedido ON pedidos_compra_itens (pedido_id)",
         "CREATE INDEX idx_pedidos_itens_produto ON pedidos_compra_itens (produto_id)",
         "CREATE INDEX idx_pedidos_itens_ativo ON pedidos_compra_itens (ativo)"
+      ]
+    },
+    {
+      "name": "cfop_conversao_entrada",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "cfop_fornecedor",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo_entrada",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Compra para revenda",
+            "Compra para industrialização",
+            "Uso e consumo",
+            "Ativo imobilizado",
+            "Bonificação",
+            "Devolução de venda",
+            "Outras entradas"
+          ]
+        },
+        {
+          "name": "cfop_entrada",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_cfop_conv_par ON cfop_conversao_entrada (cfop_fornecedor, tipo_entrada)",
+        "CREATE INDEX idx_cfop_conv_ativo ON cfop_conversao_entrada (ativo)"
+      ]
+    },
+    {
+      "name": "notas_entrada",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "fornecedor_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "fornecedores"
+        },
+        {
+          "name": "pedido_compra_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "pedidos_compra"
+        },
+        {
+          "name": "origem_lancamento",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["XML", "Digitação"]
+        },
+        {
+          "name": "modelo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["55", "65", "01", "1B", "04"]
+        },
+        {
+          "name": "serie",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "chave_acesso",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_emissao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_entrada",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "natureza_operacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_entrada",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Compra para revenda",
+            "Compra para industrialização",
+            "Uso e consumo",
+            "Ativo imobilizado",
+            "Bonificação",
+            "Devolução de venda",
+            "Outras entradas"
+          ]
+        },
+        {
+          "name": "finalidade",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "situacao_documento",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["00", "02", "08"]
+        },
+        {
+          "name": "indicador_pagamento",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "condicao_pagamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "condicoes_pagamento"
+        },
+        {
+          "name": "modalidade_frete",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "transportadora_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "fornecedores"
+        },
+        {
+          "name": "valor_produtos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_frete",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_seguro",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_desconto",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_outras_despesas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "base_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "base_icms_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_icms_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_fcp_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_pis",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_cofins",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_ibs",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_cbs",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "credito_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "credito_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "credito_pis",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "credito_cofins",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "informacoes_complementares",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "xml_arquivo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "protocolo_autorizacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_sefaz_xml",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Em conferência", "Lançada", "Cancelada"]
+        },
+        {
+          "name": "data_lancamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_lancamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_notas_entrada_empresa ON notas_entrada (empresa_id)",
+        "CREATE INDEX idx_notas_entrada_fornecedor ON notas_entrada (fornecedor_id)",
+        "CREATE INDEX idx_notas_entrada_chave ON notas_entrada (empresa_id, chave_acesso)",
+        "CREATE INDEX idx_notas_entrada_status ON notas_entrada (status)",
+        "CREATE INDEX idx_notas_entrada_data ON notas_entrada (data_emissao)",
+        "CREATE INDEX idx_notas_entrada_ativo ON notas_entrada (ativo)"
+      ]
+    },
+    {
+      "name": "notas_entrada_itens",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nota_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "notas_entrada"
+        },
+        {
+          "name": "numero_item",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "codigo_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "descricao_fornecedor",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "gtin_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ncm_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cest_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cfop_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "unidade_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quantidade_fornecedor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor_unitario_fornecedor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "fator_conversao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quantidade_estoque",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lote_numero",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lote_fabricacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lote_validade",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_produto",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_desconto",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_frete",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_seguro",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_outras",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_icms_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "base_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "base_icms_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_icms_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_icms_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_fcp_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_ipi",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "base_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_pis_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_pis",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_cofins_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_cofins",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_ibs_cbs",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "c_class_trib",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_ibs",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_cbs",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cfop_entrada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_icms_entrada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aproveita_credito_icms",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_credito_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_pis_entrada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_cofins_entrada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_credito_pis",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_credito_cofins",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aproveita_credito_ipi",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_credito_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_total_item",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_unitario_estoque",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_notas_itens_nota ON notas_entrada_itens (nota_id)",
+        "CREATE INDEX idx_notas_itens_produto ON notas_entrada_itens (produto_id)",
+        "CREATE INDEX idx_notas_itens_ativo ON notas_entrada_itens (ativo)"
+      ]
+    },
+    {
+      "name": "notas_entrada_parcelas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nota_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "notas_entrada"
+        },
+        {
+          "name": "numero",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_vencimento",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "forma_pagamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_notas_parc_nota ON notas_entrada_parcelas (nota_id)",
+        "CREATE INDEX idx_notas_parc_venc ON notas_entrada_parcelas (data_vencimento)",
+        "CREATE INDEX idx_notas_parc_ativo ON notas_entrada_parcelas (ativo)"
       ]
     }
   ]

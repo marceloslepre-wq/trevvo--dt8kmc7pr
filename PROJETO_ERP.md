@@ -283,6 +283,169 @@ Itens de produtos que compõem o pedido de compra.
 
 Índices: `pedido_id`, `produto_id`, `ativo`.
 
+### cfop_conversao_entrada
+
+Tabela fiscal de de-para para conversão do CFOP informado na NF-e do fornecedor para o CFOP interno de escrituração da nossa entrada no estabelecimento com base no tipo de entrada.
+
+- id (text, PK)
+- cfop_fornecedor (text, 4 dígitos numéricos, obrigatório)
+- tipo_entrada (select: "Compra para revenda", "Compra para industrialização", "Uso e consumo", "Ativo imobilizado", "Bonificação", "Devolução de venda", "Outras entradas", obrigatório)
+- cfop_entrada (text, 4 dígitos numéricos, obrigatório)
+- descricao (texto descritivo da regra fiscal)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índice único: par `cfop_fornecedor + tipo_entrada`.
+Tela de gestão: Cadastros > Tabelas fiscais > Conversão CFOP Entrada (`/cadastros/tabelas-fiscais/conversao-cfop`).
+
+### notas_entrada
+
+Tabela mestre de notas fiscais de entrada (cabeçalho da nota, equivalente aos dados do registro C100 do SPED Fiscal).
+
+- id (text, PK)
+- empresa_id (relation -> empresas, estabelecimento destinatário, obrigatório)
+- fornecedor_id (relation -> fornecedores, emitente da nota, opcional)
+- pedido_compra_id (relation -> pedidos_compra, opcional)
+- origem_lancamento (select: "XML" ou "Digitação", obrigatório)
+- modelo (select: "55" NF-e, "65" NFC-e, "01" Nota fiscal modelo 1/1A, "1B" Nota fiscal avulsa, "04" Nota fiscal de produtor, obrigatório)
+- serie (texto, série do documento fiscal)
+- numero (number, número da NF, obrigatório)
+- chave_acesso (texto de 44 dígitos, único por empresa quando informado)
+- data_emissao (texto YYYY-MM-DD, obrigatório)
+- data_entrada (texto YYYY-MM-DD, padrão data de hoje, obrigatório)
+- natureza_operacao (texto natOp do XML)
+- tipo_entrada (select: "Compra para revenda", "Compra para industrialização", "Uso e consumo", "Ativo imobilizado", "Bonificação", "Devolução de venda", "Outras entradas", obrigatório)
+- finalidade (number: 1 Normal, 2 Complementar, 3 Ajuste, 4 Devolução)
+- situacao_documento (select: "00" Documento regular, "02" Documento cancelado, "08" Documento fiscal emitido com base em regime especial ou norma específica, padrão "00")
+- indicador_pagamento (number: 0 À vista, 1 A prazo, 2 Outros)
+- condicao_pagamento_id (relation -> condicoes_pagamento, opcional)
+- modalidade_frete (number: 0 Por conta do emitente, 1 Por conta do destinatário, 2 Por conta de terceiros, 3 Transporte próprio por conta do remetente, 4 Transporte próprio por conta do destinatário, 9 Sem frete)
+- transportadora_id (relation -> fornecedores, opcional)
+- valor_produtos (number com 2 casas)
+- valor_frete (number com 2 casas)
+- valor_seguro (number com 2 casas)
+- valor_desconto (number com 2 casas)
+- valor_outras_despesas (number com 2 casas)
+- valor_ipi (number com 2 casas)
+- base_icms (number com 2 casas)
+- valor_icms (number com 2 casas)
+- base_icms_st (number com 2 casas)
+- valor_icms_st (number com 2 casas)
+- valor_fcp_st (number com 2 casas)
+- valor_pis (number com 2 casas)
+- valor_cofins (number com 2 casas)
+- valor_ibs (number com 2 casas)
+- valor_cbs (number com 2 casas)
+- valor_total (number com 2 casas)
+- credito_icms (number com 2 casas, créditos aproveitados)
+- credito_ipi (number com 2 casas)
+- credito_pis (number com 2 casas)
+- credito_cofins (number com 2 casas)
+- informacoes_complementares (texto infAdic/infCpl do XML)
+- observacao (texto livre interno)
+- xml_arquivo (arquivo .xml anexado)
+- protocolo_autorizacao (texto nProt SEFAZ)
+- status_sefaz_xml (texto cStat SEFAZ)
+- status (select: "Em conferência", "Lançada", "Cancelada", padrão "Em conferência")
+- data_lancamento (texto YYYY-MM-DD da efetivação)
+- usuario_lancamento_id (relation -> usuarios)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id`, `fornecedor_id`, par `empresa_id + chave_acesso`, `status`, `data_emissao`, `ativo`.
+
+### notas_entrada_itens
+
+Itens de produtos da nota fiscal de entrada (registro C170 do SPED Fiscal) com espelho das informações do fornecedor e dados de escrituração e custo do nosso lado.
+
+- id (text, PK)
+- nota_id (relation -> notas_entrada, obrigatório, cascadeDelete)
+- numero_item (number nItem do XML, obrigatório)
+- codigo_fornecedor (texto cProd do fornecedor)
+- descricao_fornecedor (texto xProd do fornecedor, obrigatório)
+- gtin_fornecedor (texto cEAN)
+- ncm_fornecedor (texto NCM)
+- cest_fornecedor (texto CEST)
+- cfop_fornecedor (texto CFOP do fornecedor)
+- unidade_fornecedor (texto uCom)
+- quantidade_fornecedor (number qCom, obrigatório)
+- valor_unitario_fornecedor (number vUnCom, obrigatório)
+- produto_id (relation -> produtos, vínculo ao catálogo ERP; opcional até a conferência)
+- fator_conversao (number, padrão 1)
+- quantidade_estoque (number = quantidade_fornecedor × fator_conversao)
+- lote_numero (texto nLote da tag rastro)
+- lote_fabricacao (texto dFab)
+- lote_validade (texto dVal)
+- valor_produto (number com 2 casas)
+- valor_desconto (number com 2 casas)
+- valor_frete (number com 2 casas)
+- valor_seguro (number com 2 casas)
+- valor_outras (number com 2 casas)
+- origem (texto orig ICMS: 0 a 8)
+- cst_icms_fornecedor (texto CST ou CSOSN emitido pelo fornecedor)
+- base_icms (number com 2 casas)
+- aliquota_icms (number com 2 casas)
+- valor_icms (number com 2 casas)
+- base_icms_st (number com 2 casas)
+- aliquota_icms_st (number com 2 casas)
+- valor_icms_st (number com 2 casas)
+- valor_fcp_st (number com 2 casas)
+- cst_ipi (texto CST IPI)
+- base_ipi (number com 2 casas)
+- aliquota_ipi (number com 2 casas)
+- valor_ipi (number com 2 casas)
+- cst_pis_fornecedor (texto CST PIS)
+- valor_pis (number com 2 casas)
+- cst_cofins_fornecedor (texto CST COFINS)
+- valor_cofins (number com 2 casas)
+- cst_ibs_cbs (texto CST IBS/CBS)
+- c_class_trib (texto cClassTrib)
+- valor_ibs (number com 2 casas)
+- valor_cbs (number com 2 casas)
+- cfop_entrada (texto de 4 dígitos resultante do de-para de conversão)
+- cst_icms_entrada (texto de 3 dígitos: origem + CST do nosso lado)
+- aproveita_credito_icms (boolean)
+- valor_credito_icms (number com 2 casas)
+- cst_pis_entrada (texto)
+- cst_cofins_entrada (texto)
+- valor_credito_pis (number com 2 casas)
+- valor_credito_cofins (number com 2 casas)
+- aproveita_credito_ipi (boolean)
+- valor_credito_ipi (number com 2 casas)
+- custo_total_item (number com 2 casas)
+- custo_unitario_estoque (number com 4 casas decimais)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `nota_id`, `produto_id`, `ativo`.
+
+### notas_entrada_parcelas
+
+Parcelas e títulos de pagamento da nota fiscal de entrada (dados de duplicatas cobr/dup do XML). Na Etapa 4, o módulo de Contas a Pagar será gerado a partir destas parcelas.
+
+- id (text, PK)
+- nota_id (relation -> notas_entrada, obrigatório, cascadeDelete)
+- numero (texto nDup da duplicata ou sequencial, obrigatório)
+- data_vencimento (texto YYYY-MM-DD dVenc, obrigatório)
+- valor (number com 2 casas decimais, obrigatório)
+- forma_pagamento (texto tPag do XML, quando houver)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `nota_id`, `data_vencimento`, `ativo`.
+
 ### lotes
 
 Tabela de controle de lotes e datas de validade por produto e empresa. Bloqueada para criação, edição ou exclusão direta pela aplicação — a alteração do saldo de quantidade é feita SOMENTE pelo serviço central de estoque (`movimentarEstoque` e `estornarMovimento`).
@@ -1519,16 +1682,26 @@ A Etapa 2 (Controle de Estoque e Telas Operacionais) foi oficialmente finalizada
 
 ## Versão Atual do Projeto
 
-**Versão 0.0.25** — Início da Etapa 3 (Compras: Pedido de Compra):
+**Versão 0.0.26** — Etapa 3 (Notas Fiscais de Entrada e Importação do XML da NF-e):
 
-1. **Ativação de Compras e Entrada de Notas:** Menu ativado com subitem "Pedidos de compra" protegido pela permissão do módulo `compras` (`ver`, `criar`, `editar`, `excluir`). Demais subitens de Compras mantidos com badge "Em breve".
-2. **Novas Tabelas Criadas:** `pedidos_compra` e `pedidos_compra_itens` com campos completos, numeração sequencial automática por empresa e documentadas na seção "Tabelas" do PROJETO_ERP.md.
-3. **Módulo de Pedidos de Compra (`/compras/pedidos`):**
-   - Listagem com filtros por status, fornecedor, comprador, período e busca rápida, cálculo de total e % recebido, exportação CSV e paginação.
-   - Formulário completo com cabeçalho (fornecedor sugerindo condição cadastrada, comprador, datas, `<SelectCondicaoPagamento uso="Compras" />`), grade de itens com bipagem de código de barras GTIN (`<BuscaProdutoGtin />`), saldos e mínimos/máximos da filial, e totais no rodapé (produtos, descontos, frete, outras despesas, IPI, ICMS ST e total).
-   - Fluxo de status com regras estritas: "Enviar" (Rascunho -> Enviado), "Reabrir" (Enviado -> Rascunho para edição), "Cancelar" (apenas antes de recebimento, com motivo e auditoria), "Duplicar" (gera novo Rascunho) e "Imprimir/PDF" com layout limpo contendo dados da empresa, fornecedor, itens e observações.
-4. **Geração a partir da Sugestão de Reposição de Estoque:**
-   - Na tela Estoque > Sugestão de Compra, inclusão de caixas de seleção por item e fornecedor, edição de quantidades sugeridas e botão "Gerar pedidos de compra" que cria atomicamente os pedidos em Rascunho agrupados por fornecedor principal.
-5. **Auditoria Centralizada:** Gravação em `logs_auditoria` para inclusão, alteração, envio, reabertura, cancelamento e duplicação de pedidos.
-6. **Diagnóstico e Correção Estrutural do PermissaoGuard:**
-   - Correção do fallback e do estado de transição no `PermissoesContext` e `PermissaoGuard`: eliminação de renders vazios durante revalidação ou atraso na resolução do usuário ERP através de auto-recuperação resiliente e feedback visual de carregamento acessível (`permissao-guard-loading`), assegurando que rotas como `/cadastros/tabelas-fiscais/ncm` sempre renderizem conteúdo para o administrador (`perfis_acesso.administrador = true`).
+1. **Correção Estrutural Definitiva do PermissaoGuard (Causa Raiz Resolvida):**
+   - **Causa Real:** Inicialização síncrona com `carregandoInterno = true` mesmo havendo registro de administrador no cache local (`perfis_acesso.administrador = true`), associada ao race condition onde o componente `PermissaoGuard` tentava renderizar o fallback de loading (`permissao-guard-loading`) com spinner que ficava preso caso o PocketBase demorasse para disparar `onAuthStateChange` ou houvesse transição de rota antes do término da revalidação assíncrona.
+   - **Solução Estrutural:** O `PermissaoGuard` e o `PermissoesContext` agora avaliam de forma síncrona o cache local do usuário e perfil de administrador (`expand.perfil_id.administrador`) antes de decidir aguardar carregamento. Administrador tem liberação instantânea e irrestrita sem nenhum delay ou flash em todas as rotas protegidas (`/estoque/sugestao-compra`, `/estoque/inventarios`, `/estoque/lancamentos`, `/cadastros/tabelas-fiscais/ncm` e todas as demais).
+   - O serviço `obterUsuarioPorAuthId` recebeu parâmetro tolerante de e-mail e tratamento seguro de aspas para garantir sincronização do vínculo `auth_user_id` em qualquer cenário de login.
+2. **Novas Tabelas Criadas (Migration 0027):**
+   - `cfop_conversao_entrada`: Regras de-para do CFOP do fornecedor para CFOP de entrada com semente de 27 conversões fiscais iniciais categorizadas por finalidade/tipo de entrada (Compra para revenda, Compra para industrialização, Uso e consumo, Ativo imobilizado, Bonificação, Devolução de venda, Outras entradas).
+   - `notas_entrada`: Registro C100 da NF-e (cabeçalho, emitente, destinatário, totais, bases e impostos de ICMS, ST, IPI, PIS, COFINS, IBS/CBS, créditos fiscais, arquivo .xml e protocolo SEFAZ).
+   - `notas_entrada_itens`: Registro C170 com dados como vieram do fornecedor (cProd, xProd, cEAN, NCM, CEST, CFOP, uCom, qCom, vUnCom, impostos, rastro/lote) e campos preparados para a conferência fiscal, escrituração e custos da Etapa 4.
+   - `notas_entrada_parcelas`: Duplicatas e parcelas de pagamento do XML com datas e valores.
+3. **Módulo de Conversão de CFOP de Entrada:**
+   - Tela completa em Cadastros > Tabelas fiscais > Conversão CFOP Entrada (`/cadastros/tabelas-fiscais/conversao-cfop`) com listagem, busca, filtro por tipo de entrada, modal para inclusão/edição e exportação CSV.
+4. **Importador do XML da NF-e do Fornecedor (DOMParser):**
+   - Modal com suporte a múltiplos arquivos XML em lote, aceitando NF-e modelo 55 com protocolo (ou com aviso confirmatório caso não tenha protocolo).
+   - Validação de CNPJ destinatário (filial ativa do grupo ou sugestão de alternar a empresa ativa) e recusa de chave de acesso duplicada na empresa.
+   - Auto-reconhecimento ou cadastro automático do fornecedor no padrão ERP.
+   - Armazenamento integral do arquivo .xml e geração das parcelas financeiras e itens com conversão automática de CFOP.
+5. **Tela de Conferência da Nota de Entrada (`/compras/notas-entrada/:id`):**
+   - Abas organizadas: Cabeçalho, Itens, Totais & Impostos, Parcelas, Informações Adicionais e XML Formatado (somente leitura).
+   - Alertas dinâmicos no topo (fornecedor não vinculado, itens sem produto associado, divergência de soma e duplicatas automáticas).
+   - Cancelamento de nota com justificativa e registro em `logs_auditoria`.
+6. **Subitem de Menu "Notas de entrada" em "Compras e entrada de notas"** com módulo de permissão `notas_entrada`.

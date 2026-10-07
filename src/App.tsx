@@ -33,8 +33,11 @@ import TabelasFiscaisHubPage from '@/pages/cadastros/TabelasFiscaisHubPage'
 import NcmPage from '@/pages/cadastros/NcmPage'
 import CestPage from '@/pages/cadastros/CestPage'
 import CfopPage from '@/pages/cadastros/CfopPage'
+import CfopConversaoPage from '@/pages/cadastros/CfopConversaoPage'
 import PerfisTributariosPage from '@/pages/cadastros/PerfisTributariosPage'
 import MarcasPage from '@/pages/cadastros/MarcasPage'
+import NotasEntradaListaPage from '@/pages/compras/NotasEntradaListaPage'
+import NotaEntradaConferenciaPage from '@/pages/compras/NotaEntradaConferenciaPage'
 import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import ConfiguracoesGeralPage from '@/pages/configuracoes/ConfiguracoesGeralPage'
 import IntegridadeEstoquePage from '@/pages/configuracoes/IntegridadeEstoquePage'
@@ -346,6 +349,14 @@ const App = () => (
                     }
                   />
                   <Route
+                    path="/cadastros/tabelas-fiscais/conversao-cfop"
+                    element={
+                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
+                        <CfopConversaoPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
                     path="/cadastros/tabelas-fiscais/perfis"
                     element={
                       <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
@@ -396,6 +407,24 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="compras" acao="editar">
                         <PedidoCompraFormPage />
+                      </PermissaoGuard>
+                    }
+                  />
+
+                  {/* Notas Fiscais de Entrada */}
+                  <Route
+                    path="/compras/notas-entrada"
+                    element={
+                      <PermissaoGuard modulo="notas_entrada" acao="ver">
+                        <NotasEntradaListaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/compras/notas-entrada/:id"
+                    element={
+                      <PermissaoGuard modulo="notas_entrada" acao="ver">
+                        <NotaEntradaConferenciaPage />
                       </PermissaoGuard>
                     }
                   />

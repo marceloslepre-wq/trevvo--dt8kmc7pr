@@ -1,0 +1,1118 @@
+import pb from '@/lib/pocketbase/client'
+import { registrarAuditoria } from '@/services/auditoria'
+import { TipoEntradaNota, converterCfopEntrada } from '@/services/cfopConversao'
+import { Fornecedor, salvarFornecedor, normalizarCpfCnpj } from '@/services/fornecedores'
+
+export type OrigemLancamentoNota = 'XML' | 'Digitação'
+export type ModeloNota = '55' | '65' | '01' | '1B' | '04'
+export type SituacaoDocumentoNota = '00' | '02' | '08'
+export type StatusNotaEntrada = 'Em conferência' | 'Lançada' | 'Cancelada'
+
+export interface NotaEntrada {
+  id: string
+  empresa_id: string
+  fornecedor_id?: string
+  pedido_compra_id?: string
+  origem_lancamento: OrigemLancamentoNota
+  modelo: ModeloNota
+  serie: string
+  numero: number
+  chave_acesso?: string
+  data_emissao: string
+  data_entrada: string
+  natureza_operacao?: string
+  tipo_entrada: TipoEntradaNota
+  finalidade?: number
+  situacao_documento?: SituacaoDocumentoNota
+  indicador_pagamento?: number
+  condicao_pagamento_id?: string
+  modalidade_frete?: number
+  transportadora_id?: string
+
+  // Totais
+  valor_produtos: number
+  valor_frete: number
+  valor_seguro: number
+  valor_desconto: number
+  valor_outras_despesas: number
+  valor_ipi: number
+  base_icms: number
+  valor_icms: number
+  base_icms_st: number
+  valor_icms_st: number
+  valor_fcp_st: number
+  valor_pis: number
+  valor_cofins: number
+  valor_ibs: number
+  valor_cbs: number
+  valor_total: number
+
+  // Créditos aproveitados
+  credito_icms?: number
+  credito_ipi?: number
+  credito_pis?: number
+  credito_cofins?: number
+
+  informacoes_complementares?: string
+  observacao?: string
+
+  xml_arquivo?: string
+  protocolo_autorizacao?: string
+  status_sefaz_xml?: string
+
+  status: StatusNotaEntrada
+  data_lancamento?: string
+  usuario_lancamento_id?: string
+
+  ativo: boolean
+  created_by?: string
+  updated_by?: string
+  created?: string
+  updated?: string
+
+  // Expansões
+  expand?: {
+    empresa_id?: { id: string; razao_social: string; nome_fantasia: string; cnpj: string }
+    fornecedor_id?: Fornecedor
+    transportadora_id?: Fornecedor
+    pedido_compra_id?: { id: string; numero: number }
+    condicao_pagamento_id?: { id: string; descricao: string }
+    usuario_lancamento_id?: { id: string; nome: string }
+  }
+}
+
+export interface NotaEntradaItem {
+  id: string
+  nota_id: string
+  numero_item: number
+
+  // Fornecedor
+  codigo_fornecedor?: string
+  descricao_fornecedor: string
+  gtin_fornecedor?: string
+  ncm_fornecedor?: string
+  cest_fornecedor?: string
+  cfop_fornecedor?: string
+  unidade_fornecedor?: string
+  quantidade_fornecedor: number
+  valor_unitario_fornecedor: number
+
+  // Vínculo ERP
+  produto_id?: string
+  fator_conversao?: number
+  quantidade_estoque?: number
+  lote_numero?: string
+  lote_fabricacao?: string
+  lote_validade?: string
+
+  // Valores
+  valor_produto?: number
+  valor_desconto?: number
+  valor_frete?: number
+  valor_seguro?: number
+  valor_outras?: number
+
+  // ICMS Fornecedor
+  origem?: string
+  cst_icms_fornecedor?: string
+  base_icms?: number
+  aliquota_icms?: number
+  valor_icms?: number
+  base_icms_st?: number
+  aliquota_icms_st?: number
+  valor_icms_st?: number
+  valor_fcp_st?: number
+
+  // IPI
+  cst_ipi?: string
+  base_ipi?: number
+  aliquota_ipi?: number
+  valor_ipi?: number
+
+  // PIS/COFINS Fornecedor
+  cst_pis_fornecedor?: string
+  valor_pis?: number
+  cst_cofins_fornecedor?: string
+  valor_cofins?: number
+
+  // IBS/CBS
+  cst_ibs_cbs?: string
+  c_class_trib?: string
+  valor_ibs?: number
+  valor_cbs?: number
+
+  // Escrituração Entrada
+  cfop_entrada?: string
+  cst_icms_entrada?: string
+  aproveita_credito_icms?: boolean
+  valor_credito_icms?: number
+  cst_pis_entrada?: string
+  cst_cofins_entrada?: string
+  valor_credito_pis?: number
+  valor_credito_cofins?: number
+  aproveita_credito_ipi?: boolean
+  valor_credito_ipi?: number
+
+  // Custo
+  custo_total_item?: number
+  custo_unitario_estoque?: number
+
+  ativo: boolean
+  created?: string
+  updated?: string
+
+  expand?: {
+    produto_id?: { id: string; codigo: string; descricao: string; unidade_medida?: string }
+  }
+}
+
+export interface NotaEntradaParcela {
+  id: string
+  nota_id: string
+  numero: string
+  data_vencimento: string
+  valor: number
+  forma_pagamento?: string
+  ativo: boolean
+  created?: string
+  updated?: string
+}
+
+export interface ListarNotasEntradaParams {
+  empresa_id?: string
+  fornecedor_id?: string
+  tipo_entrada?: string
+  status?: string
+  data_inicio?: string
+  data_fim?: string
+  busca?: string
+  page?: number
+  perPage?: number
+}
+
+export interface ResultadoPaginadoNotas {
+  items: NotaEntrada[]
+  totalItems: number
+  totalPages: number
+  page: number
+  perPage: number
+}
+
+// ==========================================
+// SERVIÇOS DE CRUD DE NOTAS
+// ==========================================
+
+export async function listarNotasEntrada(
+  params: ListarNotasEntradaParams,
+): Promise<ResultadoPaginadoNotas> {
+  const page = params.page || 1
+  const perPage = params.perPage || 20
+  const condicoes: string[] = ['ativo = true']
+
+  if (params.empresa_id) {
+    condicoes.push(`empresa_id = '${params.empresa_id}'`)
+  }
+  if (params.fornecedor_id) {
+    condicoes.push(`fornecedor_id = '${params.fornecedor_id}'`)
+  }
+  if (params.tipo_entrada && params.tipo_entrada !== 'todos') {
+    condicoes.push(`tipo_entrada = '${params.tipo_entrada}'`)
+  }
+  if (params.status && params.status !== 'todos') {
+    condicoes.push(`status = '${params.status}'`)
+  }
+  if (params.data_inicio) {
+    condicoes.push(`data_emissao >= '${params.data_inicio}'`)
+  }
+  if (params.data_fim) {
+    condicoes.push(`data_emissao <= '${params.data_fim}'`)
+  }
+  if (params.busca && params.busca.trim()) {
+    const b = params.busca.trim().replace(/['"]/g, '')
+    const num = Number(b)
+    if (!isNaN(num) && num > 0) {
+      condicoes.push(`(numero = ${num} || chave_acesso ~ '${b}')`)
+    } else {
+      condicoes.push(`(chave_acesso ~ '${b}' || natureza_operacao ~ '${b}')`)
+    }
+  }
+
+  const filter = condicoes.join(' && ')
+  const sort = '-data_emissao,-created'
+
+  const res = await pb.collection('notas_entrada').getList<NotaEntrada>(page, perPage, {
+    filter,
+    sort,
+    expand: 'fornecedor_id,pedido_compra_id,empresa_id',
+  })
+
+  return {
+    items: res.items,
+    totalItems: res.totalItems,
+    totalPages: res.totalPages,
+    page: res.page,
+    perPage: res.perPage,
+  }
+}
+
+export async function obterNotaEntradaPorId(id: string): Promise<{
+  nota: NotaEntrada
+  itens: NotaEntradaItem[]
+  parcelas: NotaEntradaParcela[]
+}> {
+  const nota = await pb.collection('notas_entrada').getOne<NotaEntrada>(id, {
+    expand:
+      'fornecedor_id,transportadora_id,pedido_compra_id,condicao_pagamento_id,empresa_id,usuario_lancamento_id',
+  })
+
+  const itens = await pb.collection('notas_entrada_itens').getFullList<NotaEntradaItem>({
+    filter: `nota_id = '${id}' && ativo = true`,
+    sort: 'numero_item',
+    expand: 'produto_id',
+  })
+
+  const parcelas = await pb.collection('notas_entrada_parcelas').getFullList<NotaEntradaParcela>({
+    filter: `nota_id = '${id}' && ativo = true`,
+    sort: 'data_vencimento,numero',
+  })
+
+  return { nota, itens, parcelas }
+}
+
+export async function buscarNotaPorChave(
+  empresaId: string,
+  chave: string,
+): Promise<NotaEntrada | null> {
+  const chaveLimpa = chave.replace(/\D/g, '')
+  if (!chaveLimpa || chaveLimpa.length !== 44) return null
+  try {
+    return await pb
+      .collection('notas_entrada')
+      .getFirstListItem<NotaEntrada>(
+        `empresa_id = '${empresaId}' && chave_acesso = '${chaveLimpa}' && ativo = true`,
+      )
+  } catch {
+    return null
+  }
+}
+
+export async function cancelarNotaEntrada(id: string, motivo: string): Promise<NotaEntrada> {
+  const user = pb.authStore.record
+  const antes = await pb.collection('notas_entrada').getOne<NotaEntrada>(id)
+  const atualizado = await pb.collection('notas_entrada').update<NotaEntrada>(id, {
+    status: 'Cancelada',
+    observacao: antes.observacao
+      ? `${antes.observacao}\nCancelamento: ${motivo}`
+      : `Cancelamento: ${motivo}`,
+    updated_by: user?.id || null,
+  })
+
+  await registrarAuditoria({
+    tabela: 'notas_entrada',
+    registro_id: id,
+    acao: 'alteracao',
+    valores_antes: antes as unknown as Record<string, unknown>,
+    valores_depois: atualizado as unknown as Record<string, unknown>,
+  })
+
+  return atualizado
+}
+
+// ==========================================
+// PARSER DO XML DA NF-e (DOMParser no Browser)
+// ==========================================
+
+export interface DadosFornecedorXml {
+  cnpjCpf: string
+  razaoSocial: string
+  nomeFantasia: string
+  inscricaoEstadual: string
+  crt: string
+  logradouro: string
+  numero: string
+  complemento: string
+  bairro: string
+  codigoIbge: string
+  cidade: string
+  uf: string
+  cep: string
+  telefone: string
+}
+
+export interface ItemXmlParsed {
+  numeroItem: number
+  codigo: string
+  descricao: string
+  gtin: string
+  ncm: string
+  cest: string
+  cfop: string
+  unidade: string
+  quantidade: number
+  valorUnitario: number
+  valorTotal: number
+  desconto: number
+  frete: number
+  seguro: number
+  outrasDespesas: number
+
+  // Rastro / Lote
+  loteNumero?: string
+  loteFabricacao?: string
+  loteValidade?: string
+
+  // ICMS
+  origem: string
+  cstIcms: string
+  baseIcms: number
+  aliquotaIcms: number
+  valorIcms: number
+  baseIcmsSt: number
+  aliquotaIcmsSt: number
+  valorIcmsSt: number
+  valorFcpSt: number
+
+  // IPI
+  cstIpi: string
+  baseIpi: number
+  aliquotaIpi: number
+  valorIpi: number
+
+  // PIS
+  cstPis: string
+  valorPis: number
+
+  // COFINS
+  cstCofins: string
+  valorCofins: number
+
+  // IBS/CBS
+  cstIbsCbs?: string
+  cClassTrib?: string
+  valorIbs?: number
+  valorCbs?: number
+}
+
+export interface ParcelaXmlParsed {
+  numero: string
+  vencimento: string
+  valor: number
+  formaPagamento?: string
+}
+
+export interface NfeXmlParsed {
+  chaveAcesso: string
+  modelo: ModeloNota
+  serie: string
+  numero: number
+  dataEmissao: string
+  dataEntrada: string
+  naturezaOperacao: string
+  tipoOperacao: number // 0 entrada, 1 saída
+  finalidade: number // 1 normal, 2 complementar, 3 ajuste, 4 devolução
+  indicadorPagamento: number
+
+  // Destinatário
+  destCnpjCpf: string
+  destRazaoSocial: string
+
+  // Emitente
+  emitente: DadosFornecedorXml
+
+  // Totais
+  valorProdutos: number
+  valorFrete: number
+  valorSeguro: number
+  valorDesconto: number
+  valorOutras: number
+  valorIpi: number
+  baseIcms: number
+  valorIcms: number
+  baseIcmsSt: number
+  valorIcmsSt: number
+  valorFcpSt: number
+  valorPis: number
+  valorCofins: number
+  valorIbs: number
+  valorCbs: number
+  valorTotal: number
+
+  // Modalidade de frete e transportadora
+  modalidadeFrete: number
+  transpCnpjCpf?: string
+  transpRazaoSocial?: string
+
+  // Protocolo
+  protocoloAutorizacao?: string
+  statusSefaz?: string
+  temProtocolo: boolean
+
+  // Textos adicionais
+  infAdic?: string
+
+  // Itens e Parcelas
+  itens: ItemXmlParsed[]
+  parcelas: ParcelaXmlParsed[]
+
+  // XML cru em texto para salvar e visualização
+  rawXml: string
+}
+
+function getNodeText(parent: Element | null, tag: string): string {
+  if (!parent) return ''
+  const el = parent.getElementsByTagName(tag)[0]
+  return el?.textContent?.trim() || ''
+}
+
+function getNodeNumber(parent: Element | null, tag: string): number {
+  const txt = getNodeText(parent, tag)
+  if (!txt) return 0
+  const n = parseFloat(txt)
+  return isNaN(n) ? 0 : n
+}
+
+export function parseNfeXml(xmlString: string): NfeXmlParsed {
+  const parser = new DOMParser()
+  const xmlDoc = parser.parseFromString(xmlString, 'text/xml')
+
+  const parserError = xmlDoc.getElementsByTagName('parsererror')[0]
+  if (parserError) {
+    throw new Error('Arquivo XML inválido ou corrompido.')
+  }
+
+  // Localiza infNFe
+  const infNFe = xmlDoc.getElementsByTagName('infNFe')[0]
+  if (!infNFe) {
+    throw new Error('A tag <infNFe> não foi encontrada no XML.')
+  }
+
+  // Chave de acesso pelo Id da infNFe (ex: NFe35...)
+  let chaveAcesso = (infNFe.getAttribute('Id') || '').replace(/^NFe/, '').replace(/\D/g, '')
+
+  // ide
+  const ide = infNFe.getElementsByTagName('ide')[0]
+  const modRaw = getNodeText(ide, 'mod')
+  let modelo: ModeloNota = '55'
+  if (['55', '65', '01', '1B', '04'].includes(modRaw)) {
+    modelo = modRaw as ModeloNota
+  }
+  const serie = getNodeText(ide, 'serie') || '1'
+  const numero = parseInt(getNodeText(ide, 'nNF') || '0', 10)
+  const dhEmi = getNodeText(ide, 'dhEmi') || getNodeText(ide, 'dEmi')
+  const dataEmissao = dhEmi ? dhEmi.slice(0, 10) : new Date().toISOString().slice(0, 10)
+  const dhSaiEnt = getNodeText(ide, 'dhSaiEnt') || getNodeText(ide, 'dSaiEnt')
+  const dataEntrada = dhSaiEnt ? dhSaiEnt.slice(0, 10) : new Date().toISOString().slice(0, 10)
+  const naturezaOperacao = getNodeText(ide, 'natOp')
+  const tipoOperacao = parseInt(getNodeText(ide, 'tpNF') || '1', 10)
+  const finalidade = parseInt(getNodeText(ide, 'finNFe') || '1', 10)
+  const indicadorPagamento = parseInt(getNodeText(ide, 'indPag') || '0', 10)
+
+  // emit
+  const emit = infNFe.getElementsByTagName('emit')[0]
+  const emitCnpj = getNodeText(emit, 'CNPJ')
+  const emitCpf = getNodeText(emit, 'CPF')
+  const emitCnpjCpf = emitCnpj || emitCpf
+  const emitEnder = emit?.getElementsByTagName('enderEmit')[0]
+
+  const emitente: DadosFornecedorXml = {
+    cnpjCpf: emitCnpjCpf,
+    razaoSocial: getNodeText(emit, 'xNome'),
+    nomeFantasia: getNodeText(emit, 'xFant'),
+    inscricaoEstadual: getNodeText(emit, 'IE'),
+    crt: getNodeText(emit, 'CRT'),
+    logradouro: getNodeText(emitEnder, 'xLgr'),
+    numero: getNodeText(emitEnder, 'nro'),
+    complemento: getNodeText(emitEnder, 'xCpl'),
+    bairro: getNodeText(emitEnder, 'xBairro'),
+    codigoIbge: getNodeText(emitEnder, 'cMun'),
+    cidade: getNodeText(emitEnder, 'xMun'),
+    uf: getNodeText(emitEnder, 'UF'),
+    cep: getNodeText(emitEnder, 'CEP'),
+    telefone: getNodeText(emitEnder, 'fone'),
+  }
+
+  // dest
+  const dest = infNFe.getElementsByTagName('dest')[0]
+  const destCnpj = getNodeText(dest, 'CNPJ')
+  const destCpf = getNodeText(dest, 'CPF')
+  const destCnpjCpf = destCnpj || destCpf
+  const destRazaoSocial = getNodeText(dest, 'xNome')
+
+  // total
+  const total = infNFe.getElementsByTagName('total')[0]
+  const icmsTot = total?.getElementsByTagName('ICMSTot')[0]
+
+  const valorProdutos = getNodeNumber(icmsTot, 'vProd')
+  const valorFrete = getNodeNumber(icmsTot, 'vFrete')
+  const valorSeguro = getNodeNumber(icmsTot, 'vSeg')
+  const valorDesconto = getNodeNumber(icmsTot, 'vDesc')
+  const valorOutras = getNodeNumber(icmsTot, 'vOutro')
+  const valorIpi = getNodeNumber(icmsTot, 'vIPI')
+  const baseIcms = getNodeNumber(icmsTot, 'vBC')
+  const valorIcms = getNodeNumber(icmsTot, 'vICMS')
+  const baseIcmsSt = getNodeNumber(icmsTot, 'vBCST')
+  const valorIcmsSt = getNodeNumber(icmsTot, 'vST')
+  const valorFcpSt = getNodeNumber(icmsTot, 'vFCPST')
+  const valorPis = getNodeNumber(icmsTot, 'vPIS')
+  const valorCofins = getNodeNumber(icmsTot, 'vCOFINS')
+  const valorTotal = getNodeNumber(icmsTot, 'vNF')
+
+  // Reforma tributária IBS/CBS no total se existir (versões preliminares/futuras)
+  const ibsTot = total?.getElementsByTagName('IBSTot')[0]
+  const valorIbs = getNodeNumber(ibsTot, 'vIBS')
+  const valorCbs = getNodeNumber(ibsTot, 'vCBS')
+
+  // transp
+  const transp = infNFe.getElementsByTagName('transp')[0]
+  const modalidadeFrete = parseInt(getNodeText(transp, 'modFrete') || '9', 10)
+  const transpObj = transp?.getElementsByTagName('transporta')[0]
+  const transpCnpjCpf = getNodeText(transpObj, 'CNPJ') || getNodeText(transpObj, 'CPF')
+  const transpRazaoSocial = getNodeText(transpObj, 'xNome')
+
+  // cobr / dup / pag
+  const cobr = infNFe.getElementsByTagName('cobr')[0]
+  const dupNodes = cobr ? Array.from(cobr.getElementsByTagName('dup')) : []
+  const pag = infNFe.getElementsByTagName('pag')[0]
+  const detPagNodes = pag ? Array.from(pag.getElementsByTagName('detPag')) : []
+
+  // Mapear parcelas
+  const parcelas: ParcelaXmlParsed[] = []
+  if (dupNodes.length > 0) {
+    dupNodes.forEach((dup, idx) => {
+      const nDup = getNodeText(dup, 'nDup') || String(idx + 1).padStart(3, '0')
+      const dVenc = getNodeText(dup, 'dVenc') || dataEmissao
+      const vDup = getNodeNumber(dup, 'vDup')
+      // tenta pegar forma de pagamento correspondente em detPag
+      let formaPagamento = ''
+      if (detPagNodes[idx]) {
+        formaPagamento = getNodeText(detPagNodes[idx], 'tPag')
+      } else if (detPagNodes[0]) {
+        formaPagamento = getNodeText(detPagNodes[0], 'tPag')
+      }
+      parcelas.push({
+        numero: nDup,
+        vencimento: dVenc,
+        valor: vDup,
+        formaPagamento,
+      })
+    })
+  } else if (detPagNodes.length > 0) {
+    detPagNodes.forEach((det, idx) => {
+      const vPag = getNodeNumber(det, 'vPag')
+      const tPag = getNodeText(det, 'tPag')
+      if (vPag > 0) {
+        parcelas.push({
+          numero: String(idx + 1).padStart(3, '0'),
+          vencimento: dataEmissao,
+          valor: vPag,
+          formaPagamento: tPag,
+        })
+      }
+    })
+  }
+
+  // Se mesmo assim não houver parcelas, criamos a parcela única com valorTotal
+  if (parcelas.length === 0 && valorTotal > 0) {
+    parcelas.push({
+      numero: '001',
+      vencimento: dataEmissao,
+      valor: valorTotal,
+      formaPagamento: '99', // Outros
+    })
+  }
+
+  // infAdic
+  const infAdic = infNFe.getElementsByTagName('infAdic')[0]
+  const infCpl = getNodeText(infAdic, 'infCpl')
+  const infAdFisco = getNodeText(infAdic, 'infAdFisco')
+  const infAdicTexto = [infCpl, infAdFisco].filter(Boolean).join('\n')
+
+  // protNFe
+  const protNFe = xmlDoc.getElementsByTagName('protNFe')[0]
+  const infProt = protNFe?.getElementsByTagName('infProt')[0]
+  const protocoloAutorizacao = getNodeText(infProt, 'nProt')
+  const statusSefaz = getNodeText(infProt, 'cStat')
+  const chaveProt = getNodeText(infProt, 'chNFe')
+  if (!chaveAcesso && chaveProt) {
+    chaveAcesso = chaveProt.replace(/\D/g, '')
+  }
+  const temProtocolo = Boolean(protocoloAutorizacao && statusSefaz)
+
+  // Itens (det)
+  const detNodes = Array.from(infNFe.getElementsByTagName('det'))
+  const itens: ItemXmlParsed[] = detNodes.map((det) => {
+    const nItem = parseInt(det.getAttribute('nItem') || '1', 10)
+    const prod = det.getElementsByTagName('prod')[0]
+    const imposto = det.getElementsByTagName('imposto')[0]
+
+    // prod
+    const cProd = getNodeText(prod, 'cProd')
+    const xProd = getNodeText(prod, 'xProd')
+    const cEAN = getNodeText(prod, 'cEAN')
+    const ncm = getNodeText(prod, 'NCM')
+    const cest = getNodeText(prod, 'CEST')
+    const cfop = getNodeText(prod, 'CFOP')
+    const uCom = getNodeText(prod, 'uCom')
+    const qCom = getNodeNumber(prod, 'qCom')
+    const vUnCom = getNodeNumber(prod, 'vUnCom')
+    const vProd = getNodeNumber(prod, 'vProd')
+    const vDesc = getNodeNumber(prod, 'vDesc')
+    const vFrete = getNodeNumber(prod, 'vFrete')
+    const vSeg = getNodeNumber(prod, 'vSeg')
+    const vOutro = getNodeNumber(prod, 'vOutro')
+
+    // Rastro (Lote)
+    const rastro = prod?.getElementsByTagName('rastro')[0]
+    const loteNumero = rastro ? getNodeText(rastro, 'nLote') : undefined
+    const loteFabricacao = rastro ? getNodeText(rastro, 'dFab') : undefined
+    const loteValidade = rastro ? getNodeText(rastro, 'dVal') : undefined
+
+    // ICMS: pode vir como ICMS00, ICMS10, ICMS20, ICMS30, ICMS40, ICMS51, ICMS60, ICMS70, ICMS90,
+    // ou ICMSSN101, ICMSSN102, ICMSSN201, ICMSSN202, ICMSSN500, ICMSSN900, etc.
+    let origem = '0'
+    let cstIcms = ''
+    let baseIcmsItem = 0
+    let aliquotaIcmsItem = 0
+    let valorIcmsItem = 0
+    let baseIcmsStItem = 0
+    let aliquotaIcmsStItem = 0
+    let valorIcmsStItem = 0
+    let valorFcpStItem = 0
+
+    const icmsNode = imposto?.getElementsByTagName('ICMS')[0]
+    if (icmsNode && icmsNode.children.length > 0) {
+      const sub = icmsNode.children[0] // ex: <ICMS00> ou <ICMSSN102>
+      origem = getNodeText(sub, 'orig') || '0'
+      cstIcms = getNodeText(sub, 'CST') || getNodeText(sub, 'CSOSN') || ''
+      baseIcmsItem = getNodeNumber(sub, 'vBC')
+      aliquotaIcmsItem = getNodeNumber(sub, 'pICMS')
+      valorIcmsItem = getNodeNumber(sub, 'vICMS')
+      baseIcmsStItem = getNodeNumber(sub, 'vBCST')
+      aliquotaIcmsStItem = getNodeNumber(sub, 'pICMSST')
+      valorIcmsStItem = getNodeNumber(sub, 'vST')
+      valorFcpStItem = getNodeNumber(sub, 'vFCPST')
+    }
+
+    // IPI
+    let cstIpi = ''
+    let baseIpiItem = 0
+    let aliquotaIpiItem = 0
+    let valorIpiItem = 0
+    const ipiNode = imposto?.getElementsByTagName('IPI')[0]
+    if (ipiNode) {
+      const ipiTrib = ipiNode.getElementsByTagName('IPITrib')[0]
+      const ipiNT = ipiNode.getElementsByTagName('IPINT')[0]
+      if (ipiTrib) {
+        cstIpi = getNodeText(ipiTrib, 'CST')
+        baseIpiItem = getNodeNumber(ipiTrib, 'vBC')
+        aliquotaIpiItem = getNodeNumber(ipiTrib, 'pIPI')
+        valorIpiItem = getNodeNumber(ipiTrib, 'vIPI')
+      } else if (ipiNT) {
+        cstIpi = getNodeText(ipiNT, 'CST')
+      }
+    }
+
+    // PIS
+    let cstPis = ''
+    let valorPisItem = 0
+    const pisNode = imposto?.getElementsByTagName('PIS')[0]
+    if (pisNode && pisNode.children.length > 0) {
+      const subPis = pisNode.children[0]
+      cstPis = getNodeText(subPis, 'CST')
+      valorPisItem = getNodeNumber(subPis, 'vPIS')
+    }
+
+    // COFINS
+    let cstCofins = ''
+    let valorCofinsItem = 0
+    const cofinsNode = imposto?.getElementsByTagName('COFINS')[0]
+    if (cofinsNode && cofinsNode.children.length > 0) {
+      const subCof = cofinsNode.children[0]
+      cstCofins = getNodeText(subCof, 'CST')
+      valorCofinsItem = getNodeNumber(subCof, 'vCOFINS')
+    }
+
+    // IBS/CBS item se existir
+    let cstIbsCbs: string | undefined
+    let cClassTrib: string | undefined
+    let valorIbsItem = 0
+    let valorCbsItem = 0
+    const ibsCbsNode =
+      imposto?.getElementsByTagName('IBS_CBS')[0] || imposto?.getElementsByTagName('IBS')[0]
+    if (ibsCbsNode) {
+      cstIbsCbs = getNodeText(ibsCbsNode, 'CST')
+      cClassTrib = getNodeText(ibsCbsNode, 'cClassTrib')
+      valorIbsItem = getNodeNumber(ibsCbsNode, 'vIBS')
+      valorCbsItem = getNodeNumber(ibsCbsNode, 'vCBS')
+    }
+
+    return {
+      numeroItem: nItem,
+      codigo: cProd,
+      descricao: xProd,
+      gtin: cEAN,
+      ncm,
+      cest,
+      cfop,
+      unidade: uCom,
+      quantidade: qCom,
+      valorUnitario: vUnCom,
+      valorTotal: vProd,
+      desconto: vDesc,
+      frete: vFrete,
+      seguro: vSeg,
+      outrasDespesas: vOutro,
+
+      loteNumero,
+      loteFabricacao,
+      loteValidade,
+
+      origem,
+      cstIcms,
+      baseIcms: baseIcmsItem,
+      aliquotaIcms: aliquotaIcmsItem,
+      valorIcms: valorIcmsItem,
+      baseIcmsSt: baseIcmsStItem,
+      aliquotaIcmsSt: aliquotaIcmsStItem,
+      valorIcmsSt: valorIcmsStItem,
+      valorFcpSt: valorFcpStItem,
+
+      cstIpi,
+      baseIpi: baseIpiItem,
+      aliquotaIpi: aliquotaIpiItem,
+      valorIpi: valorIpiItem,
+
+      cstPis,
+      valorPis: valorPisItem,
+
+      cstCofins,
+      valorCofins: valorCofinsItem,
+
+      cstIbsCbs,
+      cClassTrib,
+      valorIbs: valorIbsItem,
+      valorCbs: valorCbsItem,
+    }
+  })
+
+  return {
+    chaveAcesso,
+    modelo,
+    serie,
+    numero,
+    dataEmissao,
+    dataEntrada,
+    naturezaOperacao,
+    tipoOperacao,
+    finalidade,
+    indicadorPagamento,
+
+    destCnpjCpf,
+    destRazaoSocial,
+
+    emitente,
+
+    valorProdutos,
+    valorFrete,
+    valorSeguro,
+    valorDesconto,
+    valorOutras,
+    valorIpi,
+    baseIcms,
+    valorIcms,
+    baseIcmsSt,
+    valorIcmsSt,
+    valorFcpSt,
+    valorPis,
+    valorCofins,
+    valorIbs,
+    valorCbs,
+    valorTotal,
+
+    modalidadeFrete,
+    transpCnpjCpf,
+    transpRazaoSocial,
+
+    protocoloAutorizacao,
+    statusSefaz,
+    temProtocolo,
+
+    infAdic: infAdicTexto,
+
+    itens,
+    parcelas,
+    rawXml: xmlString,
+  }
+}
+
+// ==========================================
+// IMPORTAÇÃO E GRAVAÇÃO NO BANCO
+// ==========================================
+
+export async function importarXmlNotaEntrada(params: {
+  parsed: NfeXmlParsed
+  empresaId: string
+  tipoEntrada: TipoEntradaNota
+  fornecedorId?: string
+  arquivoXml?: File
+}): Promise<{ nota: NotaEntrada; fornecedorCriado?: boolean }> {
+  const { parsed, empresaId, tipoEntrada, arquivoXml } = params
+  const user = pb.authStore.record
+
+  // 1. Resolver fornecedor (se não foi passado, busca por CNPJ/CPF)
+  let fId = params.fornecedorId
+  let fornecedorCriado = false
+  const docLimpo = normalizarCpfCnpj(parsed.emitente.cnpjCpf)
+
+  if (!fId && docLimpo) {
+    try {
+      const existente = await pb
+        .collection('fornecedores')
+        .getFirstListItem<Fornecedor>(`cpf_cnpj = '${docLimpo}' && ativo = true`)
+      if (existente) {
+        fId = existente.id
+      }
+    } catch {
+      // Não cadastrado ainda
+    }
+  }
+
+  // Se mesmo assim não achou fornecedor, cadastra automaticamente com os dados do emitente da NF-e
+  if (!fId && docLimpo) {
+    try {
+      const tipoPessoa: 'Física' | 'Jurídica' = docLimpo.length === 11 ? 'Física' : 'Jurídica'
+      let crtVal: '1' | '2' | '3' | '4' = '1'
+      if (parsed.emitente.crt === '2') crtVal = '2'
+      else if (parsed.emitente.crt === '3') crtVal = '3'
+      else if (parsed.emitente.crt === '4') crtVal = '4'
+
+      const novoForn = await salvarFornecedor({
+        tipo_pessoa: tipoPessoa,
+        cpf_cnpj: docLimpo,
+        razao_social: parsed.emitente.razaoSocial || 'Fornecedor Importado via XML',
+        nome_fantasia: parsed.emitente.nomeFantasia || parsed.emitente.razaoSocial || '',
+        inscricao_estadual: parsed.emitente.inscricaoEstadual || 'ISENTO',
+        indicador_ie: parsed.emitente.inscricaoEstadual ? '1' : '9',
+        crt_fornecedor: crtVal,
+        tipo_fornecedor: ['Mercadorias'],
+        cep: (parsed.emitente.cep || '').replace(/\D/g, ''),
+        logradouro: parsed.emitente.logradouro || '',
+        numero: parsed.emitente.numero || 'S/N',
+        complemento: parsed.emitente.complemento || '',
+        bairro: parsed.emitente.bairro || '',
+        codigo_municipio_ibge: parsed.emitente.codigoIbge || '',
+        municipio: parsed.emitente.cidade || '',
+        uf: parsed.emitente.uf || '',
+        telefone: parsed.emitente.telefone || '',
+        observacoes: 'Cadastrado automaticamente na importação da NF-e',
+      })
+      fId = novoForn.id
+      fornecedorCriado = true
+    } catch (err) {
+      console.warn('Não foi possível cadastrar fornecedor automaticamente:', err)
+    }
+  }
+
+  // 2. Transportadora opcional
+  let transpId: string | undefined
+  if (parsed.transpCnpjCpf) {
+    const docTransp = normalizarCpfCnpj(parsed.transpCnpjCpf)
+    if (docTransp) {
+      try {
+        const transObj = await pb
+          .collection('fornecedores')
+          .getFirstListItem<Fornecedor>(`cpf_cnpj = '${docTransp}' && ativo = true`)
+        if (transObj) transpId = transObj.id
+      } catch {
+        // ignora
+      }
+    }
+  }
+
+  // 3. Monta FormData para notas_entrada (suporte a upload do arquivo .xml)
+  const formData = new FormData()
+  formData.append('empresa_id', empresaId)
+  if (fId) formData.append('fornecedor_id', fId)
+  formData.append('origem_lancamento', 'XML')
+  formData.append('modelo', parsed.modelo)
+  formData.append('serie', parsed.serie)
+  formData.append('numero', String(parsed.numero))
+  if (parsed.chaveAcesso) formData.append('chave_acesso', parsed.chaveAcesso)
+  formData.append('data_emissao', parsed.dataEmissao)
+  formData.append('data_entrada', parsed.dataEntrada || new Date().toISOString().slice(0, 10))
+  if (parsed.naturezaOperacao) formData.append('natureza_operacao', parsed.naturezaOperacao)
+  formData.append('tipo_entrada', tipoEntrada)
+  formData.append('finalidade', String(parsed.finalidade || 1))
+  formData.append('situacao_documento', '00')
+  formData.append('indicador_pagamento', String(parsed.indicadorPagamento || 0))
+  formData.append('modalidade_frete', String(parsed.modalidadeFrete ?? 9))
+  if (transpId) formData.append('transportadora_id', transpId)
+
+  // Totais
+  formData.append('valor_produtos', String(parsed.valorProdutos || 0))
+  formData.append('valor_frete', String(parsed.valorFrete || 0))
+  formData.append('valor_seguro', String(parsed.valorSeguro || 0))
+  formData.append('valor_desconto', String(parsed.valorDesconto || 0))
+  formData.append('valor_outras_despesas', String(parsed.valorOutras || 0))
+  formData.append('valor_ipi', String(parsed.valorIpi || 0))
+  formData.append('base_icms', String(parsed.baseIcms || 0))
+  formData.append('valor_icms', String(parsed.valorIcms || 0))
+  formData.append('base_icms_st', String(parsed.baseIcmsSt || 0))
+  formData.append('valor_icms_st', String(parsed.valorIcmsSt || 0))
+  formData.append('valor_fcp_st', String(parsed.valorFcpSt || 0))
+  formData.append('valor_pis', String(parsed.valorPis || 0))
+  formData.append('valor_cofins', String(parsed.valorCofins || 0))
+  formData.append('valor_ibs', String(parsed.valorIbs || 0))
+  formData.append('valor_cbs', String(parsed.valorCbs || 0))
+  formData.append('valor_total', String(parsed.valorTotal || 0))
+
+  if (parsed.infAdic) formData.append('informacoes_complementares', parsed.infAdic)
+  if (parsed.protocoloAutorizacao)
+    formData.append('protocolo_autorizacao', parsed.protocoloAutorizacao)
+  if (parsed.statusSefaz) formData.append('status_sefaz_xml', parsed.statusSefaz)
+
+  formData.append('status', 'Em conferência')
+  formData.append('ativo', 'true')
+  if (user?.id) {
+    formData.append('created_by', user.id)
+    formData.append('updated_by', user.id)
+  }
+
+  // Anexa arquivo .xml se fornecido ou cria blob a partir do rawXml
+  if (arquivoXml) {
+    formData.append('xml_arquivo', arquivoXml)
+  } else if (parsed.rawXml) {
+    const blob = new Blob([parsed.rawXml], { type: 'text/xml' })
+    const file = new File([blob], `nfe_${parsed.chaveAcesso || parsed.numero}.xml`, {
+      type: 'text/xml',
+    })
+    formData.append('xml_arquivo', file)
+  }
+
+  const notaCriada = await pb.collection('notas_entrada').create<NotaEntrada>(formData)
+
+  // 4. Gravar Itens
+  for (const it of parsed.itens) {
+    // Conversão de CFOP
+    const { cfopEntrada } = await converterCfopEntrada(it.cfop, tipoEntrada)
+
+    // Formata CST de entrada padrão: 3 dígitos (origem + CST do fornecedor)
+    const cstEntrada = `${it.origem || '0'}${it.cstIcms.padStart(2, '0').slice(-2)}`
+
+    const payloadItem: Record<string, unknown> = {
+      nota_id: notaCriada.id,
+      numero_item: it.numeroItem,
+      codigo_fornecedor: it.codigo,
+      descricao_fornecedor: it.descricao,
+      gtin_fornecedor: it.gtin,
+      ncm_fornecedor: it.ncm,
+      cest_fornecedor: it.cest,
+      cfop_fornecedor: it.cfop,
+      unidade_fornecedor: it.unidade,
+      quantidade_fornecedor: it.quantidade,
+      valor_unitario_fornecedor: it.valorUnitario,
+
+      // Vínculo ERP (fica vazio até a conferência manual/vinculação)
+      produto_id: null,
+      fator_conversao: 1,
+      quantidade_estoque: it.quantidade,
+      lote_numero: it.loteNumero || null,
+      lote_fabricacao: it.loteFabricacao || null,
+      lote_validade: it.loteValidade || null,
+
+      // Valores
+      valor_produto: it.valorTotal,
+      valor_desconto: it.desconto,
+      valor_frete: it.frete,
+      valor_seguro: it.seguro,
+      valor_outras: it.outrasDespesas,
+
+      // ICMS Fornecedor
+      origem: it.origem,
+      cst_icms_fornecedor: it.cstIcms,
+      base_icms: it.baseIcms,
+      aliquota_icms: it.aliquotaIcms,
+      valor_icms: it.valorIcms,
+      base_icms_st: it.baseIcmsSt,
+      aliquota_icms_st: it.aliquotaIcmsSt,
+      valor_icms_st: it.valorIcmsSt,
+      valor_fcp_st: it.valorFcpSt,
+
+      // IPI
+      cst_ipi: it.cstIpi,
+      base_ipi: it.baseIpi,
+      aliquota_ipi: it.aliquotaIpi,
+      valor_ipi: it.valorIpi,
+
+      // PIS/COFINS
+      cst_pis_fornecedor: it.cstPis,
+      valor_pis: it.valorPis,
+      cst_cofins_fornecedor: it.cstCofins,
+      valor_cofins: it.valorCofins,
+
+      // IBS/CBS
+      cst_ibs_cbs: it.cstIbsCbs || null,
+      c_class_trib: it.cClassTrib || null,
+      valor_ibs: it.valorIbs || 0,
+      valor_cbs: it.valorCbs || 0,
+
+      // Escrituração
+      cfop_entrada: cfopEntrada,
+      cst_icms_entrada: cstEntrada,
+      aproveita_credito_icms: false,
+      valor_credito_icms: 0,
+      cst_pis_entrada: it.cstPis || '50',
+      cst_cofins_entrada: it.cstCofins || '50',
+      valor_credito_pis: 0,
+      valor_credito_cofins: 0,
+      aproveita_credito_ipi: false,
+      valor_credito_ipi: 0,
+
+      // Custo preliminar do item
+      custo_total_item:
+        it.valorTotal + it.frete + it.seguro + it.outrasDespesas + it.valorIpi - it.desconto,
+      custo_unitario_estoque:
+        it.quantidade > 0
+          ? (it.valorTotal + it.frete + it.seguro + it.outrasDespesas + it.valorIpi - it.desconto) /
+            it.quantidade
+          : it.valorUnitario,
+
+      ativo: true,
+      created_by: user?.id || null,
+      updated_by: user?.id || null,
+    }
+
+    await pb.collection('notas_entrada_itens').create(payloadItem)
+  }
+
+  // 5. Gravar Parcelas
+  for (const parc of parsed.parcelas) {
+    await pb.collection('notas_entrada_parcelas').create({
+      nota_id: notaCriada.id,
+      numero: parc.numero,
+      data_vencimento: parc.vencimento,
+      valor: parc.valor,
+      forma_pagamento: parc.formaPagamento || null,
+      ativo: true,
+      created_by: user?.id || null,
+      updated_by: user?.id || null,
+    })
+  }
+
+  await registrarAuditoria({
+    tabela: 'notas_entrada',
+    registro_id: notaCriada.id,
+    acao: 'inclusao',
+    valores_depois: {
+      numero: notaCriada.numero,
+      serie: notaCriada.serie,
+      chave_acesso: notaCriada.chave_acesso,
+      origem: 'XML',
+      tipo_entrada: tipoEntrada,
+      valor_total: notaCriada.valor_total,
+      itens_count: parsed.itens.length,
+    },
+  })
+
+  return { nota: notaCriada, fornecedorCriado }
+}
