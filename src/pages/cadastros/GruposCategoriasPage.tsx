@@ -773,7 +773,8 @@ export const GruposCategoriasPage: React.FC = () => {
                                   className="text-[11px] px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600"
                                   title="Quantidade de produtos vinculados a esta categoria"
                                 >
-                                  0 produtos
+                                  {cat.quantidade_produtos ?? 0}{' '}
+                                  {cat.quantidade_produtos === 1 ? 'produto' : 'produtos'}
                                 </span>
                               </div>
 
@@ -838,8 +839,7 @@ export const GruposCategoriasPage: React.FC = () => {
               categoria(s) cadastrada(s).
             </div>
             <div className="text-[11px] text-slate-400">
-              * A contagem de produtos será atualizada automaticamente assim que o catálogo for
-              populado.
+              * A contagem reflete os produtos ativos cadastrados em cada grupo e categoria.
             </div>
           </div>
         </CardContent>

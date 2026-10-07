@@ -39,6 +39,8 @@ import ClientesLista from '@/pages/cadastros/ClientesLista'
 import ClienteForm from '@/pages/cadastros/ClienteForm'
 import FornecedoresLista from '@/pages/cadastros/FornecedoresLista'
 import FornecedorForm from '@/pages/cadastros/FornecedorForm'
+import ProdutosLista from '@/pages/cadastros/ProdutosLista'
+import ProdutoForm from '@/pages/cadastros/ProdutoForm'
 
 const App = () => (
   <BrowserRouter>
@@ -222,10 +224,23 @@ const App = () => (
                   path="/cadastros/produtos"
                   element={
                     <PermissaoGuard modulo="produtos" acao="ver">
-                      <PlaceholderPage
-                        title="Produtos"
-                        subtitle="Catálogo central de produtos, códigos de barras e NCM"
-                      />
+                      <ProdutosLista />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/produtos/novo"
+                  element={
+                    <PermissaoGuard modulo="produtos" acao="criar">
+                      <ProdutoForm />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/produtos/:id/editar"
+                  element={
+                    <PermissaoGuard modulo="produtos" acao="editar">
+                      <ProdutoForm />
                     </PermissaoGuard>
                   }
                 />

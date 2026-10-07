@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-06T23:40:49.342Z",
+  "generatedAt": "2026-10-07T00:09:22.498Z",
   "collections": [
     {
       "name": "users",
@@ -2544,6 +2544,996 @@
         "CREATE INDEX idx_regras_perfil ON perfis_tributarios_regras (perfil_id)",
         "CREATE INDEX idx_regras_cenario ON perfis_tributarios_regras (cenario)",
         "CREATE INDEX idx_regras_ativo ON perfis_tributarios_regras (ativo)"
+      ]
+    },
+    {
+      "name": "produtos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Produto", "Serviço", "Kit"]
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao_reduzida",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gtin",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gtin_tributavel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "referencia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "marca_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "marcas"
+        },
+        {
+          "name": "grupo_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "grupos"
+        },
+        {
+          "name": "categoria_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "categorias"
+        },
+        {
+          "name": "fornecedor_principal_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "fornecedores"
+        },
+        {
+          "name": "foto",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fotos_adicionais",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "unidade_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "unidades_medida"
+        },
+        {
+          "name": "unidade_tributavel_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "unidades_medida"
+        },
+        {
+          "name": "fator_conversao_tributavel",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preco_custo",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "outras_despesas_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_final",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "margem_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preco_venda",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preco_promocional",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "promocao_inicio",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "promocao_fim",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "permite_desconto",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "desconto_maximo_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "controla_estoque",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "estoque_minimo",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "estoque_maximo",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "localizacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "controla_lote_validade",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dias_validade",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vende_fracionado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vende_no_pdv",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "peso_liquido_kg",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "peso_bruto_kg",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "altura_cm",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "largura_cm",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "comprimento_cm",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "perfil_tributario_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "perfis_tributarios"
+        },
+        {
+          "name": "ncm",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ex_tipi",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cest",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_item_sped",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_genero",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_servico_lc116",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "indicador_escala_relevante",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cnpj_fabricante",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "c_benef",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_anp",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "descricao_anp",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cfop_venda_interna",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cfop_venda_interestadual",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cfop_compra_interna",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cfop_compra_interestadual",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_icms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "csosn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mod_bc_icms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reducao_bc_icms_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_fcp",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mod_bc_icms_st",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mva_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reducao_bc_icms_st_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_icms_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_fcp_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "percentual_diferimento",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_desoneracao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_icms_interestadual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_ipi_saida",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_ipi_entrada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_enquadramento_ipi",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_calculo_ipi",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Percentual", "Valor por unidade"]
+        },
+        {
+          "name": "aliquota_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_ipi_unidade",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_pis_saida",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_pis_entrada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_pis",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_cofins_saida",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_cofins_entrada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_cofins",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_calculo_pis_cofins",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Percentual", "Valor por unidade"]
+        },
+        {
+          "name": "valor_pis_unidade",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_cofins_unidade",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_receita_pis_cofins",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_ibs_cbs",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "c_class_trib",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_ibs_uf",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_ibs_municipio",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_cbs",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reducao_ibs_cbs_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "informacoes_adicionais_item",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fiscal_revisado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fiscal_revisado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "fiscal_revisado_em",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_produtos_codigo ON produtos (codigo)",
+        "CREATE INDEX idx_produtos_descricao ON produtos (descricao)",
+        "CREATE INDEX idx_produtos_gtin ON produtos (gtin)",
+        "CREATE INDEX idx_produtos_referencia ON produtos (referencia)",
+        "CREATE INDEX idx_produtos_tipo ON produtos (tipo)",
+        "CREATE INDEX idx_produtos_grupo ON produtos (grupo_id)",
+        "CREATE INDEX idx_produtos_categoria ON produtos (categoria_id)",
+        "CREATE INDEX idx_produtos_marca ON produtos (marca_id)",
+        "CREATE INDEX idx_produtos_fornecedor ON produtos (fornecedor_principal_id)",
+        "CREATE INDEX idx_produtos_ncm ON produtos (ncm)",
+        "CREATE INDEX idx_produtos_ativo ON produtos (ativo)",
+        "CREATE INDEX idx_produtos_fiscal_revisado ON produtos (fiscal_revisado)"
+      ]
+    },
+    {
+      "name": "produtos_kit_itens",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "produto_kit_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "produto_item_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "quantidade",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_kit_itens_kit ON produtos_kit_itens (produto_kit_id)",
+        "CREATE INDEX idx_kit_itens_item ON produtos_kit_itens (produto_item_id)",
+        "CREATE INDEX idx_kit_itens_ativo ON produtos_kit_itens (ativo)"
+      ]
+    },
+    {
+      "name": "produtos_fornecedores",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "fornecedor_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "fornecedores"
+        },
+        {
+          "name": "codigo_no_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "descricao_no_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "unidade_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fator_conversao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_preco_compra",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_ultima_compra",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_prod_forn_produto ON produtos_fornecedores (produto_id)",
+        "CREATE INDEX idx_prod_forn_fornecedor ON produtos_fornecedores (fornecedor_id)",
+        "CREATE INDEX idx_prod_forn_ativo ON produtos_fornecedores (ativo)"
+      ]
+    },
+    {
+      "name": "produtos_conversoes_unidade",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "unidade_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "unidades_medida"
+        },
+        {
+          "name": "fator_conversao",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "gtin_unidade",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_prod_conv_produto ON produtos_conversoes_unidade (produto_id)",
+        "CREATE INDEX idx_prod_conv_unidade ON produtos_conversoes_unidade (unidade_id)",
+        "CREATE INDEX idx_prod_conv_ativo ON produtos_conversoes_unidade (ativo)"
+      ]
+    },
+    {
+      "name": "produtos_historico",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "data_alteracao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao_anterior",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "codigo_anterior",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_prod_hist_produto ON produtos_historico (produto_id)",
+        "CREATE INDEX idx_prod_hist_data ON produtos_historico (data_alteracao)",
+        "CREATE INDEX idx_prod_hist_ativo ON produtos_historico (ativo)"
       ]
     }
   ]

@@ -735,3 +735,201 @@ import { SelectPerfilTributario } from '@/components/SelectPerfilTributario'
   placeholder="Selecione o perfil tributário..."
 />
 ```
+
+### produtos
+
+Cadastro central de mercadorias, serviços e kits do ERP. Tabela completa incluindo identificação, unidades, precificação com cálculo bidirecional, parâmetros de controle de estoque e todos os campos fiscais para NF-e/NFC-e e SPED Fiscal. Compartilhado entre todas as empresas.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (número sequencial automático, único; COD_ITEM no SPED)
+- tipo (select obrigatório: "Produto", "Serviço" ou "Kit")
+- descricao (texto obrigatório, até 120 caracteres; descrição que sai na nota fiscal)
+- descricao_reduzida (texto opcional, até 40 caracteres, para cupom e PDV)
+- gtin (texto, até 14 caracteres, único quando informado; validação de dígito verificador GS1 para 8, 12, 13 ou 14 dígitos; aceita "SEM GTIN")
+- gtin_tributavel (texto, até 14 caracteres; validação de dígito verificador ou "SEM GTIN")
+- referencia (texto, até 60 caracteres, código do fabricante)
+- marca_id (relation -> marcas, opcional)
+- grupo_id (relation -> grupos, opcional)
+- categoria_id (relation -> categorias, opcional; encadeado pelo grupo)
+- fornecedor_principal_id (relation -> fornecedores, opcional)
+- foto (arquivo de imagem até 2 MB)
+- fotos_adicionais (até 5 arquivos de imagem até 2 MB cada)
+- observacoes (texto longo interno)
+
+#### Unidades
+
+- unidade_id (relation -> unidades_medida, obrigatório; unidade comercial uCom)
+- unidade_tributavel_id (relation -> unidades_medida, padrão = unidade comercial; uTrib)
+- fator_conversao_tributavel (número, padrão 1; quantas uTrib em 1 uCom)
+
+#### Preços
+
+- preco_custo (número em R$, 4 casas decimais)
+- outras_despesas_percentual (número percentual; frete/encargos)
+- custo_final (calculado: custo + custo × despesas%/100)
+- margem_percentual (número percentual; sugerida por grupo/categoria ou editável)
+- preco_venda (número em R$, obrigatório para Produto e Serviço; cálculo bidirecional: custo_final × (1 + margem/100) e recalculo de margem se informado o preço de venda)
+- preco_promocional (número em R$)
+- promocao_inicio (data texto)
+- promocao_fim (data texto)
+- permite_desconto (boolean, padrão true)
+- desconto_maximo_percentual (número percentual, padrão 0)
+
+#### Estoque (parâmetros de controle)
+
+- controla_estoque (boolean, padrão true para Produto/Kit, false para Serviço)
+- estoque_minimo (número)
+- estoque_maximo (número)
+- localizacao (texto, até 60 caracteres)
+- controla_lote_validade (boolean, padrão false)
+- dias_validade (número inteiro)
+- vende_fracionado (boolean; pré-marcado herdando de unidades_medida.aceita_fracionado)
+- vende_no_pdv (boolean, padrão true)
+- peso_liquido_kg (número, 3 casas decimais)
+- peso_bruto_kg (número, 3 casas decimais)
+- altura_cm (número)
+- largura_cm (número)
+- comprimento_cm (número)
+
+#### Campos Fiscais
+
+- perfil_tributario_id (relation -> perfis_tributarios, opcional)
+- ncm (texto, 8 dígitos numéricos)
+- ex_tipi (texto, até 3 caracteres)
+- cest (texto, 7 dígitos numéricos)
+- origem (texto, código ORIGEM tipo tabelas_fiscais_codigos)
+- tipo_item_sped (texto, código TIPO_ITEM_SPED tipo tabelas_fiscais_codigos)
+- codigo_genero (texto de 2 dígitos, preenchido automaticamente com os 2 primeiros dígitos do NCM)
+- codigo_servico_lc116 (texto, até 10 caracteres)
+- indicador_escala_relevante (texto, "S" ou "N", padrão "N")
+- cnpj_fabricante (texto de 14 dígitos numéricos)
+- c_benef (texto, até 10 caracteres)
+- codigo_anp (texto, até 10 caracteres)
+- descricao_anp (texto, até 100 caracteres)
+- cfop_venda_interna (texto de 4 dígitos)
+- cfop_venda_interestadual (texto de 4 dígitos)
+- cfop_compra_interna (texto de 4 dígitos)
+- cfop_compra_interestadual (texto de 4 dígitos)
+- cst_icms (texto, até 4 caracteres)
+- csosn (texto, até 4 caracteres)
+- mod_bc_icms (texto, até 2 caracteres)
+- aliquota_icms (número percentual)
+- reducao_bc_icms_percentual (número percentual)
+- aliquota_fcp (número percentual)
+- mod_bc_icms_st (texto, até 2 caracteres)
+- mva_percentual (número percentual)
+- reducao_bc_icms_st_percentual (número percentual)
+- aliquota_icms_st (número percentual)
+- aliquota_fcp_st (número percentual)
+- percentual_diferimento (número percentual)
+- motivo_desoneracao (texto, até 2 caracteres)
+- aliquota_icms_interestadual (número percentual)
+- cst_ipi_saida (texto, 2 dígitos)
+- cst_ipi_entrada (texto, 2 dígitos)
+- codigo_enquadramento_ipi (texto, 3 dígitos, padrão "999")
+- tipo_calculo_ipi (select: "Percentual" ou "Valor por unidade")
+- aliquota_ipi (número percentual)
+- valor_ipi_unidade (número em R$)
+- cst_pis_saida (texto, 2 dígitos)
+- cst_pis_entrada (texto, 2 dígitos)
+- aliquota_pis (número percentual)
+- cst_cofins_saida (texto, 2 dígitos)
+- cst_cofins_entrada (texto, 2 dígitos)
+- aliquota_cofins (número percentual)
+- tipo_calculo_pis_cofins (select: "Percentual" ou "Valor por unidade")
+- valor_pis_unidade (número em R$)
+- valor_cofins_unidade (número em R$)
+- natureza_receita_pis_cofins (texto, até 3 dígitos)
+- cst_ibs_cbs (texto, até 4 caracteres)
+- c_class_trib (texto, até 10 caracteres)
+- aliquota_ibs_uf (número percentual)
+- aliquota_ibs_municipio (número percentual)
+- aliquota_cbs (número percentual)
+- reducao_ibs_cbs_percentual (número percentual)
+- informacoes_adicionais_item (texto livre para tag infAdProd da NF-e)
+- fiscal_revisado (boolean, padrão false)
+- fiscal_revisado_por (relation -> users, opcional)
+- fiscal_revisado_em (data/hora texto)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### produtos_kit_itens
+
+Tabela de composição de kits comerciais (quando `tipo = "Kit"`). O kit não possui saldo próprio de estoque: ao vender o kit, o sistema baixa o estoque dos itens componentes.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- produto_kit_id (relation -> produtos, obrigatório, cascadeDelete)
+- produto_item_id (relation -> produtos, obrigatório, componente do kit)
+- quantidade (número decimal obrigatório)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### produtos_fornecedores
+
+Tabela de amarração de produtos com múltiplos fornecedores para de-para do XML de compra.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- produto_id (relation -> produtos, obrigatório, cascadeDelete)
+- fornecedor_id (relation -> fornecedores, obrigatório)
+- codigo_no_fornecedor (texto até 60 caracteres, tag cProd da NF-e)
+- descricao_no_fornecedor (texto até 120 caracteres, tag xProd da NF-e)
+- unidade_fornecedor (texto até 10 caracteres, tag uCom do fornecedor)
+- fator_conversao (número: quantas unidades nossas em 1 do fornecedor)
+- ultimo_preco_compra (número em R$)
+- data_ultima_compra (data texto)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### produtos_conversoes_unidade
+
+Tabela de unidades alternativas de comercialização do produto (Registro 0220 do SPED Fiscal).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- produto_id (relation -> produtos, obrigatório, cascadeDelete)
+- unidade_id (relation -> unidades_medida, obrigatório)
+- fator_conversao (número obrigatório: quantas unidades de estoque há em 1 desta unidade)
+- gtin_unidade (texto opcional, código de barras da embalagem)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### produtos_historico
+
+Tabela de histórico de alterações de código e descrição do produto (Registro 0205 do SPED Fiscal). Preenchido automaticamente sempre que a descrição do produto for alterada.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- produto_id (relation -> produtos, obrigatório, cascadeDelete)
+- data_alteracao (data/hora texto obrigatória)
+- descricao_anterior (texto obrigatório com a descrição antiga)
+- codigo_anterior (número opcional com o código interno antigo)
+- usuario_id (relation -> users, opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+#### Componentes reutilizáveis
+
+- `<SelectProduto />` (`@/components/SelectProduto`): combobox com busca de produtos ativos por código, GTIN ou descrição, exibindo foto miniatura e preço de venda. Permite filtro opcional por `filtroTipo` ("Produto", "Serviço", "Kit"). Pronto para uso em PDV, compras, orçamentos e emissão de notas:
+
+```tsx
+import { SelectProduto } from '@/components/SelectProduto'
+;<SelectProduto
+  value={produtoId}
+  onChange={(id, produto) => setProdutoId(id)}
+  filtroTipo="Produto" // opcional
+  placeholder="Selecione ou busque o produto..."
+/>
+```

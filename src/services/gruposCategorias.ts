@@ -31,7 +31,7 @@ export interface Categoria {
 }
 
 export interface GrupoComCategorias extends Grupo {
-  categorias: Categoria[]
+  categorias: CategoriaComContagem[]
   quantidade_produtos: number
 }
 
@@ -405,14 +405,41 @@ export async function carregarArvoreMercadologica(
     mapaCategorias[cat.grupo_id].push(cat)
   })
 
-  // 4. Montar estrutura em árvore
+  // 3.1 Contagem real de produtos por grupo e por categoria
+  const contagemGrupo: Record<string, number> = {}
+  const contagemCategoria: Record<string, number> = {}
+  try {
+    const prods = await pb.collection('produtos').getFullList<{
+      id: string
+      grupo_id?: string
+      categoria_id?: string
+      ativo: boolean
+    }>({
+      fields: 'id,grupo_id,categoria_id,ativo',
+      filter: 'ativo = true',
+    })
+    for (const p of prods) {
+      if (p.grupo_id) {
+        contagemGrupo[p.grupo_id] = (contagemGrupo[p.grupo_id] || 0) + 1
+      }
+      if (p.categoria_id) {
+        contagemCategoria[p.categoria_id] = (contagemCategoria[p.categoria_id] || 0) + 1
+      }
+    }
+  } catch (errProd) {
+    console.warn('Não foi possível obter contagem de produtos:', errProd)
+  }
+
+  // 4. Montar estrutura em árvore com contagem real de produtos
   const arvore: GrupoComCategorias[] = grupos.map((g) => {
-    const catsDoGrupo = mapaCategorias[g.id] || []
+    const catsDoGrupo = (mapaCategorias[g.id] || []).map((cat) => ({
+      ...cat,
+      quantidade_produtos: contagemCategoria[cat.id] || 0,
+    }))
     return {
       ...g,
       categorias: catsDoGrupo,
-      // Contagem preparada: no futuro, somará a quantidade de produtos com este grupo_id
-      quantidade_produtos: 0,
+      quantidade_produtos: contagemGrupo[g.id] || 0,
     }
   })
 
