@@ -42,7 +42,9 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import pb from '@/lib/pocketbase/client'
+import { ProdutoAbaFiscal } from '@/components/ProdutoAbaFiscal'
 
 import {
   Produto,
@@ -86,6 +88,12 @@ export const ProdutoForm: React.FC = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { pode } = usePermissoes()
+  const { empresaAtiva } = useEmpresaAtiva()
+
+  // Determinar regime da empresa ativa
+  const crtEmpresaAtiva = empresaAtiva?.regime_tributario || '1'
+  const regimeEmpresaAtiva: 'Simples Nacional' | 'Regime Normal' =
+    crtEmpresaAtiva === '3' ? 'Regime Normal' : 'Simples Nacional'
 
   const podeSalvar = ehEdicao ? pode('produtos', 'editar') : pode('produtos', 'criar')
 
@@ -277,6 +285,20 @@ export const ProdutoForm: React.FC = () => {
     }
   }, [ehEdicao, id, carregarProduto])
 
+  // Alteração em lote de campos (usado pela aba fiscal ao aplicar perfil)
+  const handleMudarCamposEmLote = (novosCampos: Partial<Produto>) => {
+    setFormData((prev) => ({
+      ...prev,
+      ...novosCampos,
+    }))
+    // Limpa erros dos campos alterados
+    setErros((prev) => {
+      const copy = { ...prev }
+      Object.keys(novosCampos).forEach((k) => delete copy[k])
+      return copy
+    })
+  }
+
   // Lógica de alteração de campos
   const handleCampoChange = (campo: keyof Produto, valor: any) => {
     setFormData((prev) => {
@@ -388,13 +410,18 @@ export const ProdutoForm: React.FC = () => {
     setFotosAdicionais((prev) => [...prev, ...arquivosValidos])
   }
 
-  // Salvar Produto
-  const handleSalvar = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // Salvar Produto (completo com validações fiscais ou rascunho)
+  const executarSalvar = async (ignorarValidacoesFiscais = false) => {
+    const validacao = await validarDadosProduto(formData, id, {
+      ignorarValidacoesFiscais,
+      regimeEmpresa: regimeEmpresaAtiva,
+    })
 
-    const validacao = await validarDadosProduto(formData, id)
     if (!validacao.valido) {
       setErros(validacao.erros)
+      if (validacao.temErroFiscal) {
+        setAbaAtiva('fiscal')
+      }
       toast({
         title: 'Verifique os campos obrigatórios',
         description: Object.values(validacao.erros)[0],
@@ -404,6 +431,48 @@ export const ProdutoForm: React.FC = () => {
     }
 
     setSalvando(true)
+    try {
+      const salvo = await salvarProduto({
+        ...formData,
+        fotoArquivo,
+        fotosAdicionaisArquivos: fotosAdicionais,
+      })
+
+      toast({
+        title: ignorarValidacoesFiscais
+          ? 'Salvo como rascunho fiscal'
+          : ehEdicao
+          ? 'Produto atualizado'
+          : 'Produto cadastrado',
+        description: ignorarValidacoesFiscais
+          ? `O produto "${salvo.descricao}" foi salvo como rascunho com o selo "Fiscal incompleto".`
+          : `O produto "${salvo.descricao}" (Código #${salvo.codigo}) foi salvo com sucesso.`,
+      })
+
+      if (!ehEdicao) {
+        navigate(`/cadastros/produtos/${salvo.id}/editar`)
+      } else {
+        carregarProduto(salvo.id)
+      }
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao salvar produto',
+        description: err instanceof Error ? err.message : 'Falha ao gravar no banco',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const handleSalvar = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await executarSalvar(false)
+  }
+
+  const handleSalvarComoRascunho = async () => {
+    await executarSalvar(true)
+  }
     try {
       const salvo = await salvarProduto({
         ...formData,
@@ -667,24 +736,38 @@ export const ProdutoForm: React.FC = () => {
           )}
 
           {podeSalvar && (
-            <Button
-              type="submit"
-              size="sm"
-              disabled={salvando}
-              className="text-xs h-9 bg-blue-600 hover:bg-blue-700 text-white font-medium"
-            >
-              {salvando ? (
-                <>
-                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-1.5 h-4 w-4" />
-                  Salvar Produto
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSalvarComoRascunho}
+                disabled={salvando}
+                title="Salva sem exigir campos fiscais completos (marcado como Fiscal Incompleto)"
+                className="text-xs h-9 border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
+              >
+                Salvar como rascunho fiscal
+              </Button>
+
+              <Button
+                type="submit"
+                size="sm"
+                disabled={salvando}
+                className="text-xs h-9 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-2xs"
+              >
+                {salvando ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-1.5 h-4 w-4" />
+                    Salvar Produto
+                  </>
+                )}
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -1820,22 +1903,19 @@ export const ProdutoForm: React.FC = () => {
         )}
 
         {/* ======================================================== */}
-        {/* ABA 7: FISCAL (Vazia com texto conforme solicitado) */}
+        {/* ABA 7: FISCAL */}
         {/* ======================================================== */}
         <TabsContent value="fiscal" className="space-y-4">
-          <Card>
-            <CardContent className="py-16 text-center space-y-3">
-              <FileText className="h-10 w-10 text-slate-300 mx-auto" />
-              <div className="text-base font-semibold text-slate-700">
-                Configurado na próxima etapa
-              </div>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Todos os campos fiscais (NCM, CEST, ICMS, IPI, PIS, COFINS, IBS/CBS e CFOPs) já
-                foram criados na tabela do banco de dados e serão disponibilizados para
-                parametrização completa na próxima etapa.
-              </p>
-            </CardContent>
-          </Card>
+          <ProdutoAbaFiscal
+            formData={formData}
+            onChangeCampo={handleCampoChange}
+            onMudarCamposEmLote={handleMudarCamposEmLote}
+            regimeEmpresaAtiva={regimeEmpresaAtiva}
+            crtEmpresaAtiva={crtEmpresaAtiva}
+            tipoItemProduto={formData.tipo || 'Produto'}
+            grupoId={formData.grupo_id}
+            erros={erros}
+          />
         </TabsContent>
 
         {/* ======================================================== */}

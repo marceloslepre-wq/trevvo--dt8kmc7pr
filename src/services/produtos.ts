@@ -411,11 +411,106 @@ export async function buscarProdutoPorCodigoOuGtin(termo: string): Promise<Produ
   }
 }
 
+export interface ValidarProdutoOptions {
+  ignorarValidacoesFiscais?: boolean
+  regimeEmpresa?: 'Simples Nacional' | 'Regime Normal'
+}
+
+export interface PendenciaFiscalInfo {
+  temPendencia: boolean
+  motivos: string[]
+  semNcm: boolean
+  semCestSugerido: boolean
+  semTributacaoIcms: boolean
+  semPisCofins: boolean
+  naoRevisado: boolean
+}
+
+export function verificarPendenciasFiscaisProduto(
+  p: Produto,
+  regimeEmpresa?: 'Simples Nacional' | 'Regime Normal',
+): PendenciaFiscalInfo {
+  const motivos: string[] = []
+  let semNcm = false
+  const semCestSugerido = false
+  let semTributacaoIcms = false
+  let semPisCofins = false
+  const naoRevisado = !p.fiscal_revisado
+
+  if (p.tipo === 'Produto') {
+    if (!p.ncm || !p.ncm.trim()) {
+      semNcm = true
+      motivos.push('Sem NCM preenchido')
+    }
+
+    if (regimeEmpresa === 'Simples Nacional') {
+      if (!p.csosn || !p.csosn.trim()) {
+        semTributacaoIcms = true
+        motivos.push('Sem CSOSN')
+      }
+    } else if (regimeEmpresa === 'Regime Normal') {
+      if (!p.cst_icms || !p.cst_icms.trim()) {
+        semTributacaoIcms = true
+        motivos.push('Sem CST ICMS')
+      }
+    } else {
+      if (!p.cst_icms && !p.csosn) {
+        semTributacaoIcms = true
+        motivos.push('Sem CST ou CSOSN')
+      }
+    }
+
+    if (!p.cst_pis_saida || !p.cst_cofins_saida) {
+      semPisCofins = true
+      motivos.push('Sem CST de PIS/COFINS')
+    }
+
+    if (!p.cfop_venda_interna || !p.cfop_venda_interna.trim()) {
+      motivos.push('Sem CFOP de venda interna')
+    }
+  }
+
+  if (naoRevisado) {
+    motivos.push('Fiscal não revisado pelo contador')
+  }
+
+  return {
+    temPendencia: motivos.length > 0,
+    motivos,
+    semNcm,
+    semCestSugerido,
+    semTributacaoIcms,
+    semPisCofins,
+    naoRevisado,
+  }
+}
+
+export function produtoTemFiscalIncompleto(
+  p: Produto,
+  regimeEmpresa?: 'Simples Nacional' | 'Regime Normal',
+): boolean {
+  if (p.tipo !== 'Produto') return false
+  if (!p.ncm || !p.ncm.trim()) return true
+  if (p.origem === undefined || p.origem === null || p.origem === '') return true
+  if (!p.cfop_venda_interna || !p.cfop_venda_interna.trim()) return true
+  if (regimeEmpresa === 'Simples Nacional') {
+    if (!p.csosn) return true
+  } else if (regimeEmpresa === 'Regime Normal') {
+    if (!p.cst_icms) return true
+  } else {
+    if (!p.cst_icms && !p.csosn) return true
+  }
+  if (!p.cst_pis_saida || !p.cst_cofins_saida) return true
+  return false
+}
+
 export async function validarDadosProduto(
   dados: Partial<Produto>,
   idAtual?: string,
-): Promise<{ valido: boolean; erros: Record<string, string> }> {
+  options?: ValidarProdutoOptions,
+): Promise<{ valido: boolean; erros: Record<string, string>; temErroFiscal: boolean }> {
   const erros: Record<string, string> = {}
+  let temErroFiscal = false
 
   if (!dados.tipo) {
     erros.tipo = 'O tipo de produto é obrigatório (Produto, Serviço ou Kit).'
@@ -472,9 +567,157 @@ export async function validarDadosProduto(
     }
   }
 
+  // VALIDAÇÕES FISCAIS (quando não for rascunho e for tipo Produto)
+  if (!options?.ignorarValidacoesFiscais && dados.tipo === 'Produto') {
+    // 1. NCM obrigatório
+    const ncmLimpo = (dados.ncm || '').replace(/\D/g, '')
+    if (!ncmLimpo) {
+      erros.ncm = 'O NCM é obrigatório para produtos.'
+      temErroFiscal = true
+    } else {
+      // NCM precisa existir na tabela de NCM (operação assíncrona tolerante)
+      try {
+        const ncmExiste = await pb.collection('ncm').getList(1, 1, {
+          filter: `codigo = '${ncmLimpo}'`,
+        })
+        if (ncmExiste.totalItems === 0) {
+          erros.ncm = `O código NCM ${ncmLimpo} não foi localizado na tabela de NCMs cadastrados.`
+          temErroFiscal = true
+        }
+      } catch (err) {
+        console.warn('Verificação de existência de NCM falhou:', err)
+      }
+    }
+
+    // 2. CEST existente se preenchido
+    const cestLimpo = (dados.cest || '').replace(/\D/g, '')
+    if (cestLimpo) {
+      try {
+        const cestExiste = await pb.collection('cest').getList(1, 1, {
+          filter: `codigo = '${cestLimpo}'`,
+        })
+        if (cestExiste.totalItems === 0) {
+          erros.cest = `O código CEST ${cestLimpo} não foi localizado na tabela de CESTs cadastrados.`
+          temErroFiscal = true
+        }
+      } catch (err) {
+        console.warn('Verificação de existência de CEST falhou:', err)
+      }
+
+      // Se houver CEST e indicador_escala_relevante for "N", cnpj_fabricante é obrigatório
+      if (dados.indicador_escala_relevante === 'N') {
+        const cnpjFab = (dados.cnpj_fabricante || '').replace(/\D/g, '')
+        if (!cnpjFab || cnpjFab.length !== 14) {
+          erros.cnpj_fabricante =
+            'CNPJ do fabricante é obrigatório quando a escala não é relevante.'
+          temErroFiscal = true
+        }
+      }
+    }
+
+    // 3. Origem obrigatória
+    if (dados.origem === undefined || dados.origem === null || dados.origem === '') {
+      erros.origem = 'A Origem da mercadoria é obrigatória.'
+      temErroFiscal = true
+    }
+
+    // 4. Tipo do item SPED obrigatório
+    if (!dados.tipo_item_sped) {
+      erros.tipo_item_sped = 'O Tipo do item no SPED é obrigatório.'
+      temErroFiscal = true
+    }
+
+    // 5. CFOP de venda interna obrigatório (começando com 5)
+    const cfopVenda = (dados.cfop_venda_interna || '').replace(/\D/g, '')
+    if (!cfopVenda) {
+      erros.cfop_venda_interna = 'O CFOP de venda interna é obrigatório.'
+      temErroFiscal = true
+    } else if (!cfopVenda.startsWith('5')) {
+      erros.cfop_venda_interna =
+        'O CFOP de venda interna deve iniciar com 5 (operação estadual de saída).'
+      temErroFiscal = true
+    }
+
+    // CFOP de venda interestadual deve começar com 6 se preenchido
+    const cfopInterestadual = (dados.cfop_venda_interestadual || '').replace(/\D/g, '')
+    if (cfopInterestadual && !cfopInterestadual.startsWith('6')) {
+      erros.cfop_venda_interestadual =
+        'O CFOP de venda interestadual deve iniciar com 6 (saída para outro estado).'
+      temErroFiscal = true
+    }
+
+    // CFOP de compra interna deve começar com 1 se preenchido
+    const cfopCompraInt = (dados.cfop_compra_interna || '').replace(/\D/g, '')
+    if (cfopCompraInt && !cfopCompraInt.startsWith('1')) {
+      erros.cfop_compra_interna = 'O CFOP de compra interna deve iniciar com 1 (entrada estadual).'
+      temErroFiscal = true
+    }
+
+    // CFOP de compra interestadual deve começar com 2 se preenchido
+    const cfopCompraExt = (dados.cfop_compra_interestadual || '').replace(/\D/g, '')
+    if (cfopCompraExt && !cfopCompraExt.startsWith('2')) {
+      erros.cfop_compra_interestadual =
+        'O CFOP de compra interestadual deve iniciar com 2 (entrada de outro estado).'
+      temErroFiscal = true
+    }
+
+    // 6. CST ICMS ou CSOSN conforme regime da empresa
+    const ehSimples = options?.regimeEmpresa === 'Simples Nacional'
+    if (ehSimples) {
+      if (!dados.csosn) {
+        erros.csosn = 'O CSOSN é obrigatório para empresas do Simples Nacional.'
+        temErroFiscal = true
+      }
+    } else {
+      if (!dados.cst_icms) {
+        erros.cst_icms = 'O CST ICMS é obrigatório para empresas do Regime Normal.'
+        temErroFiscal = true
+      }
+    }
+
+    // 7. Se CST/CSOSN indicar ST: mod_bc_icms_st e aliquota_icms_st são obrigatórios
+    const cstST = ['10', '30', '70', '90'].includes(dados.cst_icms || '')
+    const csosnST = ['201', '202', '203', '900'].includes(dados.csosn || '')
+    if (cstST || csosnST) {
+      if (!dados.mod_bc_icms_st) {
+        erros.mod_bc_icms_st = 'A Modalidade de BC do ICMS ST é obrigatória para operações com ST.'
+        temErroFiscal = true
+      }
+      if (
+        dados.aliquota_icms_st === undefined ||
+        dados.aliquota_icms_st === null ||
+        Number(dados.aliquota_icms_st) <= 0
+      ) {
+        erros.aliquota_icms_st = 'A Alíquota do ICMS ST é obrigatória para operações com ST.'
+        temErroFiscal = true
+      }
+    }
+
+    // 8. CST PIS e COFINS de saída obrigatórios
+    if (!dados.cst_pis_saida) {
+      erros.cst_pis_saida = 'O CST de PIS de saída é obrigatório.'
+      temErroFiscal = true
+    }
+    if (!dados.cst_cofins_saida) {
+      erros.cst_cofins_saida = 'O CST de COFINS de saída é obrigatório.'
+      temErroFiscal = true
+    }
+
+    // Natureza da receita PIS/COFINS obrigatória para CSTs 04 a 09
+    const precisaNaturezaReceita =
+      ['04', '05', '06', '07', '08', '09'].includes(dados.cst_pis_saida || '') ||
+      ['04', '05', '06', '07', '08', '09'].includes(dados.cst_cofins_saida || '')
+    if (precisaNaturezaReceita && !dados.natureza_receita_pis_cofins?.trim()) {
+      erros.natureza_receita_pis_cofins =
+        'A Natureza da Receita é obrigatória para este CST de PIS/COFINS.'
+      temErroFiscal = true
+    }
+  }
+
   return {
     valido: Object.keys(erros).length === 0,
     erros,
+    temErroFiscal,
   }
 }
 
