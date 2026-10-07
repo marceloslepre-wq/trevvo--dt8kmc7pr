@@ -52,6 +52,11 @@ import {
 } from '@/services/notasEntrada'
 import { salvarProdutoFornecedor, obterProdutoPorId, Produto } from '@/services/produtos'
 import { TIPOS_ENTRADA, TipoEntradaNota, converterCfopEntrada } from '@/services/cfopConversao'
+import { sugerirTributacao, SugestaoFiscalResultado } from '@/services/motorFiscal'
+import { aliquotaInterestadual } from '@/services/icmsMatriz'
+import { obterConfigFiscalEmpresa } from '@/services/configFiscal'
+import { ModalProdutosNaoCadastrados } from '@/components/compras/ModalProdutosNaoCadastrados'
+import { ModalConferenciaFiscalItem } from '@/components/compras/ModalConferenciaFiscalItem'
 import { SelectCfop } from '@/components/SelectCfop'
 import { SelectProduto } from '@/components/SelectProduto'
 import { ProdutoCadastroRapido } from '@/components/ProdutoCadastroRapido'
@@ -111,6 +116,18 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
   const [motivoCancelamento, setMotivoCancelamento] = useState('')
   const [cancelando, setCancelando] = useState(false)
 
+  // Etapa 0.0.30: Cadastro Automático e Motor Fiscal
+  const [modalLoteNaoCadastradosAberto, setModalLoteNaoCadastradosAberto] = useState(false)
+  const [mapaSugestoesFiscais, setMapaSugestoesFiscais] = useState<
+    Record<string, SugestaoFiscalResultado>
+  >({})
+  const [modalFiscalItemAberto, setModalFiscalItemAberto] = useState(false)
+  const [itemFiscalSelecionado, setItemFiscalSelecionado] = useState<NotaEntradaItem | null>(null)
+  const [aliquotasInterestaduaisEsperadas, setAliquotasInterestaduaisEsperadas] = useState<
+    Record<string, number>
+  >({})
+  const [aliqInternaEsConfig, setAliqInternaEsConfig] = useState<number>(17)
+
   const carregarDados = useCallback(async () => {
     if (!id) return
     setCarregando(true)
@@ -148,39 +165,160 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
     carregarDados()
   }, [carregarDados])
 
-  // Vínculo automático inicial ao abrir a conferência se houver itens com produto_id nulo
+  // Vínculo automático e verificação de criação automática ao abrir a conferência
   useEffect(() => {
     if (!nota || !itens.length || carregando) return
-    const itensSemProduto = itens.filter((i) => !i.produto_id)
-    if (itensSemProduto.length === 0) return
 
     let ativo = true
-    const autoVincular = async () => {
+    const verificarVinculosECadastro = async () => {
       try {
-        const res = await executarVinculoAutomaticoNota(
-          nota.id,
-          nota.fornecedor_id,
-          empresaAtiva as any,
-          nota.tipo_entrada,
-        )
-        if (res.vinculados > 0 && ativo) {
-          toast({
-            title: 'Vínculo automático aplicado',
-            description: `${res.vinculados} item(ns) vinculado(s) automaticamente pelo catálogo/histórico.`,
-          })
-          carregarDados()
+        const itensSemProduto = itens.filter((i) => !i.produto_id)
+        if (itensSemProduto.length > 0) {
+          const res = await executarVinculoAutomaticoNota(
+            nota.id,
+            nota.fornecedor_id,
+            empresaAtiva as any,
+            nota.tipo_entrada,
+          )
+          if (res.vinculados > 0 && ativo) {
+            toast({
+              title: 'Vínculo automático aplicado',
+              description: `${res.vinculados} item(ns) vinculado(s) automaticamente pelo catálogo/histórico.`,
+            })
+            await carregarDados()
+            return
+          }
+        }
+
+        // Se após o vínculo automático ainda sobrarem itens sem produto
+        const restantesSemProduto = itens.filter((i) => !i.produto_id)
+        if (restantesSemProduto.length > 0 && empresaAtiva?.id && ativo) {
+          const configFiscal = await obterConfigFiscalEmpresa(empresaAtiva.id)
+          const modoCriacao = configFiscal?.criar_produtos_automaticamente || 'Perguntar'
+
+          if (modoCriacao === 'Perguntar') {
+            setModalLoteNaoCadastradosAberto(true)
+          } else if (modoCriacao === 'Sempre') {
+            // Criação automática imediata
+            const { processarCadastroAutomaticoProdutos } =
+              await import('@/services/cadastroAutomaticoProdutos')
+            const linhasAuto = restantesSemProduto.map((it) => ({
+              itemNota: it,
+              criar: true,
+              descricao: (it.descricao_fornecedor || '').slice(0, 120),
+              unidadeCompra: it.unidade_xml || 'UN',
+              unidadeVendaId: '',
+              fatorConversao: 1,
+              precoCusto: it.custo_unitario_estoque || it.valor_unitario_xml || 0,
+              margemPercentual: configFiscal?.margem_padrao_percentual || 50,
+              precoVenda: 0,
+              ncm: it.ncm_xml || '',
+              cest: it.cest_xml || '',
+              gtin: it.codigo_barras_xml || '',
+            }))
+
+            await processarCadastroAutomaticoProdutos({
+              notaId: nota.id,
+              notaInfo: {
+                modelo: String(nota.modelo || '55'),
+                serie: String(nota.serie || '1'),
+                numero: String(nota.numero || ''),
+                fornecedorNome: nota.expand?.fornecedor_id?.razao_social || '',
+                dataEmissao: nota.data_emissao,
+              },
+              fornecedorId: nota.fornecedor_id,
+              empresa: empresaAtiva as any,
+              itensParaProcessar: linhasAuto,
+              grupoId: configFiscal?.grupo_padrao_id,
+              categoriaId: configFiscal?.categoria_padrao_id,
+              margemPadrao: configFiscal?.margem_padrao_percentual || 50,
+              aplicarClassificacaoFiscal: true,
+              tipoEntrada: nota.tipo_entrada,
+              ufFornecedor: nota.expand?.fornecedor_id?.uf,
+            })
+
+            toast({
+              title: 'Produtos cadastrados automaticamente',
+              description: `${restantesSemProduto.length} produto(s) criado(s) e vinculado(s) com sucesso.`,
+            })
+            await carregarDados()
+          }
         }
       } catch (err) {
-        console.warn('Erro ao auto-vincular itens na abertura:', err)
+        console.warn('Erro ao processar vínculos e criação automática:', err)
       }
     }
 
-    autoVincular()
+    verificarVinculosECadastro()
 
     return () => {
       ativo = false
     }
   }, [nota?.id, nota?.fornecedor_id, nota?.tipo_entrada, itens.length, empresaAtiva, carregando])
+
+  // Avaliação do Motor Fiscal para cada item e cálculo da Matriz Interestadual
+  useEffect(() => {
+    if (!itens.length || !empresaAtiva) return
+
+    let ativo = true
+    const avaliarFiscais = async () => {
+      const novoMapa: Record<string, SugestaoFiscalResultado> = {}
+      const novoMapaAliqInter: Record<string, number> = {}
+
+      const configFisc = empresaAtiva.id ? await obterConfigFiscalEmpresa(empresaAtiva.id) : null
+      const aliqEs = configFisc?.aliquota_icms_interna_padrao ?? 17
+      setAliqInternaEsConfig(aliqEs)
+
+      const ufForn = (nota?.expand?.fornecedor_id?.uf || '').toUpperCase().trim()
+      const ufEmp = (empresaAtiva.uf || 'ES').toUpperCase().trim()
+
+      for (const it of itens) {
+        try {
+          const itemSimulado = {
+            ncm: it.ncm_xml || it.ncm_fornecedor,
+            cest: it.cest_xml || it.cest_fornecedor,
+            origem: it.origem_mercadoria_xml || '0',
+            cstIcms: it.cst_icms_fornecedor,
+            cfop: it.cfop_fornecedor,
+            cstPis: it.cst_pis_fornecedor,
+            cstCofins: it.cst_cofins_fornecedor,
+          }
+
+          const sug = await sugerirTributacao({
+            itemXml: itemSimulado,
+            empresa: empresaAtiva as any,
+            produtoExistente: it.expand?.produto_id,
+            tipoEntrada: nota?.tipo_entrada,
+            ufFornecedor: ufForn,
+          })
+          novoMapa[it.id] = sug
+
+          // Comparação da Matriz de ICMS Interestadual
+          if (ufForn && ufEmp && ufForn !== ufEmp) {
+            const esperada = await aliquotaInterestadual(
+              ufForn,
+              ufEmp,
+              it.origem_mercadoria_xml || '0',
+            )
+            novoMapaAliqInter[it.id] = esperada
+          }
+        } catch (errSug) {
+          console.warn('Erro ao avaliar sugestao item', it.id, errSug)
+        }
+      }
+
+      if (ativo) {
+        setMapaSugestoesFiscais(novoMapa)
+        setAliquotasInterestaduaisEsperadas(novoMapaAliqInter)
+      }
+    }
+
+    avaliarFiscais()
+
+    return () => {
+      ativo = false
+    }
+  }, [itens, empresaAtiva, nota?.tipo_entrada, nota?.expand?.fornecedor_id?.uf])
 
   // ==========================================
   // HANDLERS DE ALTERAÇÃO FISCAL E PRODUTOS
@@ -1136,6 +1274,55 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                 prod?.ncm &&
                 item.ncm_fornecedor &&
                 prod.ncm.replace(/\D/g, '') !== item.ncm_fornecedor.replace(/\D/g, '')
+
+              // Alertas de ST e CEST
+              const cestDivergente =
+                prod?.cest &&
+                item.cest_fornecedor &&
+                prod.cest.replace(/\D/g, '') !== item.cest_fornecedor.replace(/\D/g, '')
+
+              const stFornecedor =
+                ['10', '30', '60', '70'].includes(item.cst_icms_fornecedor || '') ||
+                ['201', '202', '203', '500'].includes(item.cst_icms_fornecedor || '') ||
+                ['5401', '5403', '5405', '6401', '6403', '6404'].includes(
+                  (item.cfop_fornecedor || '').replace(/\D/g, ''),
+                )
+
+              const stProduto =
+                ['10', '30', '60', '70'].includes(prod?.cst_icms || '') ||
+                ['201', '202', '203', '500'].includes(prod?.csosn || '') ||
+                ['5405', '6404'].includes(prod?.cfop_venda_interna || '')
+
+              const stDivergente = prod && stFornecedor !== stProduto
+
+              // Alíquota interestadual e DIFAL
+              const aliqEsperada = aliquotasInterestaduaisEsperadas[item.id]
+              const aliqXml = item.aliquota_icms || 0
+              const divergenciaAliqInter =
+                aliqEsperada !== undefined && aliqXml > 0 && Math.abs(aliqXml - aliqEsperada) > 0.01
+
+              const ehUsoConsumoOuAtivo =
+                nota.tipo_entrada === 'Uso e consumo' || nota.tipo_entrada === 'Ativo imobilizado'
+
+              const valorDifalEstimado =
+                ehUsoConsumoOuAtivo && aliqEsperada !== undefined
+                  ? Number(
+                      (
+                        (item.base_icms || item.valor_produto || 0) *
+                        ((aliqInternaEsConfig - aliqEsperada) / 100)
+                      ).toFixed(2),
+                    )
+                  : 0
+
+              const sugestaoFiscal = mapaSugestoesFiscais[item.id]
+              const confianca = sugestaoFiscal?.confianca || 'Baixa'
+              const seloCor =
+                confianca === 'Alta'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                  : confianca === 'Média'
+                    ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                    : 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100'
+
               const exigeLote = Boolean(prod?.controla_lote_validade)
               const lotePendente = exigeLote && (!item.lote_numero || !item.lote_validade)
 
@@ -1166,6 +1353,21 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                           (Cód. Forn: {item.codigo_fornecedor})
                         </span>
                       )}
+
+                      {/* Selo Fiscal por Item */}
+                      <Badge
+                        variant="outline"
+                        onClick={() => {
+                          setItemFiscalSelecionado(item)
+                          setModalFiscalItemAberto(true)
+                        }}
+                        className={`cursor-pointer transition-colors text-[10px] gap-1 py-0.5 px-2 ${seloCor}`}
+                        title="Clique para ver detalhes do enquadramento fiscal sugerido"
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        Fiscal: {confianca} (
+                        {sugestaoFiscal?.motivoGeral || 'Classificar manualmente'})
+                      </Badge>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -1219,14 +1421,132 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                   </CardHeader>
 
                   <CardContent className="p-4 space-y-3 text-xs">
-                    {/* Alertas específicos do item */}
+                    {/* Alertas específicos do item com botões para atualizar produto */}
                     {ncmDivergente && (
-                      <Alert className="py-1.5 px-3 bg-amber-50 border-amber-300 text-amber-900 text-xs flex items-center gap-2">
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                      <Alert className="py-1.5 px-3 bg-amber-50 border-amber-300 text-amber-900 text-xs flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                          <span className="text-[11px]">
+                            <strong>Aviso Fiscal:</strong> NCM da nota (
+                            <code>{item.ncm_fornecedor}</code>) diverge do produto cadastrado (
+                            <code>{prod?.ncm}</code>).
+                          </span>
+                        </div>
+                        {podeEditar && prod && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[10px] bg-white text-amber-900 border-amber-300 hover:bg-amber-100"
+                            onClick={async () => {
+                              await pb.collection('produtos').update(prod.id, {
+                                ncm: item.ncm_fornecedor,
+                              })
+                              toast({
+                                title: `NCM do produto atualizado para ${item.ncm_fornecedor}`,
+                              })
+                              await carregarDados()
+                            }}
+                          >
+                            Atualizar NCM com o dado do XML
+                          </Button>
+                        )}
+                      </Alert>
+                    )}
+
+                    {stDivergente && (
+                      <Alert className="py-1.5 px-3 bg-amber-50 border-amber-300 text-amber-900 text-xs flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                          <span className="text-[11px]">
+                            <strong>Aviso ST:</strong>{' '}
+                            {stFornecedor
+                              ? 'Fornecedor enviou com ST, mas o produto no ERP está cadastrado sem ST.'
+                              : 'Fornecedor enviou sem ST, mas o produto no ERP está cadastrado com ST.'}
+                          </span>
+                        </div>
+                        {podeEditar && prod && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[10px] bg-white text-amber-900 border-amber-300 hover:bg-amber-100"
+                            onClick={async () => {
+                              const ehSimples = empresaAtiva?.regime_apuracao === 'Simples Nacional'
+                              const upd: Record<string, any> = {}
+                              if (stFornecedor) {
+                                if (ehSimples) upd.csosn = '500'
+                                else upd.cst_icms = '60'
+                                upd.cfop_venda_interna = '5405'
+                              } else {
+                                if (ehSimples) upd.csosn = '102'
+                                else upd.cst_icms = '00'
+                                upd.cfop_venda_interna = '5102'
+                              }
+                              await pb.collection('produtos').update(prod.id, upd)
+                              toast({ title: 'Tributação de ST do produto atualizada com o XML' })
+                              await carregarDados()
+                            }}
+                          >
+                            Atualizar ST do produto
+                          </Button>
+                        )}
+                      </Alert>
+                    )}
+
+                    {cestDivergente && (
+                      <Alert className="py-1.5 px-3 bg-amber-50 border-amber-300 text-amber-900 text-xs flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                          <span className="text-[11px]">
+                            <strong>Aviso CEST:</strong> CEST da nota (
+                            <code>{item.cest_fornecedor}</code>) diverge do cadastrado (
+                            <code>{prod?.cest}</code>).
+                          </span>
+                        </div>
+                        {podeEditar && prod && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[10px] bg-white text-amber-900 border-amber-300 hover:bg-amber-100"
+                            onClick={async () => {
+                              await pb.collection('produtos').update(prod.id, {
+                                cest: item.cest_fornecedor,
+                              })
+                              toast({
+                                title: `CEST do produto atualizado para ${item.cest_fornecedor}`,
+                              })
+                              await carregarDados()
+                            }}
+                          >
+                            Atualizar CEST com o dado do XML
+                          </Button>
+                        )}
+                      </Alert>
+                    )}
+
+                    {divergenciaAliqInter && (
+                      <Alert className="py-1.5 px-3 bg-blue-50 border-blue-300 text-blue-900 text-xs flex items-center gap-2">
+                        <AlertTriangle className="h-3.5 w-3.5 text-blue-600 shrink-0" />
                         <span className="text-[11px]">
-                          <strong>Aviso Fiscal:</strong> NCM da nota (
-                          <code>{item.ncm_fornecedor}</code>) diverge do produto cadastrado (
-                          <code>{prod?.ncm}</code>).
+                          <strong>Alíquota Interestadual Diferente:</strong> Fornecedor destacou{' '}
+                          {aliqXml}% de ICMS, enquanto a Matriz Interestadual prevê {aliqEsperada}%.
+                          Confirme com o contador.
+                        </span>
+                      </Alert>
+                    )}
+
+                    {ehUsoConsumoOuAtivo && valorDifalEstimado > 0 && (
+                      <Alert className="py-1.5 px-3 bg-purple-50 border-purple-300 text-purple-900 text-xs flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                          <span className="text-[11px]">
+                            <strong>Estimativa de DIFAL:</strong> Base R${' '}
+                            {(item.base_icms || item.valor_produto || 0).toFixed(2)} × (
+                            {aliqInternaEsConfig}% ES − {aliqEsperada}% Inter) ={' '}
+                            <strong>R$ {valorDifalEstimado.toFixed(2)}</strong>.
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-purple-700 font-medium italic">
+                          Possível DIFAL a recolher: confirme com o contador
                         </span>
                       </Alert>
                     )}
@@ -1317,6 +1637,28 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                                 Vinculado
                               </Badge>
                             </div>
+
+                            {/* Oferta de preenchimento de campos fiscais vazios se aplicável */}
+                            {(!prod.ncm ||
+                              (!prod.cst_icms && !prod.csosn) ||
+                              !prod.cfop_venda_interna) && (
+                              <div className="p-2 bg-amber-50/60 border border-amber-200 rounded flex items-center justify-between">
+                                <span className="text-[10px] text-amber-900">
+                                  Produto vinculado possui campos fiscais não preenchidos.
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 text-[10px] bg-white text-amber-900 border-amber-300 hover:bg-amber-100"
+                                  onClick={() => {
+                                    setItemFiscalSelecionado(item)
+                                    setModalFiscalItemAberto(true)
+                                  }}
+                                >
+                                  Preencher com Sugestão Fiscal
+                                </Button>
+                              </div>
+                            )}
 
                             <div className="grid grid-cols-3 gap-2 items-center">
                               <div>
@@ -2102,6 +2444,44 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Modal de Produtos Não Cadastrados na NF-e */}
+      <ModalProdutosNaoCadastrados
+        aberto={modalLoteNaoCadastradosAberto}
+        onOpenChange={setModalLoteNaoCadastradosAberto}
+        notaId={nota.id}
+        notaInfo={{
+          modelo: String(nota.modelo || '55'),
+          serie: String(nota.serie || '1'),
+          numero: String(nota.numero || ''),
+          fornecedorNome: nota.expand?.fornecedor_id?.razao_social || '',
+          dataEmissao: nota.data_emissao,
+        }}
+        fornecedorId={nota.fornecedor_id}
+        empresa={empresaAtiva as any}
+        itensSemProduto={itens.filter((i) => !i.produto_id)}
+        tipoEntrada={nota.tipo_entrada}
+        ufFornecedor={nota.expand?.fornecedor_id?.uf}
+        onConcluido={() => carregarDados()}
+      />
+
+      {/* Modal Detalhes e Edição Fiscal do Item */}
+      {itemFiscalSelecionado && (
+        <ModalConferenciaFiscalItem
+          aberto={modalFiscalItemAberto}
+          onOpenChange={setModalFiscalItemAberto}
+          item={itemFiscalSelecionado}
+          produto={itemFiscalSelecionado.expand?.produto_id || null}
+          sugestao={mapaSugestoesFiscais[itemFiscalSelecionado.id] || null}
+          onSalvarProduto={async (campos) => {
+            if (itemFiscalSelecionado.produto_id) {
+              await pb.collection('produtos').update(itemFiscalSelecionado.produto_id, campos)
+              toast({ title: 'Campos fiscais do produto atualizados com sucesso!' })
+              await carregarDados()
+            }
+          }}
+        />
+      )}
 
       {/* Modal Buscar Produto para Vincular */}
       <Dialog open={modalBuscaAberto} onOpenChange={setModalBuscaAberto}>

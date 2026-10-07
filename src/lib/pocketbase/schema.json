@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T22:07:37.379Z",
+  "generatedAt": "2026-10-07T22:27:32.836Z",
   "collections": [
     {
       "name": "users",
@@ -5812,6 +5812,384 @@
         "CREATE INDEX idx_notas_parc_nota ON notas_entrada_parcelas (nota_id)",
         "CREATE INDEX idx_notas_parc_venc ON notas_entrada_parcelas (data_vencimento)",
         "CREATE INDEX idx_notas_parc_ativo ON notas_entrada_parcelas (ativo)"
+      ]
+    },
+    {
+      "name": "config_fiscal_empresa",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "aliquota_icms_interna_padrao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_fcp_padrao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "csosn_padrao_tributado",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["101", "102"]
+        },
+        {
+          "name": "grupo_padrao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "grupos"
+        },
+        {
+          "name": "categoria_padrao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "categorias"
+        },
+        {
+          "name": "margem_padrao_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criar_produtos_automaticamente",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Perguntar", "Sempre", "Nunca"]
+        },
+        {
+          "name": "aplicar_sugestao_fiscal_em_produtos_existentes_vazios",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_config_fiscal_empresa_uid ON config_fiscal_empresa (empresa_id)",
+        "CREATE INDEX idx_config_fiscal_empresa_ativo ON config_fiscal_empresa (ativo)"
+      ]
+    },
+    {
+      "name": "regras_fiscais_ncm",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ncm_prefixo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cest",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "regime_empresa",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Simples Nacional", "Regime Normal", "Todos"]
+        },
+        {
+          "name": "perfil_tributario_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "perfis_tributarios"
+        },
+        {
+          "name": "sujeito_st",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "monofasico_pis_cofins",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_receita_pis_cofins",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "prioridade",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_regras_fiscais_ncm_prefixo ON regras_fiscais_ncm (ncm_prefixo)",
+        "CREATE INDEX idx_regras_fiscais_ncm_uf ON regras_fiscais_ncm (uf)",
+        "CREATE INDEX idx_regras_fiscais_ncm_regime ON regras_fiscais_ncm (regime_empresa)",
+        "CREATE INDEX idx_regras_fiscais_ncm_prioridade ON regras_fiscais_ncm (prioridade)",
+        "CREATE INDEX idx_regras_fiscais_ncm_ativo ON regras_fiscais_ncm (ativo)"
+      ]
+    },
+    {
+      "name": "icms_aliquotas_uf",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "uf",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "aliquota_interna",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "aliquota_fcp",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vigencia_inicio",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_icms_aliq_uf_unique ON icms_aliquotas_uf (uf)",
+        "CREATE INDEX idx_icms_aliq_uf_ativo ON icms_aliquotas_uf (ativo)"
+      ]
+    },
+    {
+      "name": "icms_interestadual",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "uf_origem",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "uf_destino",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "aliquota",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_icms_inter_par ON icms_interestadual (uf_origem, uf_destino)",
+        "CREATE INDEX idx_icms_inter_origem ON icms_interestadual (uf_origem)",
+        "CREATE INDEX idx_icms_inter_destino ON icms_interestadual (uf_destino)",
+        "CREATE INDEX idx_icms_inter_ativo ON icms_interestadual (ativo)"
       ]
     }
   ]

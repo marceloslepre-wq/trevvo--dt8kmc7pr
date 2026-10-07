@@ -26,6 +26,7 @@ export const MODULOS_SISTEMA = [
   { id: 'sped', label: 'SPED Fiscal' },
   { id: 'relatorios', label: 'Relatórios' },
   { id: 'configuracoes', label: 'Configurações' },
+  { id: 'config_fiscal', label: 'Configurações Fiscais' },
 ] as const
 
 export type ModuloSistema = (typeof MODULOS_SISTEMA)[number]['id']
