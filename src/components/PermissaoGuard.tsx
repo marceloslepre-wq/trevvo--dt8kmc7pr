@@ -18,12 +18,17 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
 }) => {
   const { pode, carregando, administrador } = usePermissoes()
 
-  // Administrador tem liberação instantânea e irrestrita sem depender de carregamentos
+  // 1. Administrador tem liberação instantânea e irrestrita sem aguardar nada
   if (administrador) {
     return <>{children}</>
   }
 
-  // Enquanto estiver carregando as permissões do perfil pela primeira vez
+  // 2. Se a permissão já foi checada e concedida mesmo antes de concluir carregamentos secundários
+  if (pode(modulo, acao)) {
+    return <>{children}</>
+  }
+
+  // 3. Enquanto estiver carregando as permissões do perfil
   if (carregando) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-slate-500 text-sm">
@@ -36,16 +41,11 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     )
   }
 
-  const permitido = pode(modulo, acao)
-
-  if (!permitido) {
-    if (fallback !== undefined) {
-      return <>{fallback}</>
-    }
-    return <AcessoNegado />
+  // 4. Se carregou e não tem permissão
+  if (fallback !== undefined) {
+    return <>{fallback}</>
   }
-
-  return <>{children}</>
+  return <AcessoNegado />
 }
 
 export default PermissaoGuard

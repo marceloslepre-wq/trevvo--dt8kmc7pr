@@ -104,14 +104,6 @@ const App = () => (
 
                   {/* Cadastros */}
                   <Route
-                    path="/cadastros/empresas"
-                    element={
-                      <PermissaoGuard modulo="empresas" acao="ver">
-                        <EmpresasLista />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
                     path="/cadastros/empresas/novo"
                     element={
                       <PermissaoGuard modulo="empresas" acao="criar">

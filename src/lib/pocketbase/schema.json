@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T11:13:32.308Z",
+  "generatedAt": "2026-10-07T11:30:01.688Z",
   "collections": [
     {
       "name": "users",
@@ -480,6 +480,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "permite_estoque_negativo",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -3739,6 +3745,315 @@
         "CREATE INDEX idx_condicoes_pagamento_tipo ON condicoes_pagamento (tipo)",
         "CREATE INDEX idx_condicoes_pagamento_uso ON condicoes_pagamento (uso)",
         "CREATE INDEX idx_condicoes_pagamento_ativo ON condicoes_pagamento (ativo)"
+      ]
+    },
+    {
+      "name": "estoque_saldos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "quantidade",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_medio",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_ultima_entrada",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_ultima_saida",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_estoque_saldos_empresa_produto ON estoque_saldos (empresa_id, produto_id)",
+        "CREATE INDEX idx_estoque_saldos_empresa ON estoque_saldos (empresa_id)",
+        "CREATE INDEX idx_estoque_saldos_produto ON estoque_saldos (produto_id)",
+        "CREATE INDEX idx_estoque_saldos_ativo ON estoque_saldos (ativo)"
+      ]
+    },
+    {
+      "name": "estoque_movimentos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "data_movimento",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Entrada", "Saída"]
+        },
+        {
+          "name": "origem",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "SALDO_INICIAL",
+            "AJUSTE_ENTRADA",
+            "AJUSTE_SAIDA",
+            "PERDA",
+            "CONSUMO_INTERNO",
+            "BONIFICACAO_ENTRADA",
+            "BONIFICACAO_SAIDA",
+            "TRANSFERENCIA_ENTRADA",
+            "TRANSFERENCIA_SAIDA",
+            "INVENTARIO_ENTRADA",
+            "INVENTARIO_SAIDA",
+            "COMPRA",
+            "DEVOLUCAO_COMPRA",
+            "VENDA",
+            "DEVOLUCAO_VENDA",
+            "ESTORNO"
+          ]
+        },
+        {
+          "name": "quantidade",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "custo_unitario",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "saldo_anterior",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "saldo_posterior",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_medio_anterior",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_medio_posterior",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lote_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documento_tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documento_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documento_numero",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "estornado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "movimento_estornado_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "movimento_estorno_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_mov_empresa_prod_data ON estoque_movimentos (empresa_id, produto_id, data_movimento)",
+        "CREATE INDEX idx_mov_empresa ON estoque_movimentos (empresa_id)",
+        "CREATE INDEX idx_mov_produto ON estoque_movimentos (produto_id)",
+        "CREATE INDEX idx_mov_data ON estoque_movimentos (data_movimento)",
+        "CREATE INDEX idx_mov_tipo ON estoque_movimentos (tipo)",
+        "CREATE INDEX idx_mov_origem ON estoque_movimentos (origem)",
+        "CREATE INDEX idx_mov_doc ON estoque_movimentos (documento_tipo, documento_id)",
+        "CREATE INDEX idx_mov_estornado ON estoque_movimentos (estornado)",
+        "CREATE INDEX idx_mov_ativo ON estoque_movimentos (ativo)"
       ]
     }
   ]

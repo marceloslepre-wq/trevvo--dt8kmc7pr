@@ -32,6 +32,7 @@ export interface Empresa {
   indicador_atividade_sped?: number
   perfil_sped?: PerfilSped
   obrigado_efd_icms_ipi?: boolean
+  permite_estoque_negativo?: boolean
   cep?: string
   logradouro?: string
   numero?: string

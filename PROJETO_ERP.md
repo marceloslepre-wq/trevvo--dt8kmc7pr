@@ -230,6 +230,59 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### estoque_saldos
+
+Tabela de saldos consolidados de estoque por empresa (filial) e produto. Bloqueada para gravação, edição ou exclusão direta — apenas o serviço central transacional atualiza os registros.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- produto_id (relation -> produtos, obrigatório)
+- quantidade (número com 4 casas decimais)
+- custo_medio (número com 4 casas decimais, custo médio ponderado)
+- valor_total (número com 2 casas decimais, = quantidade × custo_medio)
+- data_ultima_entrada (data/hora texto)
+- data_ultima_saida (data/hora texto)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Restrição de unicidade: par `empresa_id + produto_id`.
+
+### estoque_movimentos
+
+Tabela do histórico físico-financeiro (Kardex imutável) de movimentações de estoque. Bloqueada para gravação, edição ou exclusão direta — gravada exclusivamente pelo serviço central de movimentação e estorno.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- produto_id (relation -> produtos, obrigatório)
+- data_movimento (data/hora da operação, obrigatório)
+- tipo (select: "Entrada" ou "Saída", obrigatório)
+- origem (select com 16 origens: SALDO_INICIAL, AJUSTE_ENTRADA, AJUSTE_SAIDA, PERDA, CONSUMO_INTERNO, BONIFICACAO_ENTRADA, BONIFICACAO_SAIDA, TRANSFERENCIA_ENTRADA, TRANSFERENCIA_SAIDA, INVENTARIO_ENTRADA, INVENTARIO_SAIDA, COMPRA, DEVOLUCAO_COMPRA, VENDA, DEVOLUCAO_VENDA, ESTORNO)
+- quantidade (número positivo com 4 casas decimais, obrigatório)
+- custo_unitario (número com 4 casas decimais)
+- valor_total (número com 2 casas decimais, = quantidade × custo_unitario)
+- saldo_anterior (número com 4 casas decimais)
+- saldo_posterior (número com 4 casas decimais)
+- custo_medio_anterior (número com 4 casas decimais)
+- custo_medio_posterior (número com 4 casas decimais)
+- lote_id (texto opcional preparado para futura gestão de lotes)
+- documento_tipo (texto opcional, ex: "NF-e", "NFC-e", "Ajuste", "Inventário")
+- documento_id (texto opcional com o identificador do documento de origem)
+- documento_numero (texto opcional com o número do documento)
+- motivo (texto obrigatório para AJUSTE\_\*, PERDA e CONSUMO_INTERNO)
+- observacao (texto opcional)
+- usuario_id (relation -> users, operador que executou a movimentação)
+- estornado (boolean, padrão false)
+- movimento_estornado_id (texto com id do movimento original caso seja estorno)
+- movimento_estorno_id (texto com id do movimento de estorno caso tenha sido estornado)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
 ### condicoes_pagamento
 
 Tabela de condições e planos de pagamento para comercialização e faturamento. Utilizada de forma integrada por clientes, fornecedores, compras, pedidos de venda, PDV e financeiro (contas a pagar e receber).
@@ -362,6 +415,7 @@ Restrição de unicidade: par `tipo + codigo`.
 - indicador_atividade_sped: 0 Industrial ou equiparado a industrial; 1 Outros
 - perfil_sped: A, B ou C (perfil do arquivo da EFD ICMS/IPI definido pela SEFAZ)
 - obrigado_efd_icms_ipi: sim/não (padrão: sim quando crt = 3, não quando crt = 1 ou 4)
+- permite_estoque_negativo: boolean (padrão false; bloco "Estoque" na aba Regime Tributário)
 
 #### Endereço
 
@@ -1096,6 +1150,63 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 - `<SelectCondicaoPagamento />` (`@/components/SelectCondicaoPagamento`): Combobox com busca de condições de pagamento, filtro contextual de uso ("Vendas" ou "Compras") e atalho inline para cadastro rápido via modal.
 - `gerarParcelas(condicao, valorTotal, dataBase)` (`@/services/condicoesPagamento`): Função para geração do cronograma de parcelas com arredondamento em 2 casas, ajuste de centavos na última parcela, entrada, juros, desconto e dia fixo.
 
+### Serviços Centrais de Estoque (`@/services/estoque.ts`)
+
+⚠ **REGRA DE ARQUITETURA MANDATÓRIA (EM DESTAQUE):**
+Nenhuma tela ou componente do sistema tem permissão para gravar, editar ou excluir diretamente nas tabelas `estoque_saldos` ou `estoque_movimentos`. Toda e qualquer alteração de saldo ou histórico deve transitar única e exclusivamente pelo serviço central do backend (`/backend/v1/estoque/movimentar` e `/backend/v1/estoque/estornar`), acessível através das funções `movimentarEstoque()` e `estornarMovimento()`.
+
+#### 1. `movimentarEstoque(itens)`
+
+Movimenta o estoque de múltiplos itens em transação atômica. Valida permissões do usuário, consistência de unidades inteiras/fracionadas, estoque negativo (respeitando `permite_estoque_negativo`), expande automaticamente componentes de produtos do tipo "Kit" por meio de `produtos_kit_itens`, calcula o custo médio ponderado e atualiza `estoque_saldos` e `estoque_movimentos` com auditoria.
+
+```ts
+import { movimentarEstoque } from '@/services/estoque'
+
+const resultado = await movimentarEstoque([
+  {
+    empresa_id: 'empresa_id_aqui',
+    produto_id: 'produto_id_aqui',
+    tipo: 'Entrada', // ou "Saída"
+    origem: 'COMPRA', // SALDO_INICIAL, AJUSTE_ENTRADA, VENDA, etc.
+    quantidade: 10,
+    custo_unitario: 25.5,
+    documento_tipo: 'NF-e',
+    documento_numero: '000123',
+  },
+])
+```
+
+#### 2. `estornarMovimento(movimentoId, motivo)`
+
+Estorna um movimento de estoque com rastreabilidade total: gera um movimento contraposto de origem "ESTORNO", inverte a operação (Entrada ↔ Saída), recalcula o saldo e o custo médio, marca o movimento original como estornado (`estornado = true`) e faz a amarração biunívoca entre ambos. Movimentos originados de documentos fiscais/vendas só podem ser estornados pelo cancelamento do próprio documento.
+
+```ts
+import { estornarMovimento } from '@/services/estoque'
+
+const res = await estornarMovimento('movimento_id_aqui', 'Digitação incorreta do ajuste físico')
+```
+
+#### 3. `saldoEmData(empresa_id, produto_id, data)`
+
+Recompõe com exatidão matemática a quantidade física e o custo médio ponderado de um produto em uma determinada filial no encerramento do dia informado (23:59:59.999), a partir dos movimentos registrados no Kardex (`estoque_movimentos`) até aquela data. Essencial para inventários retroativos e para a apuração do Bloco H do SPED Fiscal.
+
+```ts
+import { saldoEmData } from '@/services/estoque'
+
+const saldoHistorico = await saldoEmData('empresa_id', 'produto_id', '2025-12-31')
+// Retorno: { quantidade: 42.0000, custo_medio: 15.7500, valor_total: 661.50 }
+```
+
+## Etapa 2 em andamento: Base do Controle de Estoque
+
+Concluída a fundação da Etapa 2:
+
+- Parâmetro `permite_estoque_negativo` na tabela `empresas` (interface na aba Regime Tributário, bloco "Estoque");
+- Tabela `estoque_saldos` com chave única por empresa e produto, quantidade e custo médio com 4 decimais e valor total com 2 decimais;
+- Tabela `estoque_movimentos` (Kardex imutável) com todas as 16 origens padrão de mercado e rastreabilidade total de saldo/custo anterior e posterior;
+- Serviços centrais transacionais no backend (`/backend/v1/estoque/movimentar` e `/backend/v1/estoque/estornar`);
+- Funções reutilizáveis no frontend (`movimentarEstoque`, `estornarMovimento`, `saldoEmData`, `obterSaldoAtual`, `listarMovimentosKardex`).
+
 ## Versão Atual do Projeto
 
-**Versão 0.0.15** — Implementação do cadastro de condições de pagamento (`condicoes_pagamento`), função de cálculo e prévia de parcelas `gerarParcelas()`, componente reutilizável `<SelectCondicaoPagamento />`, integração nos cadastros de Clientes e Fornecedores e permissões por perfil.
+**Versão 0.0.16** — Correção prioritária do PermissaoGuard e do contexto de permissões, base de dados do controle de estoque da Etapa 2 (`estoque_saldos`, `estoque_movimentos`), endpoints transacionais de movimentação e estorno de estoque, função de recomposição de saldo em data retroativa `saldoEmData()` e campo `permite_estoque_negativo` em empresas.

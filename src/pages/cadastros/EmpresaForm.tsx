@@ -109,6 +109,7 @@ export const EmpresaForm: React.FC = () => {
     indicador_atividade_sped: 1,
     perfil_sped: 'B',
     obrigado_efd_icms_ipi: false,
+    permite_estoque_negativo: false,
     // Endereço
     cep: '',
     logradouro: '',
@@ -1168,6 +1169,30 @@ export const EmpresaForm: React.FC = () => {
                     >
                       Obrigado à EFD ICMS/IPI
                     </label>
+                  </div>
+
+                  {/* Bloco Estoque */}
+                  <div className="pt-4 mt-2 border-t border-slate-200">
+                    <h3 className="text-sm font-semibold text-slate-900 mb-2">Estoque</h3>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="permite_estoque_negativo"
+                        checked={Boolean(formData.permite_estoque_negativo)}
+                        onCheckedChange={(checked) =>
+                          setCampo('permite_estoque_negativo', Boolean(checked))
+                        }
+                      />
+                      <label
+                        htmlFor="permite_estoque_negativo"
+                        className="text-xs font-medium text-slate-700 cursor-pointer leading-none"
+                      >
+                        Permitir estoque negativo
+                      </label>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1.5 ml-6">
+                      Quando desmarcado, saídas ou vendas que ultrapassarem o saldo disponível serão
+                      recusadas pelo motor de estoque.
+                    </p>
                   </div>
                 </div>
               </div>
