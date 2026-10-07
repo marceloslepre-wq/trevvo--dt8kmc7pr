@@ -150,8 +150,8 @@ export interface ItemGradeLancamento {
 
 export const LancamentosEstoquePage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
-  const { pode } = usePermissoes()
-  const podeCriar = pode('estoque', 'criar')
+  const { pode, administrador } = usePermissoes()
+  const podeCriar = administrador || pode('estoque', 'criar')
 
   // Aba ativa: 'novo' (formulário) ou 'historico' (listagem de lançamentos)
   const [abaAtiva, setAbaAtiva] = useState<'novo' | 'historico'>('novo')

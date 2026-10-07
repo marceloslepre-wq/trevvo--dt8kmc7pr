@@ -171,6 +171,12 @@ const navItems: NavGroupItem[] = [
         modulo: 'estoque',
       },
       {
+        title: 'Sugestão de compra',
+        path: '/estoque/sugestao-compra',
+        icon: ShoppingCart,
+        modulo: 'estoque',
+      },
+      {
         title: 'Inventários',
         path: '/estoque/inventarios',
         icon: ClipboardCheck,
@@ -261,6 +267,12 @@ const navItems: NavGroupItem[] = [
         title: 'Log de Auditoria',
         path: '/configuracoes/auditoria',
         icon: FileText,
+        adminOnly: true,
+      },
+      {
+        title: 'Integridade do Estoque',
+        path: '/configuracoes/integridade-estoque',
+        icon: ShieldCheck,
         adminOnly: true,
       },
     ],

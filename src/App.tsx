@@ -37,8 +37,10 @@ import PerfisTributariosPage from '@/pages/cadastros/PerfisTributariosPage'
 import MarcasPage from '@/pages/cadastros/MarcasPage'
 import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import ConfiguracoesGeralPage from '@/pages/configuracoes/ConfiguracoesGeralPage'
+import IntegridadeEstoquePage from '@/pages/configuracoes/IntegridadeEstoquePage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
 import PosicaoEstoquePage from '@/pages/estoque/PosicaoEstoquePage'
+import SugestaoCompraPage from '@/pages/estoque/SugestaoCompraPage'
 import KardexPage from '@/pages/estoque/KardexPage'
 import LancamentosEstoquePage from '@/pages/estoque/LancamentosEstoquePage'
 import LotesValidadePage from '@/pages/estoque/LotesValidadePage'
@@ -112,6 +114,14 @@ const App = () => (
                   <Route path="/painel" element={<Index />} />
 
                   {/* Cadastros */}
+                  <Route
+                    path="/cadastros/empresas"
+                    element={
+                      <PermissaoGuard modulo="empresas" acao="ver">
+                        <EmpresasLista />
+                      </PermissaoGuard>
+                    }
+                  />
                   <Route
                     path="/cadastros/empresas/novo"
                     element={
@@ -353,6 +363,14 @@ const App = () => (
                     }
                   />
                   <Route
+                    path="/estoque/sugestao-compra"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <SugestaoCompraPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
                     path="/estoque/inventarios"
                     element={
                       <PermissaoGuard modulo="estoque" acao="ver">
@@ -442,6 +460,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="configuracoes" acao="ver">
                         <LogAuditoriaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/configuracoes/integridade-estoque"
+                    element={
+                      <PermissaoGuard modulo="configuracoes" acao="ver">
+                        <IntegridadeEstoquePage />
                       </PermissaoGuard>
                     }
                   />

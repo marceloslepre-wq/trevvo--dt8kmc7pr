@@ -76,7 +76,7 @@ export const TransferenciaFormPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { empresaAtiva } = useEmpresaAtiva()
-  const { pode, usuarioERP } = usePermissoes()
+  const { pode, usuarioERP, administrador } = usePermissoes()
   const { toast } = useToast()
 
   const isEdicao = Boolean(id && id !== 'novo')

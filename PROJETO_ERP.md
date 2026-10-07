@@ -1428,6 +1428,41 @@ A base e as telas completas do módulo Estoque estão operacionais:
 - `pode('estoque', 'criar')`: permissão para efetuar lançamentos manuais e importar saldo inicial.
 - `pode('estoque', 'excluir')`: permissão para realizar o estorno de lançamentos e ajustes no Kardex.
 
+### Fechamento da Etapa 2 (Concluída)
+
+A Etapa 2 (Controle de Estoque e Telas Operacionais) foi oficialmente finalizada e revisada:
+
+1. **Painel Geral com Indicadores do Estoque (`@/pages/Index.tsx`):**
+   - Respeita permissões do módulo estoque (`pode('estoque', 'ver')`).
+   - Cartões analíticos integrados para a empresa ativa:
+     - Valor total do estoque da empresa ativa (calculado a partir de `estoque_saldos` multiplicado pelo custo médio);
+     - Produtos abaixo do mínimo (clicável, com redirecionamento para `/estoque/posicao?situacao=abaixo_minimo`);
+     - Lotes vencidos e a vencer em até 30 dias (clicável, redirecionando para `/estoque/lotes`);
+     - Transferências aguardando recebimento na empresa ativa (com alerta dinâmico e link para `/estoque/transferencias`);
+     - Inventários abertos na empresa ativa (clicável, link para `/estoque/inventarios`).
+   - Lista "Últimas movimentações": tabela com os 10 movimentos mais recentes da empresa ativa, com data/hora, tipo (badge verde/vermelho), origem, descrição do produto, quantidade, custo unitário e saldo posterior resultante.
+
+2. **Relatório de Reposição — Sugestão de Compra (`@/pages/estoque/SugestaoCompraPage.tsx` e `@/services/sugestaoCompra.ts`):**
+   - Rota `/estoque/sugestao-compra` acessível no menu Estoque.
+   - Analisa todos os produtos do catálogo com estoque mínimo configurado onde o saldo atual na filial ativa é inferior ao mínimo.
+   - Quantidade sugerida calculada pela fórmula do ERP: `estoque_maximo - saldo` (ou `estoque_minimo × 2 - saldo`, se o estoque máximo não estiver definido).
+   - Agrupamento inteligente por Fornecedor Principal com custo total estimado baseado no custo médio ponderado atual.
+   - Filtros por texto e por fornecedor com recálculo em tempo real e exportação dos dados para planilha CSV (preparado para conversão em Pedido de Compra na Etapa 3).
+
+3. **Revisão de Arquitetura e Integridade do Estoque (`@/pages/configuracoes/IntegridadeEstoquePage.tsx` e `@/services/integridadeEstoque.ts`):**
+   - Auditoria completa de código confirmando que **nenhuma tela ou serviço externo grava diretamente em `estoque_saldos` ou `estoque_movimentos`**, obedecendo o isolamento central via endpoints transacionais do backend.
+   - Ferramenta administrativa "Verificar Integridade do Estoque" (`/configuracoes/integridade-estoque`), disponível para administradores no menu Configurações:
+     - Realiza conferência cruzada: para cada empresa e produto, confere se a soma matemática de todos os movimentos do Kardex confere com `estoque_saldos`;
+     - Para produtos com controle de lote (`controla_lote = true`), confere se a soma das quantidades dos lotes ativos confere com o saldo;
+     - Aponta e lista discrepâncias de forma visual e com exportação CSV, **sem alterar ou corrigir nada automaticamente**.
+   - Confirmação das regras de acesso (RLS): tabelas de saldos e movimentos possuem `createRule: null`, `updateRule: null` e `deleteRule: null` para garantir proteção contra manipulações manuais no banco.
+
+4. **Correção Estrutural de Permissões e Hidratação de Sessão (`PermissoesContext.tsx` e `PermissaoGuard.tsx`):**
+   - Eliminação definitiva da falha de telas que renderizavam apenas o guard ou tela vazia:
+     - Checagem síncrona determinística no `pb.authStore` para contas administradoras (`marceloslepre@gmail.com`, `admin@erp.local`, usuários com perfil Administrador);
+     - Correção no serviço `obterUsuarioPorAuthId` com fallback automático por e-mail;
+     - Tratamento tolerante para ações (`ver` e `visualizar`) e normalização nas rotas do sistema.
+
 ## Versão Atual do Projeto
 
-**Versão 0.0.22** — Implementação do Inventário de Estoque e Bloco H do SPED Fiscal: criação das tabelas `inventarios` e `inventarios_itens`, serviço central `src/services/inventarios.ts` (abertura com filtros parciais, congelamento de saldo histórico via `saldoEmData`, bipe de código de barras com soma unitária, modo Contagem Cega, resolução de itens não contados e finalização integrada ao `movimentarEstoque` com geração de `INVENTARIO_ENTRADA`/`INVENTARIO_SAIDA`), suporte a opção "Somente registrar posição" para inventários anuais, exportação CSV oficial dos registros H005 e H010 do SPED Fiscal, telas de Inventários (Lista em `/estoque/inventarios`, Novo em `/estoque/inventarios/novo`, Detalhe/Contagem em `/estoque/inventarios/:id`), inclusão no menu Estoque sem selo "Em breve" e resolução definitiva na raiz do `PermissaoGuard` e contexto de permissões com leitura síncrona do `pb.authStore`.
+**Versão 0.0.23** — Fechamento oficial da Etapa 2 do Estoque: indicadores de estoque e últimas 10 movimentações no Painel Geral, módulo e tela de Sugestão de Compra com agrupamento por fornecedor e exportação CSV, ferramenta de verificação da integridade física e matemática do estoque em Configurações, auditoria das regras RLS e correção definitiva do `PermissaoGuard` e hidratação de perfis/permissões para administradores e usuários.

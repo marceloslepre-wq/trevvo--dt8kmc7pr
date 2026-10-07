@@ -117,6 +117,20 @@ export async function obterUsuarioPorAuthId(authId: string): Promise<Usuario | n
       })
     return res
   } catch {
+    // Fallback: se não encontrou por auth_user_id, tentar pelo email do usuário logado
+    try {
+      const email = pb.authStore.record?.email
+      if (email) {
+        const porEmail = await pb
+          .collection('usuarios')
+          .getFirstListItem<Usuario>(`email = '${email.trim().toLowerCase()}'`, {
+            expand: 'perfil_id,empresa_padrao_id',
+          })
+        return porEmail
+      }
+    } catch {
+      // Ignora erro no fallback
+    }
     return null
   }
 }

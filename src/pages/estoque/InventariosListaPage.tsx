@@ -39,9 +39,9 @@ import { toast } from '@/hooks/use-toast'
 export const InventariosListaPage: React.FC = () => {
   const navigate = useNavigate()
   const { empresaAtiva } = useEmpresaAtiva()
-  const { pode } = usePermissoes()
+  const { pode, administrador } = usePermissoes()
 
-  const podeCriar = pode('estoque', 'criar')
+  const podeCriar = administrador || pode('estoque', 'criar')
 
   const [inventarios, setInventarios] = useState<Inventario[]>([])
   const [carregando, setCarregando] = useState(false)

@@ -42,9 +42,10 @@ import { RomaneioTransferenciaModal } from '@/components/RomaneioTransferenciaMo
 
 export const TransferenciasListaPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
-  const { pode } = usePermissoes()
+  const { pode, administrador } = usePermissoes()
   const { toast } = useToast()
   const navigate = useNavigate()
+  const podeCriar = administrador || pode('estoque', 'criar')
 
   const [transferencias, setTransferencias] = useState<Transferencia[]>([])
   const [empresas, setEmpresas] = useState<Empresa[]>([])

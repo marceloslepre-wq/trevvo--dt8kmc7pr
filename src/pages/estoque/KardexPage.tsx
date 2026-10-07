@@ -39,8 +39,8 @@ export const KardexPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const { empresaAtiva } = useEmpresaAtiva()
-  const { pode } = usePermissoes()
-  const podeExcluir = pode('estoque', 'excluir')
+  const { pode, administrador } = usePermissoes()
+  const podeExcluir = administrador || pode('estoque', 'excluir')
 
   // Produto Selecionado
   const [produtoId, setProdutoId] = useState<string>(searchParams.get('produto') || '')

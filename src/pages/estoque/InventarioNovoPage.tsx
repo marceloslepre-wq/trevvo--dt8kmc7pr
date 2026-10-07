@@ -43,8 +43,8 @@ import { toast } from '@/hooks/use-toast'
 export const InventarioNovoPage: React.FC = () => {
   const navigate = useNavigate()
   const { empresaAtiva } = useEmpresaAtiva()
-  const { pode, usuarioERP } = usePermissoes()
-  const podeCriar = pode('estoque', 'criar')
+  const { pode, usuarioERP, administrador } = usePermissoes()
+  const podeCriar = administrador || pode('estoque', 'criar')
 
   // Form
   const [descricao, setDescricao] = useState('')

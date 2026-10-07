@@ -26,6 +26,14 @@ import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { useConfiguracoes } from '@/contexts/ConfiguracoesContext'
 import pb from '@/lib/pocketbase/client'
+import {
+  DollarSign,
+  TrendingDown,
+  CalendarClock,
+  ClipboardList,
+  ArrowUpRight,
+  ArrowDownLeft,
+} from 'lucide-react'
 
 interface UltimoCadastro {
   id: string
@@ -62,6 +70,14 @@ export default function Index() {
   const [totalProdutosFiscalIncompleto, setTotalProdutosFiscalIncompleto] = useState<number>(0)
   const [totalUsuariosAtivos, setTotalUsuariosAtivos] = useState<number>(0)
   const [totalTransferenciasReceber, setTotalTransferenciasReceber] = useState<number>(0)
+
+  // Indicadores de Estoque (Etapa 2)
+  const [valorTotalEstoque, setValorTotalEstoque] = useState<number>(0)
+  const [produtosAbaixoMinimoCount, setProdutosAbaixoMinimoCount] = useState<number>(0)
+  const [lotesVencidosCount, setLotesVencidosCount] = useState<number>(0)
+  const [lotesAVencerCount, setLotesAVencerCount] = useState<number>(0)
+  const [inventariosAbertosCount, setInventariosAbertosCount] = useState<number>(0)
+  const [ultimasMovimentacoesEstoque, setUltimasMovimentacoesEstoque] = useState<any[]>([])
 
   // Últimos cadastros
   const [ultimosCadastros, setUltimosCadastros] = useState<UltimoCadastro[]>([])
@@ -135,10 +151,110 @@ export default function Index() {
       }
 
       if (podeVerEstoque && empresaAtiva?.id) {
+        // 1. Transferências aguardando recebimento
         promisesContagens.push(
           contarTransferenciasAguardandoRecebimento(empresaAtiva.id)
             .then((tot) => setTotalTransferenciasReceber(tot))
             .catch(() => setTotalTransferenciasReceber(0)),
+        )
+
+        // 2. Inventários abertos na empresa ativa
+        promisesContagens.push(
+          pb
+            .collection('inventarios')
+            .getList(1, 1, {
+              filter: `empresa_id = '${empresaAtiva.id}' && status = 'Aberto'`,
+            })
+            .then((res) => setInventariosAbertosCount(res.totalItems))
+            .catch(() => setInventariosAbertosCount(0)),
+        )
+
+        // 3. Valor total do estoque da empresa ativa e produtos abaixo do mínimo
+        promisesContagens.push(
+          (async () => {
+            try {
+              // Buscar todos os saldos da empresa ativa
+              const saldos = await pb.collection('estoque_saldos').getFullList({
+                filter: `empresa_id = '${empresaAtiva.id}' && ativo = true`,
+                expand: 'produto_id',
+              })
+
+              let totalVal = 0
+              let abaixoMinimo = 0
+
+              saldos.forEach((s: any) => {
+                const qtd = Number(s.quantidade) || 0
+                const custoMedio = Number(s.custo_medio) || 0
+                const valTotal = Number(s.valor_total) || qtd * custoMedio
+                if (qtd > 0 && valTotal > 0) {
+                  totalVal += valTotal
+                }
+
+                const prod = s.expand?.produto_id
+                const estoqueMinimo = Number(prod?.estoque_minimo) || 0
+                if (estoqueMinimo > 0 && qtd < estoqueMinimo) {
+                  abaixoMinimo++
+                }
+              })
+
+              setValorTotalEstoque(totalVal)
+              setProdutosAbaixoMinimoCount(abaixoMinimo)
+            } catch (err) {
+              console.warn('Erro ao calcular valor total e abaixo do mínimo:', err)
+              setValorTotalEstoque(0)
+              setProdutosAbaixoMinimoCount(0)
+            }
+          })(),
+        )
+
+        // 4. Lotes vencidos e a vencer (próximos 30 dias) da empresa ativa
+        promisesContagens.push(
+          (async () => {
+            try {
+              const hoje = new Date()
+              const hojeIso = hoje.toISOString().split('T')[0]
+              const daqui30Dias = new Date(hoje.getTime() + 30 * 24 * 60 * 60 * 1000)
+              const daqui30DiasIso = daqui30Dias.toISOString().split('T')[0]
+
+              // Lotes com saldo > 0 na empresa ativa
+              const lotes = await pb.collection('lotes').getFullList({
+                filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && quantidade_saldo > 0`,
+              })
+
+              let vencidos = 0
+              let aVencer = 0
+
+              lotes.forEach((l: any) => {
+                if (!l.data_validade) return
+                const valStr = l.data_validade.split('T')[0]
+                if (valStr < hojeIso) {
+                  vencidos++
+                } else if (valStr <= daqui30DiasIso) {
+                  aVencer++
+                }
+              })
+
+              setLotesVencidosCount(vencidos)
+              setLotesAVencerCount(aVencer)
+            } catch (err) {
+              console.warn('Erro ao contar lotes vencidos e a vencer:', err)
+              setLotesVencidosCount(0)
+              setLotesAVencerCount(0)
+            }
+          })(),
+        )
+
+        // 5. Últimas 10 movimentações da empresa ativa
+        promisesContagens.push(
+          pb
+            .collection('estoque_movimentos')
+            .getList(1, 10, {
+              filter: `empresa_id = '${empresaAtiva.id}'`,
+              sort: '-data_movimento,-created',
+              expand: 'produto_id',
+            })
+            .then((res) => setUltimasMovimentacoesEstoque(res.items))
+            .catch(() => setUltimasMovimentacoesEstoque([])),
         )
       }
 
@@ -366,6 +482,13 @@ export default function Index() {
     }
   }
 
+  const formatarMoeda = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(val)
+  }
+
   return (
     <div className="space-y-6 pb-12">
       {/* Cabeçalho do Painel */}
@@ -514,55 +637,6 @@ export default function Index() {
             </Link>
           )}
 
-          {/* Transferências a Receber (Clicável -> /estoque/transferencias?status=Enviada) */}
-          {podeVerEstoque && (
-            <Link
-              to="/estoque/transferencias"
-              className="group block focus:outline-none"
-              title="Clique para abrir as transferências entre filiais"
-            >
-              <Card
-                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
-                  totalTransferenciasReceber > 0
-                    ? 'border-amber-300 bg-amber-50/30 ring-1 ring-amber-200'
-                    : 'hover:border-slate-300'
-                }`}
-              >
-                <CardContent className="p-4 flex flex-col justify-between h-full">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-700">
-                      Aguardando Recebimento
-                    </span>
-                    <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        totalTransferenciasReceber > 0
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-blue-50 text-blue-600'
-                      }`}
-                    >
-                      <ArrowLeftRight size={18} />
-                    </div>
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2">
-                      {carregando ? '—' : totalTransferenciasReceber}
-                      {totalTransferenciasReceber > 0 && (
-                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 animate-pulse">
-                          Chegando
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[11px] text-slate-500">
-                      {totalTransferenciasReceber > 0
-                        ? 'transferências em trânsito'
-                        : 'nenhuma remessa em trânsito'}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          )}
-
           {/* Total Usuários Ativos */}
           {podeVerUsuarios && (
             <Link to="/cadastros/usuarios" className="group block focus:outline-none">
@@ -589,6 +663,350 @@ export default function Index() {
         <Card className="border-slate-200 bg-white">
           <CardContent className="p-6 text-center text-slate-500 text-sm">
             Você não possui permissão para visualizar os indicadores gerais do painel.
+          </CardContent>
+        </Card>
+      )}
+
+      {/* SEÇÃO ESTOQUE (Etapa 2) — Respeita permissão de estoque */}
+      {podeVerEstoque && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-t border-slate-200 pt-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <Box className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-bold tracking-tight text-slate-900">
+                  Visão Geral do Estoque
+                </h2>
+                {empresaAtiva && (
+                  <Badge variant="secondary" className="text-[11px] font-normal">
+                    {empresaAtiva.nome_fantasia || empresaAtiva.razao_social}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Valoração, reposição, monitoramento de validade, transferências e inventários da
+                empresa ativa.
+              </p>
+            </div>
+
+            <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+              <Link to="/estoque/posicao">
+                Ver Posição Completa
+                <ArrowRight size={13} />
+              </Link>
+            </Button>
+          </div>
+
+          {/* Cartões de Estoque */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Valor Total do Estoque */}
+            <Card className="border-slate-200 shadow-xs">
+              <CardContent className="p-4 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">Valor Total do Estoque</span>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <DollarSign size={18} />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-xl font-bold tracking-tight text-slate-900 font-mono">
+                    {carregando ? '—' : formatarMoeda(valorTotalEstoque)}
+                  </div>
+                  <span className="text-[11px] text-slate-400">custo médio ponderado</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Produtos Abaixo do Mínimo (Clicável) */}
+            <Link
+              to="/estoque/posicao?situacao=abaixo_minimo"
+              className="group block focus:outline-none"
+              title="Filtrar posição de estoque por produtos abaixo do mínimo"
+            >
+              <Card
+                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                  produtosAbaixoMinimoCount > 0
+                    ? 'border-rose-200 bg-rose-50/20'
+                    : 'hover:border-slate-300'
+                }`}
+              >
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-rose-800">Abaixo do Mínimo</span>
+                    <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
+                      <TrendingDown size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-bold tracking-tight text-rose-700 group-hover:text-rose-900 transition-colors flex items-center gap-2">
+                      {carregando ? '—' : produtosAbaixoMinimoCount}
+                      {produtosAbaixoMinimoCount > 0 && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-rose-200 text-rose-900">
+                          Repor
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-rose-700/80 underline decoration-rose-300">
+                      Abrir Posição filtrada →
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* Lotes Vencidos e a Vencer (Clicável) */}
+            <Link
+              to="/estoque/lotes"
+              className="group block focus:outline-none"
+              title="Clique para abrir a gestão de lotes e validade"
+            >
+              <Card
+                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                  lotesVencidosCount > 0
+                    ? 'border-rose-300 bg-rose-50/30 ring-1 ring-rose-200'
+                    : lotesAVencerCount > 0
+                      ? 'border-amber-200 bg-amber-50/20'
+                      : 'hover:border-slate-300'
+                }`}
+              >
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-700">Lotes & Validade</span>
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        lotesVencidosCount > 0
+                          ? 'bg-rose-100 text-rose-700'
+                          : lotesAVencerCount > 0
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-blue-50 text-blue-600'
+                      }`}
+                    >
+                      <CalendarClock size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-bold tracking-tight text-slate-900">
+                        {carregando ? '—' : lotesVencidosCount}
+                      </span>
+                      <span className="text-xs text-rose-600 font-semibold">vencidos</span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-base font-bold text-amber-600">
+                        {carregando ? '—' : lotesAVencerCount}
+                      </span>
+                      <span className="text-[11px] text-amber-600">a vencer (30d)</span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 mt-1 block">
+                      Abrir lotes com saldo →
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* Transferências a Receber (Clicável) */}
+            <Link
+              to="/estoque/transferencias"
+              className="group block focus:outline-none"
+              title="Clique para abrir as transferências entre filiais"
+            >
+              <Card
+                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                  totalTransferenciasReceber > 0
+                    ? 'border-amber-300 bg-amber-50/30 ring-1 ring-amber-200'
+                    : 'hover:border-slate-300'
+                }`}
+              >
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-700">
+                      Transferências a Receber
+                    </span>
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        totalTransferenciasReceber > 0
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-blue-50 text-blue-600'
+                      }`}
+                    >
+                      <ArrowLeftRight size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2">
+                      {carregando ? '—' : totalTransferenciasReceber}
+                      {totalTransferenciasReceber > 0 && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 animate-pulse">
+                          Chegando
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-slate-500">
+                      {totalTransferenciasReceber > 0
+                        ? 'aguardando conferência'
+                        : 'nenhuma em trânsito'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* Inventários Abertos (Clicável) */}
+            <Link
+              to="/estoque/inventarios"
+              className="group block focus:outline-none"
+              title="Clique para acompanhar inventários em andamento"
+            >
+              <Card
+                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                  inventariosAbertosCount > 0
+                    ? 'border-blue-200 bg-blue-50/20'
+                    : 'hover:border-slate-300'
+                }`}
+              >
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-700">Inventários Abertos</span>
+                    <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                      <ClipboardList size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2">
+                      {carregando ? '—' : inventariosAbertosCount}
+                      {inventariosAbertosCount > 0 && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                          Em contagem
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-slate-500">
+                      {inventariosAbertosCount > 0
+                        ? 'contagens em andamento'
+                        : 'nenhum inventário aberto'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Grid: Últimas Movimentações de Estoque & Últimos Cadastros / Pendências */}
+      {podeVerEstoque && (
+        <Card className="border-slate-200 shadow-xs">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-blue-600" />
+                <CardTitle className="text-base font-semibold text-slate-900">
+                  Últimas Movimentações do Estoque
+                </CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">10 mais recentes da empresa ativa</span>
+                <Button asChild variant="ghost" size="sm" className="h-7 text-xs text-blue-600">
+                  <Link to="/estoque/kardex">
+                    Ver Kardex
+                    <ArrowRight size={12} className="ml-1" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
+            <CardDescription className="text-xs text-slate-500">
+              Histórico recente de entradas, saídas, ajustes, transferências e inventários
+              processados centralmente.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {carregando ? (
+              <div className="p-8 text-center text-xs text-slate-400">
+                <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-primary" />
+                Carregando movimentações...
+              </div>
+            ) : ultimasMovimentacoesEstoque.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-500">
+                Nenhuma movimentação de estoque registrada para a empresa ativa.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold text-slate-600">
+                      <th className="py-2.5 px-4">Data / Hora</th>
+                      <th className="py-2.5 px-4">Tipo</th>
+                      <th className="py-2.5 px-4">Origem</th>
+                      <th className="py-2.5 px-4">Produto</th>
+                      <th className="py-2.5 px-4 text-right">Qtd</th>
+                      <th className="py-2.5 px-4 text-right">Custo Unit.</th>
+                      <th className="py-2.5 px-4 text-right">Saldo Posterior</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {ultimasMovimentacoesEstoque.map((mov) => {
+                      const prod = mov.expand?.produto_id
+                      const ehEntrada = mov.tipo === 'Entrada'
+                      return (
+                        <tr key={mov.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-2.5 px-4 font-mono text-slate-500 text-[11px] whitespace-nowrap">
+                            {formatarDataHora(mov.data_movimento || mov.created)}
+                          </td>
+                          <td className="py-2.5 px-4 whitespace-nowrap">
+                            <Badge
+                              variant="outline"
+                              className={`gap-1 text-[10px] ${
+                                ehEntrada
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200'
+                              }`}
+                            >
+                              {ehEntrada ? (
+                                <ArrowUpRight className="h-3 w-3" />
+                              ) : (
+                                <ArrowDownLeft className="h-3 w-3" />
+                              )}
+                              {mov.tipo}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 px-4 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                            {mov.origem}
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <div className="font-medium text-slate-900 max-w-xs truncate">
+                              {prod?.descricao || 'Produto não identificado'}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              Cód: {prod?.codigo || '-'}
+                            </div>
+                          </td>
+                          <td
+                            className={`py-2.5 px-4 text-right font-mono font-semibold ${
+                              ehEntrada ? 'text-emerald-700' : 'text-rose-700'
+                            }`}
+                          >
+                            {ehEntrada ? '+' : '-'}
+                            {Number(mov.quantidade).toLocaleString('pt-BR', {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 4,
+                            })}
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono text-slate-700">
+                            {formatarMoeda(Number(mov.custo_unitario) || 0)}
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
+                            {Number(mov.saldo_posterior || 0).toLocaleString('pt-BR', {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 4,
+                            })}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

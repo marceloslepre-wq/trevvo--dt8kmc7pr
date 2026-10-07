@@ -64,11 +64,11 @@ export const InventarioDetalhePage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { empresaAtiva } = useEmpresaAtiva()
-  const { pode, usuarioERP } = usePermissoes()
+  const { pode, usuarioERP, administrador } = usePermissoes()
 
-  const podeContar = pode('estoque', 'criar')
-  const podeFinalizar = pode('estoque', 'editar')
-  const podeCancelar = pode('estoque', 'excluir')
+  const podeContar = administrador || pode('estoque', 'criar')
+  const podeFinalizar = administrador || pode('estoque', 'editar')
+  const podeCancelar = administrador || pode('estoque', 'excluir')
 
   const [inventario, setInventario] = useState<Inventario | null>(null)
   const [itens, setItens] = useState<InventarioItem[]>([])
