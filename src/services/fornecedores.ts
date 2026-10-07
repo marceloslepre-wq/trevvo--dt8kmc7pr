@@ -56,6 +56,7 @@ export interface Fornecedor {
 
   // Comercial
   prazo_entrega_dias?: number
+  condicao_pagamento_id?: string
   condicao_pagamento_padrao?: string
   pedido_minimo?: number
   representante_nome?: string
@@ -376,6 +377,9 @@ export async function salvarFornecedor(dados: Partial<Fornecedor>): Promise<Forn
   }
 
   // Sanitização de valores numéricos / opcionais
+  if (!payload.condicao_pagamento_id) {
+    payload.condicao_pagamento_id = null
+  }
   if (payload.prazo_entrega_dias === '' || payload.prazo_entrega_dias === undefined) {
     payload.prazo_entrega_dias = null
   }

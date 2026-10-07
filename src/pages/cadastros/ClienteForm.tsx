@@ -62,6 +62,7 @@ import {
   normalizarCpfCnpj,
   validarDadosCliente,
 } from '@/services/clientes'
+import { SelectCondicaoPagamento } from '@/components/SelectCondicaoPagamento'
 import {
   validarCPF,
   validarCNPJ,
@@ -185,6 +186,7 @@ export const ClienteForm: React.FC = () => {
 
   // Formulário - Comercial
   const [vendedorId, setVendedorId] = useState<string>('nenhum')
+  const [condicaoPagamentoId, setCondicaoPagamentoId] = useState<string>('')
   const [limiteCredito, setLimiteCredito] = useState<string>('')
   const [diaVencimentoPreferencial, setDiaVencimentoPreferencial] = useState<string>('')
   const [condicaoPagamentoPadrao, setCondicaoPagamentoPadrao] = useState<string>('')
@@ -270,6 +272,7 @@ export const ClienteForm: React.FC = () => {
 
           // Comercial
           setVendedorId(c.vendedor_id || 'nenhum')
+          setCondicaoPagamentoId(c.condicao_pagamento_id || '')
           setLimiteCredito(
             c.limite_credito !== undefined && c.limite_credito !== null
               ? String(c.limite_credito)
@@ -716,6 +719,7 @@ export const ClienteForm: React.FC = () => {
 
         // Comercial
         vendedor_id: vendedorId !== 'nenhum' ? vendedorId : undefined,
+        condicao_pagamento_id: condicaoPagamentoId || undefined,
         limite_credito:
           limiteCredito !== '' ? parseFloat(limiteCredito.replace(',', '.')) : undefined,
         dia_vencimento_preferencial:
@@ -1697,17 +1701,24 @@ export const ClienteForm: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Condição de Pagamento Padrão */}
+                  {/* Condição de Pagamento Padrão (Select com busca e fallback texto antigo) */}
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium text-slate-700">
                       Condição de Pagamento Padrão
                     </Label>
-                    <Input
-                      value={condicaoPagamentoPadrao}
-                      onChange={(e) => setCondicaoPagamentoPadrao(e.target.value)}
-                      placeholder="Ex.: 30/60/90, À vista, 28 dias"
-                      className="h-9 text-xs"
+                    <SelectCondicaoPagamento
+                      value={condicaoPagamentoId}
+                      onChange={(id) => setCondicaoPagamentoId(id)}
+                      uso="Vendas"
+                      placeholder="Selecione a condição de pagamento padrão..."
                     />
+                    {!condicaoPagamentoId && condicaoPagamentoPadrao && (
+                      <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200/60 rounded px-2 py-1">
+                        <span className="font-medium">Registro anterior (texto):</span> "
+                        {condicaoPagamentoPadrao}". Selecione uma condição estruturada acima para
+                        atualizar.
+                      </p>
+                    )}
                   </div>
 
                   {/* Desconto Padrão (%) */}

@@ -59,6 +59,7 @@ import {
   ativarFornecedor,
   normalizarCpfCnpj,
 } from '@/services/fornecedores'
+import { SelectCondicaoPagamento } from '@/components/SelectCondicaoPagamento'
 import {
   validarCPF,
   validarCNPJ,
@@ -174,6 +175,7 @@ export const FornecedorForm: React.FC = () => {
 
   // Comercial
   const [prazoEntregaDias, setPrazoEntregaDias] = useState<string>('')
+  const [condicaoPagamentoId, setCondicaoPagamentoId] = useState<string>('')
   const [condicaoPagamentoPadrao, setCondicaoPagamentoPadrao] = useState<string>('')
   const [pedidoMinimo, setPedidoMinimo] = useState<string>('')
   const [representanteNome, setRepresentanteNome] = useState('')
@@ -265,6 +267,7 @@ export const FornecedorForm: React.FC = () => {
               ? String(f.prazo_entrega_dias)
               : '',
           )
+          setCondicaoPagamentoId(f.condicao_pagamento_id || '')
           setCondicaoPagamentoPadrao(f.condicao_pagamento_padrao || '')
           setPedidoMinimo(
             f.pedido_minimo !== undefined && f.pedido_minimo !== null
@@ -651,6 +654,7 @@ export const FornecedorForm: React.FC = () => {
 
         // Comercial
         prazo_entrega_dias: prazoEntregaDias !== '' ? parseInt(prazoEntregaDias, 10) : undefined,
+        condicao_pagamento_id: condicaoPagamentoId || undefined,
         condicao_pagamento_padrao: condicaoPagamentoPadrao.trim() || undefined,
         pedido_minimo: pedidoMinimo !== '' ? parseFloat(pedidoMinimo.replace(',', '.')) : undefined,
         representante_nome: representanteNome.trim() || undefined,
@@ -1479,17 +1483,24 @@ export const FornecedorForm: React.FC = () => {
                     />
                   </div>
 
-                  {/* Condição de pagamento padrão */}
+                  {/* Condição de pagamento padrão (Select com busca e fallback texto antigo) */}
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-slate-700">
                       Condição de Pagamento Padrão
                     </Label>
-                    <Input
-                      value={condicaoPagamentoPadrao}
-                      onChange={(e) => setCondicaoPagamentoPadrao(e.target.value)}
-                      placeholder="Ex: 28 DDL, 30/60/90, À vista"
-                      className="h-9 text-xs"
+                    <SelectCondicaoPagamento
+                      value={condicaoPagamentoId}
+                      onChange={(id) => setCondicaoPagamentoId(id)}
+                      uso="Compras"
+                      placeholder="Selecione a condição de pagamento padrão..."
                     />
+                    {!condicaoPagamentoId && condicaoPagamentoPadrao && (
+                      <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200/60 rounded px-2 py-1">
+                        <span className="font-medium">Registro anterior (texto):</span> "
+                        {condicaoPagamentoPadrao}". Selecione uma condição estruturada acima para
+                        atualizar.
+                      </p>
+                    )}
                   </div>
                 </div>
 

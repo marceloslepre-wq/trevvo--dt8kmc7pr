@@ -13,6 +13,7 @@ export const MODULOS_SISTEMA = [
   { id: 'grupos_categorias', label: 'Grupos e Categorias' },
   { id: 'unidades_medida', label: 'Unidades de Medida' },
   { id: 'tabelas_fiscais', label: 'Tabelas Fiscais' },
+  { id: 'condicoes_pagamento', label: 'Condições de Pagamento' },
   { id: 'estoque', label: 'Estoque' },
   { id: 'compras', label: 'Compras' },
   { id: 'notas_entrada', label: 'Notas de Entrada' },

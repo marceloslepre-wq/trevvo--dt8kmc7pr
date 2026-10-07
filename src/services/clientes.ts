@@ -57,6 +57,7 @@ export interface Cliente {
 
   // Comercial
   vendedor_id?: string
+  condicao_pagamento_id?: string
   limite_credito?: number
   dia_vencimento_preferencial?: number
   condicao_pagamento_padrao?: string
@@ -385,6 +386,9 @@ export async function salvarCliente(dados: Partial<Cliente>): Promise<Cliente> {
   }
 
   // Sanitização de campos numéricos / selects opcionais
+  if (!payload.condicao_pagamento_id) {
+    payload.condicao_pagamento_id = null
+  }
   if (payload.limite_credito === '' || payload.limite_credito === undefined) {
     payload.limite_credito = null
   }

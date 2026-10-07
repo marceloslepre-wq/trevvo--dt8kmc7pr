@@ -230,6 +230,70 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### condicoes_pagamento
+
+Tabela de condições e planos de pagamento para comercialização e faturamento. Utilizada de forma integrada por clientes, fornecedores, compras, pedidos de venda, PDV e financeiro (contas a pagar e receber).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (número sequencial automático, ex.: 1, 2, 3...)
+- nome (texto obrigatório, único, até 100 caracteres; ex.: "À vista", "30 dias", "30/60/90", "Entrada + 2x")
+- tipo (select obrigatório: "À vista" ou "A prazo")
+- uso (select obrigatório: "Vendas", "Compras" ou "Ambos", padrão "Ambos")
+- quantidade_parcelas (número inteiro, mínimo 1; "À vista" = 1)
+- dias_parcelas (lista JSON de números inteiros com os prazos de cada parcela contados da data da operação em ordem crescente; ex.: [30, 60, 90]; "À vista" = [0])
+- percentual_entrada (número percentual opcional 0 a 100; ex.: 30 = 30% na data da operação e o restante dividido nas demais parcelas)
+- acrescimo_percentual (número percentual opcional; juros/acréscimos embutidos no valor total)
+- desconto_percentual (número percentual opcional; desconto para pagamento pontual ou à vista)
+- dia_fixo_vencimento (número inteiro opcional 1 a 31; quando preenchido, os vencimentos são ajustados para esse dia do mês)
+- observacao (texto opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras: A quantidade de parcelas deve ser rigorosamente igual ao número de itens em `dias_parcelas`. Os prazos em dias devem estar em ordem estritamente crescente. Toda alteração, inclusão ou inativação grava registro em `logs_auditoria`.
+
+#### Função reutilizável: gerarParcelas
+
+Calcula e retorna o cronograma completo de parcelas (número, vencimento e valor líquido arredondado para 2 casas decimais), alocando eventuais resíduos de centavos na última parcela. Considera entrada destacada, acréscimo percentual, desconto percentual e ajuste por dia fixo.
+
+```tsx
+import { gerarParcelas } from '@/services/condicoesPagamento'
+
+const parcelas = gerarParcelas(
+  {
+    tipo: 'A prazo',
+    quantidade_parcelas: 3,
+    dias_parcelas: [30, 60, 90],
+    percentual_entrada: 0,
+    acrescimo_percentual: 0,
+    desconto_percentual: 5,
+    dia_fixo_vencimento: 10,
+  },
+  1000.0, // Valor bruto base
+  '2025-05-01', // Data base opcional (padrão: hoje)
+)
+// Retorno: [{ numero: 1, data_vencimento: "2025-06-10", valor: 316.66 }, ...]
+```
+
+#### Componente reutilizável: `<SelectCondicaoPagamento />`
+
+Combobox de seleção com busca em tempo real por nome, código ou prazos, filtro contextual por aplicabilidade (`uso="Vendas"` ou `uso="Compras"`), badges visuais e botão embutido "+ Nova condição de pagamento" que abre modal de cadastro rápido sem sair do formulário.
+
+```tsx
+import { SelectCondicaoPagamento } from '@/components/SelectCondicaoPagamento'
+;<SelectCondicaoPagamento
+  value={condicaoPagamentoId}
+  onChange={(id, condicao) => {
+    setCondicaoPagamentoId(id)
+    console.log('Condição selecionada:', condicao)
+  }}
+  uso="Vendas" // ou "Compras", ou omitido para listar todas
+  placeholder="Selecione a condição de pagamento..."
+/>
+```
+
 ### empresas
 
 Tabela que armazena os estabelecimentos (Matriz e Filiais), cada um com seu CNPJ próprio.
@@ -565,7 +629,8 @@ Cadastro de clientes para faturamento, documentos fiscais (NF-e, NFC-e) e SPED F
 - vendedor_id (relation -> usuarios; somente usuários com e_vendedor = true)
 - limite_credito (número em R$)
 - dia_vencimento_preferencial (número 1 a 31)
-- condicao_pagamento_padrao (texto livre, ex: "30/60/90")
+- condicao_pagamento_id (relation -> condicoes_pagamento, opcional, padrão de faturamento do cliente)
+- condicao_pagamento_padrao (texto legado mantido para compatibilidade)
 - desconto_padrao_percentual (número percentual 0 a 100)
 - bloqueado (boolean: bloqueia vendas a prazo) e motivo_bloqueio (texto obrigatório quando bloqueado = true)
 - observacoes (texto longo interno)
@@ -625,7 +690,8 @@ Cadastro de fornecedores de mercadorias, serviços, transportadoras e insumos pa
 #### Comercial
 
 - prazo_entrega_dias (número inteiro em dias)
-- condicao_pagamento_padrao (texto livre, ex: "28 DDL", "30/60/90")
+- condicao_pagamento_id (relation -> condicoes_pagamento, opcional, condição padrão de compras do fornecedor)
+- condicao_pagamento_padrao (texto legado mantido para compatibilidade)
 - pedido_minimo (número em R$)
 - representante_nome, representante_telefone, representante_email
 
@@ -981,8 +1047,9 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 23. `/cadastros/tabelas-fiscais/perfis` (`@/pages/cadastros/PerfisTributariosPage.tsx`): Perfis tributários com definição dos 8 cenários de operações comerciais.
 24. `/configuracoes/geral` (`@/pages/configuracoes/ConfiguracoesGeralPage.tsx`): Nome do sistema, upload do logotipo e paleta de cores do tema dinâmico.
 25. `/configuracoes/auditoria` (`@/pages/configuracoes/LogAuditoriaPage.tsx`): Consulta detalhada de logs de auditoria com diff de antes/depois e filtros por tabela, usuário e período.
+26. `/cadastros/condicoes-pagamento` (`@/pages/cadastros/CondicoesPagamentoPage.tsx`): Gestão de condições de pagamento com listagem, busca, filtros de tipo/uso/situação, simulação interativa de parcelas com cálculo em tempo real e exportação CSV.
 
-### Todas as Tabelas Criadas (24 tabelas)
+### Todas as Tabelas Criadas (26 tabelas)
 
 1. `users`: Coleção de autenticação do Skip Cloud / PocketBase com e-mail, senha e verificação.
 2. `logs_auditoria`: Trilha de auditoria com usuário, tabela, registro, ação (inclusao, alteracao, inativacao, ativacao) e diff JSON.
@@ -1009,6 +1076,7 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 23. `produtos_conversoes_unidade`: Fatores de conversão e unidades alternativas (SPED 0220).
 24. `produtos_historico`: Registro histórico de alterações de código e descrição (SPED 0205).
 25. `configuracoes`: Nome do sistema, arquivo de logotipo e cor temática primária.
+26. `condicoes_pagamento`: Condições de pagamento com prazos, entrada, juros, desconto e dia fixo.
 
 ### Todos os Componentes Reutilizáveis e Funções Utilitárias
 
@@ -1025,3 +1093,9 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 - `usePermissoes()` / `pode(modulo, acao)` (`@/contexts/PermissoesContext`): Hook reativo para checagem de permissões com liberação imediata para administradores.
 - `sugerirCestPorNcm(ncm)` (`@/services/cest`): Função assíncrona que cruza a NCM com a base do CEST e retorna os códigos compatíveis.
 - `extrairCamposFiscaisDoPerfil(perfil)` (`@/services/produtos`): Converte as regras do perfil tributário nos campos fiscais padrão aplicados ao produto.
+- `<SelectCondicaoPagamento />` (`@/components/SelectCondicaoPagamento`): Combobox com busca de condições de pagamento, filtro contextual de uso ("Vendas" ou "Compras") e atalho inline para cadastro rápido via modal.
+- `gerarParcelas(condicao, valorTotal, dataBase)` (`@/services/condicoesPagamento`): Função para geração do cronograma de parcelas com arredondamento em 2 casas, ajuste de centavos na última parcela, entrada, juros, desconto e dia fixo.
+
+## Versão Atual do Projeto
+
+**Versão 0.0.15** — Implementação do cadastro de condições de pagamento (`condicoes_pagamento`), função de cálculo e prévia de parcelas `gerarParcelas()`, componente reutilizável `<SelectCondicaoPagamento />`, integração nos cadastros de Clientes e Fornecedores e permissões por perfil.

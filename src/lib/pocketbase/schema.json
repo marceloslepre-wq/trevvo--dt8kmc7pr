@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T10:36:20.145Z",
+  "generatedAt": "2026-10-07T11:13:32.308Z",
   "collections": [
     {
       "name": "users",
@@ -599,6 +599,7 @@
             "grupos_categorias",
             "unidades_medida",
             "tabelas_fiscais",
+            "condicoes_pagamento",
             "estoque",
             "compras",
             "notas_entrada",
@@ -1851,6 +1852,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "condicao_pagamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "condicoes_pagamento"
         }
       ],
       "indexes": [
@@ -1860,7 +1868,8 @@
         "CREATE INDEX idx_clientes_tipo_pessoa ON clientes (tipo_pessoa)",
         "CREATE INDEX idx_clientes_ativo ON clientes (ativo)",
         "CREATE INDEX idx_clientes_vendedor ON clientes (vendedor_id)",
-        "CREATE INDEX idx_clientes_bloqueado ON clientes (bloqueado)"
+        "CREATE INDEX idx_clientes_bloqueado ON clientes (bloqueado)",
+        "CREATE INDEX `idx_clientes_condicao_pagamento` ON `clientes` (condicao_pagamento_id)"
       ]
     },
     {
@@ -2195,6 +2204,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "condicao_pagamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "condicoes_pagamento"
         }
       ],
       "indexes": [
@@ -2203,7 +2219,8 @@
         "CREATE INDEX idx_fornecedores_razao_social ON fornecedores (razao_social)",
         "CREATE INDEX idx_fornecedores_tipo_pessoa ON fornecedores (tipo_pessoa)",
         "CREATE INDEX idx_fornecedores_ativo ON fornecedores (ativo)",
-        "CREATE INDEX idx_fornecedores_uf ON fornecedores (uf)"
+        "CREATE INDEX idx_fornecedores_uf ON fornecedores (uf)",
+        "CREATE INDEX `idx_fornecedores_condicao_pagamento` ON `fornecedores` (condicao_pagamento_id)"
       ]
     },
     {
@@ -3601,6 +3618,128 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_configuracoes_ativo ON configuracoes (ativo)"]
+    },
+    {
+      "name": "condicoes_pagamento",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["À vista", "A prazo"]
+        },
+        {
+          "name": "uso",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Vendas", "Compras", "Ambos"]
+        },
+        {
+          "name": "quantidade_parcelas",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "dias_parcelas",
+          "type": "json",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "percentual_entrada",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "acrescimo_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "desconto_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dia_fixo_vencimento",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_condicoes_pagamento_nome ON condicoes_pagamento (nome)",
+        "CREATE INDEX idx_condicoes_pagamento_codigo ON condicoes_pagamento (codigo)",
+        "CREATE INDEX idx_condicoes_pagamento_tipo ON condicoes_pagamento (tipo)",
+        "CREATE INDEX idx_condicoes_pagamento_uso ON condicoes_pagamento (uso)",
+        "CREATE INDEX idx_condicoes_pagamento_ativo ON condicoes_pagamento (ativo)"
+      ]
     }
   ]
 }

@@ -24,6 +24,7 @@ import {
   FileCode,
   FileCheck,
   Calculator,
+  CreditCard,
   ChevronLeft,
   ChevronRight,
   X,
@@ -115,6 +116,12 @@ const navItems: NavGroupItem[] = [
         path: '/cadastros/unidades-medida',
         icon: Ruler,
         modulo: 'unidades_medida',
+      },
+      {
+        title: 'Condições de pagamento',
+        path: '/cadastros/condicoes-pagamento',
+        icon: CreditCard,
+        modulo: 'condicoes_pagamento',
       },
       {
         title: 'Tabelas fiscais',

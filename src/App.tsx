@@ -27,6 +27,7 @@ import PerfilAcessoForm from '@/pages/cadastros/PerfilAcessoForm'
 import UsuariosLista from '@/pages/cadastros/UsuariosLista'
 import UsuarioForm from '@/pages/cadastros/UsuarioForm'
 import UnidadesMedidaPage from '@/pages/cadastros/UnidadesMedidaPage'
+import CondicoesPagamentoPage from '@/pages/cadastros/CondicoesPagamentoPage'
 import CodigosFiscaisPage from '@/pages/cadastros/CodigosFiscaisPage'
 import TabelasFiscaisHubPage from '@/pages/cadastros/TabelasFiscaisHubPage'
 import NcmPage from '@/pages/cadastros/NcmPage'
@@ -280,6 +281,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="unidades_medida" acao="ver">
                         <UnidadesMedidaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/cadastros/condicoes-pagamento"
+                    element={
+                      <PermissaoGuard modulo="condicoes_pagamento" acao="ver">
+                        <CondicoesPagamentoPage />
                       </PermissaoGuard>
                     }
                   />
