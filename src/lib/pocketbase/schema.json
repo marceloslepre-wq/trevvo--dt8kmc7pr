@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T17:54:57.776Z",
+  "generatedAt": "2026-10-07T18:12:11.284Z",
   "collections": [
     {
       "name": "users",
@@ -4379,6 +4379,262 @@
         "CREATE INDEX idx_transf_itens_prod ON transferencias_itens (produto_id)",
         "CREATE INDEX idx_transf_itens_lote ON transferencias_itens (lote_id)",
         "CREATE INDEX idx_transf_itens_ativo ON transferencias_itens (ativo)"
+      ]
+    },
+    {
+      "name": "inventarios",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "numero",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_referencia",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Geral", "Parcial", "Anual (Bloco H)"]
+        },
+        {
+          "name": "filtros_usados",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Aberto", "Em contagem", "Finalizado", "Cancelado"]
+        },
+        {
+          "name": "motivo_bloco_h",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "01 No final do período",
+            "02 Na mudança de forma de tributação da mercadoria (ICMS)",
+            "03 Na solicitação da baixa cadastral, paralisação temporária e outras situações",
+            "04 Na alteração de regime de pagamento – condição do contribuinte",
+            "05 Por determinação dos fiscos",
+            "06 Para controle das mercadorias sujeitas ao regime de substituição tributária – restituição/ressarcimento/complementação"
+          ]
+        },
+        {
+          "name": "usuario_abertura_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "usuario_finalizacao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "data_finalizacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_inventarios_empresa ON inventarios (empresa_id)",
+        "CREATE INDEX idx_inventarios_status ON inventarios (status)",
+        "CREATE INDEX idx_inventarios_emp_num ON inventarios (empresa_id, numero)",
+        "CREATE INDEX idx_inventarios_data_ref ON inventarios (data_referencia)",
+        "CREATE INDEX idx_inventarios_ativo ON inventarios (ativo)"
+      ]
+    },
+    {
+      "name": "inventarios_itens",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "inventario_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "inventarios"
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "lote_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "lotes"
+        },
+        {
+          "name": "saldo_sistema",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "quantidade_contada",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "diferenca",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_unitario",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_diferenca",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "contado_em",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_inv_itens_inv ON inventarios_itens (inventario_id)",
+        "CREATE INDEX idx_inv_itens_prod ON inventarios_itens (produto_id)",
+        "CREATE INDEX idx_inv_itens_lote ON inventarios_itens (lote_id)",
+        "CREATE INDEX idx_inv_itens_ativo ON inventarios_itens (ativo)"
       ]
     }
   ]

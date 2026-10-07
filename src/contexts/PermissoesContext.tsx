@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
+import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { obterUsuarioPorAuthId, Usuario } from '@/services/usuarios'
 import {
@@ -72,6 +73,14 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Regra do PROJETO_ERP.md: "O primeiro usuário do ERP (semeado via migration com senha padrão) é o administrador"
   // Funciona mesmo antes do término da requisição assíncrona ao banco.
   const administrador = useMemo(() => {
+    // 1. Checagem direta via pb.authStore (síncrono e imune a atrasos de renderização de hooks)
+    const pbRecord = pb.authStore.record
+    const pbEmail = ((pbRecord?.email as string) || '').toLowerCase().trim()
+    const pbName = ((pbRecord?.name as string) || '').toLowerCase()
+    if (pbEmail === 'marceloslepre@gmail.com') return true
+    if (pbName.includes('admin')) return true
+
+    // 2. Checagem via state user
     const emailNormalizado = user?.email?.toLowerCase().trim() || ''
     if (emailNormalizado === 'marceloslepre@gmail.com') return true
     if (user?.name?.toLowerCase().includes('admin')) return true
@@ -91,6 +100,13 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const pode = useCallback(
     (modulo: ModuloSistema | string, acao: AcaoPermissao): boolean => {
       // Se for administrador (flag no perfil, nome Administrador, ou email master inicial), tem permissão irrestrita total
+      const pbRecord = pb.authStore.record
+      const pbEmail = ((pbRecord?.email as string) || '').toLowerCase().trim()
+      const pbName = ((pbRecord?.name as string) || '').toLowerCase()
+      if (pbEmail === 'marceloslepre@gmail.com' || pbName.includes('admin')) {
+        return true
+      }
+
       const emailNormalizado = user?.email?.toLowerCase().trim()
       if (
         administrador ||

@@ -304,6 +304,82 @@ Tabela do histórico físico-financeiro (Kardex imutável) de movimentações de
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
 
+### inventarios
+
+Tabela mestre de inventários físicos de estoque para contagem periódica e apuração do Bloco H do SPED Fiscal.
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório)
+- numero (number, sequencial por empresa)
+- descricao (texto obrigatório, ex: "Contagem Anual 2025")
+- data_referencia (texto com data/hora da posição contada, ex: "2025-12-31")
+- tipo (select obrigatório: "Geral", "Parcial" ou "Anual (Bloco H)")
+- filtros_usados (json: grupo_id, categoria_id, marca_id, localizacao para inventário parcial)
+- status (select obrigatório: "Aberto", "Em contagem", "Finalizado", "Cancelado")
+- motivo_bloco_h (select obrigatório para SPED: 01 No final do período; 02 Na mudança de forma de tributação da mercadoria (ICMS); 03 Na solicitação da baixa cadastral, paralisação temporária e outras situações; 04 Na alteração de regime de pagamento – condição do contribuinte; 05 Por determinação dos fiscos; 06 Para controle das mercadorias sujeitas ao regime de substituição tributária – restituição/ressarcimento/complementação; padrão 01)
+- usuario_abertura_id (relation -> usuarios, opcional)
+- usuario_finalizacao_id (relation -> usuarios, opcional)
+- data_finalizacao (texto data/hora, opcional)
+- observacao (texto opcional)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id`, `status`, par `empresa_id + numero`, `data_referencia`, `ativo`.
+
+### inventarios_itens
+
+Itens de produtos que integram o inventário de estoque com congelamento de saldo do sistema na abertura e registro da contagem física.
+
+- id (text, PK)
+- inventario_id (relation -> inventarios, obrigatório, cascadeDelete)
+- produto_id (relation -> produtos, obrigatório)
+- lote_id (relation -> lotes, opcional)
+- saldo_sistema (number com 4 casas decimais, congelado na abertura via função saldoEmData)
+- quantidade_contada (number com 4 casas decimais, nulo/vazio até a realização da contagem)
+- diferenca (number com 4 casas decimais: quantidade_contada - saldo_sistema)
+- custo_unitario (number com 4 casas decimais, custo médio ponderado na data de referência)
+- valor_diferenca (number com 2 casas decimais: diferenca × custo_unitario)
+- contado_por (relation -> usuarios, conferente que realizou a contagem)
+- contado_em (texto data/hora em que foi contado)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `inventario_id`, `produto_id`, `lote_id`, `ativo`.
+
+#### Fluxo do Inventário de Estoque
+
+1. **Abrir:** O usuário define a descrição, tipo ("Geral", "Parcial" ou "Anual (Bloco H)"), data de referência e, se parcial, os filtros (grupo, categoria, marca, localização física). O sistema busca os produtos elegíveis e congela o saldo histórico (`saldoEmData`) e o custo médio na data informada. Produtos zerados entram apenas se marcada a opção "incluir produtos zerados". Status inicial: "Aberto".
+2. **Contar:** Grade operacional com busca rápida e leitor de código de barras GTIN integrado (cada bipe incrementa 1 na quantidade contada). Suporte a múltiplos operadores gravando `contado_por` e `contado_em`. Barra de progresso com percentual e contadores de itens contados/pendentes. Opção "Contagem Cega" que oculta o saldo do sistema e as diferenças para auditoria independente. O primeiro bipe/contagem atualiza o status para "Em contagem".
+3. **Finalizar:** Modal com resumo analítico de sobras (físico > sistema) e faltas (físico < sistema) em quantidade e valor. Para itens não contados, pergunta se considera quantidade zero (gera saída total) ou mantém o saldo do sistema (sem ajuste). Ao confirmar, chama atomicamente `movimentarEstoque` gerando `INVENTARIO_ENTRADA` (sobra) e `INVENTARIO_SAIDA` (falta) com data do movimento = data de referência e documento = o inventário. Status: "Finalizado".
+   - **Opção Anual (Bloco H):** Permite ativar "Somente registrar posição" para consolidar a posição em 31/12 sem gerar movimentações ou distorções no estoque atual.
+4. **Cancelar:** Permitido apenas antes da finalização (status Aberto ou Em contagem), sem qualquer impacto nas movimentações de estoque.
+
+#### Formato do Inventário para o SPED Fiscal (Bloco H)
+
+Para inventários com status "Finalizado", o sistema gera os dados e exportação CSV formatada rigorosamente conforme o Guia Prático da EFD ICMS/IPI:
+
+- **Registro H005 (Totais do Inventário):**
+  - Formato: `|H005|DT_INV|VL_INV|MOT_INV|`
+  - `DT_INV`: Data do inventário no formato DDMMAAAA
+  - `VL_INV`: Valor total do estoque inventariado (soma de VL_ITEM)
+  - `MOT_INV`: Código do motivo (01 a 06, padrão 01 - No final do período)
+- **Registro H010 (Inventário por Item):**
+  - Formato: `|H010|COD_ITEM|UNID|QTD|VL_UNIT|VL_ITEM|IND_PROP|`
+  - `COD_ITEM`: Código cadastral do produto
+  - `UNID`: Sigla da unidade de medida do produto
+  - `QTD`: Quantidade contada/apurada (4 casas decimais)
+  - `VL_UNIT`: Valor unitário / custo médio do produto (4 casas decimais)
+  - `VL_ITEM`: Valor total do item = QTD × VL_UNIT (2 casas decimais)
+  - `IND_PROP`: Indicador de posse = `0` (Item de propriedade do informante e em seu poder)
+
+Esses dados ficam armazenados e estruturados para integração direta com a Etapa 7 (Módulo SPED Fiscal).
+
 ### transferencias
 
 Tabela de remessas e transferências de mercadorias entre empresas do grupo econômico (matriz e filiais).
@@ -1173,7 +1249,7 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 26. `/cadastros/condicoes-pagamento` (`@/pages/cadastros/CondicoesPagamentoPage.tsx`): Gestão de condições de pagamento com listagem, busca, filtros de tipo/uso/situação, simulação interativa de parcelas com cálculo em tempo real e exportação CSV.
 27. `/estoque/lotes` (`@/pages/estoque/LotesValidadePage.tsx`): Gestão e rastreabilidade de lotes e datas de validade com classificação automática (Vencido, Vence em até X dias, OK), contagem regressiva em dias, filtros por produto/situação/período e exportação CSV.
 
-### Todas as Tabelas Criadas (27 tabelas)
+### Todas as Tabelas Criadas (31 tabelas)
 
 1. `users`: Coleção de autenticação do Skip Cloud / PocketBase com e-mail, senha e verificação.
 2. `logs_auditoria`: Trilha de auditoria com usuário, tabela, registro, ação (inclusao, alteracao, inativacao, ativacao) e diff JSON.
@@ -1202,6 +1278,10 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 25. `configuracoes`: Nome do sistema, logotipo, cor temática primária e dias de alerta de validade de lotes.
 26. `condicoes_pagamento`: Condições de pagamento com prazos, entrada, juros, desconto e dia fixo.
 27. `lotes`: Controle de lotes, datas de fabricação/validade e saldos segregados por empresa e produto.
+28. `transferencias`: Cabeçalho de remessas e transferências entre empresas (filiais).
+29. `transferencias_itens`: Itens movimentados nas transferências com lotes e conferência de divergência.
+30. `inventarios`: Cabeçalho de inventários físicos de estoque com data de referência e motivo SPED.
+31. `inventarios_itens`: Grade de produtos inventariados com saldo congelado, contagem, diferenças e custos.
 
 ### Todos os Componentes Reutilizáveis e Funções Utilitárias
 
@@ -1350,4 +1430,4 @@ A base e as telas completas do módulo Estoque estão operacionais:
 
 ## Versão Atual do Projeto
 
-**Versão 0.0.19** — Implementação do controle de Lotes e Validade: criação da tabela `lotes`, campo `dias_alerta_validade` nas configurações gerais, suporte completo no serviço central de movimentação de estoque (`movimentarEstoque` com entrada vinculada/criação de lotes, saídas com seletor ou FEFO automático, divisão de múltiplos lotes no Kardex, bloqueio de lotes vencidos exceto PERDA/AJUSTE_SAIDA e invariante de consistência), reversão de saldo por lote no estorno, tela de Lotes e Validade (`/estoque/lotes`) com badges de situação, filtros e exportação CSV, coluna Lote no Kardex, campos de lote/validade e seletor FEFO nos lançamentos e painel de saldos por lote na aba Estoque do produto.
+**Versão 0.0.22** — Implementação do Inventário de Estoque e Bloco H do SPED Fiscal: criação das tabelas `inventarios` e `inventarios_itens`, serviço central `src/services/inventarios.ts` (abertura com filtros parciais, congelamento de saldo histórico via `saldoEmData`, bipe de código de barras com soma unitária, modo Contagem Cega, resolução de itens não contados e finalização integrada ao `movimentarEstoque` com geração de `INVENTARIO_ENTRADA`/`INVENTARIO_SAIDA`), suporte a opção "Somente registrar posição" para inventários anuais, exportação CSV oficial dos registros H005 e H010 do SPED Fiscal, telas de Inventários (Lista em `/estoque/inventarios`, Novo em `/estoque/inventarios/novo`, Detalhe/Contagem em `/estoque/inventarios/:id`), inclusão no menu Estoque sem selo "Em breve" e resolução definitiva na raiz do `PermissaoGuard` e contexto de permissões com leitura síncrona do `pb.authStore`.

@@ -30,6 +30,7 @@ import {
   ChevronRight,
   X,
   FileText,
+  ClipboardCheck,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -167,6 +168,12 @@ const navItems: NavGroupItem[] = [
         title: 'Posição de estoque',
         path: '/estoque/posicao',
         icon: Box,
+        modulo: 'estoque',
+      },
+      {
+        title: 'Inventários',
+        path: '/estoque/inventarios',
+        icon: ClipboardCheck,
         modulo: 'estoque',
       },
       {

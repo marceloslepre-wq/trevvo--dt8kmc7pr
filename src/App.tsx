@@ -44,6 +44,9 @@ import LancamentosEstoquePage from '@/pages/estoque/LancamentosEstoquePage'
 import LotesValidadePage from '@/pages/estoque/LotesValidadePage'
 import TransferenciasListaPage from '@/pages/estoque/TransferenciasListaPage'
 import TransferenciaFormPage from '@/pages/estoque/TransferenciaFormPage'
+import InventariosListaPage from '@/pages/estoque/InventariosListaPage'
+import InventarioNovoPage from '@/pages/estoque/InventarioNovoPage'
+import InventarioDetalhePage from '@/pages/estoque/InventarioDetalhePage'
 import ClientesLista from '@/pages/cadastros/ClientesLista'
 import ClienteForm from '@/pages/cadastros/ClienteForm'
 import FornecedoresLista from '@/pages/cadastros/FornecedoresLista'
@@ -346,6 +349,30 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="estoque" acao="ver">
                         <PosicaoEstoquePage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/estoque/inventarios"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <InventariosListaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/estoque/inventarios/novo"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="criar">
+                        <InventarioNovoPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/estoque/inventarios/:id"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <InventarioDetalhePage />
                       </PermissaoGuard>
                     }
                   />
