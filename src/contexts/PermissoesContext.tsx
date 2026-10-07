@@ -151,6 +151,22 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return authLoading || carregandoInterno
   }, [administrador, authLoading, carregandoInterno])
 
+  // Timeout de segurança estrutural: nenhuma rota deve ficar presa em carregando = true
+  useEffect(() => {
+    if (!carregandoInterno) return
+    const timer = setTimeout(() => {
+      setCarregandoInterno((prev) => {
+        if (prev) {
+          console.warn(
+            'PermissoesContext: timeout de segurança atingido — liberando carregandoInterno',
+          )
+        }
+        return false
+      })
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [carregandoInterno])
+
   const pode = useCallback(
     (modulo: ModuloSistema | string, acao?: AcaoPermissao | string): boolean => {
       // 0. Se for administrador (perfis_acesso.administrador = true), tem permissão irrestrita total

@@ -51,8 +51,21 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     return <>{children}</>
   }
 
+  // Auto-recuperação local de emergência no Guard: após 1.5s nesta tela de loading, desbloquear
+  const [loadingExpirado, setLoadingExpirado] = React.useState(false)
+  React.useEffect(() => {
+    if (!carregando) {
+      setLoadingExpirado(false)
+      return
+    }
+    const timer = setTimeout(() => {
+      setLoadingExpirado(true)
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [carregando])
+
   // Enquanto as permissões ou a sessão estão carregando para usuário
-  if (carregando) {
+  if (carregando && !loadingExpirado) {
     return (
       <div
         data-testid="permissao-guard-loading"
