@@ -199,7 +199,7 @@ export function ConfiguracaoFiscalPage() {
     parseFloat(aliquotaIcmsInterna.replace(',', '.')) !== aliquotaMatrizEs
 
   return (
-    <PermissaoGuard modulo="config_fiscal" acao="visualizar">
+    <PermissaoGuard modulo="config_fiscal" acao="ver">
       <div className="space-y-6 p-6 max-w-5xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-4">
           <div>

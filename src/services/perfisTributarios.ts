@@ -1,6 +1,7 @@
 import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
 import { Cfop } from '@/services/cfop'
+export { extrairCamposFiscaisDoPerfil } from '@/services/produtos'
 
 export type RegimePerfilTributario = 'Simples Nacional' | 'Regime Normal'
 

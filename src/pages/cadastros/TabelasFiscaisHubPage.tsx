@@ -8,6 +8,7 @@ import {
   Calculator,
   ArrowRight,
   FileSpreadsheet,
+  Grid,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -196,9 +197,66 @@ export const TabelasFiscaisHubPage: React.FC = () => {
             </Button>
           </CardContent>
         </Card>
+
+        {/* Card Regras Fiscais por NCM */}
+        <Card className="border-slate-200 shadow-xs hover:border-blue-300 transition-colors flex flex-col justify-between">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                <FileCheck className="h-6 w-6" />
+              </div>
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium">
+                Ativo
+              </Badge>
+            </div>
+            <CardTitle className="text-lg font-bold text-slate-900">
+              Regras Fiscais por NCM
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Regras automáticas por prefixo de NCM, UF de destino e regime tributário para o motor
+              fiscal sugerir classificação com alta confiança.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button asChild className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Link to="/cadastros/tabelas-fiscais/regras-ncm">
+                Acessar Regras NCM
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Card Matriz de ICMS Interestadual */}
+        <Card className="border-slate-200 shadow-xs hover:border-blue-300 transition-colors flex flex-col justify-between">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2.5 bg-purple-50 text-purple-600 rounded-lg">
+                <Grid className="h-6 w-6" />
+              </div>
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium">
+                Ativo
+              </Badge>
+            </div>
+            <CardTitle className="text-lg font-bold text-slate-900">
+              Matriz de ICMS Interestadual
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Tabela 27x27 de alíquotas interestaduais (Resolução 22/1989) e alíquotas internas das
+              27 UFs para emissão de saídas e DIFAL.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button asChild className="w-full bg-purple-600 hover:bg-purple-700 text-white">
+              <Link to="/cadastros/tabelas-fiscais/matriz-icms">
+                Acessar Matriz de ICMS
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
 }
-
 export default TabelasFiscaisHubPage

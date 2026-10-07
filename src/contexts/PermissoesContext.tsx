@@ -14,7 +14,7 @@ import {
   PerfilAcesso,
 } from '@/services/perfis'
 
-export type AcaoPermissao = 'ver' | 'criar' | 'editar' | 'excluir'
+export type AcaoPermissao = 'ver' | 'criar' | 'editar' | 'excluir' | 'visualizar'
 
 interface PermissoesContextType {
   usuarioERP: Usuario | null
@@ -22,7 +22,8 @@ interface PermissoesContextType {
   permissoes: Record<string, PermissaoModulo>
   carregando: boolean
   administrador: boolean
-  pode: (modulo: ModuloSistema | string, acao: AcaoPermissao) => boolean
+  pode: (modulo: ModuloSistema | string, acao?: AcaoPermissao | string) => boolean
+  podeGravar: (modulo: ModuloSistema | string) => boolean
   recarregarPermissoes: () => Promise<void>
 }
 
@@ -179,6 +180,13 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [administrador, perfil, permissoes],
   )
 
+  const podeGravar = useCallback(
+    (modulo: ModuloSistema | string): boolean => {
+      return pode(modulo, 'criar') || pode(modulo, 'editar')
+    },
+    [pode],
+  )
+
   return (
     <PermissoesContext.Provider
       value={{
@@ -188,6 +196,7 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         carregando,
         administrador,
         pode,
+        podeGravar,
         recarregarPermissoes,
       }}
     >

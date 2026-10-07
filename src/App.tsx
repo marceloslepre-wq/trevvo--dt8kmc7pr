@@ -35,11 +35,14 @@ import CestPage from '@/pages/cadastros/CestPage'
 import CfopPage from '@/pages/cadastros/CfopPage'
 import CfopConversaoPage from '@/pages/cadastros/CfopConversaoPage'
 import PerfisTributariosPage from '@/pages/cadastros/PerfisTributariosPage'
+import RegrasFiscaisNcmPage from '@/pages/cadastros/RegrasFiscaisNcmPage'
+import MatrizIcmsPage from '@/pages/cadastros/MatrizIcmsPage'
 import MarcasPage from '@/pages/cadastros/MarcasPage'
 import NotasEntradaListaPage from '@/pages/compras/NotasEntradaListaPage'
 import NotaEntradaConferenciaPage from '@/pages/compras/NotaEntradaConferenciaPage'
 import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import ConfiguracoesGeralPage from '@/pages/configuracoes/ConfiguracoesGeralPage'
+import ConfiguracaoFiscalPage from '@/pages/configuracoes/ConfiguracaoFiscalPage'
 import IntegridadeEstoquePage from '@/pages/configuracoes/IntegridadeEstoquePage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
 import PedidosCompraListaPage from '@/pages/compras/PedidosCompraListaPage'
@@ -364,6 +367,22 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
+                  <Route
+                    path="/cadastros/tabelas-fiscais/regras-ncm"
+                    element={
+                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
+                        <RegrasFiscaisNcmPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/cadastros/tabelas-fiscais/matriz-icms"
+                    element={
+                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
+                        <MatrizIcmsPage />
+                      </PermissaoGuard>
+                    }
+                  />
 
                   {/* Estoque */}
                   <Route path="/estoque" element={<Navigate to="/estoque/posicao" replace />} />
@@ -518,6 +537,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="configuracoes" acao="ver">
                         <ConfiguracoesGeralPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/configuracoes/fiscal"
+                    element={
+                      <PermissaoGuard modulo="config_fiscal" acao="ver">
+                        <ConfiguracaoFiscalPage />
                       </PermissaoGuard>
                     }
                   />

@@ -49,6 +49,8 @@ import {
 } from '@/services/perfisTributarios'
 import { obterGrupo } from '@/services/gruposCategorias'
 import { Produto, extrairCamposFiscaisDoPerfil } from '@/services/produtos'
+import { sugerirTributacao, SugestaoFiscalResultado } from '@/services/motorFiscal'
+import { Empresa } from '@/services/empresas'
 
 // Componente auxiliar para validação e aviso de incompatibilidade entre CEST e NCM
 function AvisoCompatibilidadeCestNcm({ cest, ncm }: { cest: string; ncm: string }) {
@@ -119,6 +121,8 @@ export interface ProdutoAbaFiscalProps {
   tipoItemProduto: 'Produto' | 'Serviço' | 'Kit'
   grupoId?: string
   erros?: Record<string, string>
+  empresaAtiva?: Empresa | null
+  ehNovo?: boolean
 }
 
 export function ProdutoAbaFiscal({
@@ -130,6 +134,8 @@ export function ProdutoAbaFiscal({
   tipoItemProduto,
   grupoId,
   erros = {},
+  empresaAtiva,
+  ehNovo = false,
 }: ProdutoAbaFiscalProps) {
   // Controle de diálogo de confirmação de sobreposição de perfil
   const [modalConfirmaPerfilAberto, setModalConfirmaPerfilAberto] = useState(false)
@@ -142,6 +148,17 @@ export function ProdutoAbaFiscal({
 
   // Alternar "Mostrar ambos" (CSOSN e CST ICMS)
   const [mostrarAmbosRegimesIcms, setMostrarAmbosRegimesIcms] = useState(false)
+
+  // Motor fiscal e sugestão de classificação fiscal por NCM
+  const [processandoSugestaoFiscal, setProcessandoSugestaoFiscal] = useState(false)
+  const [modalConfirmaSugestaoFiscalAberto, setModalConfirmaSugestaoFiscalAberto] = useState(false)
+  const [sugestaoPendente, setSugestaoPendente] = useState<SugestaoFiscalResultado | null>(null)
+  const [backupCamposDesfazer, setBackupCamposDesfazer] = useState<Partial<Produto> | null>(null)
+  const [bannerSugestaoAtivo, setBannerSugestaoAtivo] = useState<{
+    confianca: string
+    motivo: string
+    tipo: 'automatica' | 'manual'
+  } | null>(null)
 
   // Sugestão de CEST
   const [cestSugerido, setCestSugerido] = useState<string | null>(null)
@@ -215,7 +232,7 @@ export function ProdutoAbaFiscal({
     }
   }, [generoCalculado, formData.codigo_genero, onChangeCampo])
 
-  // Verifica se campos fiscais já estão preenchidos para pedir confirmação ao aplicar perfil
+  // Verifica se campos fiscais já estão preenchidos para pedir confirmação ao aplicar perfil ou sugestão do motor
   const temCamposFiscaisPreenchidos = Boolean(
     formData.origem ||
     formData.tipo_item_sped ||
@@ -223,8 +240,133 @@ export function ProdutoAbaFiscal({
     formData.cst_icms ||
     formData.csosn ||
     formData.cst_pis_saida ||
-    formData.cst_cofins_saida,
+    formData.cst_cofins_saida ||
+    formData.perfil_tributario_id,
   )
+
+  // Desfazer sugestão fiscal aplicada
+  const handleDesfazerSugestaoFiscal = () => {
+    if (backupCamposDesfazer) {
+      onMudarCamposEmLote(backupCamposDesfazer)
+      setBackupCamposDesfazer(null)
+      setBannerSugestaoAtivo(null)
+    }
+  }
+
+  // Executa o motor fiscal (apenas Etapas A e B quando sem itemXml)
+  const executarSugestaoFiscal = async (ncmParaConsultar?: string, ehDisparoAutomatico = false) => {
+    const ncmAlvo = (ncmParaConsultar || formData.ncm || '').replace(/\D/g, '')
+    if (!ncmAlvo || ncmAlvo.length < 2) {
+      if (!ehDisparoAutomatico) {
+        alert('Informe ao menos 2 dígitos da NCM para sugerir classificação fiscal.')
+      }
+      return
+    }
+
+    setProcessandoSugestaoFiscal(true)
+    try {
+      const empresaParaMotor: Partial<Empresa> = empresaAtiva
+        ? {
+            id: empresaAtiva.id,
+            uf: empresaAtiva.uf,
+            crt: empresaAtiva.crt,
+            regime_apuracao: empresaAtiva.regime_apuracao,
+            regime_pis_cofins: empresaAtiva.regime_pis_cofins,
+            contribuinte_ipi: empresaAtiva.contribuinte_ipi,
+          }
+        : {
+            crt:
+              typeof crtEmpresaAtiva === 'number' ? crtEmpresaAtiva : Number(crtEmpresaAtiva) || 1,
+            regime_apuracao: regimeEmpresaAtiva,
+          }
+
+      // Chama sugerirTributacao sem itemXml (usa apenas etapas A e B)
+      const res = await sugerirTributacao({
+        itemXml: null,
+        empresa: empresaParaMotor,
+        produtoExistente: {
+          ncm: ncmAlvo,
+          cest: formData.cest,
+        },
+      })
+
+      // Se não encontrou nem A nem B, o motor retorna motivoGeral "Classificar manualmente"
+      if (res.motivoGeral === 'Classificar manualmente' || Object.keys(res.campos).length === 0) {
+        if (!ehDisparoAutomatico) {
+          alert(
+            'Classificar manualmente: Não foram encontradas regras por NCM nem produtos semelhantes já revisados para este NCM.',
+          )
+        }
+        return
+      }
+
+      // Se foi disparo automático e os campos já estiverem preenchidos, NUNCA sobrescreve sem perguntar
+      if (ehDisparoAutomatico && temCamposFiscaisPreenchidos) {
+        return
+      }
+
+      // Se chamado manualmente e já tem campos preenchidos, pede confirmação
+      if (!ehDisparoAutomatico && temCamposFiscaisPreenchidos) {
+        setSugestaoPendente(res)
+        setModalConfirmaSugestaoFiscalAberto(true)
+        return
+      }
+
+      // Aplicar sugestão diretamente
+      aplicarSugestaoFiscalNoFormulario(res, ehDisparoAutomatico ? 'automatica' : 'manual')
+    } catch (err) {
+      console.error('Erro ao executar sugestão fiscal:', err)
+      if (!ehDisparoAutomatico) {
+        alert('Erro ao consultar motor de sugestão fiscal.')
+      }
+    } finally {
+      setProcessandoSugestaoFiscal(false)
+    }
+  }
+
+  const aplicarSugestaoFiscalNoFormulario = (
+    sugestao: SugestaoFiscalResultado,
+    tipo: 'automatica' | 'manual',
+  ) => {
+    // Guarda backup para desfazer
+    const backup: Partial<Produto> = {
+      perfil_tributario_id: formData.perfil_tributario_id,
+      origem: formData.origem,
+      tipo_item_sped: formData.tipo_item_sped,
+      cfop_venda_interna: formData.cfop_venda_interna,
+      cfop_venda_interestadual: formData.cfop_venda_interestadual,
+      cfop_compra_interna: formData.cfop_compra_interna,
+      cfop_compra_interestadual: formData.cfop_compra_interestadual,
+      cst_icms: formData.cst_icms,
+      csosn: formData.csosn,
+      aliquota_icms: formData.aliquota_icms,
+      aliquota_icms_st: formData.aliquota_icms_st,
+      cst_ipi_saida: formData.cst_ipi_saida,
+      aliquota_ipi: formData.aliquota_ipi,
+      cst_pis_saida: formData.cst_pis_saida,
+      aliquota_pis: formData.aliquota_pis,
+      cst_cofins_saida: formData.cst_cofins_saida,
+      aliquota_cofins: formData.aliquota_cofins,
+      natureza_receita_pis_cofins: formData.natureza_receita_pis_cofins,
+      cst_ibs_cbs: formData.cst_ibs_cbs,
+      c_class_trib: formData.c_class_trib,
+      fiscal_revisado: formData.fiscal_revisado,
+    }
+    setBackupCamposDesfazer(backup)
+
+    // Aplica os campos do motor fiscal, garantindo fiscal_revisado = false
+    const novosCampos = {
+      ...sugestao.campos,
+      fiscal_revisado: false,
+    }
+    onMudarCamposEmLote(novosCampos)
+
+    setBannerSugestaoAtivo({
+      confianca: sugestao.confianca,
+      motivo: sugestao.motivoGeral,
+      tipo,
+    })
+  }
 
   // Função para executar a extração e preenchimento dos valores do perfil tributário
   const aplicarPerfilNoFormulario = (perfil: PerfilTributarioCompleto) => {
@@ -434,13 +576,49 @@ export function ProdutoAbaFiscal({
             </div>
           </div>
 
-          {/* Linha 1: NCM, EX TIPI e CEST */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <div className="sm:col-span-2">
-              <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                NCM (Nomenclatura Comum do Mercosul){' '}
-                {tipoItemProduto === 'Produto' && <span className="text-rose-600">*</span>}
-              </Label>
+          {/* Banner de Aviso de Sugestão Fiscal com opção de Desfazer */}
+          {bannerSugestaoAtivo && (
+            <Alert className="bg-emerald-50 border-emerald-200 text-emerald-900 py-2.5">
+              <div className="flex items-start justify-between w-full gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <div className="text-xs">
+                    <span>
+                      Sugestão Fiscal aplicada (
+                      {bannerSugestaoAtivo.tipo === 'automatica' ? 'automática' : 'manual'}):{' '}
+                      <strong>{bannerSugestaoAtivo.motivo}</strong> — Confiança:{' '}
+                      <strong>{bannerSugestaoAtivo.confianca}</strong>.
+                    </span>
+                    <span className="block text-[11px] text-emerald-700 mt-0.5">
+                      Campos preenchidos. Produto mantido como &quot;Fiscal não revisado&quot; até
+                      auditoria do contador.
+                    </span>
+                  </div>
+                </div>
+                {backupCamposDesfazer && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDesfazerSugestaoFiscal}
+                    className="h-7 text-xs bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-100 font-medium shrink-0"
+                  >
+                    Desfazer sugestão
+                  </Button>
+                )}
+              </div>
+            </Alert>
+          )}
+
+          {/* Linha 1: NCM, Botão Sugerir, EX TIPI e CEST */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+            <div className="sm:col-span-5">
+              <div className="flex items-center justify-between mb-1">
+                <Label className="text-xs font-semibold text-slate-700">
+                  NCM (Nomenclatura Comum do Mercosul){' '}
+                  {tipoItemProduto === 'Produto' && <span className="text-rose-600">*</span>}
+                </Label>
+              </div>
               <SelectNcm
                 value={formData.ncm}
                 onChange={(cod, ncmObj) => {
@@ -451,6 +629,10 @@ export function ProdutoAbaFiscal({
                   ) {
                     setAliquotaIpiNcmSugerida(ncmObj.aliquota_ipi)
                   }
+                  // Se for produto NOVO e campos fiscais ainda vazios, dispara sugestão automática
+                  if (ehNovo && cod && !temCamposFiscaisPreenchidos) {
+                    executarSugestaoFiscal(cod, true)
+                  }
                 }}
                 placeholder="Busque por código ou descrição da NCM..."
               />
@@ -459,7 +641,30 @@ export function ProdutoAbaFiscal({
               )}
             </div>
 
-            <div>
+            <div className="sm:col-span-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!formData.ncm || processandoSugestaoFiscal}
+                onClick={() => executarSugestaoFiscal(formData.ncm, false)}
+                className="w-full h-9 text-xs border-blue-200 text-blue-700 hover:bg-blue-50 font-medium"
+                title="Consulta regras fiscais por NCM e histórico de produtos semelhantes já revisados"
+              >
+                {processandoSugestaoFiscal ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin text-blue-600" />
+                    Consultando...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
+                    Sugerir classificação fiscal
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="sm:col-span-2">
               <Label className="text-xs font-semibold text-slate-700 block mb-1">EX TIPI</Label>
               <Input
                 type="text"
@@ -469,16 +674,16 @@ export function ProdutoAbaFiscal({
                 className="h-9 text-xs"
                 maxLength={3}
               />
-              <span className="text-[10px] text-slate-400">Exceção da tabela IPI</span>
+              <span className="text-[10px] text-slate-400">Exceção IPI</span>
             </div>
 
-            <div>
+            <div className="sm:col-span-2">
               <Label className="text-xs font-semibold text-slate-700 block mb-1">CEST</Label>
               <SelectCest
                 value={formData.cest}
                 onChange={(cod) => handleChangeFiscal('cest', cod)}
                 ncmVinculado={formData.ncm}
-                placeholder="Selecione o CEST..."
+                placeholder="CEST..."
               />
               {cestSugeridoAviso && !formData.cest && (
                 <div className="flex items-center gap-1 text-[10px] text-amber-700 mt-1">
@@ -1799,6 +2004,54 @@ export function ProdutoAbaFiscal({
           </div>
         </CardContent>
       </Card>
+
+      {/* DIÁLOGO: CONFIRMAÇÃO DE SOBREPOSIÇÃO DE SUGESTÃO FISCAL */}
+      <Dialog
+        open={modalConfirmaSugestaoFiscalAberto}
+        onOpenChange={setModalConfirmaSugestaoFiscalAberto}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              Substituir dados fiscais pela sugestão?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              O produto já possui parâmetros fiscais preenchidos. Deseja sobrescrever os dados
+              fiscais com a sugestão do motor ({sugestaoPendente?.motivoGeral} — Confiança:{' '}
+              {sugestaoPendente?.confianca})?
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setModalConfirmaSugestaoFiscalAberto(false)
+                setSugestaoPendente(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                if (sugestaoPendente) {
+                  aplicarSugestaoFiscalNoFormulario(sugestaoPendente, 'manual')
+                }
+                setModalConfirmaSugestaoFiscalAberto(false)
+                setSugestaoPendente(null)
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Sim, aplicar sugestão
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* DIÁLOGO: CONFIRMAÇÃO DE SOBREPOSIÇÃO DE PERFIL TRIBUTÁRIO */}
       <Dialog open={modalConfirmaPerfilAberto} onOpenChange={setModalConfirmaPerfilAberto}>

@@ -211,6 +211,7 @@ export interface ListarProdutosParams {
   situacao?: 'todos' | 'ativos' | 'inativos'
   sem_ncm?: boolean
   fiscal_nao_revisado?: boolean
+  criados_por_entrada_nota?: boolean
   pagina?: number
   itensPorPagina?: number
   ordenacao?: string
@@ -355,6 +356,11 @@ export async function listarProdutos(
   // Fiscal não revisado
   if (params.fiscal_nao_revisado) {
     condicoes.push('(fiscal_revisado = false || fiscal_revisado = null)')
+  }
+
+  // Criados pela entrada de notas
+  if (params.criados_por_entrada_nota) {
+    condicoes.push("observacoes ~ 'Criado automaticamente pela NF'")
   }
 
   // Busca textual

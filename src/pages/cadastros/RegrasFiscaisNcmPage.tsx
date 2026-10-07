@@ -321,7 +321,7 @@ export function RegrasFiscaisNcmPage() {
   }
 
   return (
-    <PermissaoGuard modulo="tabelas_fiscais" acao="visualizar">
+    <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
       <div className="space-y-6 p-6 max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-4">
           <div>

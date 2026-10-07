@@ -161,6 +161,18 @@ const navItems: NavGroupItem[] = [
         icon: Calculator,
         modulo: 'tabelas_fiscais',
       },
+      {
+        title: 'Regras fiscais por NCM',
+        path: '/cadastros/tabelas-fiscais/regras-ncm',
+        icon: FileCheck,
+        modulo: 'tabelas_fiscais',
+      },
+      {
+        title: 'Matriz ICMS Interestadual',
+        path: '/cadastros/tabelas-fiscais/matriz-icms',
+        icon: Calculator,
+        modulo: 'tabelas_fiscais',
+      },
     ],
   },
   {
@@ -282,6 +294,12 @@ const navItems: NavGroupItem[] = [
         path: '/configuracoes/geral',
         icon: Settings,
         modulo: 'configuracoes',
+      },
+      {
+        title: 'Fiscal',
+        path: '/configuracoes/fiscal',
+        icon: Receipt,
+        modulo: 'config_fiscal',
       },
       {
         title: 'Log de Auditoria',

@@ -1892,6 +1892,8 @@ export const ProdutoForm: React.FC = () => {
             tipoItemProduto={formData.tipo || 'Produto'}
             grupoId={formData.grupo_id}
             erros={erros}
+            empresaAtiva={empresaAtiva}
+            ehNovo={!ehEdicao}
           />
         </TabsContent>
 
