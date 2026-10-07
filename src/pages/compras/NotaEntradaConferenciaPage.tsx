@@ -288,7 +288,7 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
           const sug = await sugerirTributacao({
             itemXml: itemSimulado,
             empresa: empresaAtiva as any,
-            produtoExistente: it.expand?.produto_id,
+            produtoExistente: it.expand?.produto_id as Partial<Produto> | undefined,
             tipoEntrada: nota?.tipo_entrada,
             ufFornecedor: ufForn,
           })

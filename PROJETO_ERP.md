@@ -184,6 +184,60 @@ import { sugerirCestPorNcm } from '@/services/cest'
 const cestsSugeridos = await sugerirCestPorNcm('22021000')
 ```
 
+### Motor Fiscal e Matriz Interestadual
+
+Documentação do motor central de inteligência fiscal (`sugerirTributacao`) e cálculo de ICMS interestadual (`aliquotaInterestadual`).
+
+#### 1. Motor Central de Sugestão Fiscal: `sugerirTributacao(params)` (`@/services/motorFiscal.ts`)
+
+Centraliza toda a inteligência tributária para classificação fiscal automática de produtos no ERP a partir do XML da NF-e ou de produto existente.
+
+**Assinatura:**
+
+```ts
+sugerirTributacao(params: {
+  itemXml?: Partial<ItemXmlParsed> | null
+  empresa: Partial<Empresa>
+  produtoExistente?: Partial<Produto> | null
+  tipoEntrada?: string
+  ufFornecedor?: string
+}): Promise<SugestaoFiscalResultado>
+```
+
+_(O parâmetro `itemXml` é opcional, permitindo invocar a sugestão a partir de um produto existente ou de NCM avulso)._
+
+**Etapas de decisão:**
+
+- **Etapa A (Regra por NCM — Confiança Alta):** Busca a melhor regra cadastrada na tabela `regras_fiscais_ncm` que case com a UF da empresa e regime tributário. O prefixo de NCM mais longo vence (`prefA.length - prefB.length`); em caso de empate no comprimento, vence a de maior prioridade (`b.prioridade - a.prioridade`). Carrega o `perfil_tributario_id` vinculado e suas regras dos 8 cenários (`extrairCamposFiscaisDoPerfil`).
+- **Etapa B (Produto semelhante já revisado — Confiança Alta):** Se não houver regra em A, busca na tabela `produtos` outro item com mesmo NCM (e mesmo CEST, quando houver) que possua `fiscal_revisado = true` e `ativo = true`. Herda todos os campos tributários já homologados por auditor fiscal.
+- **Etapa C (Dedução pelo XML — Confiança Média/Baixa):**
+  - **Substituição Tributária (ST):** Detectada se o item da NF-e possuir CST `10`, `30`, `60` ou `70`; CSOSN `201`, `202`, `203` ou `500`; ou CFOP `5401`, `5403`, `5405`, `6401`, `6403` ou `6404`. Se ST: Simples usa CSOSN `500`; Regime Normal usa CST `60`; CFOP interno `5405` e interestadual `6404`. Se compra interestadual com ST, alerta para confirmação de recolhimento na entrada e define confiança como "Baixa".
+  - **Tributação integral:** CST `00` ou `20` (com redução). Simples Nacional adota o `csosn_padrao_tributado` configurado em `config_fiscal_empresa` (`101` ou `102`). Regime normal adota CST `00` com `aliquota_icms_interna_padrao` e FCP da empresa (ou `20` quando o fornecedor tributou com redução). CFOP de venda sugerido: `5101`/`6101` para industrialização ou `5102`/`6102` para revenda.
+  - **Isento / Não tributado:** CST `40`/`41` ou CSOSN `400` (alerta de atenção que isenção do fornecedor nem sempre vale para saída).
+  - **Conversão de Origem da Mercadoria:** Aplica conversão para o mercado nacional: `1 → 2` (estrangeira importação direta vira adquirida no mercado interno) e `6 → 7` (importação direta sem similar nacional vira adquirida no mercado interno).
+  - **CEST:** Aproveita o do XML ou infere via `sugerirCestPorNcm(ncm)`.
+  - **PIS e COFINS:** Monofásico (fornecedor CST `04` ou `05`) → saída `04` e entrada `70`; Alíquota zero (CST `06`) → saída `06` e entrada `73`; Simples Nacional → saída `49` e entrada `98`; Regime Normal Cumulativo → saída `01` (0,65% / 3,00%) e entrada `70`; Regime Normal Não Cumulativo → saída `01` (1,65% / 7,60%) e entrada `50`.
+  - **IPI:** Não contribuinte → saída `53` e entrada `49` (enquadramento `999`); Contribuinte → CST `50` com alíquota oficial herdada da tabela `ncm`.
+  - **IBS/CBS (Reforma Tributária):** Copiado do XML do fornecedor (`cst_ibs_cbs` e `c_class_trib`) ou inicializado com o padrão provisório `000` / `000001`.
+  - **Tipo de item no SPED:** Mapeado automaticamente pelo `tipo_entrada`: Compra para revenda → `00`; Compra para industrialização → `01`; Uso e consumo → `07`; Ativo imobilizado → `08`.
+  - **Vínculo com Perfil Tributário:** Procura e vincula automaticamente um perfil cadastrado em `perfis_tributarios` que possua regra interna compatível com o CST e CFOP apurados.
+- **Etapa D (Classificar manualmente — Confiança Baixa):** Caso não haja dados suficientes para automatizar, sugere preenchimento manual guiado.
+
+**Retorno:** Objeto com `confianca` ("Alta" | "Média" | "Baixa"), `motivoGeral`, array de `avisos`, dicionário `campos` sugeridos e `motivosPorCampo` indicando a justificativa fiscal de cada campo.
+**Nota de uso:** Utilizado na conferência de notas de entrada (Etapa 3) e na emissão de notas fiscais de saída (Etapa 6).
+
+#### 2. Função `aliquotaInterestadual(ufOrigem, ufDestino, origemMercadoria)` (`@/services/icmsMatriz.ts`)
+
+Calcula a alíquota aplicável de ICMS entre quaisquer duas Unidades Federativas do Brasil ou na operação interna.
+
+**Regras aplicadas:**
+
+1. **UFs iguais (`ufOrigem === ufDestino`):** Operação interna; retorna a alíquota interna da UF cadastrada em `icms_aliquotas_uf` (ou 17% como fallback padrão).
+2. **Mercadoria importada (`origemMercadoria` em `1`, `2`, `3` ou `8`):** Retorna taxa fixa de 4% em cumprimento à Resolução do Senado Federal nº 13/2012.
+3. **Demais operações interestaduais:** Consulta o par `(uf_origem, uf_destino)` na tabela `icms_interestadual`. Se não cadastrado, adota a regra geral da Resolução do Senado nº 22/1989 (7% para saídas de SP/RJ/MG/PR/SC/RS com destino às regiões Norte, Nordeste, Centro-Oeste e ES; 12% para os demais fluxos).
+
+**Nota de uso:** Utilizada na conferência da nota de entrada (comparação de alíquota esperada vs. destacada) e mandatória na emissão de notas de saída interestaduais (Etapa 6).
+
 ### Como usar os componentes SelectMarca e SelectGrupoCategoria
 
 Para formulários de produtos e regras mercadológicas:
@@ -229,6 +283,85 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 ## Tabelas
 
 (acrescentar aqui cada tabela criada, com seus campos)
+
+### config_fiscal_empresa
+
+Configuração de parâmetros tributários e regras automáticas de compras/produtos por empresa (estabelecimento). Possui restrição de unicidade por `empresa_id` (uma configuração fiscal por filial/matriz).
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório, cascadeDelete, índice único)
+- aliquota_icms_interna_padrao (number, alíquota de ICMS padrão interno do estado, ex.: 17 ou 18)
+- aliquota_fcp_padrao (number, percentual do Fundo de Combate à Pobreza, ex.: 0 ou 2)
+- csosn_padrao_tributado (select: "101" ou "102", define o CSOSN sugerido para saídas tributadas quando a empresa for do Simples Nacional)
+- grupo_padrao_id (relation -> grupos, opcional, grupo mercadológico sugerido para novos produtos)
+- categoria_padrao_id (relation -> categorias, opcional, categoria sugerida para novos produtos)
+- margem_padrao_percentual (number, margem de lucro sugerida na formação de preço de venda)
+- criar_produtos_automaticamente (select: "Perguntar", "Sempre" ou "Nunca", define política de importação de XML)
+- aplicar_sugestao_fiscal_em_produtos_existentes_vazios (bool, quando true preenche campos fiscais não revisados)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id` (único: `idx_config_fiscal_empresa_uid`), `ativo` (`idx_config_fiscal_empresa_ativo`).
+
+### regras_fiscais_ncm
+
+Regras tributárias parametrizadas por prefixo ou código completo de NCM, com priorização decrescente e amarração a Perfis Tributários para motor fiscal inteligente.
+
+- id (text, PK)
+- ncm_prefixo (text, obrigatório, 2 a 8 dígitos numéricos da NCM)
+- cest (text, opcional, código CEST de 7 dígitos vinculado ao NCM)
+- uf (text, opcional, 2 letras da UF para regras específicas por estado ou vazio para todas)
+- regime_empresa (select: "Simples Nacional", "Regime Normal" ou "Todos", obrigatório)
+- perfil_tributario_id (relation -> perfis_tributarios, obrigatório, perfil aplicado quando a regra casar)
+- sujeito_st (bool, indica se a mercadoria é sujeita à Substituição Tributária de ICMS)
+- monofasico_pis_cofins (bool, indica regime monofásico de PIS/COFINS com alíquota concentrada)
+- natureza_receita_pis_cofins (text, código oficial da Natureza da Receita da tabela SPED)
+- observacao (text, anotação ou base legal da regra fiscal)
+- prioridade (number, inteiro; em caso de empate de prefixo, vence a regra com maior prioridade)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `ncm_prefixo`, `uf`, `regime_empresa`, `prioridade`, `ativo`.
+
+### icms_aliquotas_uf
+
+Tabela de alíquotas internas de ICMS e adicionais de FCP de cada uma das 27 Unidades Federativas do Brasil.
+
+- id (text, PK)
+- uf (text, obrigatório, sigla de 2 letras da UF, índice único)
+- aliquota_interna (number, alíquota básica interna do ICMS na UF, ex.: 17, 18, 20.5)
+- aliquota_fcp (number, adicional destinado ao Fundo de Combate à Pobreza na UF)
+- vigencia_inicio (text, data inicial de vigência YYYY-MM-DD)
+- observacao (text, fundamentação legal estadual)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `uf` (único: `idx_icms_aliq_uf_unique`), `ativo` (`idx_icms_aliq_uf_ativo`).
+
+### icms_interestadual
+
+Matriz interestadual de ICMS para operações entre diferentes UFs da federação. Carga inicial semeada com base na Resolução do Senado Federal 22/1989 (7% de SP/RJ/MG/PR/SC/RS para estados das regiões Norte, Nordeste, Centro-Oeste e ES; 12% para os demais pares interestaduais).
+
+- id (text, PK)
+- uf_origem (text, obrigatório, sigla de 2 letras da UF de origem)
+- uf_destino (text, obrigatório, sigla de 2 letras da UF de destino)
+- aliquota (number, alíquota interestadual aplicável, ex.: 7 ou 12)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: par `uf_origem + uf_destino` (único: `idx_icms_inter_par`), `uf_origem`, `uf_destino`, `ativo`.
 
 ### pedidos_compra
 
@@ -1465,7 +1598,7 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 26. `/cadastros/condicoes-pagamento` (`@/pages/cadastros/CondicoesPagamentoPage.tsx`): Gestão de condições de pagamento com listagem, busca, filtros de tipo/uso/situação, simulação interativa de parcelas com cálculo em tempo real e exportação CSV.
 27. `/estoque/lotes` (`@/pages/estoque/LotesValidadePage.tsx`): Gestão e rastreabilidade de lotes e datas de validade com classificação automática (Vencido, Vence em até X dias, OK), contagem regressiva em dias, filtros por produto/situação/período e exportação CSV.
 
-### Todas as Tabelas Criadas (31 tabelas)
+### Todas as Tabelas Criadas (35 tabelas)
 
 1. `users`: Coleção de autenticação do Skip Cloud / PocketBase com e-mail, senha e verificação.
 2. `logs_auditoria`: Trilha de auditoria com usuário, tabela, registro, ação (inclusao, alteracao, inativacao, ativacao) e diff JSON.
@@ -1498,6 +1631,10 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 29. `transferencias_itens`: Itens movimentados nas transferências com lotes e conferência de divergência.
 30. `inventarios`: Cabeçalho de inventários físicos de estoque com data de referência e motivo SPED.
 31. `inventarios_itens`: Grade de produtos inventariados com saldo congelado, contagem, diferenças e custos.
+32. `config_fiscal_empresa`: Configuração de parâmetros fiscais padrão, alíquotas internas e margens por empresa.
+33. `regras_fiscais_ncm`: Regras fiscais parametrizadas por prefixo/código de NCM com priorização para o motor tributário.
+34. `icms_aliquotas_uf`: Alíquotas internas básicas de ICMS e percentual de FCP de cada uma das 27 UFs.
+35. `icms_interestadual`: Matriz interestadual de ICMS entre UFs de origem e destino (Resolução SF 22/1989).
 
 ### Todos os Componentes Reutilizáveis e Funções Utilitárias
 
@@ -1517,6 +1654,8 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 - `<SelectCondicaoPagamento />` (`@/components/SelectCondicaoPagamento`): Combobox com busca de condições de pagamento, filtro contextual de uso ("Vendas" ou "Compras") e atalho inline para cadastro rápido via modal.
 - `gerarParcelas(condicao, valorTotal, dataBase)` (`@/services/condicoesPagamento`): Função para geração do cronograma de parcelas com arredondamento em 2 casas, ajuste de centavos na última parcela, entrada, juros, desconto e dia fixo.
 - Serviço de Lotes e Validade (`@/services/lotes.ts`): Funções utilitárias `calcularDiasParaVencer(dataValidade)` (retorna dias inteiros até o vencimento, negativo para vencidos) e `classificarSituacaoLote(dataValidade, diasAlerta)` (classifica em `vencido`, `alerta` ou `ok` e fornece o rótulo formatado), além de `listarLotes`, `listarLotesDisponiveisProduto` e `listarTodosLotesProduto`.
+- `sugerirTributacao(params)` (`@/services/motorFiscal.ts`): Motor tributário central inteligente em 4 etapas (A: Regras fiscais NCM, B: Produto semelhante revisado, C: Dedução por XML, D: Classificação manual) com nível de confiança e justificativas por campo fiscal.
+- `aliquotaInterestadual(ufOrigem, ufDestino, origemMercadoria)` (`@/services/icmsMatriz.ts`): Função determinística para cálculo da alíquota de ICMS interna, interestadual ou importada (4% Res. Senado 13/2012).
 
 ### Serviços Centrais de Estoque (`@/services/estoque.ts`)
 
@@ -1681,6 +1820,33 @@ A Etapa 2 (Controle de Estoque e Telas Operacionais) foi oficialmente finalizada
      - Tratamento tolerante para ações (`ver` e `visualizar`) e normalização nas rotas do sistema.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.30** — Motor Fiscal Inteligente, Matriz de Alíquotas ICMS (Interna e Interestadual) e Regras por NCM:
+
+1. **Estrutura de Tabelas Fiscais Avançadas (Migration 0028):**
+   - `config_fiscal_empresa`: Parâmetros de tributação e políticas de compras por filial/matriz (`empresa_id` único), com alíquotas padrão de ICMS e FCP, CSOSN tributado padrão para optantes do Simples Nacional, margem de lucro sugerida e regras de criação automática de produtos.
+   - `regras_fiscais_ncm`: Parametrização tributária detalhada por código ou prefixo de NCM com amarração a Perfis Tributários, priorização decrescente e suporte a regras específicas por UF e regime da empresa.
+   - `icms_aliquotas_uf`: Tabela oficial das 27 Unidades Federativas do Brasil com alíquotas internas de ICMS e percentuais de Fundo de Combate à Pobreza (FCP).
+   - `icms_interestadual`: Matriz interestadual de ICMS completa para operações entre quaisquer UFs da federação, semeada conforme a Resolução do Senado Federal 22/1989 (7% das regiões Sul e Sudeste, exceto ES, para Norte, Nordeste, Centro-Oeste e ES; 12% para os demais fluxos).
+
+2. **Motor Fiscal Central (`@/services/motorFiscal.ts` - `sugerirTributacao`):**
+   - Classificação tributária inteligente de produtos a partir do XML ou catálogo em 4 etapas sequenciais de decisão com rastreabilidade total:
+     - **Etapa A:** Regra fiscal por NCM com desempate por comprimento de prefixo mais longo e maior prioridade, herdando perfil tributário completo;
+     - **Etapa B:** Produto semelhante já homologado (`fiscal_revisado = true`) pelo mesmo NCM/CEST;
+     - **Etapa C:** Dedução analítica pelo XML do fornecedor (reconhecimento de ST, tributação integral, isenção, conversão de origem para mercado interno 1→2 e 6→7, sugestão de CEST, regime de PIS/COFINS, IPI para não contribuinte, IBS/CBS e tipo de item no SPED);
+     - **Etapa D:** Fallback para classificação manual guiada.
+   - Retorno estruturado contendo nível de confiança ("Alta", "Média", "Baixa"), motivo geral, alertas contextuais e justificativa individual por campo sugerido.
+   - Reutilizável tanto na conferência de compras quanto na futura emissão de notas fiscais de saída (Etapa 6).
+
+3. **Matriz e Cálculo de ICMS Interestadual (`@/services/icmsMatriz.ts` - `aliquotaInterestadual`):**
+   - Aplicação determinística das normas tributárias brasileiras: alíquota interna da UF quando origem e destino coincidirem, taxa de 4% para produtos importados (origem 1, 2, 3 ou 8 conforme Resolução do Senado 13/2012) e consulta à matriz interestadual para operações interestaduais padrão.
+
+4. **Correções de Tipagem e Estabilidade TypeScript:**
+   - Correção do tipo `TipoProduto` no serviço `notasEntrada.ts`;
+   - Correção de narrowing seguro sem `as any` em `expand.produto_id` na conferência de compras (`NotaEntradaConferenciaPage.tsx`).
+   - Verificação completa com QA 100% limpo em TypeScript, linting e testes unitários.
+
+---
 
 **Versão 0.0.29** — Etapa 3 (Conferência Completa de Notas de Entrada, De-Para de Produtos, Créditos Tributários, Custos e Correção Definitiva do PermissaoGuard):
 

@@ -2,6 +2,7 @@ import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
 import { TipoEntradaNota, converterCfopEntrada } from '@/services/cfopConversao'
 import { Fornecedor, salvarFornecedor, normalizarCpfCnpj } from '@/services/fornecedores'
+import { TipoProduto } from '@/services/produtos'
 
 export type OrigemLancamentoNota = 'XML' | 'Digitação'
 export type ModeloNota = '55' | '65' | '01' | '1B' | '04'
