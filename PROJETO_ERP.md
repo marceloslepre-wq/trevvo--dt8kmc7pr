@@ -920,6 +920,22 @@ Tabela de histórico de alterações de código e descrição do produto (Regist
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
 
+### configuracoes
+
+Tabela central de parâmetros visuais e operacionais gerais do ERP comercial.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- nome_sistema (texto obrigatório, até 60 caracteres, padrão "ERP Gestão Comercial")
+- logo (arquivo de imagem até 5 MB, tipos PNG/JPEG/WEBP/SVG)
+- cor_principal (texto opcional com código hexadecimal, ex: "#2563eb", refletido no tema da interface)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras: Armazena a identidade visual e nome que personalizam cabeçalho, tela de login e menu lateral. A cor principal alimenta as variáveis CSS globais (`--primary`, `--sidebar-primary`, `--ring`, `--brand-color`). Alterações gravam em `logs_auditoria`.
+
 #### Componentes reutilizáveis
 
 - `<SelectProduto />` (`@/components/SelectProduto`): combobox com busca de produtos ativos por código, GTIN ou descrição, exibindo foto miniatura e preço de venda. Permite filtro opcional por `filtroTipo` ("Produto", "Serviço", "Kit"). Pronto para uso em PDV, compras, orçamentos e emissão de notas:
@@ -933,3 +949,79 @@ import { SelectProduto } from '@/components/SelectProduto'
   placeholder="Selecione ou busque o produto..."
 />
 ```
+
+## Etapa 1 concluída
+
+A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) foi totalmente concluída com padrão visual coeso, máscaras oficiais, validações brasileiras (CPF, CNPJ alfanumérico, IE ES com módulo 11), auditoria detalhada em todas as tabelas e controle de permissões por módulo.
+
+### Todas as Telas Existentes
+
+1. `/painel` (`@/pages/Index.tsx`): Painel inicial com indicadores de clientes, fornecedores, produtos e usuários ativos, atalho para conferência de produtos com fiscal incompleto, lista dos 10 últimos cadastros intercalados e pendências de configuração automáticas.
+2. `/cadastros/empresas` (`@/pages/cadastros/EmpresasLista.tsx`): Listagem completa de matriz e filiais com filtros, busca, situação, paginação, exportação CSV e ações.
+3. `/cadastros/empresas/novo` e `/cadastros/empresas/:id/editar` (`@/pages/cadastros/EmpresaForm.tsx`): Formulário em abas (Identificação, Regime Tributário, Endereço ViaCEP, Contato, Responsável Legal, Contabilidade para SPED 0100).
+4. `/cadastros/usuarios` (`@/pages/cadastros/UsuariosLista.tsx`): Gestão de usuários, perfis vinculados, comissão, desconto máximo e status.
+5. `/cadastros/usuarios/novo` e `/cadastros/usuarios/:id/editar` (`@/pages/cadastros/UsuarioForm.tsx`): Criação com credenciais de login, foto, perfil de acesso e amarração multiempresa.
+6. `/cadastros/perfis-acesso` (`@/pages/cadastros/PerfisAcessoLista.tsx`): Listagem de perfis de operadores e administradores.
+7. `/cadastros/perfis-acesso/novo` e `/cadastros/perfis-acesso/:id/editar` (`@/pages/cadastros/PerfilAcessoForm.tsx`): Matriz completa de permissões por módulo (ver, criar, editar, excluir) e flag de administrador total.
+8. `/cadastros/clientes` (`@/pages/cadastros/ClientesLista.tsx`): Listagem de clientes com busca, filtros de tipo e situação, exportação CSV e atalho para cadastro rápido.
+9. `/cadastros/clientes/novo` e `/cadastros/clientes/:id/editar` (`@/pages/cadastros/ClienteForm.tsx`): Formulário em abas (Dados Fiscais, Endereço Principal e Entrega, Contatos e Dados Comerciais) com suporte a Física, Jurídica e Estrangeiro.
+10. `/cadastros/fornecedores` (`@/pages/cadastros/FornecedoresLista.tsx`): Listagem de fornecedores e parceiros comerciais com busca, filtros por tipo de fornecedor e exportação CSV.
+11. `/cadastros/fornecedores/novo` e `/cadastros/fornecedores/:id/editar` (`@/pages/cadastros/FornecedorForm.tsx`): Formulário em abas (Dados Gerais, Consulta BrasilAPI CNPJ, Endereço ViaCEP, Contatos, Comercial e Dados Bancários/PIX).
+12. `/cadastros/produtos` (`@/pages/cadastros/ProdutosLista.tsx`): Catálogo de mercadorias, serviços e kits com filtros rápidos, busca por GTIN/código, exportação CSV e miniaturas.
+13. `/cadastros/produtos/conferencia` (`@/pages/cadastros/ConferenciaFiscalPage.tsx`): Tela especializada para revisão e saneamento fiscal em lote de produtos com pendências.
+14. `/cadastros/produtos/novo` e `/cadastros/produtos/:id/editar` (`@/pages/cadastros/ProdutoForm.tsx`): Formulário completo em abas (Dados Gerais, Unidades de Medida, Preços e Margens, Estoque e Parâmetros, Fiscal Completo NF-e/SPED, Kits e Conversões).
+15. `/cadastros/marcas` (`@/pages/cadastros/MarcasPage.tsx`): Gestão de marcas e fabricantes com listagem, modal de cadastro e inativação segura.
+16. `/cadastros/grupos-categorias` (`@/pages/cadastros/GruposCategoriasPage.tsx`): Classificação mercadológica em 2 níveis (Grupos e Categorias encadeadas) com margens padrão e perfis tributários.
+17. `/cadastros/unidades-medida` (`@/pages/cadastros/UnidadesMedidaPage.tsx`): Tabela de unidades comerciais e tributárias (UN, KG, CX...) com controle de fracionamento.
+18. `/cadastros/tabelas-fiscais` (`@/pages/cadastros/TabelasFiscaisHubPage.tsx`): Hub central com atalhos e contadores de NCM, CEST, CFOP, Códigos Oficiais e Perfis Tributários.
+19. `/cadastros/tabelas-fiscais/codigos` (`@/pages/cadastros/CodigosFiscaisPage.tsx`): Tabela oficial de CSTs, CSOSN, Origens, Enquadramentos e Reforma Tributária (IBS/CBS).
+20. `/cadastros/tabelas-fiscais/ncm` (`@/pages/cadastros/NcmPage.tsx`): Nomenclatura Comum do Mercosul com busca por código e descrição, importação CSV e vigências.
+21. `/cadastros/tabelas-fiscais/cest` (`@/pages/cadastros/CestPage.tsx`): Códigos Especificadores da Substituição Tributária com NCMs vinculados e importação CSV.
+22. `/cadastros/tabelas-fiscais/cfop` (`@/pages/cadastros/CfopPage.tsx`): Códigos Fiscais de Operações com classificação automática de Entrada/Saída, abrangência, estoque e financeiro.
+23. `/cadastros/tabelas-fiscais/perfis` (`@/pages/cadastros/PerfisTributariosPage.tsx`): Perfis tributários com definição dos 8 cenários de operações comerciais.
+24. `/configuracoes/geral` (`@/pages/configuracoes/ConfiguracoesGeralPage.tsx`): Nome do sistema, upload do logotipo e paleta de cores do tema dinâmico.
+25. `/configuracoes/auditoria` (`@/pages/configuracoes/LogAuditoriaPage.tsx`): Consulta detalhada de logs de auditoria com diff de antes/depois e filtros por tabela, usuário e período.
+
+### Todas as Tabelas Criadas (24 tabelas)
+
+1. `users`: Coleção de autenticação do Skip Cloud / PocketBase com e-mail, senha e verificação.
+2. `logs_auditoria`: Trilha de auditoria com usuário, tabela, registro, ação (inclusao, alteracao, inativacao, ativacao) e diff JSON.
+3. `empresas`: Cadastro multiempresa de matriz e filiais com regimes tributários, SPED e dados de contabilidade.
+4. `perfis_acesso`: Níveis de permissão e flag de administrador irrestrito.
+5. `permissoes`: Matriz por módulo (ver, criar, editar, excluir) vinculada ao perfil.
+6. `usuarios`: Colaboradores do ERP vinculados ao auth, perfis, empresa padrão e comissões.
+7. `usuarios_empresas`: Vínculos de autorização entre colaboradores e filiais autorizadas.
+8. `unidades_medida`: Siglas e descrições de unidades com suporte a fracionamento.
+9. `tabelas_fiscais_codigos`: Códigos fiscais oficiais (CST, CSOSN, Origem, etc.).
+10. `ncm`: Classificação fiscal NCM de 8 dígitos.
+11. `cest`: Código de Substituição Tributária de 7 dígitos.
+12. `cfop`: Códigos de Operação e Prestação de 4 dígitos.
+13. `marcas`: Fabricantes e marcas comerciais.
+14. `grupos`: Nível 1 da árvore mercadológica com margem sugerida.
+15. `categorias`: Nível 2 encadeado ao grupo pai.
+16. `clientes`: Clientes físicos, jurídicos e estrangeiros com endereços e dados comerciais.
+17. `fornecedores`: Fornecedores com contas bancárias, PIX e tipos de fornecimento.
+18. `perfis_tributarios`: Cabeçalhos de regras fiscais parametrizadas.
+19. `perfis_tributarios_regras`: Regras detalhadas dos 8 cenários fiscais por perfil.
+20. `produtos`: Cadastro mestre com dados gerais, fiscais, preços, margens e estoque.
+21. `produtos_kit_itens`: Componentes de produtos do tipo Kit.
+22. `produtos_fornecedores`: Relacionamento de-para de produtos com fornecedores e cProd.
+23. `produtos_conversoes_unidade`: Fatores de conversão e unidades alternativas (SPED 0220).
+24. `produtos_historico`: Registro histórico de alterações de código e descrição (SPED 0205).
+25. `configuracoes`: Nome do sistema, arquivo de logotipo e cor temática primária.
+
+### Todos os Componentes Reutilizáveis e Funções Utilitárias
+
+- `<SelectCodigoFiscal />` (`@/components/SelectCodigoFiscal`): Combobox com busca de códigos fiscais oficiais (`tipo="CST_ICMS"`, `tipo="CSOSN"`, `tipo="ORIGEM"`...) exibindo "código - descrição".
+- `<SelectNcm />` (`@/components/SelectNcm`): Combobox com busca em tempo real por 8 dígitos ou descrição de NCMs ativos.
+- `<SelectCest />` (`@/components/SelectCest`): Combobox de CESTs com busca e filtragem/sugestão contextual pela NCM informada (`ncmVinculado={ncm}`).
+- `<SelectCfop />` (`@/components/SelectCfop`): Combobox de CFOPs com filtro automático por tipo de operação (`tipoMovimento="Saída"` ou `"Entrada"`).
+- `<SelectPerfilTributario />` (`@/components/SelectPerfilTributario`): Combobox de perfis fiscais parametrizados com regime e descrição.
+- `<SelectMarca />` (`@/components/SelectMarca`): Combobox de marcas com botão inline "+ Nova marca" que abre modal para cadastro imediato.
+- `<SelectGrupoCategoria />` (`@/components/SelectGrupoCategoria`): Seletor encadeado (Grupo Nível 1 → Categoria Nível 2) com suporte a layouts horizontal ou vertical.
+- `<SelectFornecedor />` (`@/components/SelectFornecedor`): Combobox de fornecedores com busca e filtro opcional por segmento (`filtroTipo="Mercadorias"`).
+- `<SelectProduto />` (`@/components/SelectProduto`): Combobox de produtos com miniatura, código, GTIN e preço de venda.
+- `<ClienteCadastroRapido />` (`@/components/ClienteCadastroRapido`): Modal simplificado de cadastro rápido de cliente com validação e detecção de reativação para PDV e vendas.
+- `usePermissoes()` / `pode(modulo, acao)` (`@/contexts/PermissoesContext`): Hook reativo para checagem de permissões com liberação imediata para administradores.
+- `sugerirCestPorNcm(ncm)` (`@/services/cest`): Função assíncrona que cruza a NCM com a base do CEST e retorna os códigos compatíveis.
+- `extrairCamposFiscaisDoPerfil(perfil)` (`@/services/produtos`): Converte as regras do perfil tributário nos campos fiscais padrão aplicados ao produto.

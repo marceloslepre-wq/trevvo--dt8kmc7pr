@@ -18,11 +18,16 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
 }) => {
   const { pode, carregando, administrador } = usePermissoes()
 
-  // Se o usuário já é reconhecido como administrador de imediato, libera sem esperar
-  if (!administrador && carregando) {
+  // Administrador tem liberação instantânea e irrestrita sem depender de carregamentos
+  if (administrador) {
+    return <>{children}</>
+  }
+
+  // Enquanto estiver carregando as permissões do perfil pela primeira vez
+  if (carregando) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-slate-500 text-sm">
-        <div className="h-7 w-7 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
+        <div className="h-7 w-7 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3" />
         <p className="font-medium text-slate-700">Carregando permissões...</p>
         <p className="text-xs text-slate-400 mt-1">
           Aguarde um instante enquanto validamos seu acesso.

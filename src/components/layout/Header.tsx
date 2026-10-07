@@ -3,6 +3,7 @@ import { Menu, LogOut, Building, User } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useConfiguracoes } from '@/contexts/ConfiguracoesContext'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -29,6 +30,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
   const { user, logout } = useAuth()
   const { empresas, empresaAtiva, selecionarEmpresa, carregando } = useEmpresaAtiva()
   const { perfil, administrador } = usePermissoes()
+  const { config, logoUrl } = useConfiguracoes()
 
   const getInitials = (name?: string, email?: string) => {
     if (name && name.trim()) {
@@ -57,10 +59,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-slate-800 text-sm md:text-base hidden sm:inline">
-            ERP Gestão Comercial
+          {logoUrl && (
+            <img src={logoUrl} alt="Logo" className="h-6 w-6 object-contain rounded md:hidden" />
+          )}
+          <span className="font-semibold text-slate-800 text-sm md:text-base hidden sm:inline truncate max-w-[240px]">
+            {config?.nome_sistema || 'ERP Gestão Comercial'}
           </span>
-          <span className="font-semibold text-slate-800 text-sm sm:hidden">ERP Comercial</span>
+          <span className="font-semibold text-slate-800 text-sm sm:hidden truncate max-w-[150px]">
+            {config?.nome_sistema || 'ERP Comercial'}
+          </span>
         </div>
       </div>
 

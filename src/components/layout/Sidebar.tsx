@@ -205,8 +205,8 @@ const navItems: NavGroupItem[] = [
     modulo: 'configuracoes',
     items: [
       {
-        title: 'Parâmetros Gerais',
-        path: '/configuracoes',
+        title: 'Geral',
+        path: '/configuracoes/geral',
         icon: Settings,
         modulo: 'configuracoes',
       },

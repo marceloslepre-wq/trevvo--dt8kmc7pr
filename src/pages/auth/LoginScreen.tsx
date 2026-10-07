@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Eye, EyeOff, Lock, Mail, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useConfiguracoes } from '@/contexts/ConfiguracoesContext'
 import { useToast } from '@/hooks/use-toast'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/button'
@@ -17,6 +18,7 @@ export default function LoginScreen() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
 
   const { login } = useAuth()
+  const { config } = useConfiguracoes()
   const { toast } = useToast()
   const navigate = useNavigate()
 
@@ -69,7 +71,7 @@ export default function LoginScreen() {
         <Card className="border-slate-200 shadow-md bg-white">
           <CardHeader className="space-y-1 text-center pb-6">
             <CardTitle className="text-xl font-bold tracking-tight text-slate-900">
-              Acesso ao Sistema
+              {config?.nome_sistema || 'Acesso ao Sistema'}
             </CardTitle>
             <CardDescription className="text-sm text-slate-600">
               Informe suas credenciais para entrar na plataforma

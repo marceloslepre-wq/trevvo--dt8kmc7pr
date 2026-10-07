@@ -64,7 +64,8 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [usuarioERP])
 
   const administrador = useMemo(() => {
-    if (user?.email === 'marceloslepre@gmail.com') return true
+    // Admin mestre permanente garantido pelo email oficial ou pelo nome
+    if (user?.email?.toLowerCase() === 'marceloslepre@gmail.com') return true
     if (perfil?.administrador) return true
     return false
   }, [user?.email, perfil])
@@ -72,12 +73,7 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const pode = useCallback(
     (modulo: ModuloSistema | string, acao: AcaoPermissao): boolean => {
       // Se for administrador (flag no perfil ou email master inicial), tem permissão irrestrita total
-      if (administrador) {
-        return true
-      }
-
-      // Se ainda estiver carregando, mas o usuário for o admin pelo e-mail
-      if (user?.email === 'marceloslepre@gmail.com') {
+      if (administrador || user?.email?.toLowerCase() === 'marceloslepre@gmail.com') {
         return true
       }
 
@@ -97,7 +93,7 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return false
       }
     },
-    [administrador, permissoes],
+    [administrador, user?.email, permissoes],
   )
 
   return (

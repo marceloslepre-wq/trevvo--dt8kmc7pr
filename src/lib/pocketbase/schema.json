@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T10:25:59.324Z",
+  "generatedAt": "2026-10-07T10:36:20.145Z",
   "collections": [
     {
       "name": "users",
@@ -3535,6 +3535,72 @@
         "CREATE INDEX idx_prod_hist_data ON produtos_historico (data_alteracao)",
         "CREATE INDEX idx_prod_hist_ativo ON produtos_historico (ativo)"
       ]
+    },
+    {
+      "name": "configuracoes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_sistema",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "logo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cor_principal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_configuracoes_ativo ON configuracoes (ativo)"]
     }
   ]
 }
