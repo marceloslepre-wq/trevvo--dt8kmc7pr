@@ -391,6 +391,10 @@ export interface ItemXmlParsed {
   cClassTrib?: string
   valorIbs?: number
   valorCbs?: number
+
+  // Simples Nacional Crédito ICMS
+  pCredSN?: number
+  vCredICMSSN?: number
 }
 
 export interface ParcelaXmlParsed {
@@ -679,9 +683,12 @@ export function parseNfeXml(xmlString: string): NfeXmlParsed {
     let valorIcmsStItem = 0
     let valorFcpStItem = 0
 
+    let pCredSNItem = 0
+    let vCredICMSSNItem = 0
+
     const icmsNode = imposto?.getElementsByTagName('ICMS')[0]
     if (icmsNode && icmsNode.children.length > 0) {
-      const sub = icmsNode.children[0] // ex: <ICMS00> ou <ICMSSN102>
+      const sub = icmsNode.children[0] // ex: <ICMS00> ou <ICMSSN101>
       origem = getNodeText(sub, 'orig') || '0'
       cstIcms = getNodeText(sub, 'CST') || getNodeText(sub, 'CSOSN') || ''
       baseIcmsItem = getNodeNumber(sub, 'vBC')
@@ -691,6 +698,8 @@ export function parseNfeXml(xmlString: string): NfeXmlParsed {
       aliquotaIcmsStItem = getNodeNumber(sub, 'pICMSST')
       valorIcmsStItem = getNodeNumber(sub, 'vST')
       valorFcpStItem = getNodeNumber(sub, 'vFCPST')
+      pCredSNItem = getNodeNumber(sub, 'pCredSN')
+      vCredICMSSNItem = getNodeNumber(sub, 'vCredICMSSN')
     }
 
     // IPI
@@ -792,6 +801,9 @@ export function parseNfeXml(xmlString: string): NfeXmlParsed {
       cClassTrib,
       valorIbs: valorIbsItem,
       valorCbs: valorCbsItem,
+
+      pCredSN: pCredSNItem,
+      vCredICMSSN: vCredICMSSNItem,
     }
   })
 
