@@ -149,26 +149,42 @@ export async function obterUsuarioPorAuthId(authId: string): Promise<Usuario | n
       .getFirstListItem<Usuario>(`auth_user_id = '${authId}'`, {
         expand: 'perfil_id,empresa_padrao_id',
       })
-    salvarUsuarioCacheLocal(res)
-    return res
+    if (res) {
+      salvarUsuarioCacheLocal(res)
+      return res
+    }
   } catch {
     // Fallback: se não encontrou por auth_user_id, tentar pelo email do usuário logado
-    try {
-      const email = pb.authStore.record?.email
-      if (email) {
-        const porEmail = await pb
-          .collection('usuarios')
-          .getFirstListItem<Usuario>(`email = '${email.trim().toLowerCase()}'`, {
-            expand: 'perfil_id,empresa_padrao_id',
-          })
+  }
+
+  try {
+    const email = pb.authStore.record?.email
+    if (email) {
+      const porEmail = await pb
+        .collection('usuarios')
+        .getFirstListItem<Usuario>(`email = '${email.trim().toLowerCase()}'`, {
+          expand: 'perfil_id,empresa_padrao_id',
+        })
+      if (porEmail) {
+        // Se encontramos por e-mail e auth_user_id estava vazio ou desatualizado, auto-vincula
+        if (porEmail.auth_user_id !== authId) {
+          try {
+            await pb.collection('usuarios').update(porEmail.id, {
+              auth_user_id: authId,
+            })
+            porEmail.auth_user_id = authId
+          } catch {
+            // falha não bloqueia
+          }
+        }
         salvarUsuarioCacheLocal(porEmail)
         return porEmail
       }
-    } catch {
-      // Ignora erro no fallback
     }
-    return null
+  } catch {
+    // Ignora erro no fallback
   }
+  return null
 }
 
 export async function criarUsuarioComLogin(dados: {

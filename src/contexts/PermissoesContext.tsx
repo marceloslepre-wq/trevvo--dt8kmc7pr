@@ -47,7 +47,11 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return
     }
 
-    if (!isAuthenticated || !user?.id) {
+    // Se temos login ativo no PocketBase (mesmo se o AuthContext ainda estiver sincronizando user.id)
+    const effectiveAuthId = user?.id || pb.authStore.record?.id
+    const effectiveIsAuth = isAuthenticated || Boolean(pb.authStore.isValid && pb.authStore.record)
+
+    if (!effectiveIsAuth || !effectiveAuthId) {
       setUsuarioERP(null)
       salvarUsuarioCacheLocal(null)
       setPermissoes({})
@@ -57,22 +61,43 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     try {
       setCarregandoInterno(true)
-      const u = await obterUsuarioPorAuthId(user.id)
-      setUsuarioERP(u)
+      const u = await obterUsuarioPorAuthId(effectiveAuthId)
+      if (u) {
+        setUsuarioERP(u)
 
-      if (u && u.perfil_id) {
-        const perms = await obterPermissoesPorPerfil(u.perfil_id)
-        setPermissoes(perms)
+        if (u.perfil_id) {
+          const perms = await obterPermissoesPorPerfil(u.perfil_id)
+          setPermissoes(perms)
+        } else {
+          setPermissoes({})
+        }
       } else {
-        setPermissoes({})
+        // Fallback resiliente: se u veio nulo temporariamente por timeout de rede ou auth recém-criado,
+        // manter o cache anterior se ele existir para evitar flash de permissão negada
+        const cached = obterUsuarioCacheLocal(effectiveAuthId)
+        if (cached) {
+          setUsuarioERP(cached)
+          if (cached.perfil_id) {
+            try {
+              const perms = await obterPermissoesPorPerfil(cached.perfil_id)
+              setPermissoes(perms)
+            } catch {
+              // mantém
+            }
+          }
+        }
       }
     } catch (err) {
       console.error('Erro ao carregar permissões do usuário:', err)
-      setPermissoes({})
+      // Mantém estado de cache se houver falha transitória
+      const cached = obterUsuarioCacheLocal(effectiveAuthId)
+      if (cached && !usuarioERP) {
+        setUsuarioERP(cached)
+      }
     } finally {
       setCarregandoInterno(false)
     }
-  }, [authLoading, isAuthenticated, user?.id])
+  }, [authLoading, isAuthenticated, user?.id, usuarioERP])
 
   useEffect(() => {
     recarregarPermissoes()
@@ -88,6 +113,25 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const administrador = useMemo(() => {
     return Boolean(perfil?.administrador)
   }, [perfil?.administrador])
+
+  // Auto-recuperação resiliente: se o usuário está autenticado mas usuarioERP ainda não foi
+  // resolvido (ex: atraso na rede ou transição de sessão), tenta buscar imediatamente
+  useEffect(() => {
+    if (isAuthenticated && user?.id && !usuarioERP && !carregandoInterno) {
+      obterUsuarioPorAuthId(user.id)
+        .then((u) => {
+          if (u) {
+            setUsuarioERP(u)
+            if (u.perfil_id) {
+              obterPermissoesPorPerfil(u.perfil_id)
+                .then(setPermissoes)
+                .catch(() => {})
+            }
+          }
+        })
+        .catch(() => {})
+    }
+  }, [isAuthenticated, user?.id, usuarioERP, carregandoInterno])
 
   // Se o perfil do usuário ERP já é administrador (inclusive via cache síncrono inicial),
   // não deixamos o estado 'carregando' bloquear guards ou a interface.

@@ -212,8 +212,16 @@ const navItems: NavGroupItem[] = [
     id: 'compras',
     title: 'Compras e entrada de notas',
     icon: ShoppingCart,
-    status: 'soon',
+    status: 'active',
     modulo: 'compras',
+    items: [
+      {
+        title: 'Pedidos de compra',
+        path: '/compras/pedidos',
+        icon: ShoppingCart,
+        modulo: 'compras',
+      },
+    ],
   },
   {
     id: 'financeiro',
@@ -288,9 +296,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const location = useLocation()
   const isCadastrosActive = location.pathname.startsWith('/cadastros')
   const isEstoqueActive = location.pathname.startsWith('/estoque')
+  const isComprasActive = location.pathname.startsWith('/compras')
   const isConfiguracoesActive = location.pathname.startsWith('/configuracoes')
   const [cadastrosOpen, setCadastrosOpen] = useState(true)
   const [estoqueOpen, setEstoqueOpen] = useState(true)
+  const [comprasOpen, setComprasOpen] = useState(true)
   const [configuracoesOpen, setConfiguracoesOpen] = useState(true)
 
   const { pode, administrador } = usePermissoes()
@@ -389,26 +399,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
               return <div key={item.id}>{disabledContent}</div>
             }
 
-            // Grupo com subitens (ex: Cadastros, Estoque, Configurações)
+            // Grupo com subitens (ex: Cadastros, Estoque, Compras, Configurações)
             if (item.items) {
               const isGroupActive =
                 item.id === 'cadastros'
                   ? isCadastrosActive
                   : item.id === 'estoque'
                     ? isEstoqueActive
-                    : isConfiguracoesActive
+                    : item.id === 'compras'
+                      ? isComprasActive
+                      : isConfiguracoesActive
               const isOpen =
                 item.id === 'cadastros'
                   ? cadastrosOpen
                   : item.id === 'estoque'
                     ? estoqueOpen
-                    : configuracoesOpen
+                    : item.id === 'compras'
+                      ? comprasOpen
+                      : configuracoesOpen
               const setOpen =
                 item.id === 'cadastros'
                   ? setCadastrosOpen
                   : item.id === 'estoque'
                     ? setEstoqueOpen
-                    : setConfiguracoesOpen
+                    : item.id === 'compras'
+                      ? setComprasOpen
+                      : setConfiguracoesOpen
 
               if (isCollapsed) {
                 return (

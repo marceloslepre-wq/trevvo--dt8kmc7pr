@@ -230,6 +230,59 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### pedidos_compra
+
+Tabela central de pedidos de compra da Etapa 3 — Compras para reposição de estoque e aquisição de suprimentos de fornecedores.
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório)
+- numero (number, sequencial automático por empresa)
+- fornecedor_id (relation -> fornecedores, obrigatório)
+- comprador_id (relation -> usuarios, opcional)
+- data_emissao (texto/data, ex: "2025-05-15")
+- data_previsao_entrega (texto/data opcional)
+- condicao_pagamento_id (relation -> condicoes_pagamento, opcional)
+- status (select: "Rascunho", "Enviado", "Parcialmente recebido", "Recebido", "Cancelado", obrigatório)
+- valor_produtos (número com 2 casas decimais)
+- valor_desconto (número com 2 casas decimais)
+- valor_frete (número com 2 casas decimais)
+- valor_outras_despesas (número com 2 casas decimais)
+- valor_ipi (número com 2 casas decimais)
+- valor_icms_st (número com 2 casas decimais)
+- valor_total (número com 2 casas decimais)
+- observacao (texto opcional interno)
+- observacao_fornecedor (texto opcional impresso no pedido / PDF)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id`, `fornecedor_id`, `comprador_id`, `status`, par `empresa_id + numero`, `ativo`.
+
+### pedidos_compra_itens
+
+Itens de produtos que compõem o pedido de compra.
+
+- id (text, PK)
+- pedido_id (relation -> pedidos_compra, obrigatório, cascadeDelete)
+- produto_id (relation -> produtos, obrigatório)
+- quantidade (número com 4 casas decimais na unidade do nosso estoque, obrigatório)
+- custo_unitario (número com 4 casas decimais, sugerido pelo ultimo_preco_compra em produtos_fornecedores ou preco_custo)
+- desconto_percentual (número com 2 casas decimais)
+- aliquota_ipi (número com 2 casas decimais)
+- valor_icms_st_estimado (número com 2 casas decimais)
+- valor_total (número com 2 casas decimais: (qtd × custo - desconto) + ipi + icms_st)
+- quantidade_recebida (número com 4 casas decimais, padrão 0 — preenchida na entrada de nota em etapa futura)
+- observacao (texto opcional)
+- ativo (boolean, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `pedido_id`, `produto_id`, `ativo`.
+
 ### lotes
 
 Tabela de controle de lotes e datas de validade por produto e empresa. Bloqueada para criação, edição ou exclusão direta pela aplicação — a alteração do saldo de quantidade é feita SOMENTE pelo serviço central de estoque (`movimentarEstoque` e `estornarMovimento`).
@@ -1466,8 +1519,16 @@ A Etapa 2 (Controle de Estoque e Telas Operacionais) foi oficialmente finalizada
 
 ## Versão Atual do Projeto
 
-**Versão 0.0.24** — Ajustes pontuais pré-Etapa 3:
+**Versão 0.0.25** — Início da Etapa 3 (Compras: Pedido de Compra):
 
-1. Remoção de todo e qualquer e-mail fixo escrito no código para reconhecimento de administradores (front e backend hooks) — administrador é reconhecido exclusivamente pelo perfil `perfis_acesso.administrador = true` ligado ao usuário em `usuarios`, preservando liberação síncrona rápida via cache local e o fallback por e-mail na resolução do vínculo auth -> ERP.
-2. Alinhamento e padronização do campo de controle de lote na ferramenta Verificar Integridade do Estoque (`@/services/integridadeEstoque.ts` e `@/pages/configuracoes/IntegridadeEstoquePage.tsx`) para `controla_lote_validade`, em total conformidade com o schema da tabela de produtos.
-3. Verificação no PocketBase confirmando ausência de conta `admin@erp.local`.
+1. **Ativação de Compras e Entrada de Notas:** Menu ativado com subitem "Pedidos de compra" protegido pela permissão do módulo `compras` (`ver`, `criar`, `editar`, `excluir`). Demais subitens de Compras mantidos com badge "Em breve".
+2. **Novas Tabelas Criadas:** `pedidos_compra` e `pedidos_compra_itens` com campos completos, numeração sequencial automática por empresa e documentadas na seção "Tabelas" do PROJETO_ERP.md.
+3. **Módulo de Pedidos de Compra (`/compras/pedidos`):**
+   - Listagem com filtros por status, fornecedor, comprador, período e busca rápida, cálculo de total e % recebido, exportação CSV e paginação.
+   - Formulário completo com cabeçalho (fornecedor sugerindo condição cadastrada, comprador, datas, `<SelectCondicaoPagamento uso="Compras" />`), grade de itens com bipagem de código de barras GTIN (`<BuscaProdutoGtin />`), saldos e mínimos/máximos da filial, e totais no rodapé (produtos, descontos, frete, outras despesas, IPI, ICMS ST e total).
+   - Fluxo de status com regras estritas: "Enviar" (Rascunho -> Enviado), "Reabrir" (Enviado -> Rascunho para edição), "Cancelar" (apenas antes de recebimento, com motivo e auditoria), "Duplicar" (gera novo Rascunho) e "Imprimir/PDF" com layout limpo contendo dados da empresa, fornecedor, itens e observações.
+4. **Geração a partir da Sugestão de Reposição de Estoque:**
+   - Na tela Estoque > Sugestão de Compra, inclusão de caixas de seleção por item e fornecedor, edição de quantidades sugeridas e botão "Gerar pedidos de compra" que cria atomicamente os pedidos em Rascunho agrupados por fornecedor principal.
+5. **Auditoria Centralizada:** Gravação em `logs_auditoria` para inclusão, alteração, envio, reabertura, cancelamento e duplicação de pedidos.
+6. **Diagnóstico e Correção Estrutural do PermissaoGuard:**
+   - Correção do fallback e do estado de transição no `PermissoesContext` e `PermissaoGuard`: eliminação de renders vazios durante revalidação ou atraso na resolução do usuário ERP através de auto-recuperação resiliente e feedback visual de carregamento acessível (`permissao-guard-loading`), assegurando que rotas como `/cadastros/tabelas-fiscais/ncm` sempre renderizem conteúdo para o administrador (`perfis_acesso.administrador = true`).

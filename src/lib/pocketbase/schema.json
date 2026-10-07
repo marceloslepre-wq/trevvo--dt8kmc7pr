@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T19:33:35.848Z",
+  "generatedAt": "2026-10-07T20:29:28.677Z",
   "collections": [
     {
       "name": "users",
@@ -4635,6 +4635,282 @@
         "CREATE INDEX idx_inv_itens_prod ON inventarios_itens (produto_id)",
         "CREATE INDEX idx_inv_itens_lote ON inventarios_itens (lote_id)",
         "CREATE INDEX idx_inv_itens_ativo ON inventarios_itens (ativo)"
+      ]
+    },
+    {
+      "name": "pedidos_compra",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "numero",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "fornecedor_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "fornecedores"
+        },
+        {
+          "name": "comprador_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "data_emissao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_previsao_entrega",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "condicao_pagamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "condicoes_pagamento"
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Rascunho", "Enviado", "Parcialmente recebido", "Recebido", "Cancelado"]
+        },
+        {
+          "name": "valor_produtos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_desconto",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_frete",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_outras_despesas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_icms_st",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao_fornecedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_pedidos_compra_empresa ON pedidos_compra (empresa_id)",
+        "CREATE INDEX idx_pedidos_compra_fornecedor ON pedidos_compra (fornecedor_id)",
+        "CREATE INDEX idx_pedidos_compra_comprador ON pedidos_compra (comprador_id)",
+        "CREATE INDEX idx_pedidos_compra_status ON pedidos_compra (status)",
+        "CREATE INDEX idx_pedidos_compra_emp_num ON pedidos_compra (empresa_id, numero)",
+        "CREATE INDEX idx_pedidos_compra_ativo ON pedidos_compra (ativo)"
+      ]
+    },
+    {
+      "name": "pedidos_compra_itens",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "pedido_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "pedidos_compra"
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "quantidade",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "custo_unitario",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "desconto_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_icms_st_estimado",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quantidade_recebida",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_pedidos_itens_pedido ON pedidos_compra_itens (pedido_id)",
+        "CREATE INDEX idx_pedidos_itens_produto ON pedidos_compra_itens (produto_id)",
+        "CREATE INDEX idx_pedidos_itens_ativo ON pedidos_compra_itens (ativo)"
       ]
     }
   ]

@@ -39,6 +39,8 @@ import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import ConfiguracoesGeralPage from '@/pages/configuracoes/ConfiguracoesGeralPage'
 import IntegridadeEstoquePage from '@/pages/configuracoes/IntegridadeEstoquePage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
+import PedidosCompraListaPage from '@/pages/compras/PedidosCompraListaPage'
+import PedidoCompraFormPage from '@/pages/compras/PedidoCompraFormPage'
 import PosicaoEstoquePage from '@/pages/estoque/PosicaoEstoquePage'
 import SugestaoCompraPage from '@/pages/estoque/SugestaoCompraPage'
 import KardexPage from '@/pages/estoque/KardexPage'
@@ -359,6 +361,41 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="estoque" acao="ver">
                         <PosicaoEstoquePage />
+                      </PermissaoGuard>
+                    }
+                  />
+
+                  {/* Etapa 3: Compras */}
+                  <Route path="/compras" element={<Navigate to="/compras/pedidos" replace />} />
+                  <Route
+                    path="/compras/pedidos"
+                    element={
+                      <PermissaoGuard modulo="compras" acao="ver">
+                        <PedidosCompraListaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/compras/pedidos/novo"
+                    element={
+                      <PermissaoGuard modulo="compras" acao="criar">
+                        <PedidoCompraFormPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/compras/pedidos/:id"
+                    element={
+                      <PermissaoGuard modulo="compras" acao="ver">
+                        <PedidoCompraFormPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/compras/pedidos/:id/editar"
+                    element={
+                      <PermissaoGuard modulo="compras" acao="editar">
+                        <PedidoCompraFormPage />
                       </PermissaoGuard>
                     }
                   />
