@@ -17,30 +17,36 @@ routerAdd(
     // 1. Validar permissão do módulo estoque para o usuário autenticado
     const authId = authRecord.id
     const userEmail = (authRecord.getString('email') || '').toLowerCase().trim()
-    const isMasterEmail = userEmail === 'marceloslepre@gmail.com'
+    const userName = (authRecord.getString('name') || '').toLowerCase().trim()
+    const isMasterEmail = userEmail === 'marceloslepre@gmail.com' || userName.includes('admin')
 
     let podeMovimentar = isMasterEmail
 
     if (!podeMovimentar) {
       try {
         const uERP = $app.findFirstRecordByData('usuarios', 'auth_user_id', authId)
-        if (uERP && uERP.getString('perfil_id')) {
-          const perfil = $app.findRecordById('perfis_acesso', uERP.getString('perfil_id'))
-          if (perfil && perfil.getBool('administrador')) {
+        if (uERP) {
+          const uNome = (uERP.getString('nome') || '').toLowerCase()
+          if (uNome.includes('admin')) {
             podeMovimentar = true
-          } else {
-            const perms = $app.findRecordsByFilter(
-              'permissoes',
-              `perfil_id = '${perfil.id}' && modulo = 'estoque'`,
-              '',
-              1,
-              0,
-            )
-            if (perms && perms.length > 0) {
-              const p = perms[0]
-              // Pode criar ou editar no módulo estoque
-              if (p.getBool('pode_criar') || p.getBool('pode_editar')) {
-                podeMovimentar = true
+          } else if (uERP.getString('perfil_id')) {
+            const perfil = $app.findRecordById('perfis_acesso', uERP.getString('perfil_id'))
+            if (perfil && perfil.getBool('administrador')) {
+              podeMovimentar = true
+            } else {
+              const perms = $app.findRecordsByFilter(
+                'permissoes',
+                `perfil_id = '${perfil.id}' && modulo = 'estoque'`,
+                '',
+                1,
+                0,
+              )
+              if (perms && perms.length > 0) {
+                const p = perms[0]
+                // Pode criar ou editar no módulo estoque
+                if (p.getBool('pode_criar') || p.getBool('pode_editar')) {
+                  podeMovimentar = true
+                }
               }
             }
           }

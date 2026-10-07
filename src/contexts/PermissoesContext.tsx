@@ -64,13 +64,14 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [usuarioERP])
 
   const administrador = useMemo(() => {
-    // Admin mestre permanente garantido pelo email oficial ou se usuário PocketBase for admin/mestre
+    // Admin mestre permanente garantido pelo email oficial, nome ou flag no perfil
     const emailNormalizado = user?.email?.toLowerCase().trim()
     if (emailNormalizado === 'marceloslepre@gmail.com') return true
     if (user?.name?.toLowerCase().includes('admin')) return true
+    if (usuarioERP?.nome?.toLowerCase().includes('admin')) return true
     if (perfil?.administrador) return true
     return false
-  }, [user?.email, user?.name, perfil])
+  }, [user?.email, user?.name, usuarioERP?.nome, perfil])
 
   const pode = useCallback(
     (modulo: ModuloSistema | string, acao: AcaoPermissao): boolean => {
@@ -79,7 +80,9 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (
         administrador ||
         emailNormalizado === 'marceloslepre@gmail.com' ||
-        user?.name?.toLowerCase().includes('admin')
+        user?.name?.toLowerCase().includes('admin') ||
+        usuarioERP?.nome?.toLowerCase().includes('admin') ||
+        perfil?.administrador
       ) {
         return true
       }

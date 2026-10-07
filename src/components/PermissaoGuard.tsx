@@ -23,7 +23,7 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     return <>{children}</>
   }
 
-  // 2. Se a permissão já foi checada e concedida mesmo antes de concluir carregamentos secundários
+  // 2. Se a permissão já foi checada e concedida
   if (pode(modulo, acao)) {
     return <>{children}</>
   }
@@ -32,7 +32,7 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
   if (carregando) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-slate-500 text-sm">
-        <div className="h-7 w-7 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3" />
+        <div className="h-7 w-7 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
         <p className="font-medium text-slate-700">Carregando permissões...</p>
         <p className="text-xs text-slate-400 mt-1">
           Aguarde um instante enquanto validamos seu acesso.
