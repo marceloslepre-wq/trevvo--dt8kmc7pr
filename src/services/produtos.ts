@@ -429,10 +429,10 @@ export interface PendenciaFiscalInfo {
 export function verificarPendenciasFiscaisProduto(
   p: Produto,
   regimeEmpresa?: 'Simples Nacional' | 'Regime Normal',
+  temCestSugeridoPendente = false,
 ): PendenciaFiscalInfo {
   const motivos: string[] = []
   let semNcm = false
-  const semCestSugerido = false
   let semTributacaoIcms = false
   let semPisCofins = false
   const naoRevisado = !p.fiscal_revisado
@@ -468,6 +468,10 @@ export function verificarPendenciasFiscaisProduto(
     if (!p.cfop_venda_interna || !p.cfop_venda_interna.trim()) {
       motivos.push('Sem CFOP de venda interna')
     }
+
+    if (temCestSugeridoPendente) {
+      motivos.push('Sem CEST sugerido para a NCM')
+    }
   }
 
   if (naoRevisado) {
@@ -478,11 +482,134 @@ export function verificarPendenciasFiscaisProduto(
     temPendencia: motivos.length > 0,
     motivos,
     semNcm,
-    semCestSugerido,
+    semCestSugerido: temCestSugeridoPendente,
     semTributacaoIcms,
     semPisCofins,
     naoRevisado,
   }
+}
+
+/**
+ * Extrai os campos fiscais de um Perfil Tributário Completo para serem aplicados a um produto.
+ * Reaproveita rigorosamente a mesma regra implementada na aba Fiscal do cadastro de produtos.
+ */
+export function extrairCamposFiscaisDoPerfil(perfil: any): Partial<Produto> {
+  const novosCampos: Partial<Produto> = {
+    perfil_tributario_id: perfil.id,
+  }
+
+  // Origem, tipo item sped e c_benef vêm do cabeçalho do perfil
+  if (perfil.origem_padrao) novosCampos.origem = perfil.origem_padrao
+  if (perfil.tipo_item_sped_padrao) novosCampos.tipo_item_sped = perfil.tipo_item_sped_padrao
+  if (perfil.c_benef) novosCampos.c_benef = perfil.c_benef
+
+  // Regras dos cenários
+  const regras = Array.isArray(perfil.regras) ? perfil.regras : []
+  const regraVendaInternaConsumidor = regras.find(
+    (r: any) => r.cenario === 'VENDA_INTERNA_CONSUMIDOR',
+  )
+  const regraVendaInternaContribuinte = regras.find(
+    (r: any) => r.cenario === 'VENDA_INTERNA_CONTRIBUINTE',
+  )
+  const regraVendaInterestadualContribuinte = regras.find(
+    (r: any) => r.cenario === 'VENDA_INTERESTADUAL_CONTRIBUINTE',
+  )
+  const regraCompraInterna = regras.find((r: any) => r.cenario === 'COMPRA_INTERNA')
+  const regraCompraInterestadual = regras.find((r: any) => r.cenario === 'COMPRA_INTERESTADUAL')
+
+  // CFOPs especificados
+  const cfopVendaInterna =
+    regraVendaInternaConsumidor?.expand?.cfop?.codigo ||
+    regraVendaInternaConsumidor?.cfop ||
+    regraVendaInternaContribuinte?.expand?.cfop?.codigo ||
+    regraVendaInternaContribuinte?.cfop
+  if (cfopVendaInterna) novosCampos.cfop_venda_interna = cfopVendaInterna
+
+  const cfopVendaInterestadual =
+    regraVendaInterestadualContribuinte?.expand?.cfop?.codigo ||
+    regraVendaInterestadualContribuinte?.cfop
+  if (cfopVendaInterestadual) novosCampos.cfop_venda_interestadual = cfopVendaInterestadual
+
+  const cfopCompraInterna = regraCompraInterna?.expand?.cfop?.codigo || regraCompraInterna?.cfop
+  if (cfopCompraInterna) novosCampos.cfop_compra_interna = cfopCompraInterna
+
+  const cfopCompraInterestadual =
+    regraCompraInterestadual?.expand?.cfop?.codigo || regraCompraInterestadual?.cfop
+  if (cfopCompraInterestadual) novosCampos.cfop_compra_interestadual = cfopCompraInterestadual
+
+  // Regra prioritária para impostos: VENDA_INTERNA_CONSUMIDOR (ou primeiro cenário de venda)
+  const regraImpostos =
+    regraVendaInternaConsumidor ||
+    regraVendaInternaContribuinte ||
+    regraVendaInterestadualContribuinte ||
+    regras[0]
+
+  if (regraImpostos) {
+    // ICMS
+    if (regraImpostos.cst_icms !== undefined) novosCampos.cst_icms = regraImpostos.cst_icms
+    if (regraImpostos.csosn !== undefined) novosCampos.csosn = regraImpostos.csosn
+    if (regraImpostos.mod_bc_icms !== undefined) novosCampos.mod_bc_icms = regraImpostos.mod_bc_icms
+    if (regraImpostos.aliquota_icms !== undefined)
+      novosCampos.aliquota_icms = regraImpostos.aliquota_icms
+    if (regraImpostos.reducao_bc_icms_percentual !== undefined)
+      novosCampos.reducao_bc_icms_percentual = regraImpostos.reducao_bc_icms_percentual
+    if (regraImpostos.aliquota_fcp !== undefined)
+      novosCampos.aliquota_fcp = regraImpostos.aliquota_fcp
+
+    // ICMS ST
+    if (regraImpostos.mod_bc_icms_st !== undefined)
+      novosCampos.mod_bc_icms_st = regraImpostos.mod_bc_icms_st
+    if (regraImpostos.mva_percentual !== undefined)
+      novosCampos.mva_percentual = regraImpostos.mva_percentual
+    if (regraImpostos.reducao_bc_icms_st_percentual !== undefined)
+      novosCampos.reducao_bc_icms_st_percentual = regraImpostos.reducao_bc_icms_st_percentual
+    if (regraImpostos.aliquota_icms_st !== undefined)
+      novosCampos.aliquota_icms_st = regraImpostos.aliquota_icms_st
+    if (regraImpostos.aliquota_fcp_st !== undefined)
+      novosCampos.aliquota_fcp_st = regraImpostos.aliquota_fcp_st
+
+    // Diferimento / desoneração
+    if (regraImpostos.percentual_diferimento !== undefined)
+      novosCampos.percentual_diferimento = regraImpostos.percentual_diferimento
+    if (regraImpostos.motivo_desoneracao !== undefined)
+      novosCampos.motivo_desoneracao = regraImpostos.motivo_desoneracao
+
+    // IPI
+    if (regraImpostos.cst_ipi !== undefined) novosCampos.cst_ipi_saida = regraImpostos.cst_ipi
+    if (regraImpostos.codigo_enquadramento_ipi !== undefined)
+      novosCampos.codigo_enquadramento_ipi = regraImpostos.codigo_enquadramento_ipi
+    if (regraImpostos.aliquota_ipi !== undefined)
+      novosCampos.aliquota_ipi = regraImpostos.aliquota_ipi
+
+    // PIS / COFINS
+    if (regraImpostos.cst_pis !== undefined) novosCampos.cst_pis_saida = regraImpostos.cst_pis
+    if (regraImpostos.aliquota_pis !== undefined)
+      novosCampos.aliquota_pis = regraImpostos.aliquota_pis
+    if (regraImpostos.cst_cofins !== undefined)
+      novosCampos.cst_cofins_saida = regraImpostos.cst_cofins
+    if (regraImpostos.aliquota_cofins !== undefined)
+      novosCampos.aliquota_cofins = regraImpostos.aliquota_cofins
+    if (regraImpostos.natureza_receita_pis_cofins !== undefined)
+      novosCampos.natureza_receita_pis_cofins = regraImpostos.natureza_receita_pis_cofins
+
+    // IBS / CBS
+    if (regraImpostos.cst_ibs_cbs !== undefined) novosCampos.cst_ibs_cbs = regraImpostos.cst_ibs_cbs
+    if (regraImpostos.c_class_trib !== undefined)
+      novosCampos.c_class_trib = regraImpostos.c_class_trib
+    if (regraImpostos.aliquota_ibs_uf !== undefined)
+      novosCampos.aliquota_ibs_uf = regraImpostos.aliquota_ibs_uf
+    if (regraImpostos.aliquota_ibs_municipio !== undefined)
+      novosCampos.aliquota_ibs_municipio = regraImpostos.aliquota_ibs_municipio
+    if (regraImpostos.aliquota_cbs !== undefined)
+      novosCampos.aliquota_cbs = regraImpostos.aliquota_cbs
+    if (regraImpostos.reducao_ibs_cbs_percentual !== undefined)
+      novosCampos.reducao_ibs_cbs_percentual = regraImpostos.reducao_ibs_cbs_percentual
+  }
+
+  // Toda alteração fiscal zera a revisão
+  novosCampos.fiscal_revisado = false
+
+  return novosCampos
 }
 
 export function produtoTemFiscalIncompleto(

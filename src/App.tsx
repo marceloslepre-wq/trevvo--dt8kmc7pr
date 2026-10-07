@@ -41,6 +41,7 @@ import FornecedoresLista from '@/pages/cadastros/FornecedoresLista'
 import FornecedorForm from '@/pages/cadastros/FornecedorForm'
 import ProdutosLista from '@/pages/cadastros/ProdutosLista'
 import ProdutoForm from '@/pages/cadastros/ProdutoForm'
+import ConferenciaFiscalPage from '@/pages/cadastros/ConferenciaFiscalPage'
 
 const App = () => (
   <BrowserRouter>
@@ -225,6 +226,14 @@ const App = () => (
                   element={
                     <PermissaoGuard modulo="produtos" acao="ver">
                       <ProdutosLista />
+                    </PermissaoGuard>
+                  }
+                />
+                <Route
+                  path="/cadastros/produtos/conferencia"
+                  element={
+                    <PermissaoGuard modulo="produtos" acao="ver">
+                      <ConferenciaFiscalPage />
                     </PermissaoGuard>
                   }
                 />

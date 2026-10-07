@@ -16,13 +16,17 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
   children,
   fallback,
 }) => {
-  const { pode, carregando } = usePermissoes()
+  const { pode, carregando, administrador } = usePermissoes()
 
-  if (carregando) {
+  // Se o usuário já é reconhecido como administrador de imediato, libera sem esperar
+  if (!administrador && carregando) {
     return (
-      <div className="flex items-center justify-center p-12 text-slate-500 text-sm">
-        <div className="h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-3" />
-        Verificando permissões de acesso...
+      <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-slate-500 text-sm">
+        <div className="h-7 w-7 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="font-medium text-slate-700">Carregando permissões...</p>
+        <p className="text-xs text-slate-400 mt-1">
+          Aguarde um instante enquanto validamos seu acesso.
+        </p>
       </div>
     )
   }

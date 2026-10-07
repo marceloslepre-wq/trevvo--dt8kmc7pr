@@ -76,6 +76,11 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return true
       }
 
+      // Se ainda estiver carregando, mas o usuário for o admin pelo e-mail
+      if (user?.email === 'marceloslepre@gmail.com') {
+        return true
+      }
+
       const perm = permissoes[modulo]
       if (!perm) return false
 

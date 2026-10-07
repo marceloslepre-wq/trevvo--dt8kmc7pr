@@ -97,6 +97,12 @@ const navItems: NavGroupItem[] = [
         modulo: 'fornecedores',
       },
       { title: 'Produtos', path: '/cadastros/produtos', icon: Box, modulo: 'produtos' },
+      {
+        title: 'Conferência fiscal',
+        path: '/cadastros/produtos/conferencia',
+        icon: FileCheck,
+        modulo: 'produtos',
+      },
       { title: 'Marcas', path: '/cadastros/marcas', icon: Tag, modulo: 'marcas' },
       {
         title: 'Grupos e categorias',

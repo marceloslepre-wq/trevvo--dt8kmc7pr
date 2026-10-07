@@ -578,13 +578,23 @@ export const ProdutosLista: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => navigate('/cadastros/produtos/conferencia')}
+            className="text-xs h-9 border-blue-200 text-blue-700 hover:bg-blue-50 bg-blue-50/40"
+            title="Abrir tela de conferência fiscal em massa"
+          >
+            <CheckSquare size={14} className="mr-1.5 text-blue-600" />
+            Conferência fiscal
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
             onClick={exportarCSV}
             className="text-xs h-9 border-slate-200 text-slate-700 hover:bg-slate-100"
           >
             <Download size={14} className="mr-1.5" />
             Exportar CSV
           </Button>
-
           {podeCriar && (
             <>
               <Button
