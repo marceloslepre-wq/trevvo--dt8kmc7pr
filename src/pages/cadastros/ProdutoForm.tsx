@@ -91,9 +91,9 @@ export const ProdutoForm: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
 
   // Determinar regime da empresa ativa
-  const crtEmpresaAtiva = empresaAtiva?.regime_tributario || '1'
+  const crtEmpresaAtiva = empresaAtiva?.crt ?? 1
   const regimeEmpresaAtiva: 'Simples Nacional' | 'Regime Normal' =
-    crtEmpresaAtiva === '3' ? 'Regime Normal' : 'Simples Nacional'
+    crtEmpresaAtiva === 3 ? 'Regime Normal' : 'Simples Nacional'
 
   const podeSalvar = ehEdicao ? pode('produtos', 'editar') : pode('produtos', 'criar')
 
@@ -442,8 +442,8 @@ export const ProdutoForm: React.FC = () => {
         title: ignorarValidacoesFiscais
           ? 'Salvo como rascunho fiscal'
           : ehEdicao
-          ? 'Produto atualizado'
-          : 'Produto cadastrado',
+            ? 'Produto atualizado'
+            : 'Produto cadastrado',
         description: ignorarValidacoesFiscais
           ? `O produto "${salvo.descricao}" foi salvo como rascunho com o selo "Fiscal incompleto".`
           : `O produto "${salvo.descricao}" (Código #${salvo.codigo}) foi salvo com sucesso.`,
@@ -472,33 +472,6 @@ export const ProdutoForm: React.FC = () => {
 
   const handleSalvarComoRascunho = async () => {
     await executarSalvar(true)
-  }
-    try {
-      const salvo = await salvarProduto({
-        ...formData,
-        fotoArquivo,
-        fotosAdicionaisArquivos: fotosAdicionais,
-      })
-
-      toast({
-        title: ehEdicao ? 'Produto atualizado' : 'Produto cadastrado',
-        description: `O produto "${salvo.descricao}" (Código #${salvo.codigo}) foi salvo com sucesso.`,
-      })
-
-      if (!ehEdicao) {
-        navigate(`/cadastros/produtos/${salvo.id}/editar`)
-      } else {
-        carregarProduto(salvo.id)
-      }
-    } catch (err: unknown) {
-      toast({
-        title: 'Erro ao salvar produto',
-        description: err instanceof Error ? err.message : 'Falha ao gravar no banco',
-        variant: 'destructive',
-      })
-    } finally {
-      setSalvando(false)
-    }
   }
 
   // Duplicar produto

@@ -37,7 +37,12 @@ import { SelectNcm } from '@/components/SelectNcm'
 import { SelectCest } from '@/components/SelectCest'
 import { SelectCfop } from '@/components/SelectCfop'
 import { SelectCodigoFiscal } from '@/components/SelectCodigoFiscal'
-import { sugerirCestPorNcm } from '@/services/cest'
+import {
+  sugerirCestPorNcm,
+  obterCestPorCodigo,
+  ncmCorrespondeAoCest,
+  formatarCodigoCest,
+} from '@/services/cest'
 import {
   obterPerfilTributarioCompleto,
   PerfilTributarioCompleto,
@@ -45,12 +50,71 @@ import {
 import { obterGrupo } from '@/services/gruposCategorias'
 import { Produto } from '@/services/produtos'
 
+// Componente auxiliar para validação e aviso de incompatibilidade entre CEST e NCM
+function AvisoCompatibilidadeCestNcm({ cest, ncm }: { cest: string; ncm: string }) {
+  const [incompativel, setIncompativel] = useState(false)
+  const [carregando, setCarregando] = useState(false)
+
+  useEffect(() => {
+    let cancelado = false
+    const ncmLimpo = ncm.replace(/\D/g, '')
+    const cestLimpo = cest.replace(/\D/g, '')
+
+    if (!ncmLimpo || !cestLimpo) {
+      setIncompativel(false)
+      return
+    }
+
+    setCarregando(true)
+    obterCestPorCodigo(cestLimpo)
+      .then((cestObj) => {
+        if (cancelado) return
+        if (!cestObj) {
+          setIncompativel(false)
+          return
+        }
+        // Se tem lista de NCMs associados, checa se o NCM bate
+        if (cestObj.ncm_codigos && cestObj.ncm_codigos.trim()) {
+          const bate = ncmCorrespondeAoCest(ncmLimpo, cestObj.ncm_codigos)
+          setIncompativel(!bate)
+        } else {
+          setIncompativel(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelado) setIncompativel(false)
+      })
+      .finally(() => {
+        if (!cancelado) setCarregando(false)
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [cest, ncm])
+
+  if (carregando || !incompativel) return null
+
+  return (
+    <div className="flex items-start gap-1.5 p-2 mt-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 mt-0.5" />
+      <div>
+        <strong className="font-semibold block">Atenção: CEST possivelmente incompatível</strong>
+        <span>
+          O CEST {formatarCodigoCest(cest)} não lista o NCM {ncm} na sua tabela de enquadramentos legais.
+          Verifique com a contabilidade se este produto está sujeito a Substituição Tributária.
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export interface ProdutoAbaFiscalProps {
   formData: Partial<Produto>
   onChangeCampo: (campo: keyof Produto, valor: any) => void
   onMudarCamposEmLote: (campos: Partial<Produto>) => void
   regimeEmpresaAtiva: 'Simples Nacional' | 'Regime Normal'
-  crtEmpresaAtiva: string // '1', '2', '3', '4'
+  crtEmpresaAtiva: number | string // 1, 2, 3, 4
   tipoItemProduto: 'Produto' | 'Serviço' | 'Kit'
   grupoId?: string
   erros?: Record<string, string>
@@ -86,7 +150,8 @@ export function ProdutoAbaFiscal({
   const [aliquotaIpiNcmSugerida, setAliquotaIpiNcmSugerida] = useState<number | null>(null)
 
   // Seção IPI recolhida para não contribuinte
-  const empresaNaoContribuinteIpi = crtEmpresaAtiva === '1' || crtEmpresaAtiva === '2' // Simples Nacional costuma não ser contribuinte de IPI padrão
+  const empresaNaoContribuinteIpi =
+    String(crtEmpresaAtiva) === '1' || String(crtEmpresaAtiva) === '2' // Simples Nacional costuma não ser contribuinte de IPI padrão
   const [blocoIpiExpandido, setBlocoIpiExpandido] = useState(!empresaNaoContribuinteIpi)
 
   // 1. Sugestão de Perfil Padrão do Grupo quando o produto não tem perfil
@@ -321,7 +386,8 @@ export function ProdutoAbaFiscal({
 
   // Sugestões padrão de PIS/COFINS conforme CRT da empresa
   const aplicarSugestoesPisCofinsEmpresa = () => {
-    if (crtEmpresaAtiva === '1' || crtEmpresaAtiva === '2' || crtEmpresaAtiva === '4') {
+    const crtStr = String(crtEmpresaAtiva)
+    if (crtStr === '1' || crtStr === '2' || crtStr === '4') {
       // Simples Nacional: CST saída 49, entrada 98, alíquotas 0
       onMudarCamposEmLote({
         cst_pis_saida: '49',
@@ -494,10 +560,10 @@ export function ProdutoAbaFiscal({
                 onChange={(cod, ncmObj) => {
                   handleChangeFiscal('ncm', cod)
                   if (
-                    ncmObj?.aliquota_nacional &&
+                    ncmObj?.aliquota_ipi &&
                     (!formData.aliquota_ipi || formData.aliquota_ipi === 0)
                   ) {
-                    setAliquotaIpiNcmSugerida(ncmObj.aliquota_nacional)
+                    setAliquotaIpiNcmSugerida(ncmObj.aliquota_ipi)
                   }
                 }}
                 placeholder="Busque por código ou descrição da NCM..."
@@ -525,7 +591,7 @@ export function ProdutoAbaFiscal({
               <SelectCest
                 value={formData.cest}
                 onChange={(cod) => handleChangeFiscal('cest', cod)}
-                ncmFiltro={formData.ncm}
+                ncmVinculado={formData.ncm}
                 placeholder="Selecione o CEST..."
               />
               {cestSugeridoAviso && !formData.cest && (
@@ -533,6 +599,10 @@ export function ProdutoAbaFiscal({
                   <AlertTriangle className="h-3 w-3 shrink-0" />
                   <span className="truncate">{cestSugeridoAviso}</span>
                 </div>
+              )}
+              {/* Aviso se CEST preenchido for incompatível com o NCM selecionado */}
+              {Boolean(formData.cest && formData.ncm) && (
+                <AvisoCompatibilidadeCestNcm cest={formData.cest!} ncm={formData.ncm!} />
               )}
               {erros.cest && (
                 <span className="text-[11px] text-rose-600 block mt-1">{erros.cest}</span>
@@ -736,8 +806,7 @@ export function ProdutoAbaFiscal({
                 <SelectCfop
                   value={formData.cfop_venda_interna}
                   onChange={(cod) => handleChangeFiscal('cfop_venda_interna', cod)}
-                  filtroTipo="Saída"
-                  filtroAbrangencia="Estadual"
+                  tipoMovimento="Saída"
                   placeholder="Ex: 5102 - Venda de mercadoria..."
                 />
                 {erros.cfop_venda_interna && (
@@ -754,8 +823,7 @@ export function ProdutoAbaFiscal({
                 <SelectCfop
                   value={formData.cfop_venda_interestadual}
                   onChange={(cod) => handleChangeFiscal('cfop_venda_interestadual', cod)}
-                  filtroTipo="Saída"
-                  filtroAbrangencia="Interestadual"
+                  tipoMovimento="Saída"
                   placeholder="Ex: 6102 - Venda interestadual..."
                 />
                 {erros.cfop_venda_interestadual && (
@@ -779,8 +847,7 @@ export function ProdutoAbaFiscal({
                 <SelectCfop
                   value={formData.cfop_compra_interna}
                   onChange={(cod) => handleChangeFiscal('cfop_compra_interna', cod)}
-                  filtroTipo="Entrada"
-                  filtroAbrangencia="Estadual"
+                  tipoMovimento="Entrada"
                   placeholder="Ex: 1102 - Compra para comercialização..."
                 />
                 {erros.cfop_compra_interna && (
@@ -797,8 +864,7 @@ export function ProdutoAbaFiscal({
                 <SelectCfop
                   value={formData.cfop_compra_interestadual}
                   onChange={(cod) => handleChangeFiscal('cfop_compra_interestadual', cod)}
-                  filtroTipo="Entrada"
-                  filtroAbrangencia="Interestadual"
+                  tipoMovimento="Entrada"
                   placeholder="Ex: 2102 - Compra interestadual..."
                 />
                 {erros.cfop_compra_interestadual && (
