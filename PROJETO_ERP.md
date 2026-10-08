@@ -1694,6 +1694,7 @@ Tabela de parametrização financeira individualizada por empresa/filial, com í
 - plano_descontos_concedidos_id (relation -> plano_contas, conta analítica padrão para descontos concedidos)
 - plano_transferencias_id (relation -> plano_contas, conta analítica padrão para transferências financeiras)
 - centro_custo_padrao_id (relation -> centros_custo, centro de custo padrão da empresa)
+- dias_tolerancia_bloqueio (número inteiro, padrão 5 — tolerância de atraso para crédito e bloqueio do cliente)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
@@ -1771,15 +1772,64 @@ Cabeçalho de agrupamento de pagamentos efetuados em lote ou individualmente.
 
 ---
 
+### contas_receber
+
+Tabela central de títulos e direitos creditórios a receber do ERP, individualizada por empresa/filial (`empresa_id`) e espelho transacional de contas_pagar.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- excluido (boolean, padrão false — exclusão lógica)
+- empresa_id (relation -> empresas, obrigatório)
+- cliente_id (relation -> clientes, obrigatório)
+- numero_documento (text, obrigatório — número da fatura, pedido, NF ou recibo)
+- parcela (text, padrão '1/1' — formato '1/3', '2/3', etc.)
+- parcela_numero (número inteiro, padrão 1)
+- total_parcelas (número inteiro, padrão 1)
+- descricao (text, obrigatório — descrição do recebimento)
+- data_emissao (date, YYYY-MM-DD, obrigatório)
+- data_vencimento (date, YYYY-MM-DD, obrigatório)
+- data_competencia (date, YYYY-MM-DD, padrão data_emissao)
+- data_recebimento (date, YYYY-MM-DD, preenchido quando status = 'Recebido')
+- valor_original (número monetário, 2 casas, obrigatório > 0)
+- valor_recebido (número monetário, 2 casas, padrão 0 — amortizações ativas)
+- saldo (número monetário, 2 casas, padrão valor_original)
+- status (select: 'Aberto', 'Parcial', 'Recebido', 'Cancelado', padrão 'Aberto')
+- plano_conta_id (relation -> plano_contas, analítica de Receita ou Sem resultado, obrigatório)
+- centro_custo_id (relation -> centros_custo, opcional)
+- forma_pagamento_prevista_id (relation -> formas_pagamento, opcional)
+- origem (select: 'Manual', 'Venda', 'PDV', 'Recorrência', 'Outro', padrão 'Manual')
+- origem_id (text, opcional — ID da venda, pedido ou contrato de origem)
+- recorrencia_id (text, opcional — UUID que agrupa títulos da mesma recorrência mensal)
+- recorrencia_numero (número inteiro, opcional — parcela recorrente 1..N)
+- recorrencia_total (número inteiro, opcional — total de meses contratados)
+- observacao (text, opcional)
+- motivo_cancelamento (text, opcional)
+- cancelado_em (date/text, opcional)
+- cancelado_por (relation -> users, opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. Atualizações de `valor_recebido`, `saldo` e `status` ocorrem estritamente via serviço central de recebimentos (`/financeiro/receber/baixar`, `/financeiro/receber/estornar-recebimento`) ou cancelamento.
+2. Título com recebimentos ativos não pode ser cancelado diretamente: exige estorno prévio das baixas.
+3. Índices rápidos: `empresa_id + cliente_id + status`, `empresa_id + data_vencimento`, `empresa_id + status`.
+
+---
+
 ### pagamentos_baixas
 
-Registro analítico individual de cada baixa/amortização de um título a pagar.
+Registro analítico individual de cada baixa/amortização de um título a pagar ou a receber.
 
 - id (text, PK)
 - ativo (boolean, padrão true)
 - empresa_id (relation -> empresas, obrigatório)
-- conta_pagar_id (relation -> contas_pagar, obrigatório)
-- lote_pagamento_id (relation -> pagamentos_lotes, obrigatório)
+- tipo_operacao (select: 'Pagar' | 'Receber', padrão 'Pagar')
+- conta_pagar_id (relation -> contas_pagar, opcional quando tipo_operacao='Receber')
+- conta_receber_id (relation -> contas_receber, opcional quando tipo_operacao='Pagar')
+- lote_pagamento_id / lote_id (relation -> pagamentos_lotes, opcional)
 - conta_financeira_id (relation -> contas_financeiras, obrigatório)
 - forma_pagamento_id (relation -> formas_pagamento, obrigatório)
 - data_pagamento (date, YYYY-MM-DD, obrigatório)

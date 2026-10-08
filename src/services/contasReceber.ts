@@ -599,10 +599,61 @@ export interface ResultadoRecebimento {
  * Chama endpoint de baixa centralizada de Contas a Receber
  */
 export async function receberTitulos(dados: ReceberTitulosInput): Promise<ResultadoRecebimento> {
-  return await pb.send<ResultadoRecebimento>('/api/financeiro/receber/baixar', {
+  // Chamada ao hook backend centralizado (/financeiro/receber/baixar)
+  const payload = {
+    empresa_id: dados.empresa_id,
+    conta_financeira_id: dados.conta_financeira_id,
+    forma_pagamento_id: dados.forma_pagamento_id,
+    data_pagamento: dados.data_pagamento,
+    titulos: dados.titulos.map((t) => ({
+      conta_receber_id: t.conta_receber_id,
+      valor_pago: t.valor_pago,
+      acrescimo: t.acrescimo || 0,
+      desconto: t.desconto || 0,
+    })),
+    historico: dados.observacao,
+  }
+
+  const res = await pb.send<any>('/financeiro/receber/baixar', {
     method: 'POST',
-    body: dados,
+    body: payload,
   })
+
+  // Se o hook retornou o lote_id ou baixas
+  let lote: any = null
+  if (res?.lote_id) {
+    try {
+      lote = await pb.collection('pagamentos_lotes').getOne<PagamentoLote>(res.lote_id)
+    } catch {
+      lote = {
+        id: res.lote_id,
+        empresa_id: dados.empresa_id,
+        conta_financeira_id: dados.conta_financeira_id,
+        forma_pagamento_id: dados.forma_pagamento_id,
+        data_pagamento: dados.data_pagamento,
+        valor_total: res.total_recebido || 0,
+        quantidade_titulos: dados.titulos.length,
+        created: new Date().toISOString(),
+      } as PagamentoLote
+    }
+  }
+
+  const baixas: PagamentoBaixa[] = []
+  if (Array.isArray(res?.baixas)) {
+    for (const bId of res.baixas) {
+      try {
+        const bRec = await pb.collection('pagamentos_baixas').getOne<PagamentoBaixa>(bId)
+        baixas.push(bRec)
+      } catch {
+        // ignora se falhar busca individual
+      }
+    }
+  }
+
+  return {
+    lote: lote || ({} as PagamentoLote),
+    baixas,
+  }
 }
 
 /**
@@ -611,17 +662,39 @@ export async function receberTitulos(dados: ReceberTitulosInput): Promise<Result
 export async function estornarRecebimento(
   baixaId: string,
   motivoEstorno: string,
-): Promise<{ success: boolean; baixa: PagamentoBaixa }> {
-  return await pb.send<{ success: boolean; baixa: PagamentoBaixa }>(
-    '/api/financeiro/receber/estornar-recebimento',
-    {
-      method: 'POST',
-      body: {
-        baixa_id: baixaId,
-        motivo_estorno: motivoEstorno,
-      },
+  empresaId?: string,
+): Promise<{ success: boolean; baixa?: PagamentoBaixa; message?: string }> {
+  let resolvedEmpresaId = empresaId
+  if (!resolvedEmpresaId) {
+    try {
+      const bRec = await pb.collection('pagamentos_baixas').getOne<PagamentoBaixa>(baixaId)
+      resolvedEmpresaId = bRec.empresa_id
+    } catch {
+      // fallback
+    }
+  }
+
+  const res = await pb.send<any>('/financeiro/receber/estornar-recebimento', {
+    method: 'POST',
+    body: {
+      empresa_id: resolvedEmpresaId,
+      baixa_id: baixaId,
+      motivo: motivoEstorno,
     },
-  )
+  })
+
+  let baixaAtualizada: PagamentoBaixa | undefined
+  try {
+    baixaAtualizada = await pb.collection('pagamentos_baixas').getOne<PagamentoBaixa>(baixaId)
+  } catch {
+    //
+  }
+
+  return {
+    success: true,
+    baixa: baixaAtualizada,
+    message: 'Recebimento estornado com sucesso.',
+  }
 }
 
 /**

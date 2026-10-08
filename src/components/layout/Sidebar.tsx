@@ -273,6 +273,12 @@ const navItems: NavGroupItem[] = [
         modulo: 'financeiro_pagar',
       },
       {
+        title: 'Contas a receber',
+        path: '/financeiro/receber',
+        icon: TrendingUp,
+        modulo: 'financeiro_receber',
+      },
+      {
         title: 'Plano de contas',
         path: '/financeiro/cadastros/plano-contas',
         icon: FolderTree,

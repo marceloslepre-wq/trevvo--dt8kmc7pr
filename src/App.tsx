@@ -70,6 +70,7 @@ import ConferenciaFiscalPage from '@/pages/cadastros/ConferenciaFiscalPage'
 
 // Páginas do Financeiro
 import { ContasPagarPage } from '@/pages/financeiro/ContasPagarPage'
+import { ContasReceberPage } from '@/pages/financeiro/ContasReceberPage'
 import PlanoContasPage from '@/pages/financeiro/cadastros/PlanoContasPage'
 import CentrosCustoPage from '@/pages/financeiro/cadastros/CentrosCustoPage'
 import ContasFinanceirasPage from '@/pages/financeiro/cadastros/ContasFinanceirasPage'
@@ -395,7 +396,7 @@ const App = () => (
                     }
                   />
 
-                  {/* Financeiro: Contas a Pagar e Cadastros */}
+                  {/* Financeiro: Contas a Pagar, Contas a Receber e Cadastros */}
                   <Route
                     path="/financeiro"
                     element={<Navigate to="/financeiro/contas-pagar" replace />}
@@ -407,6 +408,18 @@ const App = () => (
                         <ContasPagarPage />
                       </PermissaoGuard>
                     }
+                  />
+                  <Route
+                    path="/financeiro/receber"
+                    element={
+                      <PermissaoGuard modulo="financeiro_receber" acao="ver">
+                        <ContasReceberPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/financeiro/contas-receber"
+                    element={<Navigate to="/financeiro/receber" replace />}
                   />
                   <Route
                     path="/financeiro/cadastros"

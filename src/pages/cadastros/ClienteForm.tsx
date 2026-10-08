@@ -64,6 +64,13 @@ import {
 } from '@/services/clientes'
 import { SelectCondicaoPagamento } from '@/components/SelectCondicaoPagamento'
 import {
+  ContaReceber,
+  creditoCliente,
+  SituacaoCreditoCliente,
+  listarContasReceber,
+} from '@/services/contasReceber'
+import { ModalReceberTitulos } from '@/pages/financeiro/ModalReceberTitulos'
+import {
   validarCPF,
   validarCNPJ,
   validarInscricaoEstadual,
@@ -196,6 +203,13 @@ export const ClienteForm: React.FC = () => {
   const [observacoes, setObservacoes] = useState('')
   const [observacaoNota, setObservacaoNota] = useState('')
 
+  // Dados Financeiros do Cliente (Crédito e Histórico de Títulos a Receber)
+  const [resumoCredito, setResumoCredito] = useState<SituacaoCreditoCliente | null>(null)
+  const [carregandoCredito, setCarregandoCredito] = useState(false)
+  const [titulosCliente, setTitulosCliente] = useState<ContaReceber[]>([])
+  const [tituloParaReceberAba, setTituloParaReceberAba] = useState<ContaReceber | null>(null)
+  const [modalReceberAbaAberto, setModalReceberAbaAberto] = useState(false)
+
   // Erros e Avisos
   const [erros, setErros] = useState<Record<string, string>>({})
   const [buscandoCnpjApi, setBuscandoCnpjApi] = useState(false)
@@ -210,6 +224,32 @@ export const ClienteForm: React.FC = () => {
   useEffect(() => {
     listarVendedoresAtivos().then(setVendedores).catch(console.error)
   }, [])
+
+  // Carregar dados de crédito e histórico financeiro do cliente
+  const carregarFinanceiroCliente = useCallback(
+    async (clienteIdParam: string) => {
+      if (!empresaAtiva?.id || !clienteIdParam) return
+      setCarregandoCredito(true)
+      try {
+        const [cred, respTitulos] = await Promise.all([
+          creditoCliente(clienteIdParam, empresaAtiva.id),
+          listarContasReceber({
+            empresaId: empresaAtiva.id,
+            clienteId: clienteIdParam,
+            perPage: 100,
+            sort: '-data_vencimento',
+          }),
+        ])
+        setResumoCredito(cred)
+        setTitulosCliente(respTitulos.items)
+      } catch (err) {
+        console.error('Erro ao carregar dados financeiros do cliente:', err)
+      } finally {
+        setCarregandoCredito(false)
+      }
+    },
+    [empresaAtiva?.id],
+  )
 
   // Carregar dados se edição
   useEffect(() => {
@@ -301,6 +341,9 @@ export const ClienteForm: React.FC = () => {
               ativo: c.ativo,
             }),
           )
+
+          // Carrega crédito financeiro do cliente
+          carregarFinanceiroCliente(c.id)
         })
         .catch((err) => {
           toast({
@@ -883,7 +926,7 @@ export const ClienteForm: React.FC = () => {
 
       <form id="form-cliente" onSubmit={handleSalvar}>
         <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-4">
-          <TabsList className="grid grid-cols-3 sm:grid-cols-6 h-auto p-1 bg-slate-100/80 border border-slate-200">
+          <TabsList className="grid grid-cols-3 sm:grid-cols-7 h-auto p-1 bg-slate-100/80 border border-slate-200">
             <TabsTrigger value="dados" className="text-xs py-2">
               <UserCheck size={14} className="mr-1.5 hidden sm:inline" />
               Dados
@@ -903,6 +946,10 @@ export const ClienteForm: React.FC = () => {
             <TabsTrigger value="comercial" className="text-xs py-2">
               <Briefcase size={14} className="mr-1.5 hidden sm:inline" />
               Comercial
+            </TabsTrigger>
+            <TabsTrigger value="financeiro" className="text-xs py-2">
+              <RotateCcw size={14} className="mr-1.5 hidden sm:inline" />
+              Financeiro
             </TabsTrigger>
             <TabsTrigger value="observacoes" className="text-xs py-2">
               <FileText size={14} className="mr-1.5 hidden sm:inline" />
@@ -1782,7 +1829,216 @@ export const ClienteForm: React.FC = () => {
             </Card>
           </TabsContent>
 
-          {/* ================= ABA 6: OBSERVAÇÕES ================= */}
+          {/* ================= ABA 6: FINANCEIRO ================= */}
+          <TabsContent value="financeiro">
+            <Card className="border-slate-200 shadow-2xs">
+              <CardContent className="p-5 space-y-5">
+                {!ehEdicao ? (
+                  <div className="py-12 text-center text-slate-400 text-xs">
+                    Salve o cadastro do cliente para habilitar o painel de crédito e títulos a
+                    receber.
+                  </div>
+                ) : carregandoCredito ? (
+                  <div className="py-12 flex flex-col items-center justify-center text-slate-500 gap-2">
+                    <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+                    <span className="text-xs">Consultando crédito e títulos a receber...</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Quadro de Crédito */}
+                    {resumoCredito && (
+                      <div className="border rounded-lg p-4 bg-slate-50/70 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
+                          <div>
+                            <span className="text-xs font-semibold text-slate-800">
+                              Situação de Crédito do Cliente
+                            </span>
+                            <p className="text-[11px] text-slate-500">{resumoCredito.motivo}</p>
+                          </div>
+
+                          <div>
+                            <Badge
+                              className={`text-xs px-3 py-1 font-semibold ${
+                                resumoCredito.situacao === 'Liberado'
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : resumoCredito.situacao === 'Atenção'
+                                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                    : 'bg-red-100 text-red-900 border-red-300'
+                              }`}
+                            >
+                              Crédito {resumoCredito.situacao}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs text-center">
+                          <div className="bg-white p-2.5 rounded-md border border-slate-200">
+                            <span className="text-[10px] uppercase text-slate-400 font-semibold block">
+                              Total em Aberto
+                            </span>
+                            <span className="font-mono font-bold text-slate-800 text-sm">
+                              R$ {resumoCredito.totalEmAberto.toFixed(2)}
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-2.5 rounded-md border border-slate-200">
+                            <span className="text-[10px] uppercase text-slate-400 font-semibold block">
+                              Total Vencido
+                            </span>
+                            <span
+                              className={`font-mono font-bold text-sm ${
+                                resumoCredito.totalVencido > 0 ? 'text-red-600' : 'text-slate-800'
+                              }`}
+                            >
+                              R$ {resumoCredito.totalVencido.toFixed(2)}
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-2.5 rounded-md border border-slate-200">
+                            <span className="text-[10px] uppercase text-slate-400 font-semibold block">
+                              Maior Atraso
+                            </span>
+                            <span
+                              className={`font-mono font-bold text-sm ${
+                                resumoCredito.maiorAtrasoDias > 0
+                                  ? 'text-red-600'
+                                  : 'text-slate-800'
+                              }`}
+                            >
+                              {resumoCredito.maiorAtrasoDias} dia(s)
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-2.5 rounded-md border border-slate-200">
+                            <span className="text-[10px] uppercase text-slate-400 font-semibold block">
+                              Limite Concedido
+                            </span>
+                            <span className="font-mono font-bold text-slate-800 text-sm">
+                              R$ {resumoCredito.limiteCredito.toFixed(2)}
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-2.5 rounded-md border border-slate-200 col-span-2 sm:col-span-1">
+                            <span className="text-[10px] uppercase text-slate-400 font-semibold block">
+                              Saldo Disponível
+                            </span>
+                            <span
+                              className={`font-mono font-bold text-sm ${
+                                resumoCredito.creditoDisponivel < 0
+                                  ? 'text-red-600'
+                                  : 'text-emerald-700'
+                              }`}
+                            >
+                              R$ {resumoCredito.creditoDisponivel.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tabela de Títulos a Receber (Em aberto e últimos 12 meses) */}
+                    <div className="border rounded-lg bg-white overflow-hidden">
+                      <div className="px-3 py-2 bg-slate-100 flex items-center justify-between text-xs font-semibold text-slate-700">
+                        <span>Histórico de Títulos a Receber ({titulosCliente.length})</span>
+                        <span className="text-[11px] font-normal text-slate-500">
+                          Títulos em aberto e faturamentos recentes
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 border-b text-slate-600 sticky top-0">
+                            <tr>
+                              <th className="py-2 px-3 text-left">Documento</th>
+                              <th className="py-2 px-3 text-left">Vencimento</th>
+                              <th className="py-2 px-3 text-left">Descrição</th>
+                              <th className="py-2 px-3 text-right">Original</th>
+                              <th className="py-2 px-3 text-right">Saldo Aberto</th>
+                              <th className="py-2 px-3 text-center">Status</th>
+                              <th className="py-2 px-3 text-center">Ação</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {titulosCliente.length === 0 ? (
+                              <tr>
+                                <td colSpan={7} className="py-8 text-center text-slate-400">
+                                  Nenhum título a receber encontrado para este cliente.
+                                </td>
+                              </tr>
+                            ) : (
+                              titulosCliente.map((t) => {
+                                const saldoAberto = t.saldo ?? t.valor_original
+                                const podeReceber = t.status === 'Aberto' || t.status === 'Parcial'
+                                const dtVenc = new Date(
+                                  t.data_vencimento + 'T00:00:00',
+                                ).toLocaleDateString('pt-BR')
+
+                                return (
+                                  <tr key={t.id} className="hover:bg-slate-50">
+                                    <td className="py-2 px-3 font-mono font-medium text-slate-800">
+                                      {t.numero_documento}
+                                      <span className="text-[10px] text-slate-400 block">
+                                        Parc {t.parcela}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 font-mono">{dtVenc}</td>
+                                    <td
+                                      className="py-2 px-3 max-w-[200px] truncate"
+                                      title={t.descricao}
+                                    >
+                                      {t.descricao}
+                                    </td>
+                                    <td className="py-2 px-3 text-right font-mono">
+                                      R$ {t.valor_original.toFixed(2)}
+                                    </td>
+                                    <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                                      R$ {saldoAberto.toFixed(2)}
+                                    </td>
+                                    <td className="py-2 px-3 text-center">
+                                      <Badge
+                                        variant="outline"
+                                        className={
+                                          t.status === 'Recebido'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]'
+                                            : t.status === 'Parcial'
+                                              ? 'bg-blue-50 text-blue-700 border-blue-200 text-[10px]'
+                                              : 'bg-amber-50 text-amber-700 border-amber-200 text-[10px]'
+                                        }
+                                      >
+                                        {t.status}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-2 px-3 text-center">
+                                      {podeReceber && (
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="secondary"
+                                          onClick={() => {
+                                            setTituloParaReceberAba(t)
+                                            setModalReceberAbaAberto(true)
+                                          }}
+                                          className="h-6 text-[11px] px-2 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                                        >
+                                          Receber
+                                        </Button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ================= ABA 7: OBSERVAÇÕES ================= */}
           <TabsContent value="observacoes">
             <Card className="border-slate-200 shadow-2xs">
               <CardContent className="p-5 space-y-4">
@@ -1867,6 +2123,21 @@ export const ClienteForm: React.FC = () => {
           </div>
         </div>
       </form>
+
+      {/* Modal de Recebimento rápido a partir da aba Financeiro */}
+      {tituloParaReceberAba && (
+        <ModalReceberTitulos
+          open={modalReceberAbaAberto}
+          onOpenChange={(op) => {
+            setModalReceberAbaAberto(op)
+            if (!op) setTituloParaReceberAba(null)
+          }}
+          titulos={[tituloParaReceberAba]}
+          onSucesso={() => {
+            if (id) carregarFinanceiroCliente(id)
+          }}
+        />
+      )}
 
       {/* Alerta de confirmação para sair sem salvar */}
       <AlertDialog open={alertaSairAberto} onOpenChange={setAlertaSairAberto}>
