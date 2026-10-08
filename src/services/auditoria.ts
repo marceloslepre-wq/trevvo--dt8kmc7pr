@@ -12,6 +12,8 @@ export interface LogAuditoriaItem {
   acao: AcaoAuditoria
   valores_antes?: Record<string, unknown> | null
   valores_depois?: Record<string, unknown> | null
+  motivo?: string
+  dados_depois?: Record<string, unknown> | string | null
   created?: string
 }
 

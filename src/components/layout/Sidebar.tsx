@@ -287,7 +287,7 @@ const navItems: NavGroupItem[] = [
       {
         title: 'Conciliação',
         path: '/financeiro/conciliacao',
-        icon: ArrowRightLeft,
+        icon: Building,
         modulo: 'financeiro_bancos',
       },
       {

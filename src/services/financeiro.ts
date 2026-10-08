@@ -93,17 +93,23 @@ export interface PagamentoLote {
 export interface PagamentoBaixa {
   id: string
   empresa_id: string
-  conta_pagar_id: string
+  conta_pagar_id?: string
+  conta_receber_id?: string
   lote_baixa_id?: string
   data_pagamento: string
   conta_financeira_id: string
   forma_pagamento_id?: string
   valor_original: number
   valor_pago: number
+  valor_principal?: number
   valor_multa?: number
   valor_juros?: number
   valor_desconto?: number
   valor_total_pago: number
+  valor_total?: number
+  data_baixa?: string
+  acrescimo?: number
+  desconto?: number
   estornado: boolean
   data_estorno?: string
   motivo_estorno?: string
@@ -164,8 +170,11 @@ export interface ResultadoPaginadoContasPagar {
     valorOriginal: number
     valorPago: number
     saldo: number
-  }
-}
+    totalOriginal?: number
+    totalRecebido?: number
+    totalSaldo?: number
+    totalVencido?: number
+  }}
 
 // ==========================================
 // CÁLCULO DE ENCARGOS

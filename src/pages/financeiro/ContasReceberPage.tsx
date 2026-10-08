@@ -70,7 +70,15 @@ export const ContasReceberPage: React.FC = () => {
     totalPages: 1,
     page: 1,
     perPage: 30,
-    totais: { valorOriginal: 0, valorRecebido: 0, saldo: 0 },
+    totais: {
+      totalOriginal: 0,
+      totalRecebido: 0,
+      totalSaldo: 0,
+      totalVencido: 0,
+      valorOriginal: 0,
+      valorRecebido: 0,
+      saldo: 0,
+    },
   })
 
   // Seleção múltipla para recebimento

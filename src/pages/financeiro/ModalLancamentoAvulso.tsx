@@ -65,8 +65,8 @@ export const ModalLancamentoAvulso: React.FC<ModalLancamentoAvulsoProps> = ({
     if (aberto && empresaAtiva?.id) {
       Promise.all([
         listarContasFinanceiras({ empresa_id: empresaAtiva.id, situacao: 'ativos' }),
-        listarTodasContasPlano({ empresa_id: empresaAtiva.id, apenasAnaliticas: true }),
-        listarTodosCentrosCustoAtivos(empresaAtiva.id),
+        listarTodasContasPlano({ apenasAnaliticas: true }),
+        listarTodosCentrosCustoAtivos(),
       ]).then(([resContas, resPlanos, resCentros]) => {
         setContas(resContas)
         setPlanosContas(resPlanos)

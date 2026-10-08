@@ -110,6 +110,13 @@ export interface SituacaoCreditoCliente {
   dias_tolerancia: number
   situacao: 'Liberado' | 'Atenção' | 'Bloqueado'
   motivos: string[]
+  // Aliases camelCase para compatibilidade
+  totalEmAberto?: number
+  totalVencido?: number
+  maiorAtrasoDias?: number
+  limiteCredito?: number
+  creditoDisponivel?: number
+  motivo?: string
 }
 
 /**
@@ -234,6 +241,12 @@ export async function creditoCliente(
     dias_tolerancia: diasTolerancia,
     situacao,
     motivos,
+    totalEmAberto: totalAberto,
+    totalVencido: totalVencido,
+    maiorAtrasoDias: maiorAtrasoDias,
+    limiteCredito: limiteCredito || 0,
+    creditoDisponivel: creditoDisponivel || 0,
+    motivo: motivos.join('; '),
   }
 }
 

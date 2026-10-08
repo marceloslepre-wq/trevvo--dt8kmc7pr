@@ -14,6 +14,8 @@ export interface Cliente {
   cpf_cnpj?: string
   id_estrangeiro?: string
   nome_razao_social: string
+  nome?: string
+  razao_social?: string
   nome_fantasia?: string
   rg?: string
   data_nascimento?: string
@@ -92,9 +94,11 @@ export interface ListarClientesParams {
   municipio?: string
   vendedor_id?: string
   situacao?: 'todos' | 'ativos' | 'inativos'
+  ativo?: boolean
   bloqueado?: 'todos' | 'sim' | 'nao'
   ordenarPor?: string
   ordem?: 'asc' | 'desc'
+  sort?: string
 }
 
 export interface ResultadoPaginado<T> {

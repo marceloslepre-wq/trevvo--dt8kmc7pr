@@ -53,7 +53,10 @@ const TIPOS_CONTA: TipoContaFinanceira[] = [
   'Carteira digital',
 ]
 
+import { useNavigate } from 'react-router-dom'
+
 export const ContasFinanceirasPage: React.FC = () => {
+  const navigate = useNavigate()
   const { toast } = useToast()
   const { empresaAtiva } = useEmpresaAtiva()
   const { pode } = usePermissoes()
