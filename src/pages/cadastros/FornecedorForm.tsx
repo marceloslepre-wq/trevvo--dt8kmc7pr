@@ -48,18 +48,24 @@ import {
   Fornecedor,
   TipoPessoaFornecedor,
   IndicadorIeFornecedor,
-  CrtFornecedor,
   TipoFornecedor,
   TipoContaBancaria,
   TipoChavePix,
   obterFornecedorPorId,
   obterProximoCodigoFornecedor,
   salvarFornecedor,
-  buscarFornecedorPorCpfCnpj,
   ativarFornecedor,
+  buscarFornecedorPorCpfCnpj,
+  validarDadosFornecedor,
   normalizarCpfCnpj,
 } from '@/services/fornecedores'
+import {
+  listarNotasDoFornecedorComTotais,
+  HistoricoNotasFornecedorResultado,
+} from '@/services/consultasCompras'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { SelectCondicaoPagamento } from '@/components/SelectCondicaoPagamento'
+import { Receipt } from 'lucide-react'
 import {
   validarCPF,
   validarCNPJ,
@@ -127,12 +133,22 @@ export const FornecedorForm: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { empresaAtiva } = useEmpresaAtiva()
 
   const ehEdicao = Boolean(id)
 
   const [carregando, setCarregando] = useState(ehEdicao)
   const [salvando, setSalvando] = useState(false)
   const [abaAtiva, setAbaAtiva] = useState('dados')
+
+  // Histórico de Notas de Entrada
+  const [historicoNotas, setHistoricoNotas] = useState<HistoricoNotasFornecedorResultado>({
+    notas: [],
+    totaisPorAno: [],
+    totalGeralNotas: 0,
+    valorGeralTotal: 0,
+  })
+  const [carregandoNotas, setCarregandoNotas] = useState(false)
 
   // Identificação
   const [codigo, setCodigo] = useState<number | string>('')
@@ -299,6 +315,13 @@ export const FornecedorForm: React.FC = () => {
 
           // Outros
           setObservacoes(f.observacoes || '')
+
+          // Carregar notas de entrada do fornecedor
+          setCarregandoNotas(true)
+          listarNotasDoFornecedorComTotais(f.id, empresaAtiva?.id)
+            .then(setHistoricoNotas)
+            .catch((e) => console.warn('Erro ao carregar notas do fornecedor:', e))
+            .finally(() => setCarregandoNotas(false))
 
           // Inicial para rastrear dirty
           setDadosIniciais(
@@ -810,7 +833,9 @@ export const FornecedorForm: React.FC = () => {
 
       <form id="form-fornecedor" onSubmit={handleSalvar}>
         <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-4">
-          <TabsList className="grid grid-cols-3 sm:grid-cols-6 h-auto p-1 bg-slate-100/80 border border-slate-200">
+          <TabsList
+            className={`grid ${ehEdicao ? 'grid-cols-3 sm:grid-cols-7' : 'grid-cols-3 sm:grid-cols-6'} h-auto p-1 bg-slate-100/80 border border-slate-200`}
+          >
             <TabsTrigger value="dados" className="text-xs py-2">
               <Truck size={14} className="mr-1.5 hidden sm:inline" />
               Dados
@@ -831,6 +856,12 @@ export const FornecedorForm: React.FC = () => {
               <Landmark size={14} className="mr-1.5 hidden sm:inline" />
               Dados bancários
             </TabsTrigger>
+            {ehEdicao && (
+              <TabsTrigger value="notas" className="text-xs py-2">
+                <Receipt size={14} className="mr-1.5 hidden sm:inline" />
+                Notas {historicoNotas.totalGeralNotas > 0 && `(${historicoNotas.totalGeralNotas})`}
+              </TabsTrigger>
+            )}
             <TabsTrigger value="observacoes" className="text-xs py-2">
               <FileText size={14} className="mr-1.5 hidden sm:inline" />
               Observações
@@ -1693,6 +1724,189 @@ export const FornecedorForm: React.FC = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* ================= ABA: NOTAS DE ENTRADA ================= */}
+          {ehEdicao && (
+            <TabsContent value="notas">
+              <Card className="border-slate-200 shadow-2xs">
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                    <div>
+                      <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                        <Receipt className="h-4 w-4 text-blue-600" />
+                        Notas Fiscais de Entrada do Fornecedor
+                      </h3>
+                      <p className="text-slate-500 text-[11px] mt-0.5">
+                        Histórico completo de notas de entrada emitidas por este fornecedor com
+                        consolidação por ano.
+                      </p>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (id) {
+                          setCarregandoNotas(true)
+                          listarNotasDoFornecedorComTotais(id, empresaAtiva?.id)
+                            .then(setHistoricoNotas)
+                            .finally(() => setCarregandoNotas(false))
+                        }
+                      }}
+                      className="h-7 text-xs text-blue-600"
+                    >
+                      <RotateCcw
+                        className={`h-3.5 w-3.5 mr-1 ${carregandoNotas ? 'animate-spin' : ''}`}
+                      />
+                      Atualizar
+                    </Button>
+                  </div>
+
+                  {carregandoNotas ? (
+                    <div className="py-8 text-center text-slate-400">
+                      <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
+                      <p className="text-xs">Carregando notas do fornecedor...</p>
+                    </div>
+                  ) : historicoNotas.notas.length === 0 ? (
+                    <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                      <Receipt className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                      <p className="font-medium text-slate-600">Nenhuma nota fiscal registrada</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        As notas fiscais deste fornecedor aparecerão aqui quando forem importadas ou
+                        digitadas no módulo de Compras.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Totais por Ano */}
+                      <div>
+                        <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                          Totais Anuais de Compras
+                        </h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {historicoNotas.totaisPorAno.map((ta) => (
+                            <div
+                              key={ta.ano}
+                              className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col justify-between"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-800">{ta.ano}</span>
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {ta.quantidadeNotas} {ta.quantidadeNotas === 1 ? 'nota' : 'notas'}
+                                </Badge>
+                              </div>
+                              <div className="text-sm font-bold text-blue-700 font-mono mt-1">
+                                R${' '}
+                                {ta.valorTotal.toLocaleString('pt-BR', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </div>
+                            </div>
+                          ))}
+
+                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-col justify-between">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-blue-900">Total Geral</span>
+                              <Badge className="bg-blue-600 text-[10px]">
+                                {historicoNotas.totalGeralNotas} notas
+                              </Badge>
+                            </div>
+                            <div className="text-sm font-bold text-blue-900 font-mono mt-1">
+                              R${' '}
+                              {historicoNotas.valorGeralTotal.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Lista de Notas */}
+                      <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[10px] font-semibold">
+                            <tr>
+                              <th className="p-2.5">Data Entrada</th>
+                              <th className="p-2.5">Data Emissão</th>
+                              <th className="p-2.5">Nota Fiscal</th>
+                              <th className="p-2.5">Tipo</th>
+                              <th className="p-2.5">Status</th>
+                              <th className="p-2.5 text-right">Valor Total</th>
+                              <th className="p-2.5 text-center">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {historicoNotas.notas.map((n) => (
+                              <tr key={n.id} className="hover:bg-slate-50">
+                                <td className="p-2.5 font-mono text-slate-700 whitespace-nowrap">
+                                  {n.data_entrada
+                                    ? new Date(n.data_entrada).toLocaleDateString('pt-BR')
+                                    : '—'}
+                                </td>
+                                <td className="p-2.5 font-mono text-slate-600 whitespace-nowrap">
+                                  {n.data_emissao
+                                    ? new Date(n.data_emissao).toLocaleDateString('pt-BR')
+                                    : '—'}
+                                </td>
+                                <td className="p-2.5 whitespace-nowrap">
+                                  <span className="font-mono font-semibold text-slate-800">
+                                    Nº {n.numero}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono ml-1">
+                                    (Mod {n.modelo || '55'}
+                                    {n.serie ? `/${n.serie}` : ''})
+                                  </span>
+                                </td>
+                                <td className="p-2.5 whitespace-nowrap text-slate-600">
+                                  {n.tipo_entrada || 'Normal'}
+                                </td>
+                                <td className="p-2.5 whitespace-nowrap">
+                                  <Badge
+                                    variant={
+                                      n.status === 'Lançada'
+                                        ? 'default'
+                                        : n.status === 'Cancelada'
+                                          ? 'destructive'
+                                          : 'secondary'
+                                    }
+                                    className="text-[10px]"
+                                  >
+                                    {n.status}
+                                  </Badge>
+                                </td>
+                                <td className="p-2.5 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                  R${' '}
+                                  {n.valor_total.toLocaleString('pt-BR', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </td>
+                                <td className="p-2.5 text-center whitespace-nowrap">
+                                  <Button
+                                    asChild
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 text-[11px] text-blue-600 hover:text-blue-800 p-1"
+                                  >
+                                    <Link to={`/compras/notas-entrada/${n.id}/conferencia`}>
+                                      Ver Nota
+                                    </Link>
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {/* ================= ABA 6: OBSERVAÇÕES ================= */}
           <TabsContent value="observacoes">

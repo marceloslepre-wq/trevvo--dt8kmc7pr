@@ -16,6 +16,8 @@ import {
   Layers,
   FileSpreadsheet,
   ArrowLeftRight,
+  ShoppingCart,
+  FileText,
 } from 'lucide-react'
 import { contarTransferenciasAguardandoRecebimento } from '@/services/transferencias'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -79,6 +81,12 @@ export default function Index() {
   const [inventariosAbertosCount, setInventariosAbertosCount] = useState<number>(0)
   const [ultimasMovimentacoesEstoque, setUltimasMovimentacoesEstoque] = useState<any[]>([])
 
+  // Indicadores de Compras e Entrada de Notas (Etapa 3)
+  const [notasEmConferenciaCount, setNotasEmConferenciaCount] = useState<number>(0)
+  const [comprasDoMesTotal, setComprasDoMesTotal] = useState<number>(0)
+  const [pedidosCompraAbertosCount, setPedidosCompraAbertosCount] = useState<number>(0)
+  const [pedidosPrevisaoVencidaCount, setPedidosPrevisaoVencidaCount] = useState<number>(0)
+
   // Últimos cadastros
   const [ultimosCadastros, setUltimosCadastros] = useState<UltimoCadastro[]>([])
 
@@ -93,6 +101,8 @@ export default function Index() {
   const podeVerEmpresas = pode('empresas', 'ver')
   const podeVerTabelasFiscais = pode('tabelas_fiscais', 'ver')
   const podeVerEstoque = pode('estoque', 'ver')
+  const podeVerCompras = pode('compras', 'ver')
+  const podeVerNotasEntrada = pode('notas_entrada', 'ver')
 
   const carregarDadosPainel = useCallback(async () => {
     try {
@@ -256,6 +266,82 @@ export default function Index() {
             .then((res) => setUltimasMovimentacoesEstoque(res.items))
             .catch(() => setUltimasMovimentacoesEstoque([])),
         )
+      }
+
+      // Indicadores de Compras e Entrada de Notas (Etapa 3)
+      if (empresaAtiva?.id) {
+        // Notas de Entrada
+        if (podeVerNotasEntrada) {
+          // Notas em conferência
+          promisesContagens.push(
+            pb
+              .collection('notas_entrada')
+              .getList(1, 1, {
+                filter: `empresa_id = '${empresaAtiva.id}' && status = 'Em conferência' && ativo = true`,
+              })
+              .then((res) => setNotasEmConferenciaCount(res.totalItems))
+              .catch(() => setNotasEmConferenciaCount(0)),
+          )
+
+          // Compras do mês (notas lançadas no mês corrente da data de entrada)
+          promisesContagens.push(
+            (async () => {
+              try {
+                const hoje = new Date()
+                const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+                  .toISOString()
+                  .split('T')[0]
+                const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
+                  .toISOString()
+                  .split('T')[0]
+
+                const notasMes = await pb.collection('notas_entrada').getFullList({
+                  filter: `empresa_id = '${empresaAtiva.id}' && status = 'Lançada' && ativo = true && data_entrada >= '${primeiroDiaMes}' && data_entrada <= '${ultimoDiaMes}'`,
+                  fields: 'valor_total',
+                })
+
+                const totalMes = notasMes.reduce(
+                  (acc: number, n: any) => acc + (Number(n.valor_total) || 0),
+                  0,
+                )
+                setComprasDoMesTotal(totalMes)
+              } catch (err) {
+                console.warn('Erro ao calcular compras do mês:', err)
+                setComprasDoMesTotal(0)
+              }
+            })(),
+          )
+        }
+
+        // Pedidos de Compra
+        if (podeVerCompras) {
+          // Pedidos em aberto (status "Enviado" ou "Parcialmente recebido")
+          promisesContagens.push(
+            pb
+              .collection('pedidos_compra')
+              .getList(1, 1, {
+                filter: `empresa_id = '${empresaAtiva.id}' && (status = 'Enviado' || status = 'Parcialmente recebido') && ativo = true`,
+              })
+              .then((res) => setPedidosCompraAbertosCount(res.totalItems))
+              .catch(() => setPedidosCompraAbertosCount(0)),
+          )
+
+          // Pedidos com previsão de entrega vencida: data_previsao_entrega < hoje e status não Recebidos/Cancelados
+          promisesContagens.push(
+            (async () => {
+              try {
+                const hojeIso = new Date().toISOString().split('T')[0]
+                const pedidosVencidos = await pb.collection('pedidos_compra').getList(1, 1, {
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && status != 'Recebido' && status != 'Cancelado' && data_previsao_entrega != '' && data_previsao_entrega < '${hojeIso}'`,
+                })
+                setPedidosPrevisaoVencidaCount(pedidosVencidos.totalItems)
+              } catch (err) {
+                console.warn('Erro ao contar pedidos com previsão vencida:', err)
+                setPedidosPrevisaoVencidaCount(0)
+              }
+            })(),
+          )
+        }
       }
 
       // 2. Carregar últimos registros para compor os 10 últimos cadastros
@@ -450,6 +536,8 @@ export default function Index() {
     podeVerEmpresas,
     podeVerTabelasFiscais,
     podeVerEstoque,
+    podeVerCompras,
+    podeVerNotasEntrada,
     empresaAtiva,
   ])
 
@@ -463,6 +551,8 @@ export default function Index() {
     podeVerFornecedores ||
     podeVerProdutos ||
     podeVerEstoque ||
+    podeVerCompras ||
+    podeVerNotasEntrada ||
     podeVerUsuarios ||
     podeVerEmpresas ||
     podeVerTabelasFiscais
@@ -889,6 +979,195 @@ export default function Index() {
                 </CardContent>
               </Card>
             </Link>
+          </div>
+        </div>
+      )}
+
+      {/* SEÇÃO COMPRAS E ENTRADA DE NOTAS (Etapa 3) — Respeita permissão de compras / notas_entrada */}
+      {(podeVerCompras || podeVerNotasEntrada) && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-t border-slate-200 pt-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-bold tracking-tight text-slate-900">
+                  Visão Geral de Compras e Entradas
+                </h2>
+                {empresaAtiva && (
+                  <Badge variant="secondary" className="text-[11px] font-normal">
+                    {empresaAtiva.nome_fantasia || empresaAtiva.razao_social}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Acompanhamento de conferência de notas fiscais, volume mensal e status de pedidos de
+                compra.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {podeVerNotasEntrada && (
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                  <Link to="/compras/notas-entrada">
+                    Ver Notas
+                    <ArrowRight size={13} />
+                  </Link>
+                </Button>
+              )}
+              {podeVerCompras && (
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                  <Link to="/compras/pedidos">
+                    Ver Pedidos
+                    <ArrowRight size={13} />
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Cartões da Seção de Compras */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Notas em conferência (clicável para a listagem filtrada) */}
+            {podeVerNotasEntrada && (
+              <Link
+                to="/compras/notas-entrada?status=Em%20conferência"
+                className="group block focus:outline-none"
+                title="Ver notas de entrada aguardando conferência e lançamento"
+              >
+                <Card
+                  className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                    notasEmConferenciaCount > 0
+                      ? 'border-amber-300 bg-amber-50/20 ring-1 ring-amber-200'
+                      : 'hover:border-slate-300'
+                  }`}
+                >
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-amber-800">
+                        Notas em Conferência
+                      </span>
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                        <FileText size={18} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-2xl font-bold tracking-tight text-amber-700 group-hover:text-amber-900 transition-colors flex items-center gap-2">
+                        {carregando ? '—' : notasEmConferenciaCount}
+                        {notasEmConferenciaCount > 0 && (
+                          <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 animate-pulse">
+                            Pendente
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-amber-700/80 underline decoration-amber-300">
+                        {notasEmConferenciaCount > 0
+                          ? 'Aguardando validação fiscal →'
+                          : 'Nenhuma nota pendente'}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* 2. Compras do mês (valor total das notas lançadas no mês corrente) */}
+            {podeVerNotasEntrada && (
+              <Link
+                to="/compras/livro-entradas"
+                className="group block focus:outline-none"
+                title="Abrir Livro de Entradas do mês"
+              >
+                <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">Compras do Mês</span>
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <DollarSign size={18} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-xl font-bold tracking-tight text-emerald-700 font-mono">
+                        {carregando ? '—' : formatarMoeda(comprasDoMesTotal)}
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        notas lançadas no mês atual →
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* 3. Pedidos de compra em aberto (status "Enviado" ou "Parcialmente recebido") */}
+            {podeVerCompras && (
+              <Link
+                to="/compras/pedidos"
+                className="group block focus:outline-none"
+                title="Ver pedidos de compra em andamento"
+              >
+                <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-700">Pedidos em Aberto</span>
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <ShoppingCart size={18} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2">
+                        {carregando ? '—' : pedidosCompraAbertosCount}
+                      </div>
+                      <span className="text-[11px] text-slate-500">
+                        {pedidosCompraAbertosCount > 0
+                          ? 'Enviados ou Parcialmente recebidos'
+                          : 'Nenhum pedido em aberto'}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* 4. Pedidos com previsão de entrega vencida */}
+            {podeVerCompras && (
+              <Link
+                to="/compras/pedidos"
+                className="group block focus:outline-none"
+                title="Ver pedidos com entrega em atraso"
+              >
+                <Card
+                  className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                    pedidosPrevisaoVencidaCount > 0
+                      ? 'border-rose-300 bg-rose-50/25 ring-1 ring-rose-200'
+                      : 'hover:border-slate-300'
+                  }`}
+                >
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-rose-800">Previsão Vencida</span>
+                      <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
+                        <CalendarClock size={18} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-2xl font-bold tracking-tight text-rose-700 group-hover:text-rose-900 transition-colors flex items-center gap-2">
+                        {carregando ? '—' : pedidosPrevisaoVencidaCount}
+                        {pedidosPrevisaoVencidaCount > 0 && (
+                          <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-rose-200 text-rose-900">
+                            Atrasado
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-rose-700/80">
+                        {pedidosPrevisaoVencidaCount > 0
+                          ? 'cobrar fornecedor / entrega em atraso →'
+                          : 'nenhum pedido em atraso'}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
           </div>
         </div>
       )}

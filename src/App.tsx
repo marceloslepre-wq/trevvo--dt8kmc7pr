@@ -41,6 +41,8 @@ import MarcasPage from '@/pages/cadastros/MarcasPage'
 import NotasEntradaListaPage from '@/pages/compras/NotasEntradaListaPage'
 import NotaEntradaConferenciaPage from '@/pages/compras/NotaEntradaConferenciaPage'
 import NotaEntradaDigitacaoPage from '@/pages/compras/NotaEntradaDigitacaoPage'
+import ItensCompradosPage from '@/pages/compras/ItensCompradosPage'
+import LivroEntradasPage from '@/pages/compras/LivroEntradasPage'
 import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import ConfiguracoesGeralPage from '@/pages/configuracoes/ConfiguracoesGeralPage'
 import ConfiguracaoFiscalPage from '@/pages/configuracoes/ConfiguracaoFiscalPage'
@@ -453,6 +455,30 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="notas_entrada" acao="ver">
                         <NotaEntradaConferenciaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/compras/notas-entrada/:id/conferencia"
+                    element={
+                      <PermissaoGuard modulo="notas_entrada" acao="ver">
+                        <NotaEntradaConferenciaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/compras/itens-comprados"
+                    element={
+                      <PermissaoGuard modulo="compras" acao="ver">
+                        <ItensCompradosPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/compras/livro-entradas"
+                    element={
+                      <PermissaoGuard modulo="notas_entrada" acao="ver">
+                        <LivroEntradasPage />
                       </PermissaoGuard>
                     }
                   />

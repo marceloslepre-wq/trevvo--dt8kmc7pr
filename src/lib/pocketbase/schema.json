@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T11:14:48.251Z",
+  "generatedAt": "2026-10-08T11:40:55.948Z",
   "collections": [
     {
       "name": "users",
@@ -5004,8 +5004,8 @@
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
         "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "update": "@request.auth.id != '' && status = 'Em conferência'",
+        "delete": "@request.auth.id != '' && status = 'Em conferência'"
       },
       "fields": [
         {
@@ -5359,9 +5359,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'",
+        "update": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'",
+        "delete": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'"
       },
       "fields": [
         {
@@ -5743,9 +5743,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'",
+        "update": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'",
+        "delete": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'"
       },
       "fields": [
         {

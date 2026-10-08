@@ -245,6 +245,18 @@ const navItems: NavGroupItem[] = [
         icon: FileText,
         modulo: 'notas_entrada',
       },
+      {
+        title: 'Itens comprados',
+        path: '/compras/itens-comprados',
+        icon: Package,
+        modulo: 'compras',
+      },
+      {
+        title: 'Livro de entradas',
+        path: '/compras/livro-entradas',
+        icon: BookOpen,
+        modulo: 'notas_entrada',
+      },
     ],
   },
   {

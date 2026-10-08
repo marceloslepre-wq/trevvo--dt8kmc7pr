@@ -82,6 +82,7 @@ import { SelectFornecedor } from '@/components/SelectFornecedor'
 import { SelectProduto } from '@/components/SelectProduto'
 import { listarTodasUnidadesMedidaAtivas, UnidadeMedida } from '@/services/unidadesMedida'
 import { formatarCNPJ, formatarCPF } from '@/lib/validacoes'
+import { listarEntradasDoProduto, EntradaHistoricoProduto } from '@/services/consultasCompras'
 
 export const ProdutoForm: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -170,6 +171,8 @@ export const ProdutoForm: React.FC = () => {
   const [conversoesDoProduto, setConversoesDoProduto] = useState<ProdutoConversaoUnidade[]>([])
   const [itensDoKit, setItensDoKit] = useState<ProdutoKitItem[]>([])
   const [historicoSPED, setHistoricoSPED] = useState<ProdutoHistorico[]>([])
+  const [entradasCompras, setEntradasCompras] = useState<EntradaHistoricoProduto[]>([])
+  const [carregandoEntradas, setCarregandoEntradas] = useState<boolean>(false)
 
   // Modais de CRUD auxiliares
   const [modalFornecedorAberto, setModalFornecedorAberto] = useState(false)
@@ -266,6 +269,13 @@ export const ProdutoForm: React.FC = () => {
         setConversoesDoProduto(convs)
         setItensDoKit(kits)
         setHistoricoSPED(hist)
+
+        // Carregar últimas 20 entradas de compras
+        setCarregandoEntradas(true)
+        listarEntradasDoProduto(produtoId, empresaAtiva?.id)
+          .then((ent) => setEntradasCompras(ent))
+          .catch((e) => console.warn('Erro ao carregar entradas de compras:', e))
+          .finally(() => setCarregandoEntradas(false))
       } catch (err: unknown) {
         toast({
           title: 'Erro ao carregar produto',
@@ -772,6 +782,11 @@ export const ProdutoForm: React.FC = () => {
           <TabsTrigger value="fiscal" className="text-xs">
             Fiscal
           </TabsTrigger>
+          {ehEdicao && (
+            <TabsTrigger value="compras" className="text-xs">
+              Compras {entradasCompras.length > 0 && `(${entradasCompras.length})`}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="historico" className="text-xs">
             Histórico {historicoSPED.length > 0 && `(${historicoSPED.length})`}
           </TabsTrigger>
@@ -1896,6 +1911,143 @@ export const ProdutoForm: React.FC = () => {
             ehNovo={!ehEdicao}
           />
         </TabsContent>
+
+        {/* ======================================================== */}
+        {/* ABA: COMPRAS (ÚLTIMAS ENTRADAS) */}
+        {/* ======================================================== */}
+        {ehEdicao && (
+          <TabsContent value="compras" className="space-y-4">
+            <Card>
+              <CardContent className="pt-6 space-y-4 text-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                      <Package className="h-4 w-4 text-blue-600" />
+                      Últimas 20 Entradas do Produto
+                    </h3>
+                    <p className="text-slate-500 text-[11px] mt-0.5">
+                      Histórico de aquisição em notas fiscais de entrada lançadas no ERP.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (id) {
+                        setCarregandoEntradas(true)
+                        listarEntradasDoProduto(id, empresaAtiva?.id)
+                          .then(setEntradasCompras)
+                          .finally(() => setCarregandoEntradas(false))
+                      }
+                    }}
+                    className="h-7 text-xs text-blue-600"
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 mr-1 ${carregandoEntradas ? 'animate-spin' : ''}`}
+                    />
+                    Atualizar
+                  </Button>
+                </div>
+
+                {carregandoEntradas ? (
+                  <div className="py-8 text-center text-slate-400">
+                    <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
+                    <p>Buscando histórico de compras...</p>
+                  </div>
+                ) : entradasCompras.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                    <Package className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                    <p className="font-medium text-slate-600">
+                      Nenhuma entrada por nota fiscal lançada
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      As entradas aparecerão aqui automaticamente quando uma nota de compra deste
+                      produto for lançada.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[10px] font-semibold">
+                        <tr>
+                          <th className="p-2.5">Data Entrada</th>
+                          <th className="p-2.5">Fornecedor</th>
+                          <th className="p-2.5">Nota Fiscal</th>
+                          <th className="p-2.5 text-right">Qtd Estoque</th>
+                          <th className="p-2.5 text-right">Custo Unitário</th>
+                          <th className="p-2.5 text-right">Valor Total</th>
+                          <th className="p-2.5 text-center">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {entradasCompras.map((ent) => (
+                          <tr key={ent.id} className="hover:bg-slate-50">
+                            <td className="p-2.5 font-mono text-slate-700 whitespace-nowrap">
+                              {ent.data_entrada
+                                ? new Date(ent.data_entrada).toLocaleDateString('pt-BR')
+                                : '—'}
+                            </td>
+                            <td
+                              className="p-2.5 font-medium text-slate-900 max-w-[200px] truncate"
+                              title={ent.fornecedor_nome}
+                            >
+                              {ent.fornecedor_nome}
+                            </td>
+                            <td className="p-2.5 whitespace-nowrap">
+                              <span className="font-mono font-semibold text-slate-800">
+                                Nº {ent.numero_nota}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono ml-1">
+                                (Mod {ent.modelo || '55'}
+                                {ent.serie ? `/${ent.serie}` : ''})
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
+                              {ent.quantidade_estoque.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 4,
+                              })}{' '}
+                              <span className="text-[10px] text-slate-400 font-normal">
+                                {ent.unidade_sigla || ''}
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-right font-mono text-slate-700 whitespace-nowrap">
+                              R${' '}
+                              {ent.custo_unitario.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 4,
+                              })}
+                            </td>
+                            <td className="p-2.5 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
+                              R${' '}
+                              {ent.valor_total.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td className="p-2.5 text-center whitespace-nowrap">
+                              <Button
+                                asChild
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[11px] text-blue-600 hover:text-blue-800 p-1"
+                              >
+                                <Link to={`/compras/notas-entrada/${ent.nota_id}/conferencia`}>
+                                  Ver Nota
+                                </Link>
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         {/* ======================================================== */}
         {/* ABA 8: HISTÓRICO SPED (Registro 0205) */}
