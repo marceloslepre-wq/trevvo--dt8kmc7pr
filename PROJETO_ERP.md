@@ -1704,6 +1704,141 @@ Regras:
 1. Criada automaticamente na primeira visualização da empresa com os defaults do plano de contas semeado (2.1.01, 2.1.03, 2.4.07, 2.7.01, 2.8.01, 1.1.01, 1.2.01, 2.6.01, 1.2.02, 2.6.03, 3.1.01) e centro de custo "Geral".
 2. Toda alteração grava em `logs_auditoria`.
 
+### contas_pagar
+
+Tabela central de títulos e obrigações a pagar do ERP, individualizada por empresa/filial (`empresa_id`).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- fornecedor_id (relation -> fornecedores, obrigatório)
+- numero_documento (text, obrigatório — número da NF ou documento de cobrança)
+- parcela_numero (número inteiro, padrão 1)
+- parcela_total (número inteiro, padrão 1)
+- data_emissao (date, YYYY-MM-DD, obrigatório)
+- data_vencimento (date, YYYY-MM-DD, obrigatório)
+- data_competencia (date, YYYY-MM-DD, padrão data_emissao)
+- data_liquidacao (date, YYYY-MM-DD, data em que o título foi totalmente quitado)
+- valor_original (número monetário, 2 casas, obrigatório > 0)
+- valor_pago (número monetário, 2 casas, padrão 0 — soma das baixas ativas)
+- saldo (número monetário, 2 casas, padrão valor_original — valor_original - valor_pago)
+- status (select: "Em aberto", "Parcialmente pago", "Pago", "Cancelado", padrão "Em aberto")
+- plano_conta_id (relation -> plano_contas, obrigatório, conta analítica de despesa)
+- centro_custo_id (relation -> centros_custo, opcional)
+- origem (select: "MANUAL", "NF_ENTRADA", "PEDIDO_COMPRA", "OUTROS", padrão "MANUAL")
+- origem_id (text, opcional — ID do registro de origem, ex: notas_entrada.id)
+- historico (text, opcional — histórico complementar do lançamento)
+- observacoes (text, opcional)
+- motivo_cancelamento (text, opcional — preenchido quando status = "Cancelado")
+- cancelado_em (date/text, opcional)
+- cancelado_por (relation -> users, opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+1. Atualizações de `valor_pago`, `saldo` e `status` ocorrem estritamente via serviço central de pagamentos (`/financeiro/pagar/baixar`, `/financeiro/pagar/estornar-baixa`) ou cancelamento.
+2. Título com baixas ativas não pode ser cancelado diretamente: exige estorno prévio de todos os pagamentos.
+3. Título originado por Nota Fiscal de Entrada (`origem = "NF_ENTRADA"`) não pode ser cancelado diretamente na tela de Contas a Pagar: o cancelamento deve ser feito pelo cancelamento do lançamento da respectiva nota no módulo de Compras.
+4. Índices para consultas rápidas: `empresa_id + status + data_vencimento`, `empresa_id + fornecedor_id`, `empresa_id + origem + origem_id`.
+
+---
+
+### pagamentos_lotes
+
+Cabeçalho de agrupamento de pagamentos efetuados em lote ou individualmente.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- conta_financeira_id (relation -> contas_financeiras, obrigatório — conta bancária ou caixa debitado)
+- forma_pagamento_id (relation -> formas_pagamento, obrigatório)
+- data_pagamento (date, YYYY-MM-DD, obrigatório)
+- valor_total_principal (número monetário, soma dos valores de amortização)
+- valor_total_multa (número monetário, soma das multas)
+- valor_total_juros (número monetário, soma dos juros)
+- valor_total_desconto (número monetário, soma dos descontos obtidos)
+- valor_total_pago (número monetário, principal + multa + juros - desconto)
+- quantidade_titulos (número inteiro)
+- documento_pagamento (text, opcional — autenticação, NSU, comprovante bancário)
+- observacoes (text, opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+---
+
+### pagamentos_baixas
+
+Registro analítico individual de cada baixa/amortização de um título a pagar.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- conta_pagar_id (relation -> contas_pagar, obrigatório)
+- lote_pagamento_id (relation -> pagamentos_lotes, obrigatório)
+- conta_financeira_id (relation -> contas_financeiras, obrigatório)
+- forma_pagamento_id (relation -> formas_pagamento, obrigatório)
+- data_pagamento (date, YYYY-MM-DD, obrigatório)
+- valor_pago (número monetário, amortização sobre o principal)
+- valor_multa (número monetário, padrão 0)
+- valor_juros (número monetário, padrão 0)
+- valor_desconto (número monetário, padrão 0)
+- valor_total_pago (número monetário, valor_pago + valor_multa + valor_juros - valor_desconto)
+- estornado (boolean, padrão false)
+- data_estorno (date/text, opcional)
+- motivo_estorno (text, opcional)
+- estornado_por (relation -> users, opcional)
+- movimentacao_financeira_id (relation -> movimentacoes_financeiras, movimento de débito gerado)
+- movimentacao_estorno_id (relation -> movimentacoes_financeiras, movimento de crédito do estorno)
+- observacoes (text, opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+1. Toda baixa gera uma movimentação financeira correspondente de saída (`tipo_movimento = "Saída"`) na `conta_financeira_id`.
+2. O estorno da baixa marca `estornado = true`, preenche justificativa e usuário, e gera uma movimentação financeira de entrada com `origem = "ESTORNO"` para recompor o saldo bancário.
+3. API Rules: `createRule: null`, `updateRule: null`, `deleteRule: null` — alterações somente via endpoints transacionais do backend.
+
+---
+
+### movimentacoes_financeiras
+
+Extrato e trilha completa de auditoria financeira das contas bancárias e caixas do ERP.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- conta_financeira_id (relation -> contas_financeiras, obrigatório)
+- tipo_movimento (select: "Entrada", "Saída", obrigatório)
+- data_movimento (date, YYYY-MM-DD, obrigatório)
+- data_competencia (date, YYYY-MM-DD, obrigatório)
+- valor (número monetário, 2 casas, sempre positivo)
+- plano_conta_id (relation -> plano_contas, obrigatório)
+- centro_custo_id (relation -> centros_custo, opcional)
+- origem (select: "PAGAMENTO_FORNECEDOR", "RECEBIMENTO_CLIENTE", "TRANSFERENCIA_ENTRE_CONTAS", "SALDO_INICIAL", "AJUSTE", "ESTORNO", "TARIFA_BANCARIA", "OUTROS", obrigatório)
+- origem_id (text, opcional — ID do registro gerador, ex: pagamentos_baixas.id)
+- historico (text, obrigatório)
+- documento_numero (text, opcional)
+- conciliado (boolean, padrão false)
+- data_conciliacao (date/text, opcional)
+- saldo_anterior (número monetário, saldo da conta imediatamente antes deste movimento)
+- saldo_posterior (número monetário, saldo resultante após este movimento)
+- estornado (boolean, padrão false)
+- movimento_estorno_id (relation -> movimentacoes_financeiras, opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+1. **REGRA MANDATÓRIA:** O campo `saldo_atual` da tabela `contas_financeiras` só pode ser alterado pelo serviço central financeiro via inserção de `movimentacoes_financeiras`. Nenhuma tela grava diretamente em `saldo_atual`.
+2. API Rules: `createRule: null`, `updateRule: null`, `deleteRule: null` — imutabilidade e proteção em nível de banco.
+
 #### Componentes reutilizáveis
 
 - `<SelectProduto />` (`@/components/SelectProduto`): combobox com busca de produtos ativos por código, GTIN ou descrição, exibindo foto miniatura e preço de venda. Permite filtro opcional por `filtroTipo` ("Produto", "Serviço", "Kit"). Pronto para uso em PDV, compras, orçamentos e emissão de notas:
@@ -1752,7 +1887,7 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 26. `/cadastros/condicoes-pagamento` (`@/pages/cadastros/CondicoesPagamentoPage.tsx`): Gestão de condições de pagamento com listagem, busca, filtros de tipo/uso/situação, simulação interativa de parcelas com cálculo em tempo real e exportação CSV.
 27. `/estoque/lotes` (`@/pages/estoque/LotesValidadePage.tsx`): Gestão e rastreabilidade de lotes e datas de validade com classificação automática (Vencido, Vence em até X dias, OK), contagem regressiva em dias, filtros por produto/situação/período e exportação CSV.
 
-### Todas as Tabelas Criadas (40 tabelas)
+### Todas as Tabelas Criadas (44 tabelas)
 
 1. `users`: Coleção de autenticação do Skip Cloud / PocketBase com e-mail, senha e verificação.
 2. `logs_auditoria`: Trilha de auditoria com usuário, tabela, registro, ação (inclusao, alteracao, inativacao, ativacao) e diff JSON.
@@ -1794,6 +1929,10 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 38. `contas_financeiras`: Contas bancárias correntes, poupanças, aplicações e caixas físicos por filial (`empresa_id`).
 39. `formas_pagamento`: Catálogo de formas de pagamento com código fiscal oficial tPag da SEFAZ, taxas e prazos.
 40. `config_financeira_empresa`: Parametrização financeira exclusiva de cada empresa (`empresa_id` único) com multas, juros de mora e contas contábeis padrão.
+41. `contas_pagar`: Títulos de contas a pagar por empresa com controle de parcelamento, plano de contas e status analítico.
+42. `pagamentos_lotes`: Lotes de pagamentos com conta financeira, forma de pagamento e totalizações.
+43. `pagamentos_baixas`: Baixas analíticas de pagamento com amortização, juros, multa, desconto e rastro de estorno.
+44. `movimentacoes_financeiras`: Movimentações e extrato de débito/crédito das contas financeiras com recomposição de saldo anterior e posterior.
 
 ### Todos os Componentes Reutilizáveis e Funções Utilitárias
 
@@ -1815,6 +1954,26 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 - Serviço de Lotes e Validade (`@/services/lotes.ts`): Funções utilitárias `calcularDiasParaVencer(dataValidade)` (retorna dias inteiros até o vencimento, negativo para vencidos) e `classificarSituacaoLote(dataValidade, diasAlerta)` (classifica em `vencido`, `alerta` ou `ok` e fornece o rótulo formatado), além de `listarLotes`, `listarLotesDisponiveisProduto` e `listarTodosLotesProduto`.
 - `sugerirTributacao(params)` (`@/services/motorFiscal.ts`): Motor tributário central inteligente em 4 etapas (A: Regras fiscais NCM, B: Produto semelhante revisado, C: Dedução por XML, D: Classificação manual) com nível de confiança e justificativas por campo fiscal.
 - `aliquotaInterestadual(ufOrigem, ufDestino, origemMercadoria)` (`@/services/icmsMatriz.ts`): Função determinística para cálculo da alíquota de ICMS interna, interestadual ou importada (4% Res. Senado 13/2012).
+
+### Serviços Centrais Financeiros (`@/services/financeiro.ts` e Endpoints de Backend)
+
+⚠ **REGRA DE ARQUITETURA MANDATÓRIA (EM DESTAQUE):**
+Nenhuma tela, hook ou componente do sistema tem permissão para alterar diretamente o campo `saldo_atual` da tabela `contas_financeiras` nem para inserir registros isolados em `movimentacoes_financeiras`, `pagamentos_lotes` ou `pagamentos_baixas`. Toda e qualquer operação de pagamento, baixa de título ou estorno deve transitar única e exclusivamente pelos endpoints centrais do backend:
+- `/financeiro/pagar/baixar` (função client `baixarTitulosPagar`): efetua a baixa de um ou mais títulos a pagar, registra o lote de pagamento, calcula acréscimos/descontos, gera as movimentações financeiras de saída (débito) nas contas bancárias/caixas e atualiza de forma atômica o `saldo_atual` da conta financeira e os saldos/status dos títulos.
+- `/financeiro/pagar/estornar-baixa` (função client `estornarBaixaPagamento`): cancela uma baixa de pagamento, marca `estornado = true`, registra o motivo e o usuário operador, estorna a movimentação gerando crédito de recomposição no saldo da conta financeira e devolve o saldo devedor ao título (`contas_pagar.saldo` e status).
+- `/financeiro/pagar/gerar-titulos-retroativos` (função client `gerarTitulosRetroativosNotas`): varre notas de entrada já lançadas que não possuíam títulos gerados e cria os registros em `contas_pagar` com base nas duplicatas de `notas_entrada_parcelas`.
+
+#### Regras de Integração com Lançamento e Cancelamento de Notas de Entrada:
+1. **Geração por Parcela:** Ao lançar uma nota fiscal de entrada (via importação XML ou digitação manual), o sistema gera automaticamente um registro na tabela `contas_pagar` para cada parcela existente em `notas_entrada_parcelas` (`parcela_numero`, `parcela_total`, `data_vencimento`, `valor_original`). Se a nota não possuir duplicatas cadastradas, gera 1 título único com o valor total da nota e vencimento na data de entrada.
+2. **Plano de Contas por Tipo de Entrada:** A conta contábil analítica atribuída a cada título gerado é selecionada automaticamente a partir da parametrização em `config_financeira_empresa` da filial ativa:
+   - "Compra para revenda" → `plano_compras_revenda_id` (default 2.1.01)
+   - "Compra para industrialização" → `plano_industrializacao_id` (default 2.1.03)
+   - "Uso e consumo" → `plano_uso_consumo_id` (default 2.4.07)
+   - "Ativo imobilizado" → `plano_imobilizado_id` (default 2.7.01)
+   - "Outras entradas" → `plano_outras_entradas_id` (default 2.8.01)
+3. **Exceções Legais de Geração:** Tipos de entrada "Bonificação" e "Devolução de venda" **não geram títulos a pagar**, pois não representam desembolso financeiro a fornecedor.
+4. **Notas à Vista com Baixa Imediata ("Já paga"):** Quando a nota de entrada for selecionada com condição de pagamento à vista com quitação imediata, o título é gerado com status "Pago", gerando a baixa e a movimentação financeira de saída na conta bancária/caixa padrão.
+5. **Cancelamento Recusado com Baixas Ativas:** O cancelamento de uma nota fiscal de entrada é **terminantemente bloqueado** caso existam títulos vinculados com baixas ativas de pagamento. O operador recebe mensagem clara instruindo a estornar previamente todas as baixas de pagamento no Contas a Pagar antes de proceder ao cancelamento da nota fiscal.
 
 ### Serviços Centrais de Estoque (`@/services/estoque.ts`)
 
@@ -2014,6 +2173,33 @@ A **Etapa 3 — Compras e Entrada de Notas** foi oficialmente concluída de pont
   - Não foram criadas contas a pagar, nem pedidos de venda, nem emissão de NF-e (mantidos estritamente para as Etapas 4 e 6).
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.42** — Conclusão do Módulo de Contas a Pagar (Etapa 4 — Financeiro):
+
+1. **Estrutura de Banco e Migrations (0032 e 0033):**
+   - Criação das 4 tabelas centrais do financeiro transacional: `contas_pagar`, `pagamentos_lotes`, `pagamentos_baixas` e `movimentacoes_financeiras`, com índices por empresa, fornecedor, vencimento, status e origem.
+   - API Rules de segurança impedindo alterações diretas nas tabelas de baixas e movimentações bancárias fora do serviço central.
+   - Atualização da permissão do módulo `financeiro_pagar` com acesso total (ver, criar, editar, excluir) para os perfis Administrador, Gerente e Financeiro.
+2. **Serviço Central Financeiro e Endpoints de Backend (`pocketbase/hooks/financeiro.pb.js` e `@/services/financeiro.ts`):**
+   - `/financeiro/pagar/baixar`: baixa atômica de múltiplos títulos em lote ou individual, cálculo de juros, multas (pro rata die) e descontos, registro do lote e baixas analíticas, movimentação de saída nas contas financeiras e atualização de `saldo_atual`.
+   - `/financeiro/pagar/estornar-baixa`: estorno rastreado com justificativa obrigatória, recomposição do saldo bancário através de movimentação de entrada ("ESTORNO") e reabertura do saldo devedor do título.
+   - `/financeiro/pagar/gerar-titulos-retroativos`: utilitário administrativo para geração de títulos a pagar a partir de notas de entrada já lançadas anteriormente.
+3. **Integração de Ponta a Ponta com Notas Fiscais de Entrada:**
+   - Geração automática de títulos em `contas_pagar` por duplicata de `notas_entrada_parcelas` ao lançar notas.
+   - Mapeamento automático de plano de contas por tipo de entrada via parametrização da filial ativa em `config_financeira_empresa`.
+   - Regra de não geração para bonificações e devoluções.
+   - Bloqueio rígido no cancelamento de notas quando houver títulos com baixas ativas de pagamento, orientando o estorno prévio no Contas a Pagar.
+4. **Interface e Telas Operacionais do Contas a Pagar:**
+   - Rota `/financeiro/contas-pagar` integrada no menu lateral (Financeiro > Contas a pagar, sem badge "Em breve").
+   - Listagem rica com cards de indicadores (Total em aberto, Vencidos, A vencer em 7 dias, Pagos no mês), filtros dinâmicos por fornecedor, período, status, plano de contas e centro de custo, seleção múltipla e exportação CSV.
+   - Modal de Novo Título (`<ModalNovoTitulo />`): cadastro manual avulso com busca de fornecedor, plano de contas analítico, centro de custo e suporte a parcelamento automático.
+   - Modal de Pagamento em Lote / Individual (`<ModalPagarTitulos />`): cálculo em tempo real de juros de mora e multas por atraso com base na `config_financeira_empresa`, seleção da conta de débito e forma de pagamento, e amortização flexível.
+   - Modal de Detalhes do Título (`<ModalDetalheTitulo />`): visão 360º com histórico de pagamentos/baixas, botão de estorno com justificativa, cancelamento do título avulso (com bloqueio para títulos de NF-e) e trilha de auditoria completa em `logs_auditoria`.
+   - Aba "Financeiro" no cadastro do fornecedor (`FornecedorForm.tsx`): exibição consolidada de títulos em aberto, vencidos e pagos nos últimos 12 meses com contadores e totalizadores de cada grupo, condicionada à permissão `pode('financeiro_pagar', 'ver')`.
+5. **Permissões e Segurança (PermissaoGuard):**
+   - Proteção estrita de todas as operações com o módulo `financeiro_pagar` (visualização de telas e abas, criação de títulos e pagamentos, e exclusão restrita para estorno e cancelamento).
+
+---
 
 **Versão 0.0.41** — Início da Etapa 4 (Módulo Financeiro — Cadastros Financeiros Base):
 

@@ -115,14 +115,10 @@ export const ModalPagarTitulos: React.FC<ModalPagarTitulosProps> = ({
       const cfg = await obterOuCriarConfigFinanceiraEmpresa(empId)
       setConfigFinanceira(cfg)
 
-      // Define conta financeira padrão
-      if (cfg.conta_padrao_pagamentos_id) {
-        setContaFinanceiraId(cfg.conta_padrao_pagamentos_id)
-      } else {
-        const contaPadrao = contas.find((c) => c.conta_padrao_pagamentos)
-        if (contaPadrao) setContaFinanceiraId(contaPadrao.id)
-        else if (contas[0]) setContaFinanceiraId(contas[0].id)
-      }
+      // Define conta financeira padrão (pela conta_padrao_pagamentos da conta_financeira)
+      const contaPadrao = contas.find((c) => c.conta_padrao_pagamentos)
+      if (contaPadrao) setContaFinanceiraId(contaPadrao.id)
+      else if (contas[0]) setContaFinanceiraId(contas[0].id)
 
       if (formas[0]) {
         setFormaPagamentoId(formas[0].id)
@@ -144,7 +140,7 @@ export const ModalPagarTitulos: React.FC<ModalPagarTitulosProps> = ({
         dataPagamento,
         multaPercentual: configFinanceira?.multa_atraso_percentual || 0,
         jurosMensalPercentual: configFinanceira?.juros_mora_mensal_percentual || 0,
-        diasCarencia: configFinanceira?.dias_carencia_atraso || 0,
+        diasCarencia: configFinanceira?.dias_carencia || 0,
       })
 
       return {

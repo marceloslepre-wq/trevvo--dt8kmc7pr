@@ -78,11 +78,11 @@ export const ModalDetalheTitulo: React.FC<ModalDetalheTituloProps> = ({
         const [t, b, l] = await Promise.all([
           obterContaPagarPorId(id),
           listarBaixasDoTitulo(id),
-          listarLogsAuditoria({ tabela: 'contas_pagar', registro_id: id }),
+          listarLogsAuditoria({ tabela: 'contas_pagar', registro_id: id, perPage: 50 }),
         ])
         setTitulo(t)
         setBaixas(b)
-        setLogs(l)
+        setLogs(l.items)
       } catch (err) {
         console.error('Erro ao carregar detalhes do título:', err)
         toast({
@@ -222,8 +222,8 @@ export const ModalDetalheTitulo: React.FC<ModalDetalheTituloProps> = ({
                       {titulo.status}
                     </Badge>
 
-                    {/* Botão de Cancelar Título */}
-                    {titulo.status !== 'Cancelado' && (
+                    {/* Botão de Cancelar Título (exige permissão podeExcluir) */}
+                    {titulo.status !== 'Cancelado' && podeExcluir && (
                       <Button
                         type="button"
                         variant="ghost"
@@ -496,12 +496,7 @@ export const ModalDetalheTitulo: React.FC<ModalDetalheTituloProps> = ({
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-600 mt-0.5">
-                              Usuário:{' '}
-                              <strong>
-                                {log.expand?.usuario_id?.name ||
-                                  log.expand?.usuario_id?.email ||
-                                  'Sistema'}
-                              </strong>
+                              Usuário: <strong>{log.usuario_nome || 'Sistema'}</strong>
                             </p>
                             {log.valores_depois && (
                               <pre className="mt-1 text-[10px] bg-slate-50 p-1.5 rounded-sm border border-slate-200 text-slate-700 font-mono overflow-x-auto max-h-24">

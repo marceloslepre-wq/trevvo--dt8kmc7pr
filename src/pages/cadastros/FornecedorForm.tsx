@@ -66,6 +66,7 @@ import {
 } from '@/services/consultasCompras'
 import { obterResumoFinanceiroFornecedor, ResumoFinanceiroFornecedor } from '@/services/financeiro'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { usePermissoes } from '@/contexts/PermissoesContext'
 import { SelectCondicaoPagamento } from '@/components/SelectCondicaoPagamento'
 import { Receipt, DollarSign } from 'lucide-react'
 import {
@@ -136,6 +137,8 @@ export const FornecedorForm: React.FC = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { empresaAtiva } = useEmpresaAtiva()
+  const { pode } = usePermissoes()
+  const podeVerFinanceiro = pode('financeiro_pagar', 'ver')
 
   const ehEdicao = Boolean(id)
 
@@ -334,12 +337,14 @@ export const FornecedorForm: React.FC = () => {
             .catch((e) => console.warn('Erro ao carregar notas do fornecedor:', e))
             .finally(() => setCarregandoNotas(false))
 
-          // Carregar resumo financeiro do fornecedor (últimos 12 meses)
-          setCarregandoFinanceiro(true)
-          obterResumoFinanceiroFornecedor(f.id, empresaAtiva?.id)
-            .then(setResumoFinanceiro)
-            .catch((e) => console.warn('Erro ao carregar resumo financeiro do fornecedor:', e))
-            .finally(() => setCarregandoFinanceiro(false))
+          // Carregar resumo financeiro do fornecedor (últimos 12 meses) se usuário tiver permissão em financeiro_pagar
+          if (podeVerFinanceiro) {
+            setCarregandoFinanceiro(true)
+            obterResumoFinanceiroFornecedor(f.id, empresaAtiva?.id)
+              .then(setResumoFinanceiro)
+              .catch((e) => console.warn('Erro ao carregar resumo financeiro do fornecedor:', e))
+              .finally(() => setCarregandoFinanceiro(false))
+          }
 
           // Inicial para rastrear dirty
           setDadosIniciais(
@@ -880,7 +885,7 @@ export const FornecedorForm: React.FC = () => {
                 Notas {historicoNotas.totalGeralNotas > 0 && `(${historicoNotas.totalGeralNotas})`}
               </TabsTrigger>
             )}
-            {ehEdicao && (
+            {ehEdicao && podeVerFinanceiro && (
               <TabsTrigger value="financeiro" className="text-xs py-2">
                 <DollarSign size={14} className="mr-1.5 hidden sm:inline" />
                 Financeiro{' '}
@@ -1935,7 +1940,7 @@ export const FornecedorForm: React.FC = () => {
           )}
 
           {/* ================= ABA: FINANCEIRO (CONTAS A PAGAR) ================= */}
-          {ehEdicao && (
+          {ehEdicao && podeVerFinanceiro && (
             <TabsContent value="financeiro">
               <Card className="border-slate-200 shadow-2xs">
                 <CardContent className="p-5 space-y-4">

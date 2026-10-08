@@ -265,8 +265,13 @@ const navItems: NavGroupItem[] = [
     title: 'Financeiro',
     icon: DollarSign,
     status: 'active',
-    modulo: 'financeiro_bancos',
     items: [
+      {
+        title: 'Contas a pagar',
+        path: '/financeiro/contas-pagar',
+        icon: DollarSign,
+        modulo: 'financeiro_pagar',
+      },
       {
         title: 'Plano de contas',
         path: '/financeiro/cadastros/plano-contas',

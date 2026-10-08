@@ -20,6 +20,7 @@ export interface FiltrosAuditoria {
   data_fim?: string
   usuario_id?: string
   tabela?: string
+  registro_id?: string
   acao?: string
   page?: number
   perPage?: number
@@ -67,6 +68,9 @@ export async function listarLogsAuditoria(filtros: FiltrosAuditoria = {}) {
   }
   if (filtros.tabela && filtros.tabela !== 'todas') {
     condicoes.push(`tabela = '${filtros.tabela}'`)
+  }
+  if (filtros.registro_id) {
+    condicoes.push(`registro_id = '${filtros.registro_id}'`)
   }
   if (filtros.acao && filtros.acao !== 'todas') {
     condicoes.push(`acao = '${filtros.acao}'`)
