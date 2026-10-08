@@ -134,19 +134,23 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [perfil?.administrador])
 
   // Se já resolveu uma vez ou se temos cache / admin / token válido, nunca bloqueia como 'carregando'
+  // Carregando: se temos usuário ERP (ou cache), administrador, ou se a sessão já resolveu,
+  // NUNCA bloqueia. Só fica true estritamente se não temos usuário ERP E estiver carregando autenticação.
   const carregando = useMemo(() => {
-    if (administrador) return false
-    if (jaResolveuUmaVezRef.current) return false
+    if (administrador || Boolean(perfil?.administrador)) return false
     if (usuarioERP) return false
-    return authLoading && carregandoInterno
-  }, [administrador, usuarioERP, authLoading, carregandoInterno])
+    if (jaResolveuUmaVezRef.current) return false
+    // Se temos login ativo no PocketBase, libera imediatamente (SWR)
+    if (pb.authStore.isValid && pb.authStore.record) return false
+    return Boolean(authLoading || carregandoInterno)
+  }, [administrador, perfil?.administrador, usuarioERP, authLoading, carregandoInterno])
 
-  // Timeout de segurança absoluto: após 500ms nenhuma tela pode continuar bloqueada
+  // Timeout de segurança absoluto: após 300ms nenhuma tela pode continuar bloqueada
   useEffect(() => {
     const timer = setTimeout(() => {
       setCarregandoInterno(false)
       jaResolveuUmaVezRef.current = true
-    }, 500)
+    }, 300)
     return () => clearTimeout(timer)
   }, [])
   const pode = useCallback(

@@ -1632,3 +1632,357 @@ export async function importarXmlNotaEntrada(params: {
 
   return { nota: notaCriada, fornecedorCriado }
 }
+
+// ==========================================
+// SERVIÇOS DE LANÇAMENTO DE NOTAS POR DIGITAÇÃO (SEM XML)
+// ==========================================
+
+export interface ItemNotaDigitadaInput {
+  numero_item: number
+  produto_id: string
+  codigo_fornecedor?: string
+  descricao_fornecedor: string
+  gtin_fornecedor?: string
+  ncm_fornecedor?: string
+  cest_fornecedor?: string
+  unidade_fornecedor?: string
+  cfop_fornecedor?: string
+  quantidade_fornecedor: number
+  valor_unitario_fornecedor: number
+  valor_produto: number
+  valor_desconto?: number
+  valor_frete?: number
+  valor_seguro?: number
+  valor_outras?: number
+  // Impostos destacados
+  origem?: string
+  cst_icms_fornecedor?: string
+  base_icms?: number
+  aliquota_icms?: number
+  valor_icms?: number
+  base_icms_st?: number
+  aliquota_icms_st?: number
+  valor_icms_st?: number
+  valor_fcp_st?: number
+  cst_ipi?: string
+  base_ipi?: number
+  aliquota_ipi?: number
+  valor_ipi?: number
+  cst_pis_fornecedor?: string
+  valor_pis?: number
+  cst_cofins_fornecedor?: string
+  valor_cofins?: number
+  // Escrituração
+  cfop_entrada?: string
+  cst_icms_entrada?: string
+}
+
+export interface ParcelaNotaDigitadaInput {
+  numero: string
+  data_vencimento: string
+  valor: number
+  forma_pagamento?: string
+}
+
+export interface CriarNotaDigitadaInput {
+  empresa_id: string
+  fornecedor_id: string
+  modelo: ModeloNota
+  serie: string
+  numero: number
+  chave_acesso?: string
+  data_emissao: string
+  data_entrada: string
+  tipo_entrada: TipoEntradaNota
+  natureza_operacao?: string
+  condicao_pagamento_id?: string
+  modalidade_frete: number
+  transportadora_id?: string
+  pedido_compra_id?: string
+  informacoes_complementares?: string
+
+  // Totais
+  valor_produtos: number
+  valor_frete?: number
+  valor_seguro?: number
+  valor_desconto?: number
+  valor_outras?: number
+  valor_ipi?: number
+  base_icms?: number
+  valor_icms?: number
+  base_icms_st?: number
+  valor_icms_st?: number
+  valor_fcp_st?: number
+  valor_pis?: number
+  valor_cofins?: number
+  valor_total: number
+
+  itens: ItemNotaDigitadaInput[]
+  parcelas: ParcelaNotaDigitadaInput[]
+}
+
+/**
+ * Cria uma nota fiscal de entrada por DIGITAÇÃO manual (sem XML).
+ * Salva com status 'Em conferência' e origem_lancamento = 'Digitação',
+ * utilizando as MESMAS tabelas e o MESMO formato das notas importadas por XML.
+ */
+export async function salvarNotaEntradaDigitada(
+  dados: CriarNotaDigitadaInput,
+): Promise<NotaEntrada> {
+  const user = pb.authStore.record
+
+  if (!dados.empresa_id) throw new Error('Empresa ativa é obrigatória.')
+  if (!dados.fornecedor_id) throw new Error('Fornecedor é obrigatório.')
+  if (!dados.numero || dados.numero <= 0) throw new Error('Número da nota fiscal é obrigatório.')
+  if (!dados.data_emissao) throw new Error('Data de emissão é obrigatória.')
+  if (!dados.data_entrada) throw new Error('Data de entrada é obrigatória.')
+  if (!dados.itens || dados.itens.length === 0)
+    throw new Error('A nota deve conter ao menos 1 item.')
+
+  // Validação da chave para modelos 55 e 65
+  const chaveLimpa = (dados.chave_acesso || '').replace(/\D/g, '')
+  if (dados.modelo === '55' || dados.modelo === '65') {
+    if (!chaveLimpa) {
+      throw new Error(`A chave de acesso é obrigatória para notas de modelo ${dados.modelo}.`)
+    }
+    if (chaveLimpa.length !== 44) {
+      throw new Error(
+        `A chave de acesso deve ter exatamente 44 dígitos (informado: ${chaveLimpa.length}).`,
+      )
+    }
+  }
+
+  // Verifica se já existe nota com a mesma chave (se fornecida e ativa/não cancelada)
+  if (chaveLimpa) {
+    const jaExiste = await buscarNotaPorChave(dados.empresa_id, chaveLimpa)
+    if (jaExiste) {
+      throw new Error(
+        `Já existe uma nota fiscal cadastrada com esta chave de acesso (Nota #${jaExiste.numero}, Status: ${jaExiste.status}).`,
+      )
+    }
+  }
+
+  // Carrega dados da empresa para apuração de créditos e custos
+  let dadosEmpresa: DadosEmpresaCalculo = {}
+  try {
+    const emp = await pb.collection('empresas').getOne<any>(dados.empresa_id)
+    dadosEmpresa = {
+      crt: emp.crt,
+      regime_apuracao: emp.regime_apuracao,
+      regime_pis_cofins: emp.regime_pis_cofins,
+      contribuinte_ipi: emp.contribuinte_ipi,
+    }
+  } catch {
+    // ignora
+  }
+
+  // 1. Criar cabeçalho da nota
+  const payloadCabecalho: Record<string, unknown> = {
+    empresa_id: dados.empresa_id,
+    fornecedor_id: dados.fornecedor_id,
+    transportadora_id: dados.transportadora_id || null,
+    pedido_compra_id: dados.pedido_compra_id || null,
+    condicao_pagamento_id: dados.condicao_pagamento_id || null,
+    origem_lancamento: 'Digitação',
+    modelo: dados.modelo || '55',
+    serie: dados.serie || '1',
+    numero: dados.numero,
+    chave_acesso: chaveLimpa || null,
+    data_emissao: dados.data_emissao,
+    data_entrada: dados.data_entrada,
+    tipo_entrada: dados.tipo_entrada,
+    natureza_operacao: dados.natureza_operacao || 'COMPRA PARA ENTRADA',
+    modalidade_frete: dados.modalidade_frete !== undefined ? dados.modalidade_frete : 9,
+    valor_produtos: dados.valor_produtos || 0,
+    valor_frete: dados.valor_frete || 0,
+    valor_seguro: dados.valor_seguro || 0,
+    valor_desconto: dados.valor_desconto || 0,
+    valor_outras: dados.valor_outras || 0,
+    valor_ipi: dados.valor_ipi || 0,
+    base_icms: dados.base_icms || 0,
+    valor_icms: dados.valor_icms || 0,
+    base_icms_st: dados.base_icms_st || 0,
+    valor_icms_st: dados.valor_icms_st || 0,
+    valor_fcp_st: dados.valor_fcp_st || 0,
+    valor_pis: dados.valor_pis || 0,
+    valor_cofins: dados.valor_cofins || 0,
+    valor_ibs: 0,
+    valor_cbs: 0,
+    valor_total: dados.valor_total || 0,
+    informacoes_complementares: dados.informacoes_complementares || null,
+    status: 'Em conferência',
+    ativo: true,
+    created_by: user?.id || null,
+    updated_by: user?.id || null,
+  }
+
+  const notaCriada = await pb.collection('notas_entrada').create<NotaEntrada>(payloadCabecalho)
+
+  // 2. Gravar Itens
+  for (const it of dados.itens) {
+    const qtd = Number(it.quantidade_fornecedor) || 1
+    const vUnit = Number(it.valor_unitario_fornecedor) || 0
+    const vProd = Number(it.valor_produto) || qtd * vUnit
+    const vDesc = Number(it.valor_desconto) || 0
+    const vFrete = Number(it.valor_frete) || 0
+    const vSeg = Number(it.valor_seguro) || 0
+    const vOutro = Number(it.valor_outras) || 0
+    const vIpi = Number(it.valor_ipi) || 0
+    const vIcmsSt = Number(it.valor_icms_st) || 0
+    const vFcpSt = Number(it.valor_fcp_st) || 0
+
+    // Busca detalhes do produto para créditos e fator de conversão
+    let prod: any = null
+    if (it.produto_id) {
+      try {
+        prod = await pb.collection('produtos').getOne<any>(it.produto_id)
+      } catch {
+        // ignora
+      }
+    }
+
+    const fatorConversao = 1
+    const qtdEstoque = qtd * fatorConversao
+
+    // Sugere CST PIS e COFINS
+    const { cstPis, cstCofins } = sugerirCstPisCofinsEntrada({
+      empresa: dadosEmpresa,
+      tipoEntrada: dados.tipo_entrada,
+      produtoCstPis: prod?.cst_pis_entrada,
+      produtoCstCofins: prod?.cst_cofins_entrada,
+    })
+
+    // Calcula créditos
+    const creditos = calcularCreditosItem({
+      empresa: dadosEmpresa,
+      tipoEntrada: dados.tipo_entrada,
+      cstFornecedor: it.cst_icms_fornecedor || '',
+      valorIcmsItem: it.valor_icms || 0,
+      valorIpiItem: vIpi,
+      valorProduto: vProd,
+      desconto: vDesc,
+      frete: vFrete,
+      seguro: vSeg,
+      outras: vOutro,
+      cstPisEntrada: cstPis,
+      cstCofinsEntrada: cstCofins,
+      aproveitaCreditoIcms: true,
+      aproveitaCreditoIpi: true,
+    })
+
+    // Calcula custo de aquisição
+    const { custoTotalItem, custoUnitarioEstoque } = calcularCustoAquisicaoItem({
+      valorProduto: vProd,
+      valorDesconto: vDesc,
+      valorFrete: vFrete,
+      valorSeguro: vSeg,
+      valorOutras: vOutro,
+      valorIpi: vIpi,
+      valorIcmsSt: vIcmsSt,
+      valorFcpSt: vFcpSt,
+      valorCreditoIcms: creditos.valorCreditoIcms,
+      valorCreditoIpi: creditos.valorCreditoIpi,
+      valorCreditoPis: creditos.valorCreditoPis,
+      valorCreditoCofins: creditos.valorCreditoCofins,
+      quantidadeEstoque: qtdEstoque,
+    })
+
+    const codFornecedorFinal =
+      it.codigo_fornecedor || (prod?.codigo ? String(prod.codigo) : String(it.numero_item))
+
+    const payloadItem: Record<string, unknown> = {
+      nota_id: notaCriada.id,
+      numero_item: it.numero_item,
+      codigo_fornecedor: codFornecedorFinal,
+      descricao_fornecedor: it.descricao_fornecedor,
+      gtin_fornecedor: it.gtin_fornecedor || prod?.gtin || null,
+      ncm_fornecedor: it.ncm_fornecedor || prod?.ncm || null,
+      cest_fornecedor: it.cest_fornecedor || prod?.cest || null,
+      cfop_fornecedor: it.cfop_fornecedor || null,
+      unidade_fornecedor: it.unidade_fornecedor || 'UN',
+      quantidade_fornecedor: qtd,
+      valor_unitario_fornecedor: vUnit,
+      // Vínculo ERP
+      produto_id: it.produto_id || null,
+      fator_conversao: fatorConversao,
+      quantidade_estoque: qtdEstoque,
+      // Valores
+      valor_produto: vProd,
+      valor_desconto: vDesc,
+      valor_frete: vFrete,
+      valor_seguro: vSeg,
+      valor_outras: vOutro,
+      // ICMS
+      origem: it.origem || prod?.origem || '0',
+      cst_icms_fornecedor: it.cst_icms_fornecedor || null,
+      base_icms: it.base_icms || 0,
+      aliquota_icms: it.aliquota_icms || 0,
+      valor_icms: it.valor_icms || 0,
+      base_icms_st: it.base_icms_st || 0,
+      aliquota_icms_st: it.aliquota_icms_st || 0,
+      valor_icms_st: vIcmsSt,
+      valor_fcp_st: vFcpSt,
+      // IPI
+      cst_ipi: it.cst_ipi || null,
+      base_ipi: it.base_ipi || 0,
+      aliquota_ipi: it.aliquota_ipi || 0,
+      valor_ipi: vIpi,
+      // PIS/COFINS
+      cst_pis_fornecedor: it.cst_pis_fornecedor || null,
+      valor_pis: it.valor_pis || 0,
+      cst_cofins_fornecedor: it.cst_cofins_fornecedor || null,
+      valor_cofins: it.valor_cofins || 0,
+      // Escrituração
+      cfop_entrada: it.cfop_entrada || '1102',
+      cst_icms_entrada: it.cst_icms_entrada || '000',
+      aproveita_credito_icms: creditos.aproveitaCreditoIcms,
+      valor_credito_icms: creditos.valorCreditoIcms,
+      cst_pis_entrada: cstPis,
+      cst_cofins_entrada: cstCofins,
+      valor_credito_pis: creditos.valorCreditoPis,
+      valor_credito_cofins: creditos.valorCreditoCofins,
+      aproveita_credito_ipi: creditos.aproveitaCreditoIpi,
+      valor_credito_ipi: creditos.valorCreditoIpi,
+      custo_total_item: custoTotalItem,
+      custo_unitario_estoque: custoUnitarioEstoque,
+      ativo: true,
+      created_by: user?.id || null,
+      updated_by: user?.id || null,
+    }
+
+    await pb.collection('notas_entrada_itens').create(payloadItem)
+  }
+
+  // 3. Gravar Parcelas
+  if (dados.parcelas && dados.parcelas.length > 0) {
+    for (const parc of dados.parcelas) {
+      await pb.collection('notas_entrada_parcelas').create({
+        nota_id: notaCriada.id,
+        numero: parc.numero,
+        data_vencimento: parc.data_vencimento,
+        valor: parc.valor,
+        forma_pagamento: parc.forma_pagamento || null,
+        ativo: true,
+        created_by: user?.id || null,
+        updated_by: user?.id || null,
+      })
+    }
+  }
+
+  await registrarAuditoria({
+    tabela: 'notas_entrada',
+    registro_id: notaCriada.id,
+    acao: 'inclusao',
+    valores_depois: {
+      numero: notaCriada.numero,
+      serie: notaCriada.serie,
+      chave_acesso: notaCriada.chave_acesso,
+      origem: 'Digitação',
+      tipo_entrada: dados.tipo_entrada,
+      valor_total: notaCriada.valor_total,
+      itens_count: dados.itens.length,
+    },
+  })
+
+  return notaCriada
+}

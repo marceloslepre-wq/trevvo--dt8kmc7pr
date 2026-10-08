@@ -251,3 +251,78 @@ export async function buscarBrasilApiCnpj(cnpj: string): Promise<DadosBrasilApiC
     return null
   }
 }
+
+/**
+ * Validação de Chave de Acesso de NF-e / NFC-e (44 dígitos, com DV módulo 11)
+ * Estrutura da chave:
+ * cUF (2) + AAMM (4) + CNPJ (14) + mod (2) + serie (3) + nNF (9) + tpEmis (1) + cNF (8) + cDV (1) = 44 dígitos
+ */
+export interface DadosChaveAcessoNfe {
+  valida: boolean
+  erro?: string
+  cUf?: string
+  anoMes?: string
+  cnpjEmitente?: string
+  modelo?: string
+  serie?: string
+  numero?: number
+  tipoEmissao?: string
+  codigoNumerico?: string
+  digitoVerificador?: number
+}
+
+export function validarChaveAcessoNfe(chave: string): DadosChaveAcessoNfe {
+  const limpa = (chave || '').replace(/\D/g, '')
+  if (limpa.length !== 44) {
+    return {
+      valida: false,
+      erro: `A chave de acesso deve conter exatamente 44 dígitos numéricos (informado: ${limpa.length}).`,
+    }
+  }
+
+  // Cálculo do dígito verificador módulo 11 (pesos de 2 a 9 da direita para a esquerda nos primeiros 43 dígitos)
+  const base43 = limpa.slice(0, 43)
+  const dvInformado = parseInt(limpa.slice(43), 10)
+
+  let soma = 0
+  let peso = 2
+  for (let i = base43.length - 1; i >= 0; i--) {
+    soma += parseInt(base43[i], 10) * peso
+    peso = peso === 9 ? 2 : peso + 1
+  }
+
+  const resto = soma % 11
+  let dvCalculado = 11 - resto
+  if (dvCalculado === 11 || dvCalculado === 10) {
+    dvCalculado = 0
+  }
+
+  if (dvCalculado !== dvInformado) {
+    return {
+      valida: false,
+      erro: `Dígito verificador inválido na chave (calculado: ${dvCalculado}, informado: ${dvInformado}).`,
+    }
+  }
+
+  const cUf = limpa.slice(0, 2)
+  const anoMes = limpa.slice(2, 6)
+  const cnpjEmitente = limpa.slice(6, 20)
+  const modelo = limpa.slice(20, 22)
+  const serie = String(parseInt(limpa.slice(22, 25), 10) || 1)
+  const numero = parseInt(limpa.slice(25, 34), 10)
+  const tipoEmissao = limpa.slice(34, 35)
+  const codigoNumerico = limpa.slice(35, 43)
+
+  return {
+    valida: true,
+    cUf,
+    anoMes,
+    cnpjEmitente,
+    modelo,
+    serie,
+    numero,
+    tipoEmissao,
+    codigoNumerico,
+    digitoVerificador: dvInformado,
+  }
+}

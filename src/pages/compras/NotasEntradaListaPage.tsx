@@ -127,13 +127,23 @@ export const NotasEntradaListaPage: React.FC = () => {
 
         <div className="flex items-center gap-2">
           {podeCriar && (
-            <Button
-              onClick={() => setModalImportarAberto(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-            >
-              <UploadCloud size={16} />
-              Importar XML NF-e
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={() => navigate('/compras/notas-entrada/digitar')}
+                className="border-slate-300 text-slate-700 hover:bg-slate-50 gap-2"
+              >
+                <Plus size={16} />
+                Digitar nota
+              </Button>
+              <Button
+                onClick={() => setModalImportarAberto(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+              >
+                <UploadCloud size={16} />
+                Importar XML NF-e
+              </Button>
+            </>
           )}
         </div>
       </div>

@@ -40,6 +40,7 @@ import MatrizIcmsPage from '@/pages/cadastros/MatrizIcmsPage'
 import MarcasPage from '@/pages/cadastros/MarcasPage'
 import NotasEntradaListaPage from '@/pages/compras/NotasEntradaListaPage'
 import NotaEntradaConferenciaPage from '@/pages/compras/NotaEntradaConferenciaPage'
+import NotaEntradaDigitacaoPage from '@/pages/compras/NotaEntradaDigitacaoPage'
 import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import ConfiguracoesGeralPage from '@/pages/configuracoes/ConfiguracoesGeralPage'
 import ConfiguracaoFiscalPage from '@/pages/configuracoes/ConfiguracaoFiscalPage'
@@ -436,6 +437,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="notas_entrada" acao="ver">
                         <NotasEntradaListaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/compras/notas-entrada/digitar"
+                    element={
+                      <PermissaoGuard modulo="notas_entrada" acao="criar">
+                        <NotaEntradaDigitacaoPage />
                       </PermissaoGuard>
                     }
                   />

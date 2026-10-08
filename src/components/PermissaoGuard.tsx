@@ -12,6 +12,11 @@ interface PermissaoGuardProps {
   fallback?: React.ReactNode
 }
 
+// Variável de módulo persistente enquanto a janela do navegador estiver aberta
+// Se qualquer permissão foi resolvida ou qualquer guard já renderizou com sucesso,
+// novas navegações nunca bloqueiam exibindo tela inteira de carregamento.
+let sessaoPermissoesResolvida = false
+
 export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
   modulo,
   acao = 'ver',
@@ -20,26 +25,30 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
 }) => {
   const { pode, carregando, administrador, perfil, usuarioERP } = usePermissoes()
 
-  // Regra Estrutural do ERP:
-  // Administrador tem acesso irrestrito a todo o sistema reconhecido exclusivamente
-  // Auto-recuperação local de emergência no Guard: após 800ms nesta tela de loading, desbloquear
-  const [loadingExpirado, setLoadingExpirado] = React.useState(false)
+  // Auto-recuperação local com fail-safe imediato:
+  // Se a sessão já liberou uma vez ou se tivermos usuário/admin em cache, nunca bloqueia.
+  const [loadingExpirado, setLoadingExpirado] = React.useState(() => sessaoPermissoesResolvida)
+
   React.useEffect(() => {
-    if (!carregando) {
-      setLoadingExpirado(false)
+    if (sessaoPermissoesResolvida) {
+      setLoadingExpirado(true)
       return
     }
+
+    if (!carregando) {
+      sessaoPermissoesResolvida = true
+      return
+    }
+
     const timer = setTimeout(() => {
+      sessaoPermissoesResolvida = true
       setLoadingExpirado(true)
-    }, 800)
+    }, 250)
+
     return () => clearTimeout(timer)
   }, [carregando])
 
-  // pelo perfil (perfis_acesso.administrador = true) do registro em usuarios.
-  // Checa:
-  // 1) Contexto reativo de administrador ou perfil
-  // 2) Cache do usuarioERP e expand.perfil_id.administrador
-  // 3) Cache síncrono local no primeiro render se o contexto ainda estiver inicializando
+  // Reconhecimento imediato de Admin (Contexto, Usuario ERP ou Cache síncrono no localStorage)
   const ehAdmin = (() => {
     if (
       administrador ||
@@ -48,7 +57,6 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     ) {
       return true
     }
-    // Verificação síncrona no cache caso o React Context ainda não tenha completado ciclo
     const authId = pb.authStore.record?.id
     const email = pb.authStore.record?.email
     const cached = obterUsuarioCacheLocal(authId || email || undefined)
@@ -56,22 +64,38 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
   })()
 
   if (ehAdmin) {
+    sessaoPermissoesResolvida = true
     return <>{children}</>
   }
 
   // Se já possui permissão concedida pelo hook pode(modulo, acao)
   if (pode(modulo, acao)) {
+    sessaoPermissoesResolvida = true
     return <>{children}</>
   }
 
-  // Se o loading expirou sem confirmação contrária ou se já há cache, libera o render imediatamente
-  // para NUNCA travar o usuário indefinidamente em nenhuma rota
-  if (loadingExpirado) {
-    return <>{children}</>
+  // Se a sessão já foi resolvida nesta aba ou o timeout de 250ms expirou:
+  // Se ainda estiver em fase de carregamento interno (ex. revalidação SWR), libera para não travar tela operacional.
+  if (sessaoPermissoesResolvida || loadingExpirado) {
+    if (carregando) {
+      return <>{children}</>
+    }
+    if (pode(modulo, acao)) {
+      return <>{children}</>
+    }
+    if (fallback !== undefined) {
+      return <>{fallback}</>
+    }
+    return <AcessoNegado />
   }
 
-  // Enquanto as permissões ou a sessão estão carregando pela PRIMEIRA vez E não há nenhum usuário resolvido
-  if (carregando && !usuarioERP) {
+  // Enquanto as permissões ou a sessão estão carregando E não temos usuário ERP nem cache
+  // Ocorre no máximo por 250ms no primeiro carregamento a frio da aplicação
+  const temCache = Boolean(
+    obterUsuarioCacheLocal(pb.authStore.record?.id || pb.authStore.record?.email || undefined),
+  )
+
+  if (carregando && !usuarioERP && !temCache) {
     return (
       <div
         data-testid="permissao-guard-loading"
@@ -86,7 +110,17 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     )
   }
 
-  // Não possui a permissão requerida
+  // Se tiver cache ou usuário mas não for admin e ainda estiver revalidando, libera o acesso se pode(modulo, acao)
+  if (pode(modulo, acao)) {
+    return <>{children}</>
+  }
+
+  // Se ainda está carregando mas há usuário/cache e não deu timeout, libera provisoriamente
+  if (carregando) {
+    return <>{children}</>
+  }
+
+  // Não possui a permissão requerida confirmada
   if (fallback !== undefined) {
     return <>{fallback}</>
   }
