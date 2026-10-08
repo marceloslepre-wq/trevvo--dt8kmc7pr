@@ -1026,8 +1026,44 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
       setValorDivergenciaItens(0)
     }
 
+    // Se nota não tiver parcelas, carrega contas financeiras e formas de pagamento da empresa para opção "Já paga"
+    if (parcelas.length === 0 && nota.empresa_id) {
+      try {
+        const contas = await pb
+          .collection('contas_financeiras')
+          .getFullList<{ id: string; nome: string; conta_padrao_pagamentos?: boolean }>({
+            filter: `empresa_id = '${nota.empresa_id}' && ativo = true`,
+            sort: 'nome',
+          })
+        setContasFinanceirasDisponiveis(contas.map((c) => ({ id: c.id, nome: c.nome })))
+        const padrao = contas.find((c) => c.conta_padrao_pagamentos)
+        if (padrao) setContaPagamentoId(padrao.id)
+        else if (contas[0]) setContaPagamentoId(contas[0].id)
+
+        const formas = await pb
+          .collection('formas_pagamento')
+          .getFullList<{ id: string; descricao: string }>({
+            filter: 'ativo = true',
+            sort: 'descricao',
+          })
+        setFormasPagamentoDisponiveis(formas)
+        if (formas[0]) setFormaPagamentoId(formas[0].id)
+      } catch { /* intentionally ignored */ }
+    }
+
     setModalLancarAberto(true)
   }
+
+  // Estado para opção "Já paga" na nota sem parcelas
+  const [jaPaga, setJaPaga] = useState(false)
+  const [contaPagamentoId, setContaPagamentoId] = useState('')
+  const [formaPagamentoId, setFormaPagamentoId] = useState('')
+  const [contasFinanceirasDisponiveis, setContasFinanceirasDisponiveis] = useState<
+    { id: string; nome: string }[]
+  >([])
+  const [formasPagamentoDisponiveis, setFormasPagamentoDisponiveis] = useState<
+    { id: string; descricao: string }[]
+  >([])
 
   // Confirmar Lançamento Efetivo
   const handleConfirmarLancamento = async () => {
@@ -1042,6 +1078,15 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
       return
     }
 
+    if (parcelas.length === 0 && jaPaga && !contaPagamentoId) {
+      toast({
+        title: 'Conta financeira obrigatória',
+        description: 'Selecione a conta bancária para efetivar a baixa imediata da nota.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setLancando(true)
     try {
       const res = await lancarNotaEntrada({
@@ -1049,6 +1094,9 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
         atualizarCustoProdutos,
         justificativaDivergencia,
         usuarioErpId: pb.authStore.record?.id,
+        jaPaga: parcelas.length === 0 ? jaPaga : false,
+        contaPagamentoId: parcelas.length === 0 && jaPaga ? contaPagamentoId : undefined,
+        formaPagamentoId: parcelas.length === 0 && jaPaga ? formaPagamentoId : undefined,
       })
 
       setModalLancarAberto(false)
@@ -2991,6 +3039,74 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Opção "Já paga" para notas à vista / sem parcelas */}
+            {parcelas.length === 0 && (
+              <div className="p-3 bg-blue-50/70 rounded-lg border border-blue-200 space-y-3">
+                <div className="flex items-start space-x-2">
+                  <Checkbox
+                    id="ja_paga"
+                    checked={jaPaga}
+                    onCheckedChange={(c) => setJaPaga(Boolean(c))}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <label
+                      htmlFor="ja_paga"
+                      className="text-xs font-semibold text-blue-900 cursor-pointer block"
+                    >
+                      Nota já paga (baixa imediata no Financeiro)
+                    </label>
+                    <p className="text-[11px] text-blue-700">
+                      Esta nota não possui parcelas a prazo. Ao marcar esta opção, o título gerado no
+                      Contas a Pagar será quitado imediatamente na mesma operação, debitando o saldo da conta financeira.
+                    </p>
+                  </div>
+                </div>
+
+                {jaPaga && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-blue-200/60">
+                    <div className="space-y-1">
+                      <Label htmlFor="conta_pagamento" className="text-[11px] font-semibold text-slate-700">
+                        Conta Financeira / Caixa *
+                      </Label>
+                      <select
+                        id="conta_pagamento"
+                        value={contaPagamentoId}
+                        onChange={(e) => setContaPagamentoId(e.target.value)}
+                        className="w-full h-8 text-xs px-2 rounded-md border border-slate-300 bg-white text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">Selecione a conta...</option>
+                        {contasFinanceirasDisponiveis.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="forma_pagamento" className="text-[11px] font-semibold text-slate-700">
+                        Forma de Pagamento
+                      </Label>
+                      <select
+                        id="forma_pagamento"
+                        value={formaPagamentoId}
+                        onChange={(e) => setFormaPagamentoId(e.target.value)}
+                        className="w-full h-8 text-xs px-2 rounded-md border border-slate-300 bg-white text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">Selecione a forma...</option>
+                        {formasPagamentoDisponiveis.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.descricao}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Aviso de divergência de soma dos itens vs total da nota */}
             {precisaJustificativaDivergencia && (

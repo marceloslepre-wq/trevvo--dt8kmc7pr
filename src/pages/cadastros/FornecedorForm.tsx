@@ -64,9 +64,10 @@ import {
   listarNotasDoFornecedorComTotais,
   HistoricoNotasFornecedorResultado,
 } from '@/services/consultasCompras'
+import { obterResumoFinanceiroFornecedor, ResumoFinanceiroFornecedor } from '@/services/financeiro'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { SelectCondicaoPagamento } from '@/components/SelectCondicaoPagamento'
-import { Receipt } from 'lucide-react'
+import { Receipt, DollarSign } from 'lucide-react'
 import {
   validarCPF,
   validarCNPJ,
@@ -150,6 +151,15 @@ export const FornecedorForm: React.FC = () => {
     valorGeralTotal: 0,
   })
   const [carregandoNotas, setCarregandoNotas] = useState(false)
+
+  // Resumo Financeiro (Últimos 12 meses: abertos, vencidos, pagos e totais)
+  const [resumoFinanceiro, setResumoFinanceiro] = useState<ResumoFinanceiroFornecedor>({
+    abertos: { quantidade: 0, valorTotal: 0, titulos: [] },
+    vencidos: { quantidade: 0, valorTotal: 0, titulos: [] },
+    pagos: { quantidade: 0, valorTotal: 0, titulos: [] },
+    totaisGerais: { quantidadeTotal: 0, valorOriginalTotal: 0, valorPagoTotal: 0, saldoTotal: 0 },
+  })
+  const [carregandoFinanceiro, setCarregandoFinanceiro] = useState(false)
 
   // Identificação
   const [codigo, setCodigo] = useState<number | string>('')
@@ -323,6 +333,13 @@ export const FornecedorForm: React.FC = () => {
             .then(setHistoricoNotas)
             .catch((e) => console.warn('Erro ao carregar notas do fornecedor:', e))
             .finally(() => setCarregandoNotas(false))
+
+          // Carregar resumo financeiro do fornecedor (últimos 12 meses)
+          setCarregandoFinanceiro(true)
+          obterResumoFinanceiroFornecedor(f.id, empresaAtiva?.id)
+            .then(setResumoFinanceiro)
+            .catch((e) => console.warn('Erro ao carregar resumo financeiro do fornecedor:', e))
+            .finally(() => setCarregandoFinanceiro(false))
 
           // Inicial para rastrear dirty
           setDadosIniciais(
@@ -835,7 +852,7 @@ export const FornecedorForm: React.FC = () => {
       <form id="form-fornecedor" onSubmit={handleSalvar}>
         <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-4">
           <TabsList
-            className={`grid ${ehEdicao ? 'grid-cols-3 sm:grid-cols-7' : 'grid-cols-3 sm:grid-cols-6'} h-auto p-1 bg-slate-100/80 border border-slate-200`}
+            className={`grid ${ehEdicao ? 'grid-cols-4 sm:grid-cols-8' : 'grid-cols-3 sm:grid-cols-6'} h-auto p-1 bg-slate-100/80 border border-slate-200`}
           >
             <TabsTrigger value="dados" className="text-xs py-2">
               <Truck size={14} className="mr-1.5 hidden sm:inline" />
@@ -861,6 +878,14 @@ export const FornecedorForm: React.FC = () => {
               <TabsTrigger value="notas" className="text-xs py-2">
                 <Receipt size={14} className="mr-1.5 hidden sm:inline" />
                 Notas {historicoNotas.totalGeralNotas > 0 && `(${historicoNotas.totalGeralNotas})`}
+              </TabsTrigger>
+            )}
+            {ehEdicao && (
+              <TabsTrigger value="financeiro" className="text-xs py-2">
+                <DollarSign size={14} className="mr-1.5 hidden sm:inline" />
+                Financeiro{' '}
+                {resumoFinanceiro.totaisGerais.quantidadeTotal > 0 &&
+                  `(${resumoFinanceiro.totaisGerais.quantidadeTotal})`}
               </TabsTrigger>
             )}
             <TabsTrigger value="observacoes" className="text-xs py-2">
@@ -1899,6 +1924,213 @@ export const FornecedorForm: React.FC = () => {
                                 </td>
                               </tr>
                             ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
+          {/* ================= ABA: FINANCEIRO (CONTAS A PAGAR) ================= */}
+          {ehEdicao && (
+            <TabsContent value="financeiro">
+              <Card className="border-slate-200 shadow-2xs">
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                    <div>
+                      <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-emerald-600" />
+                        Títulos a Pagar do Fornecedor (Últimos 12 Meses)
+                      </h3>
+                      <p className="text-slate-500 text-[11px] mt-0.5">
+                        Consolidação de títulos em aberto, vencidos e liquidados nos últimos 12
+                        meses.
+                      </p>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (id) {
+                          setCarregandoFinanceiro(true)
+                          obterResumoFinanceiroFornecedor(id, empresaAtiva?.id)
+                            .then(setResumoFinanceiro)
+                            .finally(() => setCarregandoFinanceiro(false))
+                        }
+                      }}
+                      className="h-7 text-xs text-blue-600"
+                    >
+                      <RotateCcw
+                        className={`h-3.5 w-3.5 mr-1 ${carregandoFinanceiro ? 'animate-spin' : ''}`}
+                      />
+                      Atualizar
+                    </Button>
+                  </div>
+
+                  {carregandoFinanceiro ? (
+                    <div className="py-8 text-center text-slate-400">
+                      <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
+                      <p className="text-xs">Carregando dados financeiros...</p>
+                    </div>
+                  ) : resumoFinanceiro.totaisGerais.quantidadeTotal === 0 ? (
+                    <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                      <DollarSign className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                      <p className="font-medium text-slate-600">
+                        Nenhum título a pagar nos últimos 12 meses
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Os títulos manuais ou gerados pelas notas de entrada aparecerão consolidados
+                        aqui.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Cartões de Totais: Abertos, Vencidos, Pagos e Saldo */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-blue-900">Em Aberto</span>
+                            <Badge variant="outline" className="text-[10px] bg-white text-blue-700">
+                              {resumoFinanceiro.abertos.quantidade} títulos
+                            </Badge>
+                          </div>
+                          <div className="text-sm font-bold text-blue-700 font-mono mt-1">
+                            R${' '}
+                            {resumoFinanceiro.abertos.valorTotal.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-red-50/70 border border-red-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-red-900">Vencidos</span>
+                            <Badge variant="outline" className="text-[10px] bg-white text-red-700">
+                              {resumoFinanceiro.vencidos.quantidade} títulos
+                            </Badge>
+                          </div>
+                          <div className="text-sm font-bold text-red-700 font-mono mt-1">
+                            R${' '}
+                            {resumoFinanceiro.vencidos.valorTotal.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-emerald-900">Pagos</span>
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-white text-emerald-700"
+                            >
+                              {resumoFinanceiro.pagos.quantidade} títulos
+                            </Badge>
+                          </div>
+                          <div className="text-sm font-bold text-emerald-700 font-mono mt-1">
+                            R${' '}
+                            {resumoFinanceiro.pagos.valorTotal.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-100 border border-slate-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-800">
+                              Saldo Devedor Total
+                            </span>
+                            <Badge variant="secondary" className="text-[10px]">
+                              {resumoFinanceiro.abertos.quantidade +
+                                resumoFinanceiro.vencidos.quantidade}{' '}
+                              abertos
+                            </Badge>
+                          </div>
+                          <div className="text-sm font-bold text-slate-900 font-mono mt-1">
+                            R${' '}
+                            {resumoFinanceiro.totaisGerais.saldoTotal.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Lista resumida dos títulos recentes */}
+                      <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[10px] font-semibold">
+                            <tr>
+                              <th className="p-2.5">Vencimento</th>
+                              <th className="p-2.5">Documento</th>
+                              <th className="p-2.5">Parcela</th>
+                              <th className="p-2.5">Descrição</th>
+                              <th className="p-2.5 text-right">Original</th>
+                              <th className="p-2.5 text-right">Pago</th>
+                              <th className="p-2.5 text-right">Saldo</th>
+                              <th className="p-2.5 text-center">Situação</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {[
+                              ...resumoFinanceiro.vencidos.titulos,
+                              ...resumoFinanceiro.abertos.titulos,
+                              ...resumoFinanceiro.pagos.titulos,
+                            ]
+                              .slice(0, 50)
+                              .map((t) => (
+                                <tr key={t.id} className="hover:bg-slate-50">
+                                  <td className="p-2.5 font-mono text-slate-700 whitespace-nowrap">
+                                    {new Date(t.data_vencimento + 'T00:00:00').toLocaleDateString(
+                                      'pt-BR',
+                                    )}
+                                  </td>
+                                  <td className="p-2.5 font-mono font-semibold text-slate-800 whitespace-nowrap">
+                                    {t.numero_documento}
+                                  </td>
+                                  <td className="p-2.5 font-mono text-slate-600 whitespace-nowrap">
+                                    {t.parcela}
+                                  </td>
+                                  <td className="p-2.5 text-slate-700 max-w-[200px] truncate">
+                                    {t.descricao}
+                                  </td>
+                                  <td className="p-2.5 text-right font-mono text-slate-700 whitespace-nowrap">
+                                    R$ {t.valor_original.toFixed(2)}
+                                  </td>
+                                  <td className="p-2.5 text-right font-mono text-emerald-700 whitespace-nowrap">
+                                    R$ {t.valor_pago.toFixed(2)}
+                                  </td>
+                                  <td className="p-2.5 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                    R$ {t.saldo.toFixed(2)}
+                                  </td>
+                                  <td className="p-2.5 text-center whitespace-nowrap">
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        t.status === 'Pago'
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]'
+                                          : t.data_vencimento <
+                                              new Date().toISOString().slice(0, 10)
+                                            ? 'bg-red-50 text-red-700 border-red-200 text-[10px]'
+                                            : 'bg-blue-50 text-blue-700 border-blue-200 text-[10px]'
+                                      }
+                                    >
+                                      {t.status === 'Em aberto' &&
+                                      t.data_vencimento < new Date().toISOString().slice(0, 10)
+                                        ? 'Vencido'
+                                        : t.status}
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              ))}
                           </tbody>
                         </table>
                       </div>

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T13:50:52.367Z",
+  "generatedAt": "2026-10-08T14:47:04.712Z",
   "collections": [
     {
       "name": "users",
@@ -6774,6 +6774,640 @@
       "indexes": [
         "CREATE UNIQUE INDEX idx_config_fin_empresa_uid ON config_financeira_empresa (empresa_id)",
         "CREATE INDEX idx_config_fin_empresa_ativo ON config_financeira_empresa (ativo)"
+      ]
+    },
+    {
+      "name": "pagamentos_lotes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "data_pagamento",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "conta_financeira_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "contas_financeiras"
+        },
+        {
+          "name": "forma_pagamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "formas_pagamento"
+        },
+        {
+          "name": "valor_total",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "total_titulos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_pag_lotes_empresa ON pagamentos_lotes (empresa_id)",
+        "CREATE INDEX idx_pag_lotes_data ON pagamentos_lotes (data_pagamento)",
+        "CREATE INDEX idx_pag_lotes_conta ON pagamentos_lotes (conta_financeira_id)",
+        "CREATE INDEX idx_pag_lotes_ativo ON pagamentos_lotes (ativo)"
+      ]
+    },
+    {
+      "name": "contas_pagar",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "fornecedor_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "fornecedores"
+        },
+        {
+          "name": "numero_documento",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "parcela",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_emissao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_competencia",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_vencimento",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "plano_conta_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "centro_custo_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "centros_custo"
+        },
+        {
+          "name": "forma_pagamento_prevista_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "formas_pagamento"
+        },
+        {
+          "name": "codigo_barras",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_original",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor_pago",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "saldo",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Em aberto", "Pago parcial", "Pago", "Cancelado"]
+        },
+        {
+          "name": "origem",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Manual", "NF Entrada", "Recorrência", "Outro"]
+        },
+        {
+          "name": "origem_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nota_entrada_parcela_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recorrencia_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recorrencia_numero",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recorrencia_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_pagamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anexo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_cancelamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_contas_pagar_empresa ON contas_pagar (empresa_id)",
+        "CREATE INDEX idx_contas_pagar_fornecedor ON contas_pagar (fornecedor_id)",
+        "CREATE INDEX idx_contas_pagar_venc ON contas_pagar (data_vencimento)",
+        "CREATE INDEX idx_contas_pagar_status ON contas_pagar (status)",
+        "CREATE INDEX idx_contas_pagar_origem ON contas_pagar (origem, origem_id)",
+        "CREATE INDEX idx_contas_pagar_recorrencia ON contas_pagar (recorrencia_id)",
+        "CREATE INDEX idx_contas_pagar_doc ON contas_pagar (numero_documento)",
+        "CREATE INDEX idx_contas_pagar_ativo ON contas_pagar (ativo)"
+      ]
+    },
+    {
+      "name": "pagamentos_baixas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "conta_pagar_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "contas_pagar"
+        },
+        {
+          "name": "lote_baixa_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "pagamentos_lotes"
+        },
+        {
+          "name": "data_pagamento",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "conta_financeira_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "contas_financeiras"
+        },
+        {
+          "name": "forma_pagamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "formas_pagamento"
+        },
+        {
+          "name": "valor_original",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor_pago",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor_multa",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_juros",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_desconto",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_total_pago",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "estornado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_estorno",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_estorno",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_estorno_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_pag_baixas_empresa ON pagamentos_baixas (empresa_id)",
+        "CREATE INDEX idx_pag_baixas_titulo ON pagamentos_baixas (conta_pagar_id)",
+        "CREATE INDEX idx_pag_baixas_lote ON pagamentos_baixas (lote_baixa_id)",
+        "CREATE INDEX idx_pag_baixas_data ON pagamentos_baixas (data_pagamento)",
+        "CREATE INDEX idx_pag_baixas_estornado ON pagamentos_baixas (estornado)",
+        "CREATE INDEX idx_pag_baixas_ativo ON pagamentos_baixas (ativo)"
+      ]
+    },
+    {
+      "name": "movimentacoes_financeiras",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "conta_financeira_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "contas_financeiras"
+        },
+        {
+          "name": "data_movimento",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Entrada", "Saída"]
+        },
+        {
+          "name": "origem",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "SALDO_INICIAL",
+            "PAGAMENTO_TITULO",
+            "RECEBIMENTO_TITULO",
+            "TRANSFERENCIA_ENTRADA",
+            "TRANSFERENCIA_SAIDA",
+            "ESTORNO_PAGAMENTO",
+            "ESTORNO_RECEBIMENTO",
+            "AJUSTE"
+          ]
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "saldo_anterior",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "saldo_posterior",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documento_tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documento_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documento_numero",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lote_baixa_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "pagamentos_lotes"
+        },
+        {
+          "name": "historico",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "estornado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_mov_fin_empresa ON movimentacoes_financeiras (empresa_id)",
+        "CREATE INDEX idx_mov_fin_conta_data ON movimentacoes_financeiras (conta_financeira_id, data_movimento)",
+        "CREATE INDEX idx_mov_fin_tipo ON movimentacoes_financeiras (tipo)",
+        "CREATE INDEX idx_mov_fin_origem ON movimentacoes_financeiras (origem)",
+        "CREATE INDEX idx_mov_fin_doc ON movimentacoes_financeiras (documento_tipo, documento_id)",
+        "CREATE INDEX idx_mov_fin_ativo ON movimentacoes_financeiras (ativo)"
       ]
     }
   ]

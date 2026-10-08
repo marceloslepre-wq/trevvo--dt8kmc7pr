@@ -443,7 +443,260 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
         }
       }
 
-      // 7. Atualizar status da nota para Lançada
+      // 7. INTEGRAÇÃO ETAPA 4: GERAR TÍTULOS CONTAS A PAGAR
+      // Bonificação e devolução de venda NÃO geram títulos
+      const ehBonificacaoOuDevolucao =
+        tipoEntrada === 'Bonificação' || tipoEntrada === 'Devolução de venda'
+
+      if (!ehBonificacaoOuDevolucao && txApp.hasTable('contas_pagar')) {
+        // Carregar config_financeira_empresa para obter o plano de contas e centro de custo padrão
+        let planoContaIdFinal = ''
+        let centroCustoIdPadrao = ''
+
+        try {
+          const configsFin = txApp.findRecordsByFilter(
+            'config_financeira_empresa',
+            `empresa_id = '${empresaId}' && ativo = true`,
+            '',
+            1,
+            0,
+          )
+          if (configsFin.length > 0) {
+            const cfg = configsFin[0]
+            centroCustoIdPadrao = cfg.getString('centro_custo_padrao_id') || ''
+
+            switch (tipoEntrada) {
+              case 'Revenda':
+                planoContaIdFinal = cfg.getString('plano_compras_revenda_id') || ''
+                break
+              case 'Industrialização':
+                planoContaIdFinal = cfg.getString('plano_industrializacao_id') || ''
+                break
+              case 'Uso e consumo':
+                planoContaIdFinal = cfg.getString('plano_uso_consumo_id') || ''
+                break
+              case 'Ativo imobilizado':
+                planoContaIdFinal = cfg.getString('plano_imobilizado_id') || ''
+                break
+              case 'Outras':
+              default:
+                planoContaIdFinal = cfg.getString('plano_outras_entradas_id') || ''
+                break
+            }
+          }
+        } catch (_) {}
+
+        // Fallback: se não tiver plano na config_financeira_empresa, busca primeiro analítico de despesa
+        if (!planoContaIdFinal) {
+          try {
+            const planosDespesa = txApp.findRecordsByFilter(
+              'plano_contas',
+              `natureza = 'Analítica' && tipo = 'Despesa' && ativo = true`,
+              'codigo',
+              1,
+              0,
+            )
+            if (planosDespesa.length > 0) {
+              planoContaIdFinal = planosDespesa[0].id
+            }
+          } catch (_) {}
+        }
+
+        // Buscar parcelas da nota em notas_entrada_parcelas
+        const parcelasNota = txApp.findRecordsByFilter(
+          'notas_entrada_parcelas',
+          `nota_id = '${notaId}' && ativo = true`,
+          'numero',
+        )
+
+        const pagarCol = txApp.findCollectionByNameOrId('contas_pagar')
+        const titulosGerados = []
+
+        if (parcelasNota.length > 0) {
+          const totalParc = parcelasNota.length
+          for (let pIdx = 0; pIdx < parcelasNota.length; pIdx++) {
+            const parc = parcelasNota[pIdx]
+            const valorParc = parc.getFloat('valor') || 0
+            const vencParc = parc.getString('data_vencimento') || dataEntrada || dataEmissao
+            const tPagParc = parc.getString('forma_pagamento') || ''
+
+            // Resolver forma de pagamento prevista pelo tPag quando houver
+            let formaPrevistaId = ''
+            if (tPagParc) {
+              try {
+                const fPag = txApp.findRecordsByFilter(
+                  'formas_pagamento',
+                  `codigo_tpag = '${tPagParc}' && ativo = true`,
+                  '',
+                  1,
+                  0,
+                )
+                if (fPag.length > 0) {
+                  formaPrevistaId = fPag[0].id
+                }
+              } catch (_) {}
+            }
+
+            const tituloRec = new Record(pagarCol)
+            tituloRec.set('empresa_id', empresaId)
+            tituloRec.set('fornecedor_id', fornecedorId)
+            tituloRec.set('numero_documento', String(docNumero))
+            tituloRec.set('parcela', `${pIdx + 1}/${totalParc}`)
+            tituloRec.set(
+              'descricao',
+              `NF Entrada #${docNumero} - Parc ${pIdx + 1}/${totalParc} - ${fornecedorNome}`,
+            )
+            tituloRec.set('data_emissao', dataEmissao)
+            tituloRec.set('data_competencia', dataEntrada || dataEmissao)
+            tituloRec.set('data_vencimento', vencParc)
+            tituloRec.set('plano_conta_id', planoContaIdFinal)
+            if (centroCustoIdPadrao) {
+              tituloRec.set('centro_custo_id', centroCustoIdPadrao)
+            }
+            if (formaPrevistaId) {
+              tituloRec.set('forma_pagamento_prevista_id', formaPrevistaId)
+            }
+            tituloRec.set('valor_original', valorParc)
+            tituloRec.set('valor_pago', 0)
+            tituloRec.set('saldo', valorParc)
+            tituloRec.set('status', 'Em aberto')
+            tituloRec.set('origem', 'NF Entrada')
+            tituloRec.set('origem_id', notaId)
+            tituloRec.set('nota_entrada_parcela_id', parc.id)
+            tituloRec.set('ativo', true)
+            tituloRec.set('created_by', userId)
+            tituloRec.set('updated_by', userId)
+            txApp.save(tituloRec)
+            titulosGerados.push(tituloRec)
+          }
+        } else {
+          // Nota sem parcelas (à vista / parcela única)
+          const valorTotalNota = nota.getFloat('valor_total') || 0
+          const tituloRec = new Record(pagarCol)
+          tituloRec.set('empresa_id', empresaId)
+          tituloRec.set('fornecedor_id', fornecedorId)
+          tituloRec.set('numero_documento', String(docNumero))
+          tituloRec.set('parcela', '1/1')
+          tituloRec.set('descricao', `NF Entrada #${docNumero} - ${fornecedorNome}`)
+          tituloRec.set('data_emissao', dataEmissao)
+          tituloRec.set('data_competencia', dataEntrada || dataEmissao)
+          tituloRec.set('data_vencimento', dataEntrada || dataEmissao)
+          tituloRec.set('plano_conta_id', planoContaIdFinal)
+          if (centroCustoIdPadrao) {
+            tituloRec.set('centro_custo_id', centroCustoIdPadrao)
+          }
+          tituloRec.set('valor_original', valorTotalNota)
+          tituloRec.set('valor_pago', 0)
+          tituloRec.set('saldo', valorTotalNota)
+          tituloRec.set('status', 'Em aberto')
+          tituloRec.set('origem', 'NF Entrada')
+          tituloRec.set('origem_id', notaId)
+          tituloRec.set('ativo', true)
+          tituloRec.set('created_by', userId)
+          tituloRec.set('updated_by', userId)
+          txApp.save(tituloRec)
+          titulosGerados.push(tituloRec)
+
+          // Se a opção "Já paga" veio no payload da nota sem parcelas
+          const jaPaga = Boolean(body.ja_paga)
+          const contaPagamentoId = body.conta_pagamento_id || ''
+          const formaPagamentoId = body.forma_pagamento_id || ''
+
+          if (jaPaga && contaPagamentoId && valorTotalNota > 0) {
+            const contaRec = txApp.findRecordById('contas_financeiras', contaPagamentoId)
+            if (!contaRec || !contaRec.getBool('ativo')) {
+              throw new Error('Conta financeira para baixa imediata não encontrada ou inativa.')
+            }
+
+            const permiteNegativoConta = contaRec.getBool('permite_saldo_negativo')
+            const saldoContaAnt = contaRec.getFloat('saldo_atual') || 0
+            const saldoContaPos = saldoContaAnt - valorTotalNota
+
+            if (saldoContaPos < -0.005 && !permiteNegativoConta) {
+              throw new Error(
+                `Saldo insuficiente na conta "${contaRec.getString('nome')}" para baixa imediata. Saldo atual: R$ ${saldoContaAnt.toFixed(2)}, total da nota: R$ ${valorTotalNota.toFixed(2)}.`,
+              )
+            }
+
+            // Criar lote
+            const lotesCol = txApp.findCollectionByNameOrId('pagamentos_lotes')
+            const loteRec = new Record(lotesCol)
+            loteRec.set('empresa_id', empresaId)
+            loteRec.set('data_pagamento', dataEntrada || dataEmissao)
+            loteRec.set('conta_financeira_id', contaPagamentoId)
+            if (formaPagamentoId) loteRec.set('forma_pagamento_id', formaPagamentoId)
+            loteRec.set('valor_total', valorTotalNota)
+            loteRec.set('total_titulos', 1)
+            loteRec.set('observacao', `Baixa automática no lançamento da NF Entrada #${docNumero}`)
+            loteRec.set('ativo', true)
+            loteRec.set('created_by', userId)
+            loteRec.set('updated_by', userId)
+            txApp.save(loteRec)
+
+            // Criar baixa
+            const baixasCol = txApp.findCollectionByNameOrId('pagamentos_baixas')
+            const baixaRec = new Record(baixasCol)
+            baixaRec.set('empresa_id', empresaId)
+            baixaRec.set('conta_pagar_id', tituloRec.id)
+            baixaRec.set('lote_baixa_id', loteRec.id)
+            baixaRec.set('data_pagamento', dataEntrada || dataEmissao)
+            baixaRec.set('conta_financeira_id', contaPagamentoId)
+            if (formaPagamentoId) baixaRec.set('forma_pagamento_id', formaPagamentoId)
+            baixaRec.set('valor_original', valorTotalNota)
+            baixaRec.set('valor_pago', valorTotalNota)
+            baixaRec.set('valor_multa', 0)
+            baixaRec.set('valor_juros', 0)
+            baixaRec.set('valor_desconto', 0)
+            baixaRec.set('valor_total_pago', valorTotalNota)
+            baixaRec.set('estornado', false)
+            baixaRec.set('observacao', 'Pagamento à vista realizado na entrada da nota')
+            baixaRec.set('ativo', true)
+            baixaRec.set('created_by', userId)
+            baixaRec.set('updated_by', userId)
+            txApp.save(baixaRec)
+
+            // Atualizar título para Pago
+            tituloRec.set('valor_pago', valorTotalNota)
+            tituloRec.set('saldo', 0)
+            tituloRec.set('status', 'Pago')
+            tituloRec.set('data_pagamento', dataEntrada || dataEmissao)
+            tituloRec.set('updated_by', userId)
+            txApp.save(tituloRec)
+
+            // Movimentação financeira
+            const movsFinCol = txApp.findCollectionByNameOrId('movimentacoes_financeiras')
+            const movFinRec = new Record(movsFinCol)
+            movFinRec.set('empresa_id', empresaId)
+            movFinRec.set('conta_financeira_id', contaPagamentoId)
+            movFinRec.set('data_movimento', dataEntrada || dataEmissao)
+            movFinRec.set('tipo', 'Saída')
+            movFinRec.set('origem', 'PAGAMENTO_TITULO')
+            movFinRec.set('valor', valorTotalNota)
+            movFinRec.set('saldo_anterior', saldoContaAnt)
+            movFinRec.set('saldo_posterior', saldoContaPos)
+            movFinRec.set('documento_tipo', 'contas_pagar')
+            movFinRec.set('documento_id', tituloRec.id)
+            movFinRec.set('documento_numero', String(docNumero))
+            movFinRec.set('lote_baixa_id', loteRec.id)
+            movFinRec.set(
+              'historico',
+              `Pagamento à vista NF Entrada #${docNumero} - ${fornecedorNome}`,
+            )
+            movFinRec.set('estornado', false)
+            movFinRec.set('ativo', true)
+            movFinRec.set('created_by', userId)
+            movFinRec.set('updated_by', userId)
+            txApp.save(movFinRec)
+
+            // Atualizar saldo_atual da conta_financeira
+            contaRec.set('saldo_atual', saldoContaPos)
+            contaRec.set('updated_by', userId)
+            txApp.save(contaRec)
+          }
+        }
+      }
+
+      // 8. Atualizar status da nota para Lançada
       nota.set('status', 'Lançada')
       nota.set('data_lancamento', new Date().toISOString())
       if (usuarioErpId) {
@@ -452,7 +705,7 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
       nota.set('updated_by', userId)
       txApp.save(nota)
 
-      // 8. Gravar logs_auditoria
+      // 9. Gravar logs_auditoria
       const logsCol = txApp.findCollectionByNameOrId('logs_auditoria')
       const auditRec = new Record(logsCol)
       auditRec.set('usuario_id', userId)

@@ -241,10 +241,50 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
         }
       }
 
-      // 6. Extensão futura (Etapa 4):
-      // NOTA DE EXTENSÃO: Na Etapa 4 - Financeiro, aqui será chamado o cancelamento
-      // de contas a pagar vinculadas a esta nota que ainda não foram baixadas/pagas.
-      // ex.: cancelarContasPagarPorNotaEntrada(notaId, txApp, userId)
+      // 6. INTEGRAÇÃO ETAPA 4: VERIFICAR E CANCELAR TÍTULOS CONTAS A PAGAR
+      if (txApp.hasTable('contas_pagar')) {
+        const titulosNota = txApp.findRecordsByFilter(
+          'contas_pagar',
+          `origem_id = '${notaId}' && origem = 'NF Entrada' && ativo = true`,
+        )
+
+        // Se algum título possuir baixa ativa (não estornada), RECUSA o cancelamento
+        if (titulosNota.length > 0 && txApp.hasTable('pagamentos_baixas')) {
+          const titulosComBaixaAtiva = []
+
+          for (let tn = 0; tn < titulosNota.length; tn++) {
+            const tit = titulosNota[tn]
+            const baixasAtivas = txApp.findRecordsByFilter(
+              'pagamentos_baixas',
+              `conta_pagar_id = '${tit.id}' && estornado = false && ativo = true`,
+            )
+            if (baixasAtivas.length > 0) {
+              titulosComBaixaAtiva.push(
+                `Doc ${tit.getString('numero_documento')} Parc ${tit.getString('parcela')} (${baixasAtivas.length} pagamento(s) ativo(s))`,
+              )
+            }
+          }
+
+          if (titulosComBaixaAtiva.length > 0) {
+            throw new Error(
+              `Cancelamento recusado: a nota possui títulos a pagar com pagamentos já realizados. É necessário estornar os seguintes pagamentos no Contas a Pagar antes de cancelar a nota:\n- ${titulosComBaixaAtiva.join('\n- ')}`,
+            )
+          }
+
+          // Se não houver baixas ativas, cancela os títulos da nota com o mesmo motivo
+          for (let tc = 0; tc < titulosNota.length; tc++) {
+            const titParaCancelar = titulosNota[tc]
+            titParaCancelar.set('status', 'Cancelado')
+            titParaCancelar.set(
+              'motivo_cancelamento',
+              `Cancelamento da Nota Fiscal de Entrada: ${motivoCancelamento}`,
+            )
+            titParaCancelar.set('saldo', 0)
+            titParaCancelar.set('updated_by', userId)
+            txApp.save(titParaCancelar)
+          }
+        }
+      }
 
       // 7. Atualizar status da nota para "Cancelada"
       const statusAnterior = nota.getString('status')

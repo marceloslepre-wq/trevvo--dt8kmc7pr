@@ -781,6 +781,9 @@ export async function lancarNotaEntrada(params: {
   atualizarCustoProdutos?: boolean
   justificativaDivergencia?: string
   usuarioErpId?: string
+  jaPaga?: boolean
+  contaPagamentoId?: string
+  formaPagamentoId?: string
 }): Promise<ResultadoLancamentoNota> {
   const res = await pb.send<ResultadoLancamentoNota>('/notas-entrada/lancar', {
     method: 'POST',
@@ -789,6 +792,9 @@ export async function lancarNotaEntrada(params: {
       atualizar_custo_produtos: params.atualizarCustoProdutos !== false,
       justificativa_divergencia: params.justificativaDivergencia || '',
       usuario_erp_id: params.usuarioErpId || '',
+      ja_paga: Boolean(params.jaPaga),
+      conta_pagamento_id: params.contaPagamentoId || '',
+      forma_pagamento_id: params.formaPagamentoId || '',
     },
   })
   return res
@@ -806,6 +812,57 @@ export async function cancelarNotaEntrada(
     body: {
       nota_id: id,
       motivo,
+    },
+  })
+  return res
+}
+
+export interface NotaSemTituloRetroativo {
+  nota_id: string
+  numero: number
+  serie: string
+  data_emissao: string
+  data_entrada: string
+  fornecedor_nome: string
+  valor_total: number
+  tipo_entrada: string
+}
+
+export interface RespostaRetroativos {
+  sucesso: boolean
+  message: string
+  total_notas: number
+  total_titulos_gerados: number
+  notas: NotaSemTituloRetroativo[]
+}
+
+/**
+ * Consulta notas já lançadas sem títulos a pagar (exclusivo Administrador)
+ */
+export async function listarNotasLancadasSemTitulos(
+  empresaId: string,
+): Promise<RespostaRetroativos> {
+  const res = await pb.send<RespostaRetroativos>('/financeiro/pagar/gerar-titulos-retroativos', {
+    method: 'POST',
+    body: {
+      empresa_id: empresaId,
+      apenas_listar: true,
+    },
+  })
+  return res
+}
+
+/**
+ * Gera os títulos a pagar retroativos para as notas lançadas (exclusivo Administrador)
+ */
+export async function gerarTitulosRetroativosNotas(
+  empresaId: string,
+): Promise<RespostaRetroativos> {
+  const res = await pb.send<RespostaRetroativos>('/financeiro/pagar/gerar-titulos-retroativos', {
+    method: 'POST',
+    body: {
+      empresa_id: empresaId,
+      apenas_listar: false,
     },
   })
   return res
