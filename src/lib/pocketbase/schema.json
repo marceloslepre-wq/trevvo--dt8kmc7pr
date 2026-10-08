@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T13:36:24.616Z",
+  "generatedAt": "2026-10-08T13:50:52.367Z",
   "collections": [
     {
       "name": "users",
@@ -617,7 +617,8 @@
             "notas_saida",
             "sped",
             "relatorios",
-            "configuracoes"
+            "configuracoes",
+            "financeiro_bancos"
           ]
         },
         {
@@ -6196,6 +6197,583 @@
         "CREATE INDEX idx_icms_inter_origem ON icms_interestadual (uf_origem)",
         "CREATE INDEX idx_icms_inter_destino ON icms_interestadual (uf_destino)",
         "CREATE INDEX idx_icms_inter_ativo ON icms_interestadual (ativo)"
+      ]
+    },
+    {
+      "name": "plano_contas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "codigo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Receita", "Despesa", "Sem resultado"]
+        },
+        {
+          "name": "natureza",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Sintética", "Analítica"]
+        },
+        {
+          "name": "grupo_dre",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Receita bruta",
+            "Deduções da receita",
+            "Custo das mercadorias",
+            "Despesas operacionais",
+            "Resultado financeiro",
+            "Outras receitas e despesas",
+            "Fora da DRE"
+          ]
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "conta_pai_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_plano_contas_codigo ON plano_contas (codigo)",
+        "CREATE INDEX idx_plano_contas_ativo ON plano_contas (ativo)",
+        "CREATE INDEX `idx_plano_contas_conta_pai` ON `plano_contas` (conta_pai_id)"
+      ]
+    },
+    {
+      "name": "centros_custo",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "codigo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_centros_custo_codigo ON centros_custo (codigo)",
+        "CREATE INDEX idx_centros_custo_ativo ON centros_custo (ativo)"
+      ]
+    },
+    {
+      "name": "contas_financeiras",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Conta corrente",
+            "Poupança",
+            "Aplicação",
+            "Caixa físico",
+            "Carteira digital"
+          ]
+        },
+        {
+          "name": "banco_codigo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "banco_nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "agencia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "agencia_digito",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta_digito",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "chave_pix",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "saldo_inicial",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_saldo_inicial",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "saldo_atual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "permite_saldo_negativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta_padrao_pagamentos",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta_padrao_recebimentos",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_contas_fin_empresa ON contas_financeiras (empresa_id)",
+        "CREATE INDEX idx_contas_fin_ativo ON contas_financeiras (ativo)"
+      ]
+    },
+    {
+      "name": "formas_pagamento",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "codigo_tpag",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Dinheiro",
+            "Cheque",
+            "Cartão de crédito",
+            "Cartão de débito",
+            "PIX",
+            "Boleto",
+            "Transferência",
+            "Crédito loja",
+            "Outros"
+          ]
+        },
+        {
+          "name": "taxa_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dias_para_recebimento",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta_financeira_padrao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contas_financeiras"
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_formas_pag_codigo_tpag ON formas_pagamento (codigo_tpag)",
+        "CREATE INDEX idx_formas_pag_ativo ON formas_pagamento (ativo)"
+      ]
+    },
+    {
+      "name": "config_financeira_empresa",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "multa_atraso_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "juros_mora_mensal_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dias_carencia",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "plano_compras_revenda_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_industrializacao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_uso_consumo_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_imobilizado_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_outras_entradas_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_vendas_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_juros_recebidos_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_juros_pagos_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_descontos_obtidos_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_descontos_concedidos_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_transferencias_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "centro_custo_padrao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "centros_custo"
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_config_fin_empresa_uid ON config_financeira_empresa (empresa_id)",
+        "CREATE INDEX idx_config_fin_empresa_ativo ON config_financeira_empresa (ativo)"
       ]
     }
   ]

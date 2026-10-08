@@ -17,6 +17,7 @@ export const MODULOS_SISTEMA = [
   { id: 'estoque', label: 'Estoque' },
   { id: 'compras', label: 'Compras' },
   { id: 'notas_entrada', label: 'Notas de Entrada' },
+  { id: 'financeiro_bancos', label: 'Contas Bancárias e Cadastros Financeiros' },
   { id: 'financeiro_pagar', label: 'Contas a Pagar' },
   { id: 'financeiro_receber', label: 'Contas a Receber' },
   { id: 'vendas', label: 'Vendas' },

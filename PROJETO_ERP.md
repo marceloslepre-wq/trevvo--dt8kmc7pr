@@ -1570,6 +1570,140 @@ Tabela central de parâmetros visuais e operacionais gerais do ERP comercial.
 
 Regras: Armazena a identidade visual e nome que personalizam cabeçalho, tela de login e menu lateral. A cor principal alimenta as variáveis CSS globais (`--primary`, `--sidebar-primary`, `--ring`, `--brand-color`). O campo `dias_alerta_validade` parametriza o cálculo de advertência de produtos próximos ao vencimento na tela de Lotes e Validade (`/estoque/lotes`). Alterações gravam em `logs_auditoria`.
 
+### plano_contas
+
+Tabela hierárquica do Plano de Contas contábil e gerencial do ERP. É uma tabela **compartilhada por todas as empresas do grupo (sem `empresa_id`)**, garantindo padronização contábil unificada.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (texto hierárquico único, ex.: "1", "1.1", "1.1.01", "2.4.01")
+- descricao (texto obrigatório, ex.: "Vendas de mercadorias", "Energia elétrica")
+- tipo (select obrigatório: "Receita", "Despesa", "Sem resultado")
+- natureza (select obrigatório: "Sintética", "Analítica")
+- conta_pai_id (relation -> plano_contas, auto-referência opcional para hierarquia em árvore)
+- grupo_dre (select obrigatório: "Receita bruta", "Deduções da receita", "Custo das mercadorias", "Despesas operacionais", "Resultado financeiro", "Outras receitas e despesas", "Fora da DRE")
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. Somente contas com `natureza = 'Analítica'` podem ser vinculadas a títulos a pagar, títulos a receber, itens de notas e movimentações bancárias.
+2. Contas que possuem contas filhas não podem ser excluídas nem inativadas enquanto houver filhos vinculados.
+3. Contas com lançamentos financeiros vinculados não podem ser excluídas fisicamente; quando solicitado, o sistema realiza a inativação lógica para preservação do histórico contábil.
+4. Carga inicial semeada via migration com a estrutura contábil completa (Grupos 1 - Receitas, 2 - Despesas e 3 - Movimentações sem resultado).
+5. Toda alteração, inclusão e inativação gera registro detalhado em `logs_auditoria`.
+
+### centros_custo
+
+Tabela de Centros de Custo do ERP para rateio gerencial e apuração financeira, **compartilhada por todas as empresas (sem `empresa_id`)**.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo (texto único obrigatório, ex.: "1", "ADM", "COM")
+- descricao (texto obrigatório, ex.: "Geral", "Administrativo", "Comercial")
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. Carga inicial semeada via migration com o registro código "1" - "Geral".
+2. Centro de custo padrão é vinculado por filial através da tabela `config_financeira_empresa`.
+3. Inclusão, alteração e inativação gravam em `logs_auditoria`.
+
+### contas_financeiras
+
+Tabela de Contas Bancárias, Aplicações Financeiras, Carteiras Digitais e Caixas Físicos, **específica por empresa (com `empresa_id` obrigatório)**.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório, cascadeDelete)
+- nome (texto obrigatório, ex.: "Banestes CC 1234-5", "Caixa da loja", "Banco do Brasil")
+- tipo (select obrigatório: "Conta corrente", "Poupança", "Aplicação", "Caixa físico", "Carteira digital")
+- banco_codigo (texto opcional de 3 dígitos, ex.: "021", "001", "237")
+- banco_nome (texto opcional)
+- agencia (texto opcional)
+- agencia_digito (texto opcional)
+- conta (texto opcional)
+- conta_digito (texto opcional)
+- chave_pix (texto opcional)
+- saldo_inicial (número obrigatório em R$)
+- data_saldo_inicial (data texto no formato YYYY-MM-DD, obrigatória)
+- saldo_atual (número em R$, **SOMENTE LEITURA nas interfaces** — mantido e recalculado pelo serviço central financeiro)
+- permite_saldo_negativo (boolean, padrão true para contas bancárias e false para caixa físico)
+- conta_padrao_pagamentos (boolean, garante no máximo uma conta padrão por empresa ao alternar)
+- conta_padrao_recebimentos (boolean, garante no máximo uma conta padrão por empresa ao alternar)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. O campo `saldo_atual` é rigorosamente **somente leitura** nas telas; ele reflete o saldo inicial somado às movimentações e será mantido pelo serviço central financeiro em etapas futuras.
+2. Trava de saldo inicial: `saldo_inicial` e `data_saldo_inicial` não podem ser alterados após a conta registrar movimentações no extrato financeiro.
+3. Ao marcar `conta_padrao_pagamentos = true` ou `conta_padrao_recebimentos = true`, as demais contas da mesma empresa são automaticamente desmarcadas.
+4. Toda inclusão, alteração e inativação grava em `logs_auditoria`.
+
+### formas_pagamento
+
+Tabela de Formas de Pagamento do ERP, **compartilhada por todas as empresas (sem `empresa_id`)**.
+Será utilizada no Caixa/PDV (Etapa 5) e na emissão de cupons NFC-e e notas NF-e (Etapa 6).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- codigo_tpag (texto de 2 dígitos obrigatório, código oficial da SEFAZ na NF-e/NFC-e)
+- descricao (texto obrigatório, ex.: "Dinheiro", "Cartão de crédito", "PIX")
+- tipo (select obrigatório: "Dinheiro", "Cheque", "Cartão de crédito", "Cartão de débito", "PIX", "Boleto", "Transferência", "Crédito loja", "Outros")
+- taxa_percentual (número opcional, taxa cobrada pela credenciadora/meio)
+- dias_para_recebimento (número inteiro opcional de dias para liquidação do crédito)
+- conta_financeira_padrao_id (relation -> contas_financeiras, conta destino padrão opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. Carga inicial oficial da SEFAZ semeada via migration: 01 Dinheiro, 02 Cheque, 03 Cartão de crédito, 04 Cartão de débito, 05 Crédito loja, 15 Boleto, 16 Depósito bancário, 17 PIX, 18 Transferência bancária, 90 Sem pagamento, 99 Outros.
+2. Documentada para consumo mandatório na frente de caixa (PDV) e motor de autorização NFC-e.
+3. Inclusão, alteração e inativação gravam em `logs_auditoria`.
+
+### config_financeira_empresa
+
+Tabela de parametrização financeira individualizada por empresa/filial, com índice único por empresa (`empresa_id` único).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório, índice único)
+- multa_atraso_percentual (número percentual, cobrado uma vez após o vencimento)
+- juros_mora_mensal_percentual (número percentual mensal, calculado pro rata die: taxa ÷ 30 × dias corridos)
+- dias_carencia (inteiro de dias após o vencimento antes de incidir juros ou multa)
+- plano_compras_revenda_id (relation -> plano_contas, conta analítica padrão para compras revenda)
+- plano_industrializacao_id (relation -> plano_contas, conta analítica padrão para matéria-prima/insumos)
+- plano_uso_consumo_id (relation -> plano_contas, conta analítica padrão para material de uso/consumo)
+- plano_imobilizado_id (relation -> plano_contas, conta analítica padrão para imobilizado)
+- plano_outras_entradas_id (relation -> plano_contas, conta analítica padrão para outras entradas)
+- plano_vendas_id (relation -> plano_contas, conta analítica padrão para receitas de vendas)
+- plano_juros_recebidos_id (relation -> plano_contas, conta analítica padrão para juros recebidos)
+- plano_juros_pagos_id (relation -> plano_contas, conta analítica padrão para juros pagos)
+- plano_descontos_obtidos_id (relation -> plano_contas, conta analítica padrão para descontos obtidos)
+- plano_descontos_concedidos_id (relation -> plano_contas, conta analítica padrão para descontos concedidos)
+- plano_transferencias_id (relation -> plano_contas, conta analítica padrão para transferências financeiras)
+- centro_custo_padrao_id (relation -> centros_custo, centro de custo padrão da empresa)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. Criada automaticamente na primeira visualização da empresa com os defaults do plano de contas semeado (2.1.01, 2.1.03, 2.4.07, 2.7.01, 2.8.01, 1.1.01, 1.2.01, 2.6.01, 1.2.02, 2.6.03, 3.1.01) e centro de custo "Geral".
+2. Toda alteração grava em `logs_auditoria`.
+
 #### Componentes reutilizáveis
 
 - `<SelectProduto />` (`@/components/SelectProduto`): combobox com busca de produtos ativos por código, GTIN ou descrição, exibindo foto miniatura e preço de venda. Permite filtro opcional por `filtroTipo` ("Produto", "Serviço", "Kit"). Pronto para uso em PDV, compras, orçamentos e emissão de notas:
@@ -1618,7 +1752,7 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 26. `/cadastros/condicoes-pagamento` (`@/pages/cadastros/CondicoesPagamentoPage.tsx`): Gestão de condições de pagamento com listagem, busca, filtros de tipo/uso/situação, simulação interativa de parcelas com cálculo em tempo real e exportação CSV.
 27. `/estoque/lotes` (`@/pages/estoque/LotesValidadePage.tsx`): Gestão e rastreabilidade de lotes e datas de validade com classificação automática (Vencido, Vence em até X dias, OK), contagem regressiva em dias, filtros por produto/situação/período e exportação CSV.
 
-### Todas as Tabelas Criadas (35 tabelas)
+### Todas as Tabelas Criadas (40 tabelas)
 
 1. `users`: Coleção de autenticação do Skip Cloud / PocketBase com e-mail, senha e verificação.
 2. `logs_auditoria`: Trilha de auditoria com usuário, tabela, registro, ação (inclusao, alteracao, inativacao, ativacao) e diff JSON.
@@ -1655,6 +1789,11 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 33. `regras_fiscais_ncm`: Regras fiscais parametrizadas por prefixo/código de NCM com priorização para o motor tributário.
 34. `icms_aliquotas_uf`: Alíquotas internas básicas de ICMS e percentual de FCP de cada uma das 27 UFs.
 35. `icms_interestadual`: Matriz interestadual de ICMS entre UFs de origem e destino (Resolução SF 22/1989).
+36. `plano_contas`: Estrutura hierárquica contábil e gerencial compartilhada por todas as empresas (sem `empresa_id`).
+37. `centros_custo`: Centros de custo e rateio compartilhados entre empresas (sem `empresa_id`).
+38. `contas_financeiras`: Contas bancárias correntes, poupanças, aplicações e caixas físicos por filial (`empresa_id`).
+39. `formas_pagamento`: Catálogo de formas de pagamento com código fiscal oficial tPag da SEFAZ, taxas e prazos.
+40. `config_financeira_empresa`: Parametrização financeira exclusiva de cada empresa (`empresa_id` único) com multas, juros de mora e contas contábeis padrão.
 
 ### Todos os Componentes Reutilizáveis e Funções Utilitárias
 
@@ -1875,6 +2014,37 @@ A **Etapa 3 — Compras e Entrada de Notas** foi oficialmente concluída de pont
   - Não foram criadas contas a pagar, nem pedidos de venda, nem emissão de NF-e (mantidos estritamente para as Etapas 4 e 6).
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.41** — Início da Etapa 4 (Módulo Financeiro — Cadastros Financeiros Base):
+
+1. **Menu e Permissões:**
+   - Ativação do item de menu lateral "Financeiro" (removido badge "Em breve") com subitens operacionais: Plano de contas, Centros de custo, Contas bancárias e caixas, Formas de pagamento e Configurações financeiras.
+   - Novo módulo de permissão `financeiro_bancos` adicionado à tabela `permissoes` e à grade de `perfis_acesso`, preservando os módulos pré-existentes `financeiro_pagar` e `financeiro_receber`. Acesso total liberado para Administrador, Gerente e Financeiro.
+2. **Plano de Contas Compartilhado (`plano_contas`):**
+   - Tabela unificada entre filiais sem `empresa_id`, com campos hierárquicos `codigo`, `descricao`, `tipo` (Receita, Despesa, Sem resultado), `natureza` (Sintética, Analítica), auto-relacionamento `conta_pai_id` e `grupo_dre`.
+   - Carga inicial completa via migration 0031 cobrindo os três grupos mestres (1 RECEITAS, 2 DESPESAS e 3 MOVIMENTAÇÕES SEM RESULTADO).
+   - Tela em árvore (`/financeiro/cadastros/plano-contas`) com expansão/recolhimento, busca dinâmica, ação de "incluir conta filha", filtros de tipo/natureza/situação e importação/exportação CSV (`codigo;descricao;tipo;natureza;codigo_pai;grupo_dre`).
+   - Trava de exclusão: bloqueio físico se houver contas filhas ou lançamentos vinculados (com inativação lógica automática para preservar histórico).
+3. **Centros de Custo Compartilhados (`centros_custo`):**
+   - Tabela global com `codigo`, `descricao`, `ativo` e carga inicial do registro "1" - "Geral". Tela completa de listagem, busca e formulário modal (`/financeiro/cadastros/centros-custo`).
+4. **Contas Bancárias e Caixas por Filial (`contas_financeiras`):**
+   - Tabela individualizada com `empresa_id` obrigatório, tipos bancários e caixa físico, dados de agência, conta e chave PIX, `saldo_inicial`, `data_saldo_inicial` e `saldo_atual`.
+   - Campo `saldo_atual` estritamente **somente leitura** nas telas, com aviso explícito de manutenção pelo serviço central financeiro.
+   - Regras de negócio: trava de edição de saldo inicial após movimentações, controle de `permite_saldo_negativo` (padrão true para bancos e false para caixas) e garantia de exclusividade das contas padrão (`conta_padrao_pagamentos` e `conta_padrao_recebimentos`) por empresa.
+   - Tela com cards interativos (`/financeiro/cadastros/contas-bancarias`) destacando o **saldo consolidado total da empresa ativa**.
+5. **Formas de Pagamento (`formas_pagamento`):**
+   - Catálogo compartilhado com código fiscal oficial `codigo_tpag` (tabela SEFAZ), descrição, tipo, taxa percentual, prazo de recebimento em dias e conta financeira padrão.
+   - Carga inicial oficial via migration 0031 (01 Dinheiro, 02 Cheque, 03 Cartão de crédito, 04 Cartão de débito, 05 Crédito loja, 15 Boleto, 16 Depósito bancário, 17 PIX, 18 Transferência bancária, 90 Sem pagamento, 99 Outros).
+   - Documentado para uso na frente de caixa / PDV (Etapa 5) e na emissão fiscal NFC-e / NF-e (Etapa 6).
+6. **Configurações Financeiras por Empresa (`config_financeira_empresa`):**
+   - Registro individualizado com índice único em `empresa_id`, com parametrização de multa por atraso, juros de mora mensais (pro rata die), dias de carência, centro de custo padrão e vínculos automáticos das contas analíticas do plano de contas para compras revenda (2.1.01), industrialização (2.1.03), consumo (2.4.07), imobilizado (2.7.01), outras entradas (2.8.01), vendas (1.1.01), juros recebidos (1.2.01), juros pagos (2.6.01), descontos obtidos (1.2.02), descontos concedidos (2.6.03) e transferências (3.1.01).
+   - Criação automática do registro da empresa com os defaults na primeira visualização.
+7. **Auditoria e Padrões Globais:**
+   - Toda operação de inclusão, alteração, inativação e reativação grava na tabela `logs_auditoria`.
+   - Nenhuma alíquota ou valor de negócio fixo no código da aplicação.
+   - Garantia de não criação precoce de contas a pagar, contas a receber, extratos, lançamentos, conciliação ou fluxo de caixa.
+
+---
 
 **Versão 0.0.39** — Fechamento Oficial da Etapa 3 (Compras e Entrada de Notas): consultas de compras (tela "Itens comprados", aba "Compras" no cadastro de produto, aba "Notas" no cadastro de fornecedor), Livro de entradas com resumo C190 e serviço reutilizável `obterRelatorioLivroEntradas` pronto para SPED, cartões de compras no Painel, reforço de API rules (migration 0030) e confirmação de que o estoque passa exclusivamente pelo serviço central.
 

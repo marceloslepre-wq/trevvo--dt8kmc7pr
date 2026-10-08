@@ -68,6 +68,13 @@ import ProdutosLista from '@/pages/cadastros/ProdutosLista'
 import ProdutoForm from '@/pages/cadastros/ProdutoForm'
 import ConferenciaFiscalPage from '@/pages/cadastros/ConferenciaFiscalPage'
 
+// Páginas do Financeiro (Cadastros)
+import PlanoContasPage from '@/pages/financeiro/cadastros/PlanoContasPage'
+import CentrosCustoPage from '@/pages/financeiro/cadastros/CentrosCustoPage'
+import ContasFinanceirasPage from '@/pages/financeiro/cadastros/ContasFinanceirasPage'
+import FormasPagamentoPage from '@/pages/financeiro/cadastros/FormasPagamentoPage'
+import ConfiguracaoFinanceiraPage from '@/pages/financeiro/cadastros/ConfiguracaoFinanceiraPage'
+
 const App = () => (
   <BrowserRouter>
     <AuthProvider>
@@ -383,6 +390,56 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
                         <MatrizIcmsPage />
+                      </PermissaoGuard>
+                    }
+                  />
+
+                  {/* Financeiro: Cadastros */}
+                  <Route
+                    path="/financeiro"
+                    element={<Navigate to="/financeiro/cadastros/plano-contas" replace />}
+                  />
+                  <Route
+                    path="/financeiro/cadastros"
+                    element={<Navigate to="/financeiro/cadastros/plano-contas" replace />}
+                  />
+                  <Route
+                    path="/financeiro/cadastros/plano-contas"
+                    element={
+                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
+                        <PlanoContasPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/financeiro/cadastros/centros-custo"
+                    element={
+                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
+                        <CentrosCustoPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/financeiro/cadastros/contas-bancarias"
+                    element={
+                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
+                        <ContasFinanceirasPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/financeiro/cadastros/formas-pagamento"
+                    element={
+                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
+                        <FormasPagamentoPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/financeiro/cadastros/configuracoes"
+                    element={
+                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
+                        <ConfiguracaoFinanceiraPage />
                       </PermissaoGuard>
                     }
                   />

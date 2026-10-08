@@ -264,8 +264,40 @@ const navItems: NavGroupItem[] = [
     id: 'financeiro',
     title: 'Financeiro',
     icon: DollarSign,
-    status: 'soon',
-    modulo: 'financeiro_pagar',
+    status: 'active',
+    modulo: 'financeiro_bancos',
+    items: [
+      {
+        title: 'Plano de contas',
+        path: '/financeiro/cadastros/plano-contas',
+        icon: FolderTree,
+        modulo: 'financeiro_bancos',
+      },
+      {
+        title: 'Centros de custo',
+        path: '/financeiro/cadastros/centros-custo',
+        icon: Tag,
+        modulo: 'financeiro_bancos',
+      },
+      {
+        title: 'Contas bancárias e caixas',
+        path: '/financeiro/cadastros/contas-bancarias',
+        icon: Building,
+        modulo: 'financeiro_bancos',
+      },
+      {
+        title: 'Formas de pagamento',
+        path: '/financeiro/cadastros/formas-pagamento',
+        icon: CreditCard,
+        modulo: 'financeiro_bancos',
+      },
+      {
+        title: 'Configurações financeiras',
+        path: '/financeiro/cadastros/configuracoes',
+        icon: Settings,
+        modulo: 'financeiro_bancos',
+      },
+    ],
   },
   {
     id: 'vendas',
@@ -340,10 +372,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isCadastrosActive = location.pathname.startsWith('/cadastros')
   const isEstoqueActive = location.pathname.startsWith('/estoque')
   const isComprasActive = location.pathname.startsWith('/compras')
+  const isFinanceiroActive = location.pathname.startsWith('/financeiro')
   const isConfiguracoesActive = location.pathname.startsWith('/configuracoes')
   const [cadastrosOpen, setCadastrosOpen] = useState(true)
   const [estoqueOpen, setEstoqueOpen] = useState(true)
   const [comprasOpen, setComprasOpen] = useState(true)
+  const [financeiroOpen, setFinanceiroOpen] = useState(true)
   const [configuracoesOpen, setConfiguracoesOpen] = useState(true)
 
   const { pode, administrador } = usePermissoes()
@@ -451,7 +485,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     ? isEstoqueActive
                     : item.id === 'compras'
                       ? isComprasActive
-                      : isConfiguracoesActive
+                      : item.id === 'financeiro'
+                        ? isFinanceiroActive
+                        : isConfiguracoesActive
               const isOpen =
                 item.id === 'cadastros'
                   ? cadastrosOpen
@@ -459,7 +495,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     ? estoqueOpen
                     : item.id === 'compras'
                       ? comprasOpen
-                      : configuracoesOpen
+                      : item.id === 'financeiro'
+                        ? financeiroOpen
+                        : configuracoesOpen
               const setOpen =
                 item.id === 'cadastros'
                   ? setCadastrosOpen
@@ -467,7 +505,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     ? setEstoqueOpen
                     : item.id === 'compras'
                       ? setComprasOpen
-                      : setConfiguracoesOpen
+                      : item.id === 'financeiro'
+                        ? setFinanceiroOpen
+                        : setConfiguracoesOpen
 
               if (isCollapsed) {
                 return (
