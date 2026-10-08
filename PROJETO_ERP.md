@@ -863,41 +863,6 @@ Tabela que armazena os estabelecimentos (Matriz e Filiais), cada um com seu CNPJ
 
 - id (text, PK)
 - ativo (boolean, padrão true)
-- created_by (relation -> users, opcional)
-- updated_by (relation -> users, opcional)
-- created (autodate, onCreate)
-- updated (autodate, onCreate, onUpdate)
-
-### unidades_medida
-
-Tabela de unidades comerciais e tributárias utilizadas no cadastro de produtos e na emissão de documentos fiscais.
-
-- id (text, PK)
-- ativo (boolean, padrão true)
-- sigla (texto obrigatório, único, até 6 caracteres, sempre maiúsculas, ex: "UN", "KG", "CX")
-- descricao (texto obrigatório, ex: "Quilograma", "Unidade")
-- aceita_fracionado (boolean: permite quantidade com decimais nas movimentações e notas)
-- created_by (relation -> users, opcional)
-- updated_by (relation -> users, opcional)
-- created (autodate, onCreate)
-- updated (autodate, onCreate, onUpdate)
-
-### tabelas_fiscais_codigos
-
-Tabela única para listas auxiliares de códigos fiscais oficiais (SEFAZ, SPED e Reforma Tributária).
-
-- id (text, PK)
-- ativo (boolean, padrão true)
-- tipo (texto obrigatório, ex: "ORIGEM", "CST_ICMS", "CSOSN", "MOD_BC_ICMS", "MOD_BC_ICMS_ST", "CST_IPI", "CST_PIS_COFINS", "TIPO_ITEM_SPED", "CRT", "IND_IE_DEST", "CST_IBS_CBS", "CCLASSTRIB")
-- codigo (texto obrigatório, ex: "00", "101", "0", "01")
-- descricao (texto obrigatório com a descrição oficial)
-- observacao (texto opcional com orientações tributárias)
-- created_by (relation -> users, opcional)
-- updated_by (relation -> users, opcional)
-- created (autodate, onCreate)
-- updated (autodate, onCreate, onUpdate)
-
-Restrição de unicidade: par `tipo + codigo`.
 
 #### Identificação
 
@@ -968,6 +933,44 @@ Restrição de unicidade: par `tipo + codigo`.
 - contador_codigo_municipio_ibge: 7 dígitos
 - contador_telefone: texto
 - contador_email: email
+
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `cnpj` (único: `idx_empresas_cnpj`), `codigo` (único: `idx_empresas_codigo`), `tipo` (`idx_empresas_tipo`), `ativo` (`idx_empresas_ativo`).
+
+### unidades_medida
+
+Tabela de unidades comerciais e tributárias utilizadas no cadastro de produtos e na emissão de documentos fiscais.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- sigla (texto obrigatório, único, até 6 caracteres, sempre maiúsculas, ex: "UN", "KG", "CX")
+- descricao (texto obrigatório, ex: "Quilograma", "Unidade")
+- aceita_fracionado (boolean: permite quantidade com decimais nas movimentações e notas)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### tabelas_fiscais_codigos
+
+Tabela única para listas auxiliares de códigos fiscais oficiais (SEFAZ, SPED e Reforma Tributária).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- tipo (texto obrigatório, ex: "ORIGEM", "CST_ICMS", "CSOSN", "MOD_BC_ICMS", "MOD_BC_ICMS_ST", "CST_IPI", "CST_PIS_COFINS", "TIPO_ITEM_SPED", "CRT", "IND_IE_DEST", "CST_IBS_CBS", "CCLASSTRIB")
+- codigo (texto obrigatório, ex: "00", "101", "0", "01")
+- descricao (texto obrigatório com a descrição oficial)
+- observacao (texto opcional com orientações tributárias)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Restrição de unicidade: par `tipo + codigo`.
 
 ### logs_auditoria
 
@@ -1872,6 +1875,10 @@ A **Etapa 3 — Compras e Entrada de Notas** foi oficialmente concluída de pont
   - Não foram criadas contas a pagar, nem pedidos de venda, nem emissão de NF-e (mantidos estritamente para as Etapas 4 e 6).
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.39** — Fechamento Oficial da Etapa 3 (Compras e Entrada de Notas): consultas de compras (tela "Itens comprados", aba "Compras" no cadastro de produto, aba "Notas" no cadastro de fornecedor), Livro de entradas com resumo C190 e serviço reutilizável `obterRelatorioLivroEntradas` pronto para SPED, cartões de compras no Painel, reforço de API rules (migration 0030) e confirmação de que o estoque passa exclusivamente pelo serviço central.
+
+---
 
 **Versão 0.0.38** — Fechamento Oficial da Etapa 3 (Compras e Entrada de Notas), Consultas Avançadas, Livro de Entradas (C190), Históricos em Produtos/Fornecedores e Proteção de API Rules:
 
