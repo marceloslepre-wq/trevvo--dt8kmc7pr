@@ -1738,6 +1738,7 @@ Tabela central de títulos e obrigações a pagar do ERP, individualizada por em
 - updated (autodate, onCreate, onUpdate)
 
 Regras:
+
 1. Atualizações de `valor_pago`, `saldo` e `status` ocorrem estritamente via serviço central de pagamentos (`/financeiro/pagar/baixar`, `/financeiro/pagar/estornar-baixa`) ou cancelamento.
 2. Título com baixas ativas não pode ser cancelado diretamente: exige estorno prévio de todos os pagamentos.
 3. Título originado por Nota Fiscal de Entrada (`origem = "NF_ENTRADA"`) não pode ser cancelado diretamente na tela de Contas a Pagar: o cancelamento deve ser feito pelo cancelamento do lançamento da respectiva nota no módulo de Compras.
@@ -1800,6 +1801,7 @@ Registro analítico individual de cada baixa/amortização de um título a pagar
 - updated (autodate, onCreate, onUpdate)
 
 Regras:
+
 1. Toda baixa gera uma movimentação financeira correspondente de saída (`tipo_movimento = "Saída"`) na `conta_financeira_id`.
 2. O estorno da baixa marca `estornado = true`, preenche justificativa e usuário, e gera uma movimentação financeira de entrada com `origem = "ESTORNO"` para recompor o saldo bancário.
 3. API Rules: `createRule: null`, `updateRule: null`, `deleteRule: null` — alterações somente via endpoints transacionais do backend.
@@ -1836,6 +1838,7 @@ Extrato e trilha completa de auditoria financeira das contas bancárias e caixas
 - updated (autodate, onCreate, onUpdate)
 
 Regras:
+
 1. **REGRA MANDATÓRIA:** O campo `saldo_atual` da tabela `contas_financeiras` só pode ser alterado pelo serviço central financeiro via inserção de `movimentacoes_financeiras`. Nenhuma tela grava diretamente em `saldo_atual`.
 2. API Rules: `createRule: null`, `updateRule: null`, `deleteRule: null` — imutabilidade e proteção em nível de banco.
 
@@ -1959,11 +1962,13 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 
 ⚠ **REGRA DE ARQUITETURA MANDATÓRIA (EM DESTAQUE):**
 Nenhuma tela, hook ou componente do sistema tem permissão para alterar diretamente o campo `saldo_atual` da tabela `contas_financeiras` nem para inserir registros isolados em `movimentacoes_financeiras`, `pagamentos_lotes` ou `pagamentos_baixas`. Toda e qualquer operação de pagamento, baixa de título ou estorno deve transitar única e exclusivamente pelos endpoints centrais do backend:
+
 - `/financeiro/pagar/baixar` (função client `baixarTitulosPagar`): efetua a baixa de um ou mais títulos a pagar, registra o lote de pagamento, calcula acréscimos/descontos, gera as movimentações financeiras de saída (débito) nas contas bancárias/caixas e atualiza de forma atômica o `saldo_atual` da conta financeira e os saldos/status dos títulos.
 - `/financeiro/pagar/estornar-baixa` (função client `estornarBaixaPagamento`): cancela uma baixa de pagamento, marca `estornado = true`, registra o motivo e o usuário operador, estorna a movimentação gerando crédito de recomposição no saldo da conta financeira e devolve o saldo devedor ao título (`contas_pagar.saldo` e status).
 - `/financeiro/pagar/gerar-titulos-retroativos` (função client `gerarTitulosRetroativosNotas`): varre notas de entrada já lançadas que não possuíam títulos gerados e cria os registros em `contas_pagar` com base nas duplicatas de `notas_entrada_parcelas`.
 
 #### Regras de Integração com Lançamento e Cancelamento de Notas de Entrada:
+
 1. **Geração por Parcela:** Ao lançar uma nota fiscal de entrada (via importação XML ou digitação manual), o sistema gera automaticamente um registro na tabela `contas_pagar` para cada parcela existente em `notas_entrada_parcelas` (`parcela_numero`, `parcela_total`, `data_vencimento`, `valor_original`). Se a nota não possuir duplicatas cadastradas, gera 1 título único com o valor total da nota e vencimento na data de entrada.
 2. **Plano de Contas por Tipo de Entrada:** A conta contábil analítica atribuída a cada título gerado é selecionada automaticamente a partir da parametrização em `config_financeira_empresa` da filial ativa:
    - "Compra para revenda" → `plano_compras_revenda_id` (default 2.1.01)
