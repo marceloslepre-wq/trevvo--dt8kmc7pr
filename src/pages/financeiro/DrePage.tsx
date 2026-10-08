@@ -56,8 +56,9 @@ import {
 
 export const DrePage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
-  const { administrador, perfilNome } = usePermissoes()
+  const { administrador, perfil } = usePermissoes()
   const { toast } = useToast()
+  const perfilNome = perfil?.nome || ''
 
   // Restrição de acesso do requisito: Apenas Administrador e Gerente
   const podeAcessarDre = useMemo(() => {

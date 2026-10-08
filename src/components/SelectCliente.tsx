@@ -37,8 +37,8 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
     setCarregando(true)
     try {
       const resp = await listarClientes({
-        ativo: true,
-        perPage: 100,
+        situacao: 'ativos',
+        porPagina: 100,
         sort: 'razao_social',
       })
       setClientes(resp.items)

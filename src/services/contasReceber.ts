@@ -493,8 +493,7 @@ export async function criarTitulosRecorrentesReceber(
   const recorrenciaId = 'REC_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
   const criados: ContaReceber[] = []
 
-  const quantidadeMeses =
-    inputOuBase?.quantidade_meses || qtdMesesParam || 12
+  const quantidadeMeses = inputOuBase?.quantidade_meses || qtdMesesParam || 12
 
   const vencimentoBaseStr =
     inputOuBase.data_vencimento_inicial ||
@@ -596,33 +595,6 @@ export async function atualizarRecorrenciaReceber(
       payload.saldo = dados.valor_original
     }
     if (dados.observacao !== undefined) payload.observacao = dados.observacao
-
-    await pb.collection('contas_receber').update(item.id, payload)
-    count++
-  }
-
-  return count
-}
-  const itens = await pb.collection('contas_receber').getFullList<ContaReceber>({
-    filter: `recorrencia_id = '${recorrenciaId}' && recorrencia_numero >= ${recorrenciaNumeroMin} && status = 'Em aberto' && ativo = true`,
-  })
-
-  let count = 0
-  for (const item of itens) {
-    const payload: Record<string, unknown> = {
-      updated_by: pb.authStore.record?.id || null,
-    }
-    if (novosDados.descricao) payload.descricao = novosDados.descricao
-    if (novosDados.plano_conta_id) payload.plano_conta_id = novosDados.plano_conta_id
-    if (novosDados.centro_custo_id !== undefined)
-      payload.centro_custo_id = novosDados.centro_custo_id
-    if (novosDados.forma_pagamento_prevista_id !== undefined) {
-      payload.forma_pagamento_prevista_id = novosDados.forma_pagamento_prevista_id
-    }
-    if (novosDados.valor_original !== undefined) {
-      payload.valor_original = novosDados.valor_original
-      payload.saldo = novosDados.valor_original
-    }
 
     await pb.collection('contas_receber').update(item.id, payload)
     count++
@@ -767,8 +739,9 @@ export async function receberTitulos(dados: ReceberTitulosInput): Promise<Result
         data_pagamento: dados.data_pagamento,
         valor_total: res.total_recebido || 0,
         quantidade_titulos: listaTitulos.length,
+        ativo: true,
         created: new Date().toISOString(),
-      } as PagamentoLote
+      } as unknown as PagamentoLote
     }
   }
 

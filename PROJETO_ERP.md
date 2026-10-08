@@ -2254,7 +2254,80 @@ A **Etapa 3 — Compras e Entrada de Notas** foi oficialmente concluída de pont
 - **Garantia de Não Criação Prematura:**
   - Não foram criadas contas a pagar, nem pedidos de venda, nem emissão de NF-e (mantidos estritamente para as Etapas 4 e 6).
 
+## Etapa 4 concluída
+
+A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com rigor contábil-financeiro brasileiro, amarração transacional com notas fiscais de entrada, extratos cronológicos, conciliação OFX, controle de inadimplência, DRE contábil/gerencial, fluxo de caixa diário projetado, painel com indicadores interativos e auditoria de integridade de saldos sem correção automática.
+
+- **Tabelas criadas nesta etapa:**
+  - `plano_contas`: estrutura contábil compartilhada entre filiais com hierarquia pai-filho, tipo (Receita, Despesa, Sem resultado), natureza (Sintética, Analítica) e grupo DRE.
+  - `centros_custo`: centros de custo compartilhados para rateio gerencial de despesas e receitas.
+  - `contas_financeiras`: contas bancárias e caixas por filial com saldo inicial, data e saldo atual (manutenção restrita ao backend).
+  - `formas_pagamento`: catálogo compartilhado com códigos fiscais oficiais TPag da SEFAZ, taxas e prazos.
+  - `config_financeira_empresa`: parametrização individualizada por filial de juros, multas, carência e contas contábeis padrão para compras, vendas, juros e descontos.
+  - `contas_pagar`: títulos a pagar gerados a partir das duplicatas das notas de entrada ou de cadastros avulsos manuais.
+  - `contas_receber`: títulos a receber com cliente, vencimento, valor original, valor recebido, juros, multas, descontos e saldo.
+  - `pagamentos_lotes`: lotes transacionais de liquidação individual ou agrupada.
+  - `pagamentos_baixas`: baixas analíticas não estornadas vinculadas a títulos a pagar ou a receber.
+  - `movimentacoes_financeiras`: lançamentos bancários cronológicos de débito/crédito, transferências e lançamentos avulsos.
+  - `extratos_linhas`: linhas importadas de extratos bancários padrão OFX com FITID único e status de conciliação.
+
+- **Telas e Rotas Entregues:**
+  1. `/financeiro/cadastros/plano-contas` (`PlanoContasPage.tsx`): visualização em árvore, busca dinâmica, exportação e importação CSV.
+  2. `/financeiro/cadastros/centros-custo` (`CentrosCustoPage.tsx`): listagem e manutenção de centros de custo.
+  3. `/financeiro/cadastros/contas-bancarias` (`ContasFinanceirasPage.tsx`): cadastro de contas e caixas com saldo consolidado por filial.
+  4. `/financeiro/cadastros/formas-pagamento` (`FormasPagamentoPage.tsx`): catálogo de formas com códigos SEFAZ e taxas.
+  5. `/financeiro/cadastros/configuracao` (`ConfiguracaoFinanceiraPage.tsx`): parametrização financeira da empresa ativa.
+  6. `/financeiro/pagar` (`ContasPagarPage.tsx`): listagem, indicadores, filtros por situação e período, modal de novo título e pagamento em lote.
+  7. `/financeiro/receber` (`ContasReceberPage.tsx`): listagem, indicadores de liquidação/atraso, filtros por situação e recebimento em lote.
+  8. `/financeiro/bancos` (`ExtratoBancarioPage.tsx`): extrato bancário cronológico, transferência entre contas e lançamento avulso.
+  9. `/financeiro/conciliacao` (`ConciliacaoBancariaPage.tsx`): importação de extratos OFX bancários e casamento automático/manual.
+  10. `/financeiro/fluxo-caixa` (`FluxoCaixaPage.tsx`): projeção analítica e gráfica de fluxo de caixa diário, semanal e mensal com saldos acumulados.
+  11. `/financeiro/inadimplencia` (`InadimplenciaPage.tsx`): relatório analítico de clientes inadimplentes, faixas de atraso (aging list) e exportação.
+  12. `/financeiro/dre` (`DrePage.tsx`): Demonstrativo do Resultado do Exercício estruturado por regime de competência e caixa, com margens e percentuais verticais.
+  13. `/configuracoes/integridade-financeiro` (`IntegridadeFinanceiroPage.tsx`): relatório auditor de integridade entre contas, movimentações e baixas de títulos, exclusivo para Administrador.
+  14. **Painel Geral com Indicadores Financeiros** (`Index.tsx`): cartões clicáveis com atalhos filtrados ("A pagar hoje", "A pagar vencido", "A receber hoje", "A receber vencido" e "Saldo total das contas") e mini gráfico interativo de projeção do fluxo de caixa dos próximos 30 dias.
+
+- **Serviços e Componentes Centrais:**
+  - `src/services/financeiro.ts`: serviços de contas a pagar, baixas, estornos e geração retroativa de títulos.
+  - `src/services/contasReceber.ts`: gestão de títulos a receber, amortizações, juros, multas e baixas atômicas.
+  - `src/services/movimentacoesExtratos.ts`: extratos bancários, transferências entre contas e conciliação bancária OFX.
+  - `src/services/fluxoCaixa.ts`: apuração temporal de projeções financeiras considerando contas bancárias e títulos em aberto.
+  - `src/services/inadimplencia.ts`: apuração e ranking de inadimplência por cliente e faixas de atraso.
+  - `src/services/dre.ts`: apuração contábil da DRE por estrutura analítica do plano de contas.
+  - `src/services/integridadeFinanceiro.ts`: auditoria matemática de saldos de contas e baixas de títulos.
+  - `pocketbase/migrations/0037_fechar_regras_pagamentos_baixas_e_lotes.js`: bloqueio de create/update/delete direto pelo client SDK em `pagamentos_lotes` e `pagamentos_baixas`.
+
+- **Garantia de Não Criação Prematura:**
+  - Não foram criadas rotas ou tabelas de frente de caixa/PDV, vendas ou emissão de NF-e/NFC-e (mantidos para as Etapas 5 e 6).
+
 ## Versão Atual do Projeto
+
+**Versão 0.0.53** — Fechamento Oficial da Etapa 4 (Financeiro Completo):
+
+1. **Ferramenta de Integridade Financeira (`/configuracoes/integridade-financeiro`):**
+   - Criação da página `src/pages/configuracoes/IntegridadeFinanceiroPage.tsx` e serviço central `src/services/integridadeFinanceiro.ts`.
+   - Acesso estritamente restrito a usuários com perfil de Administrador (`perfis_acesso.administrador = true`).
+   - Botão "Verificar integridade" que executa as seguintes conferências contábeis e gera relatório de divergências (sem correção automática):
+     - (a) Para cada conta financeira: `saldo_atual` confrontado com `saldo_inicial + entradas − saídas` das movimentações financeiras não estornadas.
+     - (b) Para cada título de contas a pagar e contas a receber: `valor_pago` / `valor_recebido` e `saldo` confrontados com a soma das baixas não estornadas (`pagamentos_baixas`).
+     - (c) Bloqueio de inconsistência: nenhum título com situação "Pago" ou "Recebido" pode apresentar saldo residual diferente de zero.
+   - Apresentação em lista clara com Entidade, ID/Referência, Descrição, Valor Esperado, Valor Encontrado e Diferença; mensagem verde em destaque quando nenhuma divergência for encontrada.
+
+2. **Cartões Financeiros e Mini Gráfico no Painel Geral (`Index.tsx`):**
+   - Cartões clicáveis levando às listagens correspondentes já pré-filtradas:
+     - "A pagar hoje" (leva a `/financeiro/pagar?situacao=abertos&dataInicio=HOJE&dataFim=HOJE`, visível com `financeiro_pagar`).
+     - "A pagar vencido" (leva a `/financeiro/pagar?situacao=vencidos`, visível com `financeiro_pagar`).
+     - "A receber hoje" (leva a `/financeiro/receber?situacao=abertos&dataInicio=HOJE&dataFim=HOJE`, visível com `financeiro_receber`).
+     - "A receber vencido" (leva a `/financeiro/receber?situacao=vencidos`, visível com `financeiro_receber`).
+     - "Saldo total das contas da empresa ativa" (leva a `/financeiro/bancos`, visível com `financeiro_bancos`).
+   - Mini gráfico de fluxo de caixa dos próximos 30 dias renderizado via Recharts/ChartContainer consumindo `apurarFluxoCaixa` de `src/services/fluxoCaixa.ts`, visível exclusivamente para usuários com a permissão `financeiro_bancos`.
+
+3. **Segurança de API Rules nas Tabelas de Baixas (Migration 0037):**
+   - Criação e aplicação da migration `0037_fechar_regras_pagamentos_baixas_e_lotes.js`.
+   - Regras de `createRule`, `updateRule` e `deleteRule` fechadas (null) para clientes diretos nas tabelas `pagamentos_lotes` e `pagamentos_baixas`.
+   - Toda alteração e baixa financeira passa obrigatoriamente pelos hooks transacionais de backend do PocketBase.
+
+---
 
 **Versão 0.0.49** — Correção Definitiva do PermissaoGuard e Movimentação Bancária com Conciliação OFX (Etapa 4 — Financeiro):
 

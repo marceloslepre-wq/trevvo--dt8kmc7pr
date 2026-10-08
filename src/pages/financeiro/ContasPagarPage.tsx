@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   DollarSign,
   Plus,
@@ -72,11 +72,22 @@ export const ContasPagarPage: React.FC = () => {
     .slice(0, 10)
   const hojeStr = hoje.toISOString().slice(0, 10)
 
-  const [periodoInicio, setPeriodoInicio] = useState(primeiroDiaMes)
-  const [periodoFim, setPeriodoFim] = useState(ultimoDiaMes)
+  const [searchParams] = useSearchParams()
+  const paramSituacao = searchParams.get('situacao') as
+    | 'abertos'
+    | 'vencidos'
+    | 'pagos'
+    | 'cancelados'
+    | 'todos'
+    | null
+  const paramInicio = searchParams.get('dataInicio')
+  const paramFim = searchParams.get('dataFim')
+
+  const [periodoInicio, setPeriodoInicio] = useState(paramInicio || primeiroDiaMes)
+  const [periodoFim, setPeriodoFim] = useState(paramFim || ultimoDiaMes)
   const [situacao, setSituacao] = useState<
     'abertos' | 'vencidos' | 'pagos' | 'cancelados' | 'todos'
-  >('todos')
+  >(paramSituacao || 'todos')
   const [fornecedorId, setFornecedorId] = useState('')
   const [planoContaId, setPlanoContaId] = useState('')
   const [centroCustoId, setCentroCustoId] = useState('')

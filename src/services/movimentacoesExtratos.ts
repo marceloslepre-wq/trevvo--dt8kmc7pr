@@ -21,6 +21,8 @@ import { obterContaFinanceiraPorId } from '@/services/contasFinanceiras'
 
 export type TipoMovimentoBancario = 'Entrada' | 'Saída'
 
+export type MovimentoBancario = MovimentoExtratoItem
+
 export interface MovimentoExtratoItem {
   id: string
   empresa_id: string
@@ -34,6 +36,8 @@ export interface MovimentoExtratoItem {
   documento_tipo?: string
   documento_id?: string
   documento_numero?: string
+  documento?: string
+  plano_conta_id?: string
   lote_baixa_id?: string
   transferencia_id?: string
   lancamento_avulso?: boolean

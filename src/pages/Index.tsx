@@ -31,11 +31,32 @@ import pb from '@/lib/pocketbase/client'
 import {
   DollarSign,
   TrendingDown,
+  TrendingUp,
   CalendarClock,
   ClipboardList,
   ArrowUpRight,
   ArrowDownLeft,
+  Landmark,
+  LineChart as LineChartIcon,
 } from 'lucide-react'
+import {
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+} from 'recharts'
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+} from '@/components/ui/chart'
+import { apurarFluxoCaixa, PeriodoFluxoCaixa } from '@/services/fluxoCaixa'
 
 interface UltimoCadastro {
   id: string
@@ -87,6 +108,20 @@ export default function Index() {
   const [pedidosCompraAbertosCount, setPedidosCompraAbertosCount] = useState<number>(0)
   const [pedidosPrevisaoVencidaCount, setPedidosPrevisaoVencidaCount] = useState<number>(0)
 
+  // Indicadores Financeiros (Etapa 4)
+  const [aPagarHojeTotal, setAPagarHojeTotal] = useState<number>(0)
+  const [aPagarHojeCount, setAPagarHojeCount] = useState<number>(0)
+  const [aPagarVencidoTotal, setAPagarVencidoTotal] = useState<number>(0)
+  const [aPagarVencidoCount, setAPagarVencidoCount] = useState<number>(0)
+  const [aReceberHojeTotal, setAReceberHojeTotal] = useState<number>(0)
+  const [aReceberHojeCount, setAReceberHojeCount] = useState<number>(0)
+  const [aReceberVencidoTotal, setAReceberVencidoTotal] = useState<number>(0)
+  const [aReceberVencidoCount, setAReceberVencidoCount] = useState<number>(0)
+  const [saldoTotalContas, setSaldoTotalContas] = useState<number>(0)
+  const [totalContasCadastradas, setTotalContasCadastradas] = useState<number>(0)
+  const [dadosFluxo30Dias, setDadosFluxo30Dias] = useState<PeriodoFluxoCaixa[]>([])
+  const [carregandoFluxo, setCarregandoFluxo] = useState<boolean>(false)
+
   // Últimos cadastros
   const [ultimosCadastros, setUltimosCadastros] = useState<UltimoCadastro[]>([])
 
@@ -103,6 +138,9 @@ export default function Index() {
   const podeVerEstoque = pode('estoque', 'ver')
   const podeVerCompras = pode('compras', 'ver')
   const podeVerNotasEntrada = pode('notas_entrada', 'ver')
+  const podeVerFinanceiroPagar = pode('financeiro_pagar', 'ver')
+  const podeVerFinanceiroReceber = pode('financeiro_receber', 'ver')
+  const podeVerFinanceiroBancos = pode('financeiro_bancos', 'ver')
 
   const carregarDadosPainel = useCallback(async () => {
     try {
@@ -342,6 +380,140 @@ export default function Index() {
             })(),
           )
         }
+
+        // Indicadores Financeiros (Etapa 4)
+        const hojeIso = new Date().toISOString().split('T')[0]
+
+        // Contas a Pagar (Hoje e Vencidos)
+        if (podeVerFinanceiroPagar) {
+          promisesContagens.push(
+            (async () => {
+              try {
+                // A pagar hoje: status in ('Em aberto', 'Pago parcial') && data_vencimento = hojeIso
+                const titulosHoje = await pb.collection('contas_pagar').getFullList({
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && (status = 'Em aberto' || status = 'Pago parcial') && data_vencimento = '${hojeIso}'`,
+                  fields: 'saldo,valor_original',
+                })
+                let somaSaldosHoje = 0
+                titulosHoje.forEach((t: any) => {
+                  somaSaldosHoje += Number(t.saldo ?? t.valor_original) || 0
+                })
+                setAPagarHojeTotal(somaSaldosHoje)
+                setAPagarHojeCount(titulosHoje.length)
+
+                // A pagar vencido: status in ('Em aberto', 'Pago parcial') && data_vencimento < hojeIso
+                const titulosVencidos = await pb.collection('contas_pagar').getFullList({
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && (status = 'Em aberto' || status = 'Pago parcial') && data_vencimento < '${hojeIso}'`,
+                  fields: 'saldo,valor_original',
+                })
+                let somaSaldosVenc = 0
+                titulosVencidos.forEach((t: any) => {
+                  somaSaldosVenc += Number(t.saldo ?? t.valor_original) || 0
+                })
+                setAPagarVencidoTotal(somaSaldosVenc)
+                setAPagarVencidoCount(titulosVencidos.length)
+              } catch (err) {
+                console.warn('Erro ao carregar indicadores de contas a pagar:', err)
+                setAPagarHojeTotal(0)
+                setAPagarHojeCount(0)
+                setAPagarVencidoTotal(0)
+                setAPagarVencidoCount(0)
+              }
+            })(),
+          )
+        }
+
+        // Contas a Receber (Hoje e Vencidos)
+        if (podeVerFinanceiroReceber) {
+          promisesContagens.push(
+            (async () => {
+              try {
+                // A receber hoje: status in ('Aberto', 'Parcial') && data_vencimento = hojeIso
+                const titulosHoje = await pb.collection('contas_receber').getFullList({
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && (status = 'Aberto' || status = 'Parcial') && data_vencimento = '${hojeIso}'`,
+                  fields: 'saldo,valor_original',
+                })
+                let somaSaldosHoje = 0
+                titulosHoje.forEach((t: any) => {
+                  somaSaldosHoje += Number(t.saldo ?? t.valor_original) || 0
+                })
+                setAReceberHojeTotal(somaSaldosHoje)
+                setAReceberHojeCount(titulosHoje.length)
+
+                // A receber vencido: status in ('Aberto', 'Parcial') && data_vencimento < hojeIso
+                const titulosVencidos = await pb.collection('contas_receber').getFullList({
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && (status = 'Aberto' || status = 'Parcial') && data_vencimento < '${hojeIso}'`,
+                  fields: 'saldo,valor_original',
+                })
+                let somaSaldosVenc = 0
+                titulosVencidos.forEach((t: any) => {
+                  somaSaldosVenc += Number(t.saldo ?? t.valor_original) || 0
+                })
+                setAReceberVencidoTotal(somaSaldosVenc)
+                setAReceberVencidoCount(titulosVencidos.length)
+              } catch (err) {
+                console.warn('Erro ao carregar indicadores de contas a receber:', err)
+                setAReceberHojeTotal(0)
+                setAReceberHojeCount(0)
+                setAReceberVencidoTotal(0)
+                setAReceberVencidoCount(0)
+              }
+            })(),
+          )
+        }
+
+        // Saldo total das contas financeiras da empresa ativa
+        if (podeVerFinanceiroBancos) {
+          promisesContagens.push(
+            (async () => {
+              try {
+                const contas = await pb.collection('contas_financeiras').getFullList({
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true`,
+                  fields: 'saldo_atual',
+                })
+                const saldoTotal = contas.reduce(
+                  (acc: number, c: any) => acc + (Number(c.saldo_atual) || 0),
+                  0,
+                )
+                setSaldoTotalContas(saldoTotal)
+                setTotalContasCadastradas(contas.length)
+              } catch (err) {
+                console.warn('Erro ao carregar saldo de contas financeiras:', err)
+                setSaldoTotalContas(0)
+                setTotalContasCadastradas(0)
+              }
+            })(),
+          )
+
+          // Mini gráfico do fluxo de caixa dos próximos 30 dias (consumir apurarFluxoCaixa)
+          promisesContagens.push(
+            (async () => {
+              try {
+                setCarregandoFluxo(true)
+                const hojeD = new Date()
+                const dataInicioFluxo = hojeD.toISOString().slice(0, 10)
+                const dataFimFluxo = new Date(hojeD.getTime() + 30 * 24 * 60 * 60 * 1000)
+                  .toISOString()
+                  .slice(0, 10)
+
+                const resultadoFluxo = await apurarFluxoCaixa({
+                  empresaId: empresaAtiva.id,
+                  dataInicio: dataInicioFluxo,
+                  dataFim: dataFimFluxo,
+                  agrupamento: 'dia',
+                  incluirVencidos: true,
+                })
+
+                setDadosFluxo30Dias(resultadoFluxo.periodos || [])
+              } catch (err) {
+                console.warn('Erro ao carregar fluxo de caixa 30 dias:', err)
+                setDadosFluxo30Dias([])
+              } finally {
+                setCarregandoFluxo(false)
+              }
+            })(),
+          )
+        }
       }
 
       // 2. Carregar últimos registros para compor os 10 últimos cadastros
@@ -538,6 +710,9 @@ export default function Index() {
     podeVerEstoque,
     podeVerCompras,
     podeVerNotasEntrada,
+    podeVerFinanceiroPagar,
+    podeVerFinanceiroReceber,
+    podeVerFinanceiroBancos,
     empresaAtiva,
   ])
 
@@ -555,7 +730,10 @@ export default function Index() {
     podeVerNotasEntrada ||
     podeVerUsuarios ||
     podeVerEmpresas ||
-    podeVerTabelasFiscais
+    podeVerTabelasFiscais ||
+    podeVerFinanceiroPagar ||
+    podeVerFinanceiroReceber ||
+    podeVerFinanceiroBancos
 
   const formatarDataHora = (dataIso: string) => {
     try {
@@ -1169,6 +1347,377 @@ export default function Index() {
               </Link>
             )}
           </div>
+        </div>
+      )}
+
+      {/* SEÇÃO FINANCEIRO (Etapa 4) — Respeita permissões de pagar, receber e bancos */}
+      {(podeVerFinanceiroPagar || podeVerFinanceiroReceber || podeVerFinanceiroBancos) && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-t border-slate-200 pt-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <Landmark className="h-5 w-5 text-emerald-600" />
+                <h2 className="text-lg font-bold tracking-tight text-slate-900">
+                  Visão Geral do Financeiro
+                </h2>
+                {empresaAtiva && (
+                  <Badge variant="secondary" className="text-[11px] font-normal">
+                    {empresaAtiva.nome_fantasia || empresaAtiva.razao_social}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Vencimentos do dia, títulos em atraso, disponibilidade bancária e projeção de fluxo
+                de caixa.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {podeVerFinanceiroPagar && (
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                  <Link to="/financeiro/pagar">
+                    Contas a Pagar
+                    <ArrowRight size={13} />
+                  </Link>
+                </Button>
+              )}
+              {podeVerFinanceiroReceber && (
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                  <Link to="/financeiro/receber">
+                    Contas a Receber
+                    <ArrowRight size={13} />
+                  </Link>
+                </Button>
+              )}
+              {podeVerFinanceiroBancos && (
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                  <Link to="/financeiro/fluxo-caixa">
+                    Fluxo de Caixa
+                    <ArrowRight size={13} />
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Cartões Financeiros da Etapa 4 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* 1. A Pagar Hoje (Clicável -> /financeiro/pagar com filtro de hoje) */}
+            {podeVerFinanceiroPagar && (
+              <Link
+                to={`/financeiro/pagar?situacao=abertos&dataInicio=${new Date().toISOString().slice(0, 10)}&dataFim=${new Date().toISOString().slice(0, 10)}`}
+                className="group block focus:outline-none"
+                title="Ver títulos a pagar que vencem hoje"
+              >
+                <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">A Pagar Hoje</span>
+                      <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                        <TrendingDown size={18} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors font-mono">
+                        {carregando ? '—' : formatarMoeda(aPagarHojeTotal)}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                        <span className="font-semibold text-slate-700">{aPagarHojeCount}</span>
+                        <span>
+                          {aPagarHojeCount === 1 ? 'título vence hoje' : 'títulos vencem hoje'}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* 2. A Pagar Vencido (Clicável -> /financeiro/pagar filtrado por vencidos) */}
+            {podeVerFinanceiroPagar && (
+              <Link
+                to="/financeiro/pagar?situacao=vencidos"
+                className="group block focus:outline-none"
+                title="Ver contas a pagar vencidas e em atraso"
+              >
+                <Card
+                  className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                    aPagarVencidoCount > 0
+                      ? 'border-rose-300 bg-rose-50/25 ring-1 ring-rose-200'
+                      : 'hover:border-slate-300'
+                  }`}
+                >
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-rose-800">A Pagar Vencido</span>
+                      <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
+                        <AlertTriangle size={18} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-xl font-bold tracking-tight text-rose-700 group-hover:text-rose-900 transition-colors font-mono flex items-center gap-2">
+                        {carregando ? '—' : formatarMoeda(aPagarVencidoTotal)}
+                      </div>
+                      <div className="text-[11px] text-rose-700/80 mt-0.5 flex items-center gap-1.5">
+                        <span className="font-semibold">{aPagarVencidoCount}</span>
+                        <span>
+                          {aPagarVencidoCount === 1 ? 'título em atraso →' : 'títulos em atraso →'}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* 3. A Receber Hoje (Clicável -> /financeiro/receber com filtro de hoje) */}
+            {podeVerFinanceiroReceber && (
+              <Link
+                to={`/financeiro/receber?situacao=abertos&dataInicio=${new Date().toISOString().slice(0, 10)}&dataFim=${new Date().toISOString().slice(0, 10)}`}
+                className="group block focus:outline-none"
+                title="Ver títulos a receber com vencimento hoje"
+              >
+                <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">A Receber Hoje</span>
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <TrendingUp size={18} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors font-mono">
+                        {carregando ? '—' : formatarMoeda(aReceberHojeTotal)}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                        <span className="font-semibold text-slate-700">{aReceberHojeCount}</span>
+                        <span>
+                          {aReceberHojeCount === 1 ? 'recebimento hoje' : 'recebimentos hoje'}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* 4. A Receber Vencido (Clicável -> /financeiro/receber filtrado por vencidos) */}
+            {podeVerFinanceiroReceber && (
+              <Link
+                to="/financeiro/receber?situacao=vencidos"
+                className="group block focus:outline-none"
+                title="Ver títulos a receber vencidos (inadimplência)"
+              >
+                <Card
+                  className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                    aReceberVencidoCount > 0
+                      ? 'border-amber-300 bg-amber-50/25 ring-1 ring-amber-200'
+                      : 'hover:border-slate-300'
+                  }`}
+                >
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-amber-800">A Receber Vencido</span>
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                        <CalendarClock size={18} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-xl font-bold tracking-tight text-amber-800 group-hover:text-amber-900 transition-colors font-mono">
+                        {carregando ? '—' : formatarMoeda(aReceberVencidoTotal)}
+                      </div>
+                      <div className="text-[11px] text-amber-800/80 mt-0.5 flex items-center gap-1.5">
+                        <span className="font-semibold">{aReceberVencidoCount}</span>
+                        <span>
+                          {aReceberVencidoCount === 1
+                            ? 'cliente inadimplente →'
+                            : 'créditos em atraso →'}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* 5. Saldo Total das Contas (Clicável -> /financeiro/bancos) */}
+            {podeVerFinanceiroBancos && (
+              <Link
+                to="/financeiro/bancos"
+                className="group block focus:outline-none"
+                title="Ver saldo das contas bancárias e caixas"
+              >
+                <Card
+                  className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                    saldoTotalContas < 0
+                      ? 'border-rose-300 bg-rose-50/20'
+                      : 'hover:border-slate-300'
+                  }`}
+                >
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">
+                        Saldo Total das Contas
+                      </span>
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <Landmark size={18} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div
+                        className={`text-xl font-bold tracking-tight font-mono ${
+                          saldoTotalContas < 0 ? 'text-rose-700' : 'text-slate-900'
+                        }`}
+                      >
+                        {carregando ? '—' : formatarMoeda(saldoTotalContas)}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                        <span className="font-semibold text-slate-700">
+                          {totalContasCadastradas}
+                        </span>
+                        <span>
+                          {totalContasCadastradas === 1
+                            ? 'conta ativa cadastrada →'
+                            : 'contas ativas cadastradas →'}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+          </div>
+
+          {/* Mini Gráfico do Fluxo de Caixa dos Próximos 30 Dias (visível com financeiro_bancos) */}
+          {podeVerFinanceiroBancos && (
+            <Card className="border-slate-200 shadow-xs">
+              <CardHeader className="pb-2 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <LineChartIcon className="w-4 h-4 text-blue-600" />
+                    <CardTitle className="text-sm font-semibold text-slate-900">
+                      Projeção do Fluxo de Caixa (Próximos 30 dias)
+                    </CardTitle>
+                  </div>
+                  <CardDescription className="text-xs text-slate-500 mt-0.5">
+                    Saldo diário projetado considerando saldos em conta, títulos a vencer e vencidos
+                    em aberto.
+                  </CardDescription>
+                </div>
+
+                <Button asChild variant="ghost" size="sm" className="h-7 text-xs text-blue-600">
+                  <Link to="/financeiro/fluxo-caixa">
+                    Abrir fluxo completo
+                    <ArrowRight size={12} className="ml-1" />
+                  </Link>
+                </Button>
+              </CardHeader>
+
+              <CardContent className="pt-4 pb-2">
+                {carregandoFluxo ? (
+                  <div className="h-56 flex flex-col items-center justify-center text-xs text-slate-400">
+                    <RefreshCw className="w-4 h-4 animate-spin text-primary mb-2" />
+                    Calculando projeção financeira...
+                  </div>
+                ) : dadosFluxo30Dias.length === 0 ? (
+                  <div className="h-48 flex items-center justify-center text-xs text-slate-500">
+                    Nenhum dado financeiro disponível para projetar os próximos 30 dias.
+                  </div>
+                ) : (
+                  <div className="h-56 w-full">
+                    <ChartContainer
+                      config={
+                        {
+                          saldoFinal: {
+                            label: 'Saldo Projetado',
+                            color: '#2563eb',
+                          },
+                          totalEntradas: {
+                            label: 'Entradas Previstas',
+                            color: '#10b981',
+                          },
+                          totalSaidas: {
+                            label: 'Saídas Previstas',
+                            color: '#f43f5e',
+                          },
+                        } satisfies ChartConfig
+                      }
+                      className="h-full w-full"
+                    >
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart
+                          data={dadosFluxo30Dias.map((p) => ({
+                            rotulo: p.rotulo,
+                            dataIso: p.dataInicioPeriodo,
+                            totalEntradas: p.totalEntradas,
+                            totalSaidas: p.totalSaidas,
+                            saldoFinal: p.saldoFinalProjetado,
+                          }))}
+                          margin={{ top: 8, right: 12, left: 8, bottom: 8 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.25} />
+                          <XAxis
+                            dataKey="rotulo"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={6}
+                            interval={3}
+                            className="text-[10px]"
+                          />
+                          <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`}
+                            className="text-[10px]"
+                          />
+                          <ChartTooltip
+                            content={
+                              <ChartTooltipContent
+                                formatter={(value, name) => (
+                                  <div className="flex items-center justify-between gap-4 font-mono text-xs">
+                                    <span className="capitalize">{name}:</span>
+                                    <span className="font-bold">
+                                      R${' '}
+                                      {Number(value || 0).toLocaleString('pt-BR', {
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </span>
+                                  </div>
+                                )}
+                              />
+                            }
+                          />
+                          <ChartLegend content={<ChartLegendContent />} />
+                          <Bar
+                            dataKey="totalEntradas"
+                            name="Entradas"
+                            fill="#10b981"
+                            radius={[2, 2, 0, 0]}
+                            maxBarSize={14}
+                          />
+                          <Bar
+                            dataKey="totalSaidas"
+                            name="Saídas"
+                            fill="#f43f5e"
+                            radius={[2, 2, 0, 0]}
+                            maxBarSize={14}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="saldoFinal"
+                            name="Saldo Projetado"
+                            stroke="#2563eb"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

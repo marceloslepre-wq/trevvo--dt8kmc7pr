@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T22:01:08.774Z",
+  "generatedAt": "2026-10-08T22:15:12.341Z",
   "collections": [
     {
       "name": "users",
@@ -6786,10 +6786,10 @@
       "name": "pagamentos_lotes",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": null,
+        "update": null,
         "delete": null
       },
       "fields": [
@@ -7104,8 +7104,8 @@
       "name": "pagamentos_baixas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
         "create": null,
         "update": null,
         "delete": null

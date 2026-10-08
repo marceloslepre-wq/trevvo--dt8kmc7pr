@@ -101,37 +101,37 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
         setContasFinanceiras(ativas)
         setFormasPagamento(formas.filter((f) => f.ativo))
 
-        // Conta padrão de recebimentos
-        const contaPadraoId = config?.conta_padrao_recebimentos_id
-        if (contaPadraoId && ativas.some((c) => c.id === contaPadraoId)) {
-          setContaFinanceiraId(contaPadraoId)
+        // Conta padrão de recebimentos (se houver conta com conta_padrao_recebimentos = true)
+        const contaPadraoReceb = ativas.find((c: any) => c.conta_padrao_recebimentos)
+        if (contaPadraoReceb) {
+          setContaFinanceiraId(contaPadraoReceb.id)
         } else if (ativas.length > 0) {
           setContaFinanceiraId(ativas[0].id)
-        }
-
-        // Forma padrão se houver
-        if (config?.forma_pagamento_padrao_id) {
-          setFormaPagamentoId(config.forma_pagamento_padrao_id)
         }
 
         // Montar linhas calculando juros/multa pelo serviço central
         const novasLinhas: LinhaRecebimento[] = titulos.map((t) => {
           const saldo = Number((t.saldo ?? t.valor_original ?? 0).toFixed(2))
-          const encargos = calcularEncargos(saldo, t.data_vencimento, config, dataRecebimento)
+          const encargos = calcularEncargos({
+            saldo,
+            dataVencimento: t.data_vencimento,
+            dataPagamento: dataRecebimento,
+            multaPercentual: config?.multa_atraso_percentual,
+            jurosMensalPercentual: config?.juros_mora_mensal_percentual,
+            diasCarencia: config?.dias_carencia,
+          })
 
-          const totalLinha = Number(
-            (saldo + encargos.multa_calculada + encargos.juros_calculados).toFixed(2),
-          )
+          const totalLinha = Number((saldo + encargos.valorMulta + encargos.valorJuros).toFixed(2))
 
           return {
             titulo: t,
             saldo,
             valorRecebidoPrincipal: saldo,
-            multa: encargos.multa_calculada,
-            juros: encargos.juros_calculados,
+            multa: encargos.valorMulta,
+            juros: encargos.valorJuros,
             desconto: 0,
             valorTotalReceber: totalLinha,
-            diasAtraso: encargos.dias_atraso,
+            diasAtraso: encargos.diasAtraso,
           }
         })
 
@@ -159,29 +159,31 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
       const config = await obterOuCriarConfigFinanceiraEmpresa(empresaAtiva.id)
       setLinhas((prev) =>
         prev.map((linha) => {
-          const encargos = calcularEncargos(
-            linha.valorRecebidoPrincipal,
-            linha.titulo.data_vencimento,
-            config,
-            novaData,
-          )
+          const encargos = calcularEncargos({
+            saldo: linha.valorRecebidoPrincipal,
+            dataVencimento: linha.titulo.data_vencimento,
+            dataPagamento: novaData,
+            multaPercentual: config?.multa_atraso_percentual,
+            jurosMensalPercentual: config?.juros_mora_mensal_percentual,
+            diasCarencia: config?.dias_carencia,
+          })
           const total = Math.max(
             0,
             Number(
               (
                 linha.valorRecebidoPrincipal +
-                encargos.multa_calculada +
-                encargos.juros_calculados -
+                encargos.valorMulta +
+                encargos.valorJuros -
                 linha.desconto
               ).toFixed(2),
             ),
           )
           return {
             ...linha,
-            multa: encargos.multa_calculada,
-            juros: encargos.juros_calculados,
+            multa: encargos.valorMulta,
+            juros: encargos.valorJuros,
             valorTotalReceber: total,
-            diasAtraso: encargos.dias_atraso,
+            diasAtraso: encargos.diasAtraso,
           }
         }),
       )
