@@ -937,7 +937,7 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
   }, [pedidoSelecionado])
 
   // Iniciar fluxo de lançamento com validações prévias
-  const handleIniciarLancamento = () => {
+  const handleIniciarLancamento = async () => {
     if (!nota) return
 
     // 1. Fornecedor cadastrado
@@ -1048,7 +1048,9 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
           })
         setFormasPagamentoDisponiveis(formas)
         if (formas[0]) setFormaPagamentoId(formas[0].id)
-      } catch { /* intentionally ignored */ }
+      } catch {
+        /* intentionally ignored */
+      }
     }
 
     setModalLancarAberto(true)
@@ -3058,8 +3060,9 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                       Nota já paga (baixa imediata no Financeiro)
                     </label>
                     <p className="text-[11px] text-blue-700">
-                      Esta nota não possui parcelas a prazo. Ao marcar esta opção, o título gerado no
-                      Contas a Pagar será quitado imediatamente na mesma operação, debitando o saldo da conta financeira.
+                      Esta nota não possui parcelas a prazo. Ao marcar esta opção, o título gerado
+                      no Contas a Pagar será quitado imediatamente na mesma operação, debitando o
+                      saldo da conta financeira.
                     </p>
                   </div>
                 </div>
@@ -3067,7 +3070,10 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                 {jaPaga && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-blue-200/60">
                     <div className="space-y-1">
-                      <Label htmlFor="conta_pagamento" className="text-[11px] font-semibold text-slate-700">
+                      <Label
+                        htmlFor="conta_pagamento"
+                        className="text-[11px] font-semibold text-slate-700"
+                      >
                         Conta Financeira / Caixa *
                       </Label>
                       <select
@@ -3086,7 +3092,10 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <Label htmlFor="forma_pagamento" className="text-[11px] font-semibold text-slate-700">
+                      <Label
+                        htmlFor="forma_pagamento"
+                        className="text-[11px] font-semibold text-slate-700"
+                      >
                         Forma de Pagamento
                       </Label>
                       <select

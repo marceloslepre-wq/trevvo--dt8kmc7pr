@@ -68,7 +68,8 @@ import ProdutosLista from '@/pages/cadastros/ProdutosLista'
 import ProdutoForm from '@/pages/cadastros/ProdutoForm'
 import ConferenciaFiscalPage from '@/pages/cadastros/ConferenciaFiscalPage'
 
-// Páginas do Financeiro (Cadastros)
+// Páginas do Financeiro
+import { ContasPagarPage } from '@/pages/financeiro/ContasPagarPage'
 import PlanoContasPage from '@/pages/financeiro/cadastros/PlanoContasPage'
 import CentrosCustoPage from '@/pages/financeiro/cadastros/CentrosCustoPage'
 import ContasFinanceirasPage from '@/pages/financeiro/cadastros/ContasFinanceirasPage'
@@ -394,10 +395,18 @@ const App = () => (
                     }
                   />
 
-                  {/* Financeiro: Cadastros */}
+                  {/* Financeiro: Contas a Pagar e Cadastros */}
                   <Route
                     path="/financeiro"
-                    element={<Navigate to="/financeiro/cadastros/plano-contas" replace />}
+                    element={<Navigate to="/financeiro/contas-pagar" replace />}
+                  />
+                  <Route
+                    path="/financeiro/contas-pagar"
+                    element={
+                      <PermissaoGuard modulo="financeiro_pagar" acao="ver">
+                        <ContasPagarPage />
+                      </PermissaoGuard>
+                    }
                   />
                   <Route
                     path="/financeiro/cadastros"
