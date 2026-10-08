@@ -43,7 +43,7 @@ import { toast } from '@/hooks/use-toast'
 import {
   ArrowDownRight,
   ArrowUpRight,
-  ArrowRightLeft,
+  ArrowLeftRight,
   PlusCircle,
   RotateCcw,
   Download,
@@ -240,7 +240,7 @@ export const ExtratoBancarioPage: React.FC = () => {
             onClick={() => setModalTransferenciaAberto(true)}
             className="text-xs h-9 border-blue-200 text-blue-700 hover:bg-blue-50"
           >
-            <ArrowRightLeft className="w-4 h-4 mr-1 text-blue-600" />
+            <ArrowLeftRight className="w-4 h-4 mr-1 text-blue-600" />
             Transferência
           </Button>
           <Button

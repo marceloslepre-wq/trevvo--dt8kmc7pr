@@ -174,7 +174,8 @@ export interface ResultadoPaginadoContasPagar {
     totalRecebido?: number
     totalSaldo?: number
     totalVencido?: number
-  }}
+  }
+}
 
 // ==========================================
 // CÁLCULO DE ENCARGOS

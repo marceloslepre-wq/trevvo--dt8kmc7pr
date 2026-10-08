@@ -248,85 +248,26 @@ export async function transferir(params: TransferirContasParams) {
   const histBase =
     historico?.trim() || `Transferência entre contas (${contaOrigem.nome} -> ${contaDestino.nome})`
 
-  // 1. Gravar movimentação de Saída na Origem
-  const movSaida = await pb.collection('movimentacoes_financeiras').create({
-    empresa_id,
-    conta_financeira_id: conta_origem_id,
-    data_movimento: data,
-    tipo: 'Saída',
-    origem: 'TRANSFERENCIA_SAIDA',
-    valor: valorNum,
-    saldo_anterior: saldoOrigemAtual,
-    saldo_posterior: novoSaldoOrigem,
-    documento_tipo: 'TRANSFERENCIA',
-    documento_id: transferenciaId,
-    documento_numero: transferenciaId,
-    transferencia_id: transferenciaId,
-    historico: `${histBase} - Débito`,
-    conciliado: false,
-    estornado: false,
-    ativo: true,
-    created_by: user?.id || null,
-    updated_by: user?.id || null,
-  })
-
-  // 2. Gravar movimentação de Entrada no Destino
-  const movEntrada = await pb.collection('movimentacoes_financeiras').create({
-    empresa_id,
-    conta_financeira_id: conta_destino_id,
-    data_movimento: data,
-    tipo: 'Entrada',
-    origem: 'TRANSFERENCIA_ENTRADA',
-    valor: valorNum,
-    saldo_anterior: saldoDestinoAtual,
-    saldo_posterior: novoSaldoDestino,
-    documento_tipo: 'TRANSFERENCIA',
-    documento_id: transferenciaId,
-    documento_numero: transferenciaId,
-    transferencia_id: transferenciaId,
-    historico: `${histBase} - Crédito`,
-    conciliado: false,
-    estornado: false,
-    ativo: true,
-    created_by: user?.id || null,
-    updated_by: user?.id || null,
-  })
-
-  // 3. Atualizar saldo_atual nas duas contas
-  await pb.collection('contas_financeiras').update(conta_origem_id, {
-    saldo_atual: novoSaldoOrigem,
-    updated_by: user?.id || null,
-  })
-
-  await pb.collection('contas_financeiras').update(conta_destino_id, {
-    saldo_atual: novoSaldoDestino,
-    updated_by: user?.id || null,
-  })
-
-  // 4. Auditoria
-  await registrarAuditoria({
-    tabela: 'movimentacoes_financeiras',
-    registro_id: transferenciaId,
-    acao: 'inclusao',
-    valores_depois: {
-      operacao: 'transferencia_entre_contas',
-      transferencia_id: transferenciaId,
-      origem_id: conta_origem_id,
-      destino_id: conta_destino_id,
-      valor: valorNum,
+  const res = await pb.send<{
+    success: boolean
+    transferencia_id: string
+    mov_saida_id: string
+    mov_entrada_id: string
+    novo_saldo_origem: number
+    novo_saldo_destino: number
+  }>('/financeiro/bancos/transferir', {
+    method: 'POST',
+    body: {
+      empresa_id,
+      conta_origem_id,
+      conta_destino_id,
       data,
-      movimento_saida_id: movSaida.id,
-      movimento_entrada_id: movEntrada.id,
+      valor: valorNum,
+      historico,
     },
   })
 
-  return {
-    transferencia_id: transferenciaId,
-    mov_saida_id: movSaida.id,
-    mov_entrada_id: movEntrada.id,
-    novo_saldo_origem: novoSaldoOrigem,
-    novo_saldo_destino: novoSaldoDestino,
-  }
+  return res
 }
 
 // ==========================================
@@ -398,55 +339,27 @@ export async function lancarAvulso(params: LancarAvulsoParams) {
 
   const docId = `AVU_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 
-  // 1. Gravar movimentação financeira
-  const mov = await pb.collection('movimentacoes_financeiras').create({
-    empresa_id,
-    conta_financeira_id,
-    data_movimento: data,
-    tipo,
-    origem: 'AJUSTE',
-    valor: valorNum,
-    saldo_anterior: saldoAtual,
-    saldo_posterior: novoSaldo,
-    documento_tipo: 'AVULSO',
-    documento_id: docId,
-    documento_numero: docId,
-    lancamento_avulso: true,
-    historico: historico.trim(),
-    conciliado: false,
-    estornado: false,
-    ativo: true,
-    created_by: user?.id || null,
-    updated_by: user?.id || null,
-  })
-
-  // 2. Atualizar saldo_atual na conta
-  await pb.collection('contas_financeiras').update(conta_financeira_id, {
-    saldo_atual: novoSaldo,
-    updated_by: user?.id || null,
-  })
-
-  // 3. Auditoria
-  await registrarAuditoria({
-    tabela: 'movimentacoes_financeiras',
-    registro_id: mov.id,
-    acao: 'inclusao',
-    valores_depois: {
-      operacao: 'lancamento_avulso',
+  const res = await pb.send<{
+    success: boolean
+    movimento_id: string
+    novo_saldo: number
+  }>('/financeiro/bancos/avulso', {
+    method: 'POST',
+    body: {
+      empresa_id,
       conta_financeira_id,
+      data,
       tipo,
       valor: valorNum,
       plano_conta_id,
-      centro_custo_id: centro_custo_id || null,
-      saldo_anterior: saldoAtual,
-      saldo_posterior: novoSaldo,
-      historico: historico.trim(),
+      centro_custo_id,
+      historico,
     },
   })
 
   return {
-    movimento: mov,
-    novo_saldo: novoSaldo,
+    movimento: { id: res.movimento_id },
+    novo_saldo: res.novo_saldo,
   }
 }
 
@@ -455,181 +368,19 @@ export async function lancarAvulso(params: LancarAvulsoParams) {
 // ==========================================
 
 export async function estornarMovimentoAvulsoOuTransferencia(movimentoId: string, motivo: string) {
-  const user = pb.authStore.record
   if (!motivo || !motivo.trim()) {
     throw new Error('O motivo do estorno é obrigatório.')
   }
 
-  const mov = await pb
-    .collection('movimentacoes_financeiras')
-    .getOne<MovimentoExtratoItem>(movimentoId)
-
-  if (mov.estornado) {
-    throw new Error('Este movimento já foi estornado anteriormente.')
-  }
-
-  // Títulos pagar/receber não podem ser estornados por aqui
-  if (
-    mov.origem === 'PAGAMENTO_TITULO' ||
-    mov.origem === 'RECEBIMENTO_TITULO' ||
-    mov.origem === 'ESTORNO_PAGAMENTO' ||
-    mov.origem === 'ESTORNO_RECEBIMENTO' ||
-    mov.lote_baixa_id
-  ) {
-    throw new Error(
-      'Movimentações originadas de títulos a pagar ou a receber devem ser estornadas através dos seus respectivos módulos.',
-    )
-  }
-
-  const hoje = new Date().toISOString().slice(0, 10)
-
-  // CASO A: Transferência entre contas (estorna ambas as pontas)
-  if (mov.transferencia_id) {
-    const pontas = await pb
-      .collection('movimentacoes_financeiras')
-      .getFullList<MovimentoExtratoItem>({
-        filter: `transferencia_id = '${mov.transferencia_id}' && ativo = true && estornado = false`,
-      })
-
-    for (const p of pontas) {
-      const conta = await obterContaFinanceiraPorId(p.conta_financeira_id)
-      const saldoAtual = Number(conta.saldo_atual) || 0
-      const valor = Number(p.valor) || 0
-
-      // Reverte o valor
-      let novoSaldo = 0
-      let tipoEstorno: TipoMovimentoBancario = 'Entrada'
-      if (p.tipo === 'Saída') {
-        // Devolve na origem
-        novoSaldo = Number((saldoAtual + valor).toFixed(2))
-        tipoEstorno = 'Entrada'
-      } else {
-        // Retira do destino
-        novoSaldo = Number((saldoAtual - valor).toFixed(2))
-        tipoEstorno = 'Saída'
-        if (novoSaldo < 0 && !conta.permite_saldo_negativo) {
-          throw new Error(
-            `Não foi possível estornar a transferência: a conta de destino (${conta.nome}) ficaria com saldo negativo.`,
-          )
-        }
-      }
-
-      // Marca o movimento original como estornado
-      await pb.collection('movimentacoes_financeiras').update(p.id, {
-        estornado: true,
-        motivo_estorno: motivo.trim(),
-        data_estorno: hoje,
-        usuario_estorno_id: user?.id || null,
-        updated_by: user?.id || null,
-      })
-
-      // Grava movimento de estorno
-      await pb.collection('movimentacoes_financeiras').create({
-        empresa_id: p.empresa_id,
-        conta_financeira_id: p.conta_financeira_id,
-        data_movimento: hoje,
-        tipo: tipoEstorno,
-        origem: 'AJUSTE',
-        valor,
-        saldo_anterior: saldoAtual,
-        saldo_posterior: novoSaldo,
-        documento_tipo: 'ESTORNO_TRANSFERENCIA',
-        documento_id: p.id,
-        documento_numero: p.transferencia_id,
-        transferencia_id: p.transferencia_id,
-        historico: `Estorno de transferência: ${motivo.trim()}`,
-        conciliado: false,
-        estornado: false,
-        ativo: true,
-        created_by: user?.id || null,
-        updated_by: user?.id || null,
-      })
-
-      // Atualiza saldo_atual da conta
-      await pb.collection('contas_financeiras').update(p.conta_financeira_id, {
-        saldo_atual: novoSaldo,
-        updated_by: user?.id || null,
-      })
-
-      await registrarAuditoria({
-        tabela: 'movimentacoes_financeiras',
-        registro_id: p.id,
-        acao: 'alteracao',
-        valores_antes: { estornado: false },
-        valores_depois: { estornado: true, motivo_estorno: motivo.trim() },
-      })
-    }
-
-    return { sucesso: true, mensagem: 'Transferência estornada com sucesso em ambas as contas.' }
-  }
-
-  // CASO B: Lançamento avulso / ajuste
-  const conta = await obterContaFinanceiraPorId(mov.conta_financeira_id)
-  const saldoAtual = Number(conta.saldo_atual) || 0
-  const valor = Number(mov.valor) || 0
-
-  let novoSaldo = 0
-  let tipoEstorno: TipoMovimentoBancario = 'Entrada'
-  if (mov.tipo === 'Saída') {
-    novoSaldo = Number((saldoAtual + valor).toFixed(2))
-    tipoEstorno = 'Entrada'
-  } else {
-    novoSaldo = Number((saldoAtual - valor).toFixed(2))
-    tipoEstorno = 'Saída'
-    if (novoSaldo < 0 && !conta.permite_saldo_negativo) {
-      throw new Error(
-        `Não é possível estornar este lançamento: a conta ficaria com saldo negativo (${novoSaldo.toFixed(
-          2,
-        )}).`,
-      )
-    }
-  }
-
-  // Marca original como estornado
-  await pb.collection('movimentacoes_financeiras').update(mov.id, {
-    estornado: true,
-    motivo_estorno: motivo.trim(),
-    data_estorno: hoje,
-    usuario_estorno_id: user?.id || null,
-    updated_by: user?.id || null,
+  const res = await pb.send<{ success: boolean; message: string }>('/financeiro/bancos/estornar', {
+    method: 'POST',
+    body: {
+      movimento_id: movimentoId,
+      motivo,
+    },
   })
 
-  // Grava movimentação de contrapartida do estorno
-  await pb.collection('movimentacoes_financeiras').create({
-    empresa_id: mov.empresa_id,
-    conta_financeira_id: mov.conta_financeira_id,
-    data_movimento: hoje,
-    tipo: tipoEstorno,
-    origem: 'AJUSTE',
-    valor,
-    saldo_anterior: saldoAtual,
-    saldo_posterior: novoSaldo,
-    documento_tipo: 'ESTORNO_AVULSO',
-    documento_id: mov.id,
-    documento_numero: mov.documento_numero || mov.id,
-    historico: `Estorno de lançamento avulso: ${motivo.trim()}`,
-    conciliado: false,
-    estornado: false,
-    ativo: true,
-    created_by: user?.id || null,
-    updated_by: user?.id || null,
-  })
-
-  // Atualiza saldo da conta
-  await pb.collection('contas_financeiras').update(mov.conta_financeira_id, {
-    saldo_atual: novoSaldo,
-    updated_by: user?.id || null,
-  })
-
-  await registrarAuditoria({
-    tabela: 'movimentacoes_financeiras',
-    registro_id: mov.id,
-    acao: 'alteracao',
-    valores_antes: { estornado: false },
-    valores_depois: { estornado: true, motivo_estorno: motivo.trim() },
-  })
-
-  return { sucesso: true, mensagem: 'Lançamento estornado com sucesso.' }
+  return { sucesso: res.success, mensagem: res.message }
 }
 
 // ==========================================
@@ -724,67 +475,27 @@ export async function importarExtratoOfx(params: {
   transacoes: TransacaoOfx[]
 }): Promise<ResultadoImportacaoOfx> {
   const { empresaId, contaFinanceiraId, arquivoNome, transacoes } = params
-  const user = pb.authStore.record
 
-  // 1. Busca todos os FITIDs existentes para essa conta
-  const existentes = await pb.collection('extratos_linhas').getFullList<ExtratoLinha>({
-    filter: `conta_financeira_id = '${contaFinanceiraId}'`,
-    fields: 'fitid',
-    requestKey: null,
-  })
-  const setExistentes = new Set(existentes.map((e) => e.fitid))
-
-  let novas = 0
-  let ignoradas = 0
-  const linhasCriadas: ExtratoLinha[] = []
-
-  for (const t of transacoes) {
-    if (setExistentes.has(t.fitid)) {
-      ignoradas++
-      continue
-    }
-
-    try {
-      const criado = await pb.collection('extratos_linhas').create<ExtratoLinha>({
-        empresa_id: empresaId,
-        conta_financeira_id: contaFinanceiraId,
-        fitid: t.fitid,
-        data: t.dtPosted,
-        valor: t.valor,
-        descricao: t.memo,
-        situacao: 'Pendente',
-        movimentos_ids: [],
-        arquivo_importacao: arquivoNome,
-        ativo: true,
-        created_by: user?.id || null,
-        updated_by: user?.id || null,
-      })
-      setExistentes.add(t.fitid)
-      linhasCriadas.push(criado)
-      novas++
-    } catch (e: any) {
-      // Se deu erro de índice único por corrida concorrente, conta como ignorada
-      ignoradas++
-    }
-  }
-
-  await registrarAuditoria({
-    tabela: 'extratos_linhas',
-    registro_id: `IMP_${Date.now()}`,
-    acao: 'inclusao',
-    valores_depois: {
-      arquivo: arquivoNome,
-      conta_financeira_id: contaFinanceiraId,
-      novas,
-      ignoradas,
+  const res = await pb.send<{
+    success: boolean
+    totalNoArquivo: number
+    novasInseridas: number
+    ignoradasDuplicadas: number
+  }>('/financeiro/bancos/importar-ofx', {
+    method: 'POST',
+    body: {
+      empresaId,
+      contaFinanceiraId,
+      arquivoNome,
+      transacoes,
     },
   })
 
   return {
-    totalNoArquivo: transacoes.length,
-    novasInseridas: novas,
-    ignoradasDuplicadas: ignoradas,
-    linhas: linhasCriadas,
+    totalNoArquivo: res.totalNoArquivo,
+    novasInseridas: res.novasInseridas,
+    ignoradasDuplicadas: res.ignoradasDuplicadas,
+    linhas: [],
   }
 }
 
@@ -838,8 +549,7 @@ export async function conciliarAutomaticamente(params: {
     })
 
   const movimentosUsados = new Set<string>()
-  let casamentosRealizados = 0
-  const hoje = new Date().toISOString().slice(0, 10)
+  const casamentosParaEnviar: Array<{ linha_id: string; movimentos_ids: string[] }> = []
 
   // A. Agrupamentos por lote_baixa_id ou transferencia_id
   const gruposMovimentos = new Map<string, MovimentoExtratoItem[]>()
@@ -898,29 +608,28 @@ export async function conciliarAutomaticamente(params: {
     }
 
     if (matchMovimentosIds.length > 0) {
-      // Atualiza linha do extrato para Conciliada
-      await pb.collection('extratos_linhas').update(linha.id, {
-        situacao: 'Conciliada',
+      casamentosParaEnviar.push({
+        linha_id: linha.id,
         movimentos_ids: matchMovimentosIds,
-        updated_by: user?.id || null,
       })
-
-      // Atualiza os movimentos vinculados como conciliados
-      for (const mId of matchMovimentosIds) {
-        await pb.collection('movimentacoes_financeiras').update(mId, {
-          conciliado: true,
-          data_conciliacao: hoje,
-          updated_by: user?.id || null,
-        })
-      }
-
-      casamentosRealizados++
     }
+  }
+
+  let totalCasados = 0
+  if (casamentosParaEnviar.length > 0) {
+    const res = await pb.send<{ success: boolean; casamentosRealizados: number }>(
+      '/financeiro/bancos/conciliar',
+      {
+        method: 'POST',
+        body: { casamentos: casamentosParaEnviar },
+      },
+    )
+    totalCasados = res.casamentosRealizados
   }
 
   return {
     linhasAnalisadas: pendentes.length,
-    casamentosRealizados,
+    casamentosRealizados: totalCasados,
   }
 }
 
@@ -966,25 +675,15 @@ export async function conciliarManual(params: { linhasIds: string[]; movimentosI
     )
   }
 
-  const hoje = new Date().toISOString().slice(0, 10)
+  const casamentos = linhas.map((l) => ({
+    linha_id: l.id,
+    movimentos_ids: movimentosIds,
+  }))
 
-  // Atualiza linhas
-  for (const l of linhas) {
-    await pb.collection('extratos_linhas').update(l.id, {
-      situacao: 'Conciliada',
-      movimentos_ids: movimentosIds,
-      updated_by: user?.id || null,
-    })
-  }
-
-  // Atualiza movimentos
-  for (const m of movimentos) {
-    await pb.collection('movimentacoes_financeiras').update(m.id, {
-      conciliado: true,
-      data_conciliacao: hoje,
-      updated_by: user?.id || null,
-    })
-  }
+  await pb.send('/financeiro/bancos/conciliar', {
+    method: 'POST',
+    body: { casamentos },
+  })
 
   return { sucesso: true, mensagem: 'Conciliação realizada com sucesso.' }
 }
@@ -994,62 +693,20 @@ export async function conciliarManual(params: { linhasIds: string[]; movimentosI
  * Volta a linha de extrato para 'Pendente' e os movimentos vinculados para conciliado = false.
  */
 export async function desfazerConciliacao(linhaId: string) {
-  const user = pb.authStore.record
-  const linha = await pb.collection('extratos_linhas').getOne<ExtratoLinha>(linhaId)
-
-  const movimentosIds = Array.isArray(linha.movimentos_ids) ? linha.movimentos_ids : []
-
-  // 1. Desconcilia os movimentos vinculados
-  for (const mId of movimentosIds) {
-    try {
-      await pb.collection('movimentacoes_financeiras').update(mId, {
-        conciliado: false,
-        data_conciliacao: null,
-        updated_by: user?.id || null,
-      })
-    } catch {
-      // Ignora se não existir mais
-    }
-  }
-
-  // 2. Retorna a linha para Pendente
-  const atualizada = await pb.collection('extratos_linhas').update<ExtratoLinha>(linhaId, {
-    situacao: 'Pendente',
-    movimentos_ids: [],
-    updated_by: user?.id || null,
+  await pb.send('/financeiro/bancos/desconciliar', {
+    method: 'POST',
+    body: { linha_id: linhaId },
   })
-
-  await registrarAuditoria({
-    tabela: 'extratos_linhas',
-    registro_id: linhaId,
-    acao: 'alteracao',
-    valores_antes: { situacao: 'Conciliada' },
-    valores_depois: { situacao: 'Pendente' },
-  })
-
-  return atualizada
+  return pb.collection('extratos_linhas').getOne<ExtratoLinha>(linhaId)
 }
 
 /**
  * Ignorar linha de extrato bancário (ex: estornos pontuais de teste do banco)
  */
 export async function alternarIgnorarLinhaExtrato(linhaId: string, ignorar: boolean) {
-  const user = pb.authStore.record
-  const antes = await pb.collection('extratos_linhas').getOne<ExtratoLinha>(linhaId)
-
-  const novaSituacao = ignorar ? 'Ignorada' : 'Pendente'
-  const atualizada = await pb.collection('extratos_linhas').update<ExtratoLinha>(linhaId, {
-    situacao: novaSituacao,
-    updated_by: user?.id || null,
+  await pb.send('/financeiro/bancos/alternar-ignorar-ofx', {
+    method: 'POST',
+    body: { linha_id: linhaId, ignorar },
   })
-
-  await registrarAuditoria({
-    tabela: 'extratos_linhas',
-    registro_id: linhaId,
-    acao: 'alteracao',
-    valores_antes: { situacao: antes.situacao },
-    valores_depois: { situacao: novaSituacao },
-  })
-
-  return atualizada
+  return pb.collection('extratos_linhas').getOne<ExtratoLinha>(linhaId)
 }

@@ -4,7 +4,7 @@ import {
   Percent,
   Coins,
   ShieldAlert,
-  ArrowRightLeft,
+  ArrowLeftRight,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
@@ -123,7 +123,7 @@ export const CenarioCard: React.FC<CenarioCardProps> = ({
           {/* ========================================================= */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 pb-1 border-b border-slate-100 text-xs font-bold text-slate-800 uppercase tracking-wider">
-              <ArrowRightLeft className="h-3.5 w-3.5 text-blue-600" />
+              <ArrowLeftRight className="h-3.5 w-3.5 text-blue-600" />
               <span>CFOP da Operação</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -21,7 +21,7 @@ import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { ContaFinanceira, listarContasFinanceiras } from '@/services/contasFinanceiras'
 import { transferir } from '@/services/movimentacoesExtratos'
 import { toast } from '@/hooks/use-toast'
-import { ArrowRightLeft } from 'lucide-react'
+import { ArrowLeftRight } from 'lucide-react'
 
 interface ModalTransferenciaContasProps {
   aberto: boolean
@@ -134,7 +134,7 @@ export const ModalTransferenciaContas: React.FC<ModalTransferenciaContasProps> =
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-base font-bold flex items-center gap-2 text-slate-900">
-            <ArrowRightLeft className="w-5 h-5 text-blue-600" />
+            <ArrowLeftRight className="w-5 h-5 text-blue-600" />
             Transferência entre Contas
           </DialogTitle>
           <DialogDescription className="text-xs text-slate-500">

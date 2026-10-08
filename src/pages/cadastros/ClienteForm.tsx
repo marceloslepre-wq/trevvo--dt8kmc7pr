@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   UserCheck,
   Building2,
@@ -127,16 +127,24 @@ const PAISES_COMUNS = [
 
 export const ClienteForm: React.FC = () => {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { toast } = useToast()
   const { empresaAtiva } = useEmpresaAtiva()
   const { pode } = usePermissoes()
 
   const ehEdicao = Boolean(id)
+  const abaParam = searchParams.get('aba')
 
   const [carregando, setCarregando] = useState(ehEdicao)
   const [salvando, setSalvando] = useState(false)
-  const [abaAtiva, setAbaAtiva] = useState('dados')
+  const [abaAtiva, setAbaAtiva] = useState(abaParam || 'dados')
+
+  useEffect(() => {
+    if (abaParam) {
+      setAbaAtiva(abaParam)
+    }
+  }, [abaParam])
 
   // Vendedores
   const [vendedores, setVendedores] = useState<Array<{ id: string; nome: string }>>([])

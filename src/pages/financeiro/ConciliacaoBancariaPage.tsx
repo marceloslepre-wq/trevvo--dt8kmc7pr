@@ -44,7 +44,7 @@ import {
   FileText,
   AlertTriangle,
   Building,
-  ArrowRightLeft,
+  ArrowLeftRight,
   Calendar,
   CheckCircle2,
   XCircle,
@@ -718,7 +718,7 @@ export const ConciliacaoBancariaPage: React.FC = () => {
           <CardHeader className="p-3 border-b border-slate-100 bg-slate-50/70 flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <ArrowRightLeft className="w-3.5 h-3.5 text-emerald-600" />
+                <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-600" />
                 Movimentos do Sistema
               </CardTitle>
               <p className="text-[11px] text-slate-500">
