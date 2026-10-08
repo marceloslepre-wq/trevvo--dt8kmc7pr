@@ -1878,14 +1878,41 @@ Extrato e trilha completa de auditoria financeira das contas bancárias e caixas
 - documento_numero (text, opcional)
 - conciliado (boolean, padrão false)
 - data_conciliacao (date/text, opcional)
+- transferencia_id (text, opcional — identificador da transferência ligando saída e entrada)
+- lancamento_avulso (boolean, opcional — indica lançamento bancário avulso direto)
 - saldo_anterior (número monetário, saldo da conta imediatamente antes deste movimento)
 - saldo_posterior (número monetário, saldo resultante após este movimento)
 - estornado (boolean, padrão false)
+- motivo_estorno (text, opcional)
+- data_estorno (text, opcional)
+- usuario_estorno_id (relation -> users, opcional)
 - movimento_estorno_id (relation -> movimentacoes_financeiras, opcional)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
+
+### extratos_linhas
+
+Linhas importadas de extratos bancários (OFX) para conciliação bancária contra os movimentos do ERP.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- conta_financeira_id (relation -> contas_financeiras, obrigatório)
+- fitid (text, obrigatório — identificador único da transação bancária)
+- data (text, YYYY-MM-DD, obrigatório)
+- valor (número monetário, positivo crédito, negativo débito, obrigatório)
+- descricao (text, histórico/memo do banco, obrigatório)
+- situacao (select: "Pendente", "Conciliada", "Ignorada", obrigatório)
+- movimentos_ids (json, array de IDs das movimentacoes_financeiras casadas)
+- arquivo_importacao (text, nome do arquivo .OFX importado)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índice único: `conta_financeira_id + fitid` (impede duplicação de transações importadas).
 
 Regras:
 
@@ -2228,6 +2255,44 @@ A **Etapa 3 — Compras e Entrada de Notas** foi oficialmente concluída de pont
   - Não foram criadas contas a pagar, nem pedidos de venda, nem emissão de NF-e (mantidos estritamente para as Etapas 4 e 6).
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.49** — Correção Definitiva do PermissaoGuard e Movimentação Bancária com Conciliação OFX (Etapa 4 — Financeiro):
+
+1. **Correção Definitiva do PermissaoGuard e Resiliência de Sessão:**
+   - Prevenção do auto-cancelamento do PocketBase SDK adicionando `{ requestKey: null }` em `obterUsuarioPorAuthId` e em todas as chamadas de permissões e perfis.
+   - Hidratação resiliente com persistência da estrutura expandida completa com perfil no cache local (`erp_usuario_logado_cache`) no login e nos carregamentos.
+   - Guard SWR: enquanto `pb.authStore.isValid`, o guard nunca renderiza spinner infinito, exibindo o conteúdo de imediato enquanto revalida em segundo plano; exibe tela de Acesso Negado apenas quando o perfil estiver estritamente carregado e sem a permissão requerida.
+   - Rotas `/financeiro/receber`, `/estoque/kardex`, `/estoque/lancamentos`, `/compras/notas-entrada` e `/financeiro/cadastros/*` agora carregam sem travamentos.
+
+2. **Novas Tabelas e Campos Financeiros (Migration 0035):**
+   - Criação da tabela `extratos_linhas` com `empresa_id`, `conta_financeira_id`, `fitid` (índice único composto `conta_financeira_id + fitid`), `data`, `valor`, `descricao`, `situacao` ("Pendente", "Conciliada", "Ignorada"), `movimentos_ids`, `arquivo_importacao` e campos padrão.
+   - Adição dos campos `conciliado`, `data_conciliacao`, `transferencia_id`, `lancamento_avulso`, `motivo_estorno`, `data_estorno` e `usuario_estorno_id` em `movimentacoes_financeiras`.
+
+3. **Extrato Cronológico de Contas e Caixas (`/financeiro/bancos`):**
+   - Rota `/financeiro/bancos` protegida pelo módulo `financeiro_bancos` com seletor de conta e período (mês atual como padrão).
+   - Cards com Saldo Anterior (reconstruído com saldo inicial + movimentos anteriores), Entradas do Período, Saídas do Período, Saldo Final e comparativo de Saldo Conciliado vs. Saldo do Sistema com destaque visual de divergências.
+   - Tabela cronológica com data, histórico, vínculos clicáveis com títulos (contas_pagar e contas_receber), selo de "Conciliado" e recomposição de saldo após cada lançamento.
+   - Ações: Transferência entre contas, Lançamento avulso, Estorno de movimentos avulsos/transferências com motivo obrigatório e recomposição automática de saldos, Exportação CSV e Impressão limpa.
+   - Atalho "Extrato" integrado nos cards da tela `ContasFinanceirasPage`.
+
+4. **Transferência entre Contas e Lançamento Avulso (Serviço Central e Modais):**
+   - Modal de Transferência (`<ModalTransferenciaContas />`) com validação de contas distintas, valor positivo, verificação de saldo disponível e respeito a `permite_saldo_negativo`.
+   - Função central `transferir`: transação com dois registros ligados pelo mesmo `transferencia_id` (débito na origem e crédito no destino), atualização de `saldo_atual` em ambas as contas e logs de auditoria.
+   - Modal de Lançamento Avulso (`<ModalLancamentoAvulso />`): conta, data, tipo (Entrada/Saída), plano de contas analítico, centro de custo opcional e histórico.
+   - Função central `lancarAvulso`: gravação com `lancamento_avulso = true`, atualização de `saldo_atual` e auditoria.
+
+5. **Conciliação Bancária com Leitura OFX (`/financeiro/conciliacao`):**
+   - Parser OFX client-side compatível com extratos bancários brasileiros (leitura de tags BANKID, ACCTID, TRNTYPE, DTPOSTED, TRNAMT, FITID, MEMO).
+   - Conferência de número de conta bancária contra a conta selecionada, bloqueio de FITID duplicado e gravação de linhas como "Pendente".
+   - Casamento Automático: busca automática de movimentos não conciliados da mesma conta com mesmo valor e data em até 3 dias de diferença, incluindo soma de lotes (`lote_baixa_id`) ou transferências (`transferencia_id`).
+   - Tela em duas colunas (Extrato do Banco x Movimentos do Sistema) para casamento manual com cálculo dinâmico de totais e validação estrita de igualdade de valores.
+   - Botão "Criar lançamento": abre lançamento avulso pré-preenchido para linhas sem movimento (tarifas bancárias, rendimentos) e efetua o casamento imediato.
+   - Ação "Desfazer conciliação" com retorno da linha para "Pendente" e movimento para não conciliado.
+
+6. **Menu e Rotas:**
+   - Adicionados subitens "Bancos e caixas" e "Conciliação" no grupo "Financeiro" da Sidebar, protegidos por `financeiro_bancos`.
+
+---
 
 **Versão 0.0.42** — Conclusão do Módulo de Contas a Pagar (Etapa 4 — Financeiro):
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T17:54:38.170Z",
+  "generatedAt": "2026-10-08T18:27:06.611Z",
   "collections": [
     {
       "name": "users",
@@ -7284,8 +7284,8 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": null,
-        "update": null,
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
         "delete": null
       },
       "fields": [
@@ -7420,6 +7420,49 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "conciliado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_conciliacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "transferencia_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lancamento_avulso",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_estorno",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_estorno",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_estorno_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         }
       ],
       "indexes": [
@@ -7428,7 +7471,8 @@
         "CREATE INDEX idx_mov_fin_tipo ON movimentacoes_financeiras (tipo)",
         "CREATE INDEX idx_mov_fin_origem ON movimentacoes_financeiras (origem)",
         "CREATE INDEX idx_mov_fin_doc ON movimentacoes_financeiras (documento_tipo, documento_id)",
-        "CREATE INDEX idx_mov_fin_ativo ON movimentacoes_financeiras (ativo)"
+        "CREATE INDEX idx_mov_fin_ativo ON movimentacoes_financeiras (ativo)",
+        "CREATE INDEX idx_mov_fin_conciliado ON movimentacoes_financeiras (conta_financeira_id, conciliado, data_movimento)"
       ]
     },
     {
@@ -7649,6 +7693,117 @@
         "CREATE INDEX idx_contas_receber_recorrencia ON contas_receber (recorrencia_id)",
         "CREATE INDEX idx_contas_receber_doc ON contas_receber (numero_documento)",
         "CREATE INDEX idx_contas_receber_ativo ON contas_receber (ativo)"
+      ]
+    },
+    {
+      "name": "extratos_linhas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "conta_financeira_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "contas_financeiras"
+        },
+        {
+          "name": "fitid",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "situacao",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Pendente", "Conciliada", "Ignorada"]
+        },
+        {
+          "name": "movimentos_ids",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "arquivo_importacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_extratos_linhas_conta_fitid ON extratos_linhas (conta_financeira_id, fitid)",
+        "CREATE INDEX idx_extratos_linhas_empresa ON extratos_linhas (empresa_id)",
+        "CREATE INDEX idx_extratos_linhas_conta_data ON extratos_linhas (conta_financeira_id, data)",
+        "CREATE INDEX idx_extratos_linhas_situacao ON extratos_linhas (situacao)",
+        "CREATE INDEX idx_extratos_linhas_ativo ON extratos_linhas (ativo)"
       ]
     }
   ]

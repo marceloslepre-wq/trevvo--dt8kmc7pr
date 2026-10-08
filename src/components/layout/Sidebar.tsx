@@ -279,6 +279,18 @@ const navItems: NavGroupItem[] = [
         modulo: 'financeiro_receber',
       },
       {
+        title: 'Bancos e caixas',
+        path: '/financeiro/bancos',
+        icon: Building,
+        modulo: 'financeiro_bancos',
+      },
+      {
+        title: 'Conciliação',
+        path: '/financeiro/conciliacao',
+        icon: ArrowRightLeft,
+        modulo: 'financeiro_bancos',
+      },
+      {
         title: 'Plano de contas',
         path: '/financeiro/cadastros/plano-contas',
         icon: FolderTree,

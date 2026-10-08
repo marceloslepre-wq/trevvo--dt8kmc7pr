@@ -85,8 +85,13 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setUsuarioERP(u)
 
         if (u.perfil_id) {
-          const perms = await obterPermissoesPorPerfil(u.perfil_id)
-          setPermissoes(perms)
+          // Se for admin, não precisa consultar tabela de permissões
+          if (u.expand?.perfil_id?.administrador) {
+            setPermissoes({})
+          } else {
+            const perms = await obterPermissoesPorPerfil(u.perfil_id)
+            setPermissoes(perms)
+          }
         } else {
           setPermissoes({})
         }
@@ -97,8 +102,12 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           setUsuarioERP(cached)
           if (cached.perfil_id) {
             try {
-              const perms = await obterPermissoesPorPerfil(cached.perfil_id)
-              setPermissoes(perms)
+              if (cached.expand?.perfil_id?.administrador) {
+                setPermissoes({})
+              } else {
+                const perms = await obterPermissoesPorPerfil(cached.perfil_id)
+                setPermissoes(perms)
+              }
             } catch {
               // mantém
             }
@@ -134,17 +143,17 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [perfil?.administrador])
 
   // Se já resolveu uma vez ou se temos cache / admin / token válido, nunca bloqueia como 'carregando'
-  // Carregando: se temos usuário ERP (ou cache), administrador, ou se a sessão já resolveu,
-  // NUNCA bloqueia. Só fica true estritamente se não temos usuário ERP E estiver carregando autenticação.
+  // Carregando: se pb.authStore.isValid ou se temos usuário ERP (ou cache), administrador,
+  // NUNCA bloqueia com spinner infinito (SWR: revalida em segundo plano).
   const carregando = useMemo(() => {
     if (jaResolveuUmaVezRef.current) return false
     if (administrador || Boolean(perfil?.administrador)) return false
     if (usuarioERP) return false
-    // Se temos login ativo no PocketBase ou cache salvo, nunca bloqueia como 'carregando' (SWR)
+    if (pb.authStore.isValid) return false
     const authId = pb.authStore.record?.id
     const email = pb.authStore.record?.email
     const cached = obterUsuarioCacheLocal(authId || email || undefined)
-    if (cached || (pb.authStore.isValid && pb.authStore.record)) return false
+    if (cached) return false
     return Boolean(authLoading || carregandoInterno)
   }, [administrador, perfil?.administrador, usuarioERP, authLoading, carregandoInterno])
 

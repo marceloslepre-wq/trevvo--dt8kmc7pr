@@ -71,6 +71,8 @@ import ConferenciaFiscalPage from '@/pages/cadastros/ConferenciaFiscalPage'
 // Páginas do Financeiro
 import { ContasPagarPage } from '@/pages/financeiro/ContasPagarPage'
 import { ContasReceberPage } from '@/pages/financeiro/ContasReceberPage'
+import { ExtratoBancarioPage } from '@/pages/financeiro/ExtratoBancarioPage'
+import { ConciliacaoBancariaPage } from '@/pages/financeiro/ConciliacaoBancariaPage'
 import PlanoContasPage from '@/pages/financeiro/cadastros/PlanoContasPage'
 import CentrosCustoPage from '@/pages/financeiro/cadastros/CentrosCustoPage'
 import ContasFinanceirasPage from '@/pages/financeiro/cadastros/ContasFinanceirasPage'
@@ -420,6 +422,26 @@ const App = () => (
                   <Route
                     path="/financeiro/contas-receber"
                     element={<Navigate to="/financeiro/receber" replace />}
+                  />
+                  <Route
+                    path="/financeiro/bancos"
+                    element={
+                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
+                        <ExtratoBancarioPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/financeiro/extrato"
+                    element={<Navigate to="/financeiro/bancos" replace />}
+                  />
+                  <Route
+                    path="/financeiro/conciliacao"
+                    element={
+                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
+                        <ConciliacaoBancariaPage />
+                      </PermissaoGuard>
+                    }
                   />
                   <Route
                     path="/financeiro/cadastros"

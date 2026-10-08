@@ -74,43 +74,32 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     return <>{children}</>
   }
 
-  // Se o usuário está autenticado no PocketBase OU possui usuárioERP / cache:
-  // Se ainda estiver em fase de carregamento das permissões, renderiza o children otimista (SWR)
-  // em vez de bloquear com spinner. Isso elimina 100% qualquer travamento de tela em navegações subsequentes.
-  const temAuthAtiva = Boolean(pb.authStore.isValid && pb.authStore.record)
-  const temCache = Boolean(
-    obterUsuarioCacheLocal(pb.authStore.record?.id || pb.authStore.record?.email || undefined),
-  )
+  // Regra fundamental: se pb.authStore.isValid, NUNCA renderizar spinner infinito
+  // Renderizar children imediatamente (SWR: revalida em segundo plano).
+  // Só mostrar AcessoNegado quando o perfil estiver carregado e sem permissão real.
+  if (pb.authStore.isValid) {
+    // Se o usuário ERP e perfil já estão resolvidos e confirmadamente sem permissão
+    const perfilResolvido = usuarioERP?.perfil_id || perfil?.id
+    if (perfilResolvido && !carregando && !pode(modulo, acao)) {
+      if (fallback !== undefined) {
+        return <>{fallback}</>
+      }
+      return <AcessoNegado />
+    }
 
-  if (carregando && (temAuthAtiva || temCache || usuarioERP || sessaoPermissoesResolvida)) {
+    // Caso contrário (está revalidando em background ou permissão concedida), libera a tela
     return <>{children}</>
   }
 
-  // Se a sessão já foi resolvida nesta janela OU o timeout de 250ms expirou:
+  // Se a sessão já expirou o fail-safe sem autenticação PocketBase válida
   if (sessaoPermissoesResolvida || loadingExpirado) {
-    if (carregando) {
-      return <>{children}</>
-    }
-    if (pode(modulo, acao)) {
-      return <>{children}</>
-    }
     if (fallback !== undefined) {
       return <>{fallback}</>
     }
     return <AcessoNegado />
   }
 
-  if (temAuthAtiva || temCache || usuarioERP) {
-    if (pode(modulo, acao)) {
-      return <>{children}</>
-    }
-    if (fallback !== undefined) {
-      return <>{fallback}</>
-    }
-    return <AcessoNegado />
-  }
-
-  // 3) Carregamento a frio absoluto sem nenhuma credencial inicial no cache (máximo 250ms até o timer disparar)
+  // Carregamento inicial a frio (caso sem token ainda sincronizado)
   return (
     <div
       data-testid="permissao-guard-loading"

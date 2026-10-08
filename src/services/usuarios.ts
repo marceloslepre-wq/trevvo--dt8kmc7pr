@@ -152,13 +152,18 @@ export async function obterUsuarioPorAuthId(
         .collection('usuarios')
         .getFirstListItem<Usuario>(`auth_user_id = '${authId}'`, {
           expand: 'perfil_id,empresa_padrao_id',
+          requestKey: null,
         })
       if (res) {
         salvarUsuarioCacheLocal(res)
         return res
       }
-    } catch {
-      // Fallback: tentar por e-mail
+    } catch (err: unknown) {
+      // Se abortado ou falha transitória, checa se há cache válido
+      const cache = obterUsuarioCacheLocal()
+      if (cache && (cache.auth_user_id === authId || !cache.auth_user_id)) {
+        return cache
+      }
     }
   }
 
@@ -170,14 +175,15 @@ export async function obterUsuarioPorAuthId(
         .collection('usuarios')
         .getFirstListItem<Usuario>(`email = '${safeEmail}'`, {
           expand: 'perfil_id,empresa_padrao_id',
+          requestKey: null,
         })
       if (porEmail) {
         // Se encontramos por e-mail e auth_user_id estava vazio ou desatualizado, auto-vincula
         if (authId && porEmail.auth_user_id !== authId) {
           try {
-            await pb.collection('usuarios').update(porEmail.id, {
-              auth_user_id: authId,
-            })
+            await pb
+              .collection('usuarios')
+              .update(porEmail.id, { auth_user_id: authId }, { requestKey: null })
             porEmail.auth_user_id = authId
           } catch {
             // falha não bloqueia
@@ -190,7 +196,7 @@ export async function obterUsuarioPorAuthId(
   } catch {
     // Ignora erro no fallback
   }
-  return null
+  return obterUsuarioCacheLocal()
 }
 
 export async function criarUsuarioComLogin(dados: {

@@ -434,6 +434,16 @@ export const ContasFinanceirasPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/financeiro/bancos?contaId=${c.id}`)}
+                        className="h-7 px-2 text-[11px] text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        title="Ver Extrato"
+                      >
+                        Extrato
+                      </Button>
                       {podeEditar && (
                         <Button
                           type="button"

@@ -94,16 +94,13 @@ export async function obterContaFinanceiraPorId(id: string): Promise<ContaFinanc
  * mas a trava já fica registrada no serviço conforme regra da tarefa.
  */
 export async function verificarSeContaPossuiMovimentacoes(id: string): Promise<boolean> {
-  const tabelas = ['movimentos_bancarios', 'extrato_bancario', 'lancamentos_financeiros']
-  for (const tab of tabelas) {
-    try {
-      const res = await pb.collection(tab).getList(1, 1, {
-        filter: `conta_financeira_id = '${id}'`,
-      })
-      if (res.totalItems > 0) return true
-    } catch {
-      // Coleção ainda não criada
-    }
+  try {
+    const res = await pb.collection('movimentacoes_financeiras').getList(1, 1, {
+      filter: `conta_financeira_id = '${id}' && ativo = true`,
+    })
+    if (res.totalItems > 0) return true
+  } catch {
+    // Coleção ou erro
   }
   return false
 }

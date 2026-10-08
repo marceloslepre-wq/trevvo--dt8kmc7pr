@@ -84,6 +84,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const profile = mapRecordToUser(authData.record)!
     setUser(profile)
     setToken(authData.token)
+
+    // Pré-carrega e hidrata no cache o usuário ERP com perfil expandido
+    try {
+      const u = await pb
+        .collection('usuarios')
+        .getFirstListItem(`auth_user_id = '${authData.record.id}'`, {
+          expand: 'perfil_id,empresa_padrao_id',
+          requestKey: null,
+        })
+      if (u) {
+        localStorage.setItem('erp_usuario_logado_cache', JSON.stringify(u))
+      }
+    } catch {
+      // não bloqueia o login
+    }
+
     return profile
   }
 
