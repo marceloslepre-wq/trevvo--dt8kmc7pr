@@ -580,6 +580,22 @@ Parcelas e títulos de pagamento da nota fiscal de entrada (dados de duplicatas 
 
 Índices: `nota_id`, `data_vencimento`, `ativo`.
 
+#### Fluxo de Lançamento e Digitação de Notas de Entrada (Etapa 3)
+
+O ERP provê duas modalidades integradas de entrada de documentos fiscais de fornecedores que alimentam o mesmo conjunto de tabelas (`notas_entrada`, `notas_entrada_itens` e `notas_entrada_parcelas`), compartilham a mesma inteligência fiscal e seguem o mesmo ciclo operacional:
+
+1. **Entrada por Importação de XML (`origem_lancamento = "XML"`):**
+   - Importação em lote ou individual via upload de arquivo `.xml` (modelo 55 NF-e) com leitura direta pelo `DOMParser`.
+   - Vínculo automático de fornecedor (ou auto-cadastro no padrão ERP), de-para de produtos via `produtos_fornecedores` e GTIN, leitura de duplicatas e conversão imediata de CFOPs pela tabela `cfop_conversao_entrada`.
+2. **Entrada por Digitação Manual Direta (`origem_lancamento = "Digitação"`):**
+   - Rota `/compras/notas-entrada/digitar` (módulo de permissão `notas_entrada`, ação `criar`), acionada pelo botão **"Digitar nota"** na listagem de notas de entrada (`/compras/notas-entrada`).
+   - Interface completa em `NotaEntradaDigitacaoPage.tsx` e serviço centralizado `salvarNotaEntradaDigitada` (`@/services/notasEntrada.ts`).
+   - **Cabeçalho:** Permite selecionar o modelo do documento (`55` NF-e, `65` NFC-e, `01` Nota Fiscal 1/1A, `1B` Nota Fiscal Avulsa ou `04` Nota Fiscal de Produtor), série, número e chave de acesso com validação matemática dos 44 dígitos em módulo 11 (`validarChaveAcessoNfe`), checando correspondência do CNPJ do emitente, modelo, série e número da NF. Dados de fornecedor (`<SelectFornecedor />`), datas de emissão/entrada, tipo de entrada (com as 7 opções fiscais), condição de pagamento (`<SelectCondicaoPagamento uso="Compras" />`), frete e transportadora.
+   - **Itens:** Bipagem e busca ágil de produtos cadastrados (`<BuscaProdutoGtin />`), derivação automática do CFOP de compra interna ou interestadual conforme a UF do fornecedor vs. UF da empresa destinatária ativa com consulta à tabela `cfop_conversao_entrada`, sugestão de CST/CSOSN e alíquotas do cadastro, com `codigo_fornecedor` herdando o código interno do produto e `fator_conversao = 1`.
+   - **Totais e Rateio:** Despesas acessórias (frete, seguro e outras despesas) e desconto global informados no cabeçalho sofrem rateio proporcional automático ponderado pelo valor de produtos de cada item, compondo o custo de aquisição final (`custo_total_item` e `custo_unitario_estoque`).
+   - **Financeiro e Parcelas:** Cronograma financeiro gerado automaticamente pela função `gerarParcelas` com base na condição de pagamento escolhida, com edição inline de prazos e valores antes da gravação.
+   - **Ciclo de Vida Unificado:** A nota digitada é salva inicialmente com status `"Em conferência"`. Segue exatamente o mesmo fluxo operacional das notas de XML na tela de conferência (`/compras/notas-entrada/:id`), permitindo revisão de tributação, créditos de ICMS/IPI/PIS/COFINS, ajuste de margens e preços de venda, efetivação de lançamento com movimentação atômica do Kardex/estoque (`origem = "COMPRA"`) e cancelamento com estorno transacional.
+
 ### lotes
 
 Tabela de controle de lotes e datas de validade por produto e empresa. Bloqueada para criação, edição ou exclusão direta pela aplicação — a alteração do saldo de quantidade é feita SOMENTE pelo serviço central de estoque (`movimentarEstoque` e `estornarMovimento`).
@@ -1821,6 +1837,33 @@ A Etapa 2 (Controle de Estoque e Telas Operacionais) foi oficialmente finalizada
      - Tratamento tolerante para ações (`ver` e `visualizar`) e normalização nas rotas do sistema.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.36** — Lançamento de Notas de Entrada por Digitação Direta (Sem XML) e Correção Estrutural de Sessão no PermissaoGuard:
+
+1. **Lançamento de Notas de Entrada por Digitação (Sem XML):**
+   - **Acesso e Permissões:** Botão "Digitar nota" adicionado na listagem de notas de entrada (`/compras/notas-entrada`), direcionando para a rota `/compras/notas-entrada/digitar`. Protegido pelo módulo `notas_entrada` com ação `criar` via `<PermissaoGuard modulo="notas_entrada" acao="criar">`.
+   - **Interface Dedicada:** Implementada em `src/pages/compras/NotaEntradaDigitacaoPage.tsx`, organizada em seções com cabeçalho, itens digitados/bipados, totais/despesas e financeiro (condição de pagamento e duplicatas).
+   - **Serviço de Persistência:** Função `salvarNotaEntradaDigitada` em `src/services/notasEntrada.ts`, gravando os dados com `origem_lancamento = "Digitação"` e `status = "Em conferência"` nas tabelas existentes `notas_entrada`, `notas_entrada_itens` e `notas_entrada_parcelas`. Segue exatamente o mesmo ciclo de vida (conferência, lançamento de estoque/custos e cancelamento com estorno) das notas importadas por XML.
+2. **Cabeçalho Digitado e Validação Rigorosa da Chave de Acesso:**
+   - Suporte aos modelos de documento fiscal: `55` (NF-e), `65` (NFC-e), `01` (Nota Fiscal modelo 1/1A), `1B` (Nota Fiscal Avulsa) e `04` (Nota Fiscal de Produtor).
+   - Série, número sequencial, seleção de fornecedor ativo via `<SelectFornecedor />`, data de emissão e data de entrada (com data de hoje como padrão).
+   - Tipo de entrada com as 7 finalidades de escrituração ("Compra para revenda", "Compra para industrialização", "Uso e consumo", "Ativo imobilizado", "Bonificação", "Devolução de venda", "Outras entradas").
+   - Condição de pagamento (`<SelectCondicaoPagamento uso="Compras" />`), modalidade de frete (0, 1, 2, 3, 4, 9) e transportadora vinculada ao catálogo de fornecedores (`filtroTipo="Transportadora"`).
+   - **Validação de Chave de Acesso NFe (`validarChaveAcessoNfe` em `src/lib/validacoes.ts`):** Validação dos 44 dígitos com conferência matemática de dígito verificador em módulo 11 (pesos 2 a 9). Extração estruturada de UF, ano/mês, CNPJ do emitente, modelo, série, número da nota e tipo de emissão, confrontando automaticamente o CNPJ, modelo, série e número com os campos digitados para impedir inconsistências cadastrais e recusa de chave duplicada na mesma empresa.
+3. **Itens Digitados com Inteligência Fiscal e Fator de Conversão:**
+   - Busca ágil com bipagem de leitor ou digitação por código/GTIN/descrição através de `<BuscaProdutoGtin />` e combobox de produtos.
+   - Derivação automática do CFOP de entrada: identifica a UF do fornecedor vs. UF da empresa destinatária ativa; utiliza o `cfop_compra_interna` ou `cfop_compra_interestadual` cadastrado no produto, validando e convertendo via tabela `cfop_conversao_entrada`.
+   - Sugestão contextual de CST/CSOSN, origem da mercadoria e alíquotas a partir do cadastro do produto.
+   - Preenchimento automático de `codigo_fornecedor` com o próprio código do produto interno (ou sequencial do item quando avulso) e `fator_conversao = 1` com unidade comercial.
+4. **Totais, Rateio Proporcional de Despesas e Parcelas Financeiras:**
+   - Campos de cabeçalho para frete, seguro, outras despesas acessórias e desconto global, com cálculo de rateio proporcional automático ponderado pelo valor de produtos de cada item na base de custo de aquisição.
+   - Apuração automática de base de cálculo e valores de ICMS, ICMS-ST, FCP-ST, IPI, PIS e COFINS.
+   - Geração automática de cronograma de vencimentos e valores através da função `gerarParcelas` (`@/services/condicoesPagamento`) a partir da condição de pagamento selecionada, com suporte à edição individualizada de vencimentos e valores nas parcelas geradas antes de salvar.
+5. **Correção Estrutural de Sessão no PermissaoGuard:**
+   - Introdução de flag de controle de sessão resolvida em escopo de módulo JavaScript (`sessaoPermissoesResolvida`, fora do ciclo de vida React): uma vez autenticado ou validado qualquer guard na sessão, re-montagens e transições entre abas/rotas nunca mais bloqueiam a interface exibindo tela cheia de spinner.
+   - Fail-safe otimizado de 250ms que libera telas quando há autenticação ativa no PocketBase (`pb.authStore.record`) ou dados no cache local (`obterUsuarioCacheLocal`), evitando travamentos operacionais em conexões lentas ou revalidações em background.
+
+---
 
 **Versão 0.0.30** — Motor Fiscal Inteligente, Matriz de Alíquotas ICMS (Interna e Interestadual) e Regras por NCM:
 
