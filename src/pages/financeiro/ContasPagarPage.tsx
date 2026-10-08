@@ -150,7 +150,7 @@ export const ContasPagarPage: React.FC = () => {
             sort: 'codigo',
           }),
           pb.collection('centros_custo').getFullList<CentroCusto>({
-            filter: `empresa_id = '${empresaAtiva.id}' && ativo = true`,
+            filter: `ativo = true`,
             sort: 'codigo',
           }),
         ])

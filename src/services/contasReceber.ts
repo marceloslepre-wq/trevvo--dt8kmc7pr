@@ -1,4 +1,4 @@
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from './auditoria'
 import { PlanoConta } from './planoContas'
 import { CentroCusto } from './centrosCusto'
@@ -7,7 +7,13 @@ import { Cliente } from './clientes'
 import { ConfigFinanceiraEmpresa, obterOuCriarConfigFinanceiraEmpresa } from './configFinanceira'
 import { PagamentoLote, PagamentoBaixa, EncargosCalculados, calcularEncargos } from './financeiro'
 
-export type StatusContaReceber = 'Em aberto' | 'Recebido parcial' | 'Recebido' | 'Cancelado'
+export type StatusContaReceber =
+  | 'Em aberto'
+  | 'Recebido parcial'
+  | 'Recebido'
+  | 'Cancelado'
+  | 'Aberto'
+  | 'Parcial'
 export type OrigemContaReceber = 'Manual' | 'Venda' | 'Recorrência' | 'Outro'
 
 export interface ContaReceber {
@@ -52,19 +58,29 @@ export interface ContaReceber {
 }
 
 export interface ListarContasReceberParams {
-  empresa_id: string
+  empresa_id?: string
+  empresaId?: string
   pagina?: number
+  page?: number
   por_pagina?: number
+  perPage?: number
   busca?: string
   cliente_id?: string
+  clienteId?: string
   plano_conta_id?: string
+  planoContaId?: string
   centro_custo_id?: string
+  centroCustoId?: string
   origem?: string
-  situacao?: 'aberto' | 'vencidos' | 'pagos' | 'cancelados' | 'todos'
+  situacao?: 'aberto' | 'abertos' | 'vencidos' | 'pagos' | 'cancelados' | 'todos'
   data_vencimento_inicio?: string
+  periodoInicio?: string
   data_vencimento_fim?: string
+  periodoFim?: string
   dias_atraso_min?: number
+  diasAtrasoMinimo?: number
   ordenar_por?: string
+  sort?: string
 }
 
 export interface ResultadoPaginadoContasReceber {
@@ -78,6 +94,9 @@ export interface ResultadoPaginadoContasReceber {
     totalRecebido: number
     totalSaldo: number
     totalVencido: number
+    valorOriginal?: number
+    valorRecebido?: number
+    saldo?: number
   }
 }
 
@@ -224,83 +243,79 @@ export async function creditoCliente(
 export async function listarContasReceber(
   params: ListarContasReceberParams,
 ): Promise<ResultadoPaginadoContasReceber> {
-  const {
-    empresa_id,
-    pagina = 1,
-    por_pagina = 50,
-    busca,
-    cliente_id,
-    plano_conta_id,
-    centro_custo_id,
-    origem,
-    situacao = 'aberto',
-    data_vencimento_inicio,
-    data_vencimento_fim,
-    dias_atraso_min,
-    ordenar_por = 'data_vencimento',
-  } = params
+  const empresaId = params.empresa_id || params.empresaId || ''
+  const pagina = params.pagina || params.page || 1
+  const porPagina = params.por_pagina || params.perPage || 50
+  const clienteId = params.cliente_id || params.clienteId
+  const planoContaId = params.plano_conta_id || params.planoContaId
+  const centroCustoId = params.centro_custo_id || params.centroCustoId
+  const dtInicio = params.data_vencimento_inicio || params.periodoInicio
+  const dtFim = params.data_vencimento_fim || params.periodoFim
+  const minAtraso =
+    params.dias_atraso_min !== undefined ? params.dias_atraso_min : params.diasAtrasoMinimo
+  const ordenacao = params.ordenar_por || params.sort || 'data_vencimento'
+  const situacao = params.situacao || 'todos'
+  const busca = params.busca
 
   const hoje = new Date().toISOString().split('T')[0]
-  const filtros: string[] = [`empresa_id = '${empresa_id}'`, 'ativo = true']
+  const filtros: string[] = [`empresa_id = '${empresaId}'`, 'ativo = true']
 
-  if (cliente_id) filtros.push(`cliente_id = '${cliente_id}'`)
-  if (plano_conta_id) filtros.push(`plano_conta_id = '${plano_conta_id}'`)
-  if (centro_custo_id) filtros.push(`centro_custo_id = '${centro_custo_id}'`)
-  if (origem) filtros.push(`origem = '${origem}'`)
+  if (clienteId) filtros.push(`cliente_id = '${clienteId}'`)
+  if (planoContaId) filtros.push(`plano_conta_id = '${planoContaId}'`)
+  if (centroCustoId) filtros.push(`centro_custo_id = '${centroCustoId}'`)
+  if (params.origem) filtros.push(`origem = '${params.origem}'`)
 
   if (busca && busca.trim()) {
     const b = busca.trim().replace(/['"\\]/g, '')
     filtros.push(`(numero_documento ~ '${b}' || descricao ~ '${b}' || codigo_barras ~ '${b}')`)
   }
 
-  switch (situacao) {
-    case 'aberto':
-      filtros.push("(status = 'Em aberto' || status = 'Recebido parcial')")
-      break
-    case 'vencidos':
-      filtros.push(
-        `(status = 'Em aberto' || status = 'Recebido parcial') && data_vencimento < '${hoje}'`,
-      )
-      break
-    case 'pagos':
-      filtros.push("status = 'Recebido'")
-      break
-    case 'cancelados':
-      filtros.push("status = 'Cancelado'")
-      break
-    case 'todos':
-    default:
-      break
+  if (situacao === 'aberto' || situacao === 'abertos') {
+    filtros.push(
+      "(status = 'Em aberto' || status = 'Recebido parcial' || status = 'Aberto' || status = 'Parcial')",
+    )
+  } else if (situacao === 'vencidos') {
+    filtros.push(
+      `(status = 'Em aberto' || status = 'Recebido parcial' || status = 'Aberto' || status = 'Parcial') && data_vencimento < '${hoje}'`,
+    )
+  } else if (situacao === 'pagos') {
+    filtros.push("(status = 'Recebido' || status = 'Pago')")
+  } else if (situacao === 'cancelados') {
+    filtros.push("status = 'Cancelado'")
   }
 
-  if (data_vencimento_inicio) {
-    filtros.push(`data_vencimento >= '${data_vencimento_inicio}'`)
+  if (dtInicio) {
+    filtros.push(`data_vencimento >= '${dtInicio}'`)
   }
-  if (data_vencimento_fim) {
-    filtros.push(`data_vencimento <= '${data_vencimento_fim}'`)
+  if (dtFim) {
+    filtros.push(`data_vencimento <= '${dtFim}'`)
   }
 
   const filterString = filtros.join(' && ')
 
   // Obter página com expand
-  const resultado = await pb
-    .collection('contas_receber')
-    .getList<ContaReceber>(pagina, por_pagina, {
-      filter: filterString,
-      sort: ordenar_por,
-      expand: 'cliente_id,plano_conta_id,centro_custo_id,forma_pagamento_prevista_id',
-    })
+  const resultado = await pb.collection('contas_receber').getList<ContaReceber>(pagina, porPagina, {
+    filter: filterString,
+    sort: ordenacao,
+    expand: 'cliente_id,plano_conta_id,centro_custo_id,forma_pagamento_prevista_id',
+  })
 
   // Se houver filtro por dias_atraso_min em memória:
   let items = resultado.items
-  if (typeof dias_atraso_min === 'number' && dias_atraso_min > 0) {
+  if (typeof minAtraso === 'number' && minAtraso > 0) {
     const hojeDate = new Date()
     hojeDate.setHours(0, 0, 0, 0)
     items = items.filter((t) => {
-      if (t.status !== 'Em aberto' && t.status !== 'Recebido parcial') return false
+      if (
+        t.status !== 'Em aberto' &&
+        t.status !== 'Recebido parcial' &&
+        t.status !== 'Aberto' &&
+        t.status !== 'Parcial'
+      )
+        return false
       const vDate = new Date(t.data_vencimento + 'T00:00:00')
       const diffDias = Math.floor((hojeDate.getTime() - vDate.getTime()) / (1000 * 60 * 60 * 24))
-      return diffDias >= dias_atraso_min
+      return diffDias >= minAtraso
     })
   }
 
@@ -337,6 +352,9 @@ export async function listarContasReceber(
       totalRecebido,
       totalSaldo,
       totalVencido,
+      valorOriginal: totalOriginal,
+      valorRecebido: totalRecebido,
+      saldo: totalSaldo,
     },
   }
 }
@@ -578,7 +596,9 @@ export interface ItemReceberInput {
   valor_multa?: number
   valor_juros?: number
   valor_desconto?: number
-  valor_total_pago: number
+  valor_total_pago?: number
+  acrescimo?: number
+  desconto?: number
 }
 
 export interface ReceberTitulosInput {
@@ -586,7 +606,8 @@ export interface ReceberTitulosInput {
   conta_financeira_id: string
   forma_pagamento_id?: string
   data_pagamento: string // data do recebimento
-  itens: ItemReceberInput[]
+  itens?: ItemReceberInput[]
+  titulos?: ItemReceberInput[]
   observacao?: string
 }
 
@@ -600,16 +621,21 @@ export interface ResultadoRecebimento {
  */
 export async function receberTitulos(dados: ReceberTitulosInput): Promise<ResultadoRecebimento> {
   // Chamada ao hook backend centralizado (/financeiro/receber/baixar)
+  const listaTitulos = dados.titulos || dados.itens || []
+
   const payload = {
     empresa_id: dados.empresa_id,
     conta_financeira_id: dados.conta_financeira_id,
     forma_pagamento_id: dados.forma_pagamento_id,
     data_pagamento: dados.data_pagamento,
-    titulos: dados.titulos.map((t) => ({
+    titulos: listaTitulos.map((t) => ({
       conta_receber_id: t.conta_receber_id,
       valor_pago: t.valor_pago,
-      acrescimo: t.acrescimo || 0,
-      desconto: t.desconto || 0,
+      acrescimo:
+        t.acrescimo !== undefined
+          ? t.acrescimo
+          : Number(((t.valor_multa || 0) + (t.valor_juros || 0)).toFixed(2)),
+      desconto: t.desconto !== undefined ? t.desconto : t.valor_desconto || 0,
     })),
     historico: dados.observacao,
   }
@@ -632,7 +658,7 @@ export async function receberTitulos(dados: ReceberTitulosInput): Promise<Result
         forma_pagamento_id: dados.forma_pagamento_id,
         data_pagamento: dados.data_pagamento,
         valor_total: res.total_recebido || 0,
-        quantidade_titulos: dados.titulos.length,
+        quantidade_titulos: listaTitulos.length,
         created: new Date().toISOString(),
       } as PagamentoLote
     }

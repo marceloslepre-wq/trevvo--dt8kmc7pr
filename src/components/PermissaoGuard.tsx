@@ -74,9 +74,19 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     return <>{children}</>
   }
 
-  // FAIL-SAFE DE RAIZ:
-  // 1) Se a sessão já foi resolvida nesta janela OU o timeout de 250ms expirou:
-  // Se ainda estiver carregando, libera a tela imediatamente (nunca bloqueia tela operacional).
+  // Se o usuário está autenticado no PocketBase OU possui usuárioERP / cache:
+  // Se ainda estiver em fase de carregamento das permissões, renderiza o children otimista (SWR)
+  // em vez de bloquear com spinner. Isso elimina 100% qualquer travamento de tela em navegações subsequentes.
+  const temAuthAtiva = Boolean(pb.authStore.isValid && pb.authStore.record)
+  const temCache = Boolean(
+    obterUsuarioCacheLocal(pb.authStore.record?.id || pb.authStore.record?.email || undefined),
+  )
+
+  if (carregando && (temAuthAtiva || temCache || usuarioERP || sessaoPermissoesResolvida)) {
+    return <>{children}</>
+  }
+
+  // Se a sessão já foi resolvida nesta janela OU o timeout de 250ms expirou:
   if (sessaoPermissoesResolvida || loadingExpirado) {
     if (carregando) {
       return <>{children}</>
@@ -90,20 +100,10 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     return <AcessoNegado />
   }
 
-  // 2) Se o usuário estiver autenticado no PocketBase (token válido) ou se houver qualquer cache,
-  // ou se o módulo for novo / não configurado, JAMAIS exibe spinner que possa travar.
-  // Spinner de carregamento só ocorre estritamente nos primeiros 250ms se não houver NENHUM dado de autenticação pronto.
-  const temAuthAtiva = Boolean(pb.authStore.isValid && pb.authStore.record)
-  const temCache = Boolean(
-    obterUsuarioCacheLocal(pb.authStore.record?.id || pb.authStore.record?.email || undefined),
-  )
-
   if (temAuthAtiva || temCache || usuarioERP) {
-    // Temos credencial ativa. Se pode, libera. Se ainda carregando perfil/permissões, libera otimista para não travar a rota.
-    if (pode(modulo, acao) || carregando) {
+    if (pode(modulo, acao)) {
       return <>{children}</>
     }
-    // Se já terminou de carregar e explicitamente não tem permissão:
     if (fallback !== undefined) {
       return <>{fallback}</>
     }

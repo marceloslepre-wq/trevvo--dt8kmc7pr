@@ -1,4 +1,4 @@
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 import { salvarContaPagar, ContaPagar } from './financeiro'
 import { salvarContaReceber, ContaReceber } from './contasReceber'
 

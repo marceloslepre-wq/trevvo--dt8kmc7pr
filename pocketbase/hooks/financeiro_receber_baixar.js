@@ -127,12 +127,11 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         loteRecord.set('forma_pagamento_id', forma_pagamento_id || null)
         loteRecord.set('data_pagamento', data_pagamento)
         loteRecord.set('valor_total', valorTotalLote)
-        loteRecord.set('quantidade_titulos', titulosMap.length)
+        loteRecord.set('total_titulos', titulosMap.length)
         loteRecord.set(
-          'historico',
+          'observacao',
           historico || `Recebimento em lote de ${titulosMap.length} títulos`,
         )
-        loteRecord.set('comprovante_url', comprovante_url || '')
         txApp.save(loteRecord)
         resultLoteId = loteRecord.id
       }
@@ -148,16 +147,18 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         baixaRec.set('tipo_operacao', 'Receber')
         baixaRec.set('conta_receber_id', titRecord.id)
         baixaRec.set('conta_pagar_id', null)
-        baixaRec.set('lote_id', loteRecord ? loteRecord.id : null)
+        baixaRec.set('lote_baixa_id', loteRecord ? loteRecord.id : null)
         baixaRec.set('conta_financeira_id', conta_financeira_id)
         baixaRec.set('forma_pagamento_id', forma_pagamento_id || null)
-        baixaRec.set('data_baixa', data_pagamento)
-        baixaRec.set('valor_principal', item.valorPago)
-        baixaRec.set('acrescimo', item.acrescimo)
-        baixaRec.set('desconto', item.desconto)
-        baixaRec.set('valor_total', item.valorLiquido)
+        baixaRec.set('data_pagamento', data_pagamento)
+        baixaRec.set('valor_original', Number(titRecord.get('valor_original') || 0))
+        baixaRec.set('valor_pago', item.valorPago)
+        baixaRec.set('valor_multa', 0)
+        baixaRec.set('valor_juros', item.acrescimo)
+        baixaRec.set('valor_desconto', item.desconto)
+        baixaRec.set('valor_total_pago', item.valorLiquido)
         baixaRec.set(
-          'historico',
+          'observacao',
           historico || `Recebimento doc. ${titRecord.get('numero_documento') || titRecord.id}`,
         )
         baixaRec.set('estornado', false)
@@ -169,7 +170,7 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         const novoRecebido = recebidoAnterior + item.valorPago
         const valorOriginal = Number(titRecord.get('valor_original') || 0)
         const novoSaldo = Math.max(0, valorOriginal - novoRecebido)
-        const novoStatus = novoSaldo <= 0.009 ? 'Recebido' : 'Parcial'
+        const novoStatus = novoSaldo <= 0.009 ? 'Recebido' : 'Recebido parcial'
 
         titRecord.set('valor_recebido', novoRecebido)
         titRecord.set('saldo', novoSaldo)
@@ -185,7 +186,10 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         movRec.set('conta_financeira_id', conta_financeira_id)
         movRec.set('tipo', 'Entrada')
         movRec.set('origem', 'RECEBIMENTO_TITULO')
-        movRec.set('origem_id', baixaRec.id)
+        movRec.set('documento_tipo', 'contas_receber')
+        movRec.set('documento_id', titRecord.id)
+        movRec.set('documento_numero', titRecord.get('numero_documento') || '')
+        movRec.set('lote_baixa_id', loteRecord ? loteRecord.id : null)
         movRec.set('data_movimento', data_pagamento)
         movRec.set('valor', item.valorLiquido)
         movRec.set(
@@ -209,10 +213,11 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         auditRec.set('usuario_id', authRecord.id)
         auditRec.set('tabela', 'contas_receber')
         auditRec.set('registro_id', resultLoteId || baixasCriadas[0] || 'baixa')
-        auditRec.set('acao', 'BAIXAR_RECEBER')
+        auditRec.set('acao', 'alteracao')
         auditRec.set(
-          'dados_depois',
+          'valores_depois',
           JSON.stringify({
+            operacao: 'BAIXAR_RECEBER',
             titulos_count: titulosMap.length,
             valor_total: valorTotalLote,
             conta_financeira_id,

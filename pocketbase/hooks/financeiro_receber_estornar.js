@@ -82,8 +82,12 @@ routerAdd('POST', '/financeiro/receber/estornar-recebimento', (c) => {
           )
         }
 
-        const valorTotalBaixa = Number(baixa.get('valor_total') || 0)
-        const valorPrincipalBaixa = Number(baixa.get('valor_principal') || 0)
+        const valorTotalBaixa = Number(
+          baixa.get('valor_total_pago') || baixa.get('valor_total') || 0,
+        )
+        const valorPrincipalBaixa = Number(
+          baixa.get('valor_pago') || baixa.get('valor_principal') || 0,
+        )
         const titId = baixa.get('conta_receber_id')
 
         // Validar se estorno deixará saldo negativo e se a conta permite
@@ -112,9 +116,11 @@ routerAdd('POST', '/financeiro/receber/estornar-recebimento', (c) => {
         const movEstorno = new Record(movsCol)
         movEstorno.set('empresa_id', empresa_id)
         movEstorno.set('conta_financeira_id', contaFinId)
-        movEstorno.set('tipo', 'Saida')
+        movEstorno.set('tipo', 'Saída')
         movEstorno.set('origem', 'ESTORNO_RECEBIMENTO')
-        movEstorno.set('origem_id', baixa.id)
+        movEstorno.set('documento_tipo', 'contas_receber')
+        movEstorno.set('documento_id', titId || '')
+        movEstorno.set('documento_numero', baixa.id)
         movEstorno.set('data_movimento', dataEstorno.split('T')[0])
         movEstorno.set('valor', valorTotalBaixa)
         movEstorno.set('historico', `Estorno recebimento baixa #${baixa.id}: ${motivo.trim()}`)
@@ -130,9 +136,9 @@ routerAdd('POST', '/financeiro/receber/estornar-recebimento', (c) => {
               const valorOriginal = Number(tit.get('valor_original') || 0)
               const novoSaldo = Math.max(0, valorOriginal - novoRecebido)
 
-              let novoStatus = 'Aberto'
+              let novoStatus = 'Em aberto'
               if (novoRecebido > 0) {
-                novoStatus = 'Parcial'
+                novoStatus = 'Recebido parcial'
               }
 
               tit.set('valor_recebido', novoRecebido)
@@ -156,11 +162,11 @@ routerAdd('POST', '/financeiro/receber/estornar-recebimento', (c) => {
         auditRec.set('usuario_id', authRecord.id)
         auditRec.set('tabela', 'contas_receber')
         auditRec.set('registro_id', baixa_id || conta_receber_id || 'estorno')
-        auditRec.set('acao', 'ESTORNAR_RECEBIMENTO')
-        auditRec.set('motivo', motivo.trim())
+        auditRec.set('acao', 'alteracao')
         auditRec.set(
-          'dados_depois',
+          'valores_depois',
           JSON.stringify({
+            operacao: 'ESTORNAR_RECEBIMENTO',
             baixas_estornadas: baixasEstornadas,
             total_estornado: totalEstornado,
             motivo: motivo.trim(),

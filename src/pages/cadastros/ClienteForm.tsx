@@ -1968,7 +1968,11 @@ export const ClienteForm: React.FC = () => {
                             ) : (
                               titulosCliente.map((t) => {
                                 const saldoAberto = t.saldo ?? t.valor_original
-                                const podeReceber = t.status === 'Aberto' || t.status === 'Parcial'
+                                const podeReceber =
+                                  t.status === 'Em aberto' ||
+                                  t.status === 'Recebido parcial' ||
+                                  t.status === 'Aberto' ||
+                                  t.status === 'Parcial'
                                 const dtVenc = new Date(
                                   t.data_vencimento + 'T00:00:00',
                                 ).toLocaleDateString('pt-BR')
@@ -2000,7 +2004,8 @@ export const ClienteForm: React.FC = () => {
                                         className={
                                           t.status === 'Recebido'
                                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]'
-                                            : t.status === 'Parcial'
+                                            : t.status === 'Recebido parcial' ||
+                                                t.status === 'Parcial'
                                               ? 'bg-blue-50 text-blue-700 border-blue-200 text-[10px]'
                                               : 'bg-amber-50 text-amber-700 border-amber-200 text-[10px]'
                                         }
