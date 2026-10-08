@@ -6,7 +6,7 @@
  * 3. listarNotasDoFornecedorComTotais: notas de entrada lançadas do fornecedor com agrupamento anual
  */
 
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 import { NotaEntrada, NotaEntradaItem } from './notasEntrada'
 
 export interface ItemCompradoLinha {
@@ -285,7 +285,37 @@ export async function listarEntradasDoProduto(
 
   try {
     // Buscar até 50 itens mais recentes do produto
-    const itens = await pb.collection('notas_entrada_itens').getFullList<NotaEntradaItem>({
+    const itens = await pb.collection('notas_entrada_itens').getFullList<
+      NotaEntradaItem & {
+        expand?: {
+          nota_id?: {
+            id: string
+            numero: number
+            serie?: string
+            modelo?: string
+            status: string
+            ativo?: boolean
+            empresa_id: string
+            data_entrada: string
+            data_emissao: string
+            fornecedor_id: string
+            expand?: {
+              fornecedor_id?: {
+                razao_social?: string
+                nome_fantasia?: string
+              }
+            }
+          }
+          produto_id?: {
+            expand?: {
+              unidade_id?: {
+                sigla: string
+              }
+            }
+          }
+        }
+      }
+    >({
       filter: `produto_id = '${produtoId}' && ativo = true`,
       sort: '-created',
       expand: 'nota_id,nota_id.fornecedor_id,produto_id.unidade_id',
@@ -294,7 +324,7 @@ export async function listarEntradasDoProduto(
     const resultado: EntradaHistoricoProduto[] = []
 
     for (const it of itens) {
-      const nota = (it.expand?.nota_id as any) || null
+      const nota = it.expand?.nota_id || null
       if (!nota) continue
 
       // Apenas notas LANÇADAS

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, Link } from 'react-router-dom'
 import {
   Truck,
   Building2,
@@ -48,6 +48,7 @@ import {
   Fornecedor,
   TipoPessoaFornecedor,
   IndicadorIeFornecedor,
+  CrtFornecedor,
   TipoFornecedor,
   TipoContaBancaria,
   TipoChavePix,

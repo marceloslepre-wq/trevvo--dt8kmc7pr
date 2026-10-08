@@ -67,11 +67,11 @@ export const ItensCompradosPage: React.FC = () => {
 
   // Carregar grupos e CFOPs no mount
   useEffect(() => {
-    listarGrupos({ apenasAtivos: true })
-      .then((res) => setGrupos(res.grupos))
+    listarGrupos({ situacao: 'ativos' })
+      .then((res) => setGrupos(res))
       .catch((e) => console.warn('Erro ao carregar grupos:', e))
 
-    listarCfop({ apenasAtivos: true, tipo: 'Entrada', itensPorPagina: 100 })
+    listarCfop({ situacao: 'ativos', tipo_movimento: 'Entrada', perPage: 100 })
       .then((res) => setCfopsEntrada(res.items))
       .catch((e) => console.warn('Erro ao carregar CFOPs de entrada:', e))
   }, [])

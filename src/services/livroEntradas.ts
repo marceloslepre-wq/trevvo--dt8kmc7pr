@@ -5,7 +5,7 @@
  * e reutilizado na geração do SPED Fiscal (Etapa 7).
  */
 
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 import { NotaEntrada, NotaEntradaItem } from './notasEntrada'
 
 export interface LinhaLivroEntrada {

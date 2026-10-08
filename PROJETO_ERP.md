@@ -1836,7 +1836,76 @@ A Etapa 2 (Controle de Estoque e Telas Operacionais) foi oficialmente finalizada
      - Correção no serviço `obterUsuarioPorAuthId` com fallback automático por e-mail para resolver o vínculo `auth_user_id -> usuarios`;
      - Tratamento tolerante para ações (`ver` e `visualizar`) e normalização nas rotas do sistema.
 
+## Etapa 3 concluída
+
+A **Etapa 3 — Compras e Entrada de Notas** foi oficialmente concluída de ponta a ponta com rigor fiscal brasileiro, amarração transacional com estoque (Kardex e saldos) e governança em regras de banco (API Rules).
+
+- **Tabelas criadas nesta etapa:**
+  - `pedidos_compra`: cabeçalho de pedidos de compra com status, fornecedor, datas, totais, rateios e comprador.
+  - `pedidos_compra_itens`: itens com quantidade, custo unitário sugerido, descontos, IPI, ICMS-ST e rastreamento de `quantidade_recebida`.
+  - `cfop_conversao_entrada`: tabela fiscal de de-para para converter CFOP do fornecedor para CFOP de entrada de acordo com os 7 tipos de entrada.
+  - `notas_entrada`: cabeçalho fiscal (C100), chave de acesso de 44 dígitos com validação em módulo 11, vínculo opcional a pedido de compra, status ("Em conferência", "Lançada", "Cancelada"), totais de tributos, créditos e dados de cancelamento.
+  - `notas_entrada_itens`: itens da nota (C170) com espelho do fornecedor, GTIN, conversão de unidade com fator, vínculo a produtos do ERP, lote/validade, tributos e composição de custo de aquisição.
+  - `notas_entrada_parcelas`: duplicatas financeiras com vencimento e valor, preparadas para geração automática do Contas a Pagar na Etapa 4.
+  - _Observação:_ Na finalização da etapa (v0.0.38), **não foram criadas novas tabelas**, apenas novos serviços de consulta/apuração, telas operacionais de relatórios e reforço de regras de proteção (API rules).
+
+- **Telas e Rotas Entregues:**
+  1. `/compras/pedidos` (`@/pages/compras/PedidosCompraListaPage.tsx`): listagem, busca, filtros de status/fornecedor, exportação CSV e ações.
+  2. `/compras/pedidos/novo` e `/compras/pedidos/:id/editar` (`@/pages/compras/PedidoCompraFormPage.tsx`): elaboração de pedidos com bipagem GTIN, importação direta da Sugestão de Compra, cálculo automático de totais e impostos, impressão de espelho e geração de PDF.
+  3. `/compras/notas-entrada` (`@/pages/compras/NotasEntradaListaPage.tsx`): listagem de notas importadas e digitadas com filtro por status, fornecedor, período e modelo.
+  4. `/compras/notas-entrada/digitar` (`@/pages/compras/NotaEntradaDigitacaoPage.tsx`): lançamento de notas por digitação manual sem XML, com validação matemática de chave de acesso (44 dígitos), rateio ponderado de despesas e geração de duplicatas.
+  5. `/compras/notas-entrada/:id` e `/compras/notas-entrada/:id/conferencia` (`@/pages/compras/NotaEntradaConferenciaPage.tsx`): conferência fiscal completa com motor fiscal em 4 etapas, de-para automático de produtos via GTIN e `produtos_fornecedores`, aproveitamento de créditos fiscais (ICMS, IPI, PIS, COFINS), rateio de despesas acessórias e frete CT-e, lançamento atômico no estoque via `/notas-entrada/lancar` e cancelamento rastreado via `/notas-entrada/cancelar`.
+  6. `/compras/itens-comprados` (`@/pages/compras/ItensCompradosPage.tsx`): consulta detalhada de itens de notas lançadas com filtros por período, fornecedor, produto, grupo mercadológico, CFOP de entrada, busca textual, paginação e exportação CSV.
+  7. `/compras/livro-entradas` (`@/pages/compras/LivroEntradasPage.tsx`): relatório analítico e conferência fiscal do Livro de Registro de Entradas (preparado para o Bloco C / Registro C190 do SPED Fiscal) com consolidação por CFOP/CST/alíquota, exportação CSV e impressão formatada.
+  8. **Aba "Compras" no formulário de produtos** (`@/pages/cadastros/ProdutoForm.tsx`): consulta em tempo real das últimas 20 entradas de notas lançadas com data, número da nota, fornecedor, quantidade na unidade de estoque, custo unitário e atalho direto para a conferência da nota.
+  9. **Aba "Notas" no formulário de fornecedores** (`@/pages/cadastros/FornecedorForm.tsx`): histórico completo de notas de entrada do fornecedor com agrupamento e consolidação de valores e quantidades por ano.
+  10. **Indicadores de Compras no Painel Geral** (`@/pages/Index.tsx`): cartões dinâmicos de notas em conferência, compras do mês, pedidos de compra em aberto e pedidos com previsão de entrega vencida, condicionados às permissões de `compras` e `notas_entrada`.
+
+- **Serviços e Componentes Centrais:**
+  - `src/services/consultasCompras.ts`: `listarItensComprados`, `listarEntradasDoProduto` e `listarNotasDoFornecedorComTotais`.
+  - `src/services/livroEntradas.ts`: `calcularResumoFiscalC190` e `obterRelatorioLivroEntradas`.
+  - `src/services/notasEntrada.ts`: parsing DOMParser de NF-e, conversão de CFOPs, rateio de despesas e cálculo de custo unitário de estoque.
+  - `src/services/pedidosCompra.ts`: ciclo de vida de pedidos, numeração sequencial e conversão da sugestão de compras.
+  - `pocketbase/migrations/0030_api_rules_bloqueio_notas_lancadas.js`: trava em nível de banco para `notas_entrada`, `notas_entrada_itens` e `notas_entrada_parcelas`, permitindo update/delete via client SDK apenas para notas com status "Em conferência". Notas lançadas ou canceladas são imutáveis via client direto.
+
+- **Garantia de Não Criação Prematura:**
+  - Não foram criadas contas a pagar, nem pedidos de venda, nem emissão de NF-e (mantidos estritamente para as Etapas 4 e 6).
+
 ## Versão Atual do Projeto
+
+**Versão 0.0.38** — Fechamento Oficial da Etapa 3 (Compras e Entrada de Notas), Consultas Avançadas, Livro de Entradas (C190), Históricos em Produtos/Fornecedores e Proteção de API Rules:
+
+1. **Relatório e Consulta de Itens Comprados (`/compras/itens-comprados`):**
+   - Rota dedicada protegida por `pode('compras', 'ver')` e item de menu em Compras.
+   - Filtros combinados: período por data de entrada, fornecedor ativo via `<SelectFornecedor />`, produto via `<SelectProduto />`, grupo mercadológico via `<SelectGrupoCategoria />`, CFOP de entrada via `<SelectCfop tipoMovimento="Entrada" />` e busca textual.
+   - Visualização com colunas de data de entrada, documento fiscal (número/série/modelo), fornecedor com UF, produto e unidade de estoque, CFOP, quantidade fornecedor e fator de conversão, quantidade em estoque, custo unitário e valor total.
+   - Totais no rodapé (quantidade total e valor consolidado) e exportação em planilha CSV.
+
+2. **Apuração e Livro de Registro de Entradas (`/compras/livro-entradas`):**
+   - Rota dedicada protegida por `pode('notas_entrada', 'ver')` e item de menu em Compras.
+   - Filtro de período por data de entrada (mês atual como padrão) e carregamento da filial ativa.
+   - Listagem cronológica das notas de entrada lançadas com modelo, série, número, fornecedor, CNPJ, UF e valor contábil.
+   - **Resumo Fiscal do Registro C190 do SPED Fiscal:** Apuração agrupada de todos os itens das notas por chave tripla (`CFOP + CST ICMS + Alíquota ICMS`), totalizando valor da operação, base de cálculo do ICMS, valor do ICMS creditado, base do ICMS-ST, valor do ICMS-ST, valor do IPI e coluna de Isentas/Outras.
+   - Resumo consolidado por CFOP de entrada, totais gerais e exportação completa para planilha CSV e impressão formatada. Reutilizável no motor gerador da EFD ICMS/IPI da Etapa 7.
+
+3. **Histórico de Entradas no Cadastro de Produtos e Fornecedores:**
+   - **Aba "Compras" em `ProdutoForm`:** Consulta assíncrona das últimas 20 entradas do produto em notas com status "Lançada" na empresa ativa, com data de entrada, fornecedor, número da NF, quantidade na unidade de estoque, custo unitário e valor total, com atalho para a conferência fiscal da nota.
+   - **Aba "Notas" em `FornecedorForm`:** Histórico de notas fiscais lançadas do fornecedor com agrupamento anual em cards (quantidade de notas e total financeiro por ano) e tabela detalhada de documentos fiscais.
+
+4. **Indicadores de Compras no Painel (`Index.tsx`):**
+   - 4 novos cartões informativos na seção "Visão Geral de Compras e Entradas", respeitando permissões dos módulos `compras` e `notas_entrada`:
+     - _Notas em conferência:_ contagem de notas com status "Em conferência" na empresa ativa com atalho para `/compras/notas-entrada?status=Em%20conferência`.
+     - _Compras do mês:_ soma do valor total de notas com status "Lançada" com data de entrada dentro do mês corrente com atalho para `/compras/livro-entradas`.
+     - _Pedidos em aberto:_ contagem de pedidos nos status "Rascunho", "Enviado" e "Parcialmente recebido".
+     - _Pedidos com previsão vencida:_ contagem de pedidos em aberto com `data_previsao_entrega` anterior à data atual.
+
+5. **Proteção Transacional e API Rules (Migration 0030):**
+   - Bloqueio de alteração e exclusão direta via API client para notas já lançadas ou canceladas em `notas_entrada`, `notas_entrada_itens` e `notas_entrada_parcelas`.
+   - Modificações de saldo de estoque continuam restritas exclusivamente aos endpoints transacionais `/backend/v1/estoque/movimentar` e `/backend/v1/estoque/estornar`.
+   - Auditoria e integridade do estoque executadas sem divergências.
+   - Correção do padrão de importação do cliente PocketBase (`import pb from '@/lib/pocketbase/client'`) em `consultasCompras.ts` e `livroEntradas.ts`.
+
+---
 
 **Versão 0.0.36** — Lançamento de Notas de Entrada por Digitação Direta (Sem XML) e Correção Estrutural de Sessão no PermissaoGuard:
 
