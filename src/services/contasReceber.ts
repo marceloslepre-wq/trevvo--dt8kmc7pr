@@ -459,17 +459,53 @@ export async function salvarContaReceber(
 /**
  * Cria parcelas recorrentes mensais no Contas a Receber
  */
+export interface CriarTitulosRecorrentesReceberInput {
+  empresa_id: string
+  cliente_id: string
+  numero_documento?: string
+  descricao: string
+  plano_conta_id: string
+  centro_custo_id?: string
+  forma_pagamento_prevista_id?: string
+  valor_original: number
+  data_emissao?: string
+  data_competencia_inicial?: string
+  data_vencimento_inicial?: string
+  data_vencimento?: string
+  quantidade_meses: number
+  observacao?: string
+}
+
+export interface AtualizarRecorrenciaReceberInput {
+  recorrencia_id: string
+  a_partir_de?: string
+  recorrencia_numero_min?: number
+  dados_atualizacao?: Partial<ContaReceber>
+}
+
+/**
+ * Cria parcelas recorrentes mensais no Contas a Receber
+ */
 export async function criarTitulosRecorrentesReceber(
-  dadosBase: Omit<ContaReceber, 'id' | 'parcela' | 'saldo' | 'status' | 'ativo'>,
-  quantidadeMeses: number,
+  inputOuBase: CriarTitulosRecorrentesReceberInput | any,
+  qtdMesesParam?: number,
 ): Promise<ContaReceber[]> {
   const recorrenciaId = 'REC_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
   const criados: ContaReceber[] = []
 
-  const [anoStr, mesStr, diaStr] = dadosBase.data_vencimento.split('-')
-  const diaBase = parseInt(diaStr, 10)
-  const mesBase = parseInt(mesStr, 10) - 1
-  const anoBase = parseInt(anoStr, 10)
+  const quantidadeMeses =
+    inputOuBase?.quantidade_meses || qtdMesesParam || 12
+
+  const vencimentoBaseStr =
+    inputOuBase.data_vencimento_inicial ||
+    inputOuBase.data_vencimento ||
+    inputOuBase.data_competencia_inicial ||
+    new Date().toISOString().split('T')[0]
+
+  const [anoStr, mesStr, diaStr] = vencimentoBaseStr.split('-')
+  const diaBase = parseInt(diaStr, 10) || 1
+  const mesBase = (parseInt(mesStr, 10) || 1) - 1
+  const anoBase = parseInt(anoStr, 10) || new Date().getFullYear()
 
   for (let i = 0; i < quantidadeMeses; i++) {
     const dataAlvo = new Date(anoBase, mesBase + i, 1)
@@ -481,9 +517,15 @@ export async function criarTitulosRecorrentesReceber(
     const parcelaLabel = `${i + 1}/${quantidadeMeses}`
 
     const item = await salvarContaReceber({
-      ...dadosBase,
-      numero_documento: `${dadosBase.numero_documento || 'REC'}-${i + 1}`,
+      empresa_id: inputOuBase.empresa_id,
+      cliente_id: inputOuBase.cliente_id,
+      numero_documento: `${inputOuBase.numero_documento || 'REC'}-${i + 1}`,
       parcela: parcelaLabel,
+      descricao: inputOuBase.descricao,
+      plano_conta_id: inputOuBase.plano_conta_id,
+      centro_custo_id: inputOuBase.centro_custo_id || null,
+      forma_pagamento_prevista_id: inputOuBase.forma_pagamento_prevista_id || null,
+      data_emissao: inputOuBase.data_emissao || new Date().toISOString().split('T')[0],
       data_vencimento: vencimentoIso,
       data_competencia: vencimentoIso,
       origem: 'Recorrência',
@@ -491,8 +533,10 @@ export async function criarTitulosRecorrentesReceber(
       recorrencia_numero: i + 1,
       recorrencia_total: quantidadeMeses,
       status: 'Em aberto',
+      valor_original: inputOuBase.valor_original,
       valor_recebido: 0,
-      saldo: dadosBase.valor_original,
+      saldo: inputOuBase.valor_original,
+      observacao: inputOuBase.observacao || '',
     })
     criados.push(item)
   }
@@ -504,10 +548,61 @@ export async function criarTitulosRecorrentesReceber(
  * Atualiza parcelas futuras de uma recorrência no Contas a Receber
  */
 export async function atualizarRecorrenciaReceber(
-  recorrenciaId: string,
-  recorrenciaNumeroMin: number,
-  novosDados: Partial<ContaReceber>,
+  recorrenciaIdOuObj: string | AtualizarRecorrenciaReceberInput,
+  recorrenciaNumeroMin?: number,
+  novosDados?: Partial<ContaReceber>,
 ): Promise<number> {
+  let recId: string
+  let numMin: number | undefined
+  let aPartirDe: string | undefined
+  let dados: Partial<ContaReceber>
+
+  if (typeof recorrenciaIdOuObj === 'object') {
+    recId = recorrenciaIdOuObj.recorrencia_id
+    numMin = recorrenciaIdOuObj.recorrencia_numero_min
+    aPartirDe = recorrenciaIdOuObj.a_partir_de
+    dados = recorrenciaIdOuObj.dados_atualizacao || {}
+  } else {
+    recId = recorrenciaIdOuObj
+    numMin = recorrenciaNumeroMin
+    dados = novosDados || {}
+  }
+
+  let filter = `recorrencia_id = '${recId}' && status = 'Em aberto' && ativo = true`
+  if (numMin !== undefined) {
+    filter += ` && recorrencia_numero >= ${numMin}`
+  } else if (aPartirDe) {
+    filter += ` && data_vencimento >= '${aPartirDe}'`
+  }
+
+  const itens = await pb.collection('contas_receber').getFullList<ContaReceber>({
+    filter,
+  })
+
+  let count = 0
+  for (const item of itens) {
+    const payload: Record<string, unknown> = {
+      updated_by: pb.authStore.record?.id || null,
+    }
+    if (dados.cliente_id) payload.cliente_id = dados.cliente_id
+    if (dados.descricao) payload.descricao = dados.descricao
+    if (dados.plano_conta_id) payload.plano_conta_id = dados.plano_conta_id
+    if (dados.centro_custo_id !== undefined) payload.centro_custo_id = dados.centro_custo_id
+    if (dados.forma_pagamento_prevista_id !== undefined) {
+      payload.forma_pagamento_prevista_id = dados.forma_pagamento_prevista_id
+    }
+    if (dados.valor_original !== undefined) {
+      payload.valor_original = dados.valor_original
+      payload.saldo = dados.valor_original
+    }
+    if (dados.observacao !== undefined) payload.observacao = dados.observacao
+
+    await pb.collection('contas_receber').update(item.id, payload)
+    count++
+  }
+
+  return count
+}
   const itens = await pb.collection('contas_receber').getFullList<ContaReceber>({
     filter: `recorrencia_id = '${recorrenciaId}' && recorrencia_numero >= ${recorrenciaNumeroMin} && status = 'Em aberto' && ativo = true`,
   })

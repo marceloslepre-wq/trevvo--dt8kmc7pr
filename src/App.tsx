@@ -78,6 +78,10 @@ import CentrosCustoPage from '@/pages/financeiro/cadastros/CentrosCustoPage'
 import ContasFinanceirasPage from '@/pages/financeiro/cadastros/ContasFinanceirasPage'
 import FormasPagamentoPage from '@/pages/financeiro/cadastros/FormasPagamentoPage'
 import ConfiguracaoFinanceiraPage from '@/pages/financeiro/cadastros/ConfiguracaoFinanceiraPage'
+import DrePage from '@/pages/financeiro/DrePage'
+import { FluxoCaixaPage } from '@/pages/financeiro/FluxoCaixaPage'
+import { InadimplenciaPage } from '@/pages/financeiro/InadimplenciaPage'
+import IntegridadeFinanceiroPage from '@/pages/configuracoes/IntegridadeFinanceiroPage'
 
 const App = () => (
   <BrowserRouter>
@@ -424,6 +428,30 @@ const App = () => (
                     element={<Navigate to="/financeiro/receber" replace />}
                   />
                   <Route
+                    path="/financeiro/dre"
+                    element={
+                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
+                        <DrePage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/financeiro/fluxo-caixa"
+                    element={
+                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
+                        <FluxoCaixaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/financeiro/inadimplencia"
+                    element={
+                      <PermissaoGuard modulo="financeiro_receber" acao="ver">
+                        <InadimplenciaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
                     path="/financeiro/bancos"
                     element={
                       <PermissaoGuard modulo="financeiro_bancos" acao="ver">
@@ -697,6 +725,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="configuracoes" acao="ver">
                         <IntegridadeEstoquePage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/configuracoes/integridade-financeiro"
+                    element={
+                      <PermissaoGuard modulo="configuracoes" acao="ver">
+                        <IntegridadeFinanceiroPage />
                       </PermissaoGuard>
                     }
                   />

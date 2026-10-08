@@ -48,8 +48,11 @@ export interface ListarContasFinanceirasParams {
 }
 
 export async function listarContasFinanceiras(
-  params: ListarContasFinanceirasParams = {},
+  params?: ListarContasFinanceirasParams | string,
 ): Promise<ContaFinanceira[]> {
+  const normParams: ListarContasFinanceirasParams =
+    typeof params === 'string' ? { empresa_id: params } : params || {}
+  params = normParams
   const condicoes: string[] = []
 
   if (params.empresa_id) {

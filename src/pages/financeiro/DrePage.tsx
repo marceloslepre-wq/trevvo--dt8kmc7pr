@@ -1,0 +1,839 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  FileText,
+  Calendar,
+  Download,
+  ChevronRight,
+  ChevronDown,
+  Info,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  RefreshCw,
+  Search,
+  ExternalLink,
+  ShieldAlert,
+} from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useToast } from '@/hooks/use-toast'
+import {
+  RegimeDre,
+  RelatorioDreCompleto,
+  LinhaDreEstruturada,
+  ContaAnaliticaDre,
+  LancamentoDreItem,
+  obterDreGerencial,
+  exportarDreCsv,
+} from '@/services/dre'
+
+export const DrePage: React.FC = () => {
+  const { empresaAtiva } = useEmpresaAtiva()
+  const { administrador, perfilNome } = usePermissoes()
+  const { toast } = useToast()
+
+  // Restrição de acesso do requisito: Apenas Administrador e Gerente
+  const podeAcessarDre = useMemo(() => {
+    if (administrador) return true
+    if (!perfilNome) return false
+    const norm = perfilNome.toLowerCase().trim()
+    return norm.includes('gerente') || norm.includes('administrador') || norm.includes('admin')
+  }, [administrador, perfilNome])
+
+  // Período padrão: primeiro e último dia do mês corrente
+  const hoje = new Date()
+  const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10)
+  const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
+    .toISOString()
+    .slice(0, 10)
+
+  const [dataInicio, setDataInicio] = useState(primeiroDiaMes)
+  const [dataFim, setDataFim] = useState(ultimoDiaMes)
+  const [regime, setRegime] = useState<RegimeDre>('Competencia')
+  const [carregando, setCarregando] = useState(false)
+  const [dadosDre, setDadosDre] = useState<RelatorioDreCompleto | null>(null)
+
+  // Controle de drill-down: quais grupos estão expandidos
+  const [gruposExpandidos, setGruposExpandidos] = useState<Record<string, boolean>>({
+    receita_bruta: true,
+    custo_mercadorias: true,
+    despesas_operacionais: true,
+  })
+
+  // Modal de detalhamento dos lançamentos de uma conta analítica específica
+  const [modalContaAberta, setModalContaAberta] = useState<ContaAnaliticaDre | null>(null)
+  const [filtroBuscaLancamento, setFiltroBuscaLancamento] = useState('')
+
+  const carregarRelatorio = useCallback(async () => {
+    if (!empresaAtiva?.id) return
+    setCarregando(true)
+    try {
+      const rel = await obterDreGerencial({
+        empresaId: empresaAtiva.id,
+        dataInicio,
+        dataFim,
+        regime,
+      })
+      setDadosDre(rel)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao carregar relatório da DRE'
+      toast({
+        title: 'Erro ao gerar DRE',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setCarregando(false)
+    }
+  }, [empresaAtiva?.id, dataInicio, dataFim, regime, toast])
+
+  useEffect(() => {
+    if (podeAcessarDre) {
+      carregarRelatorio()
+    }
+  }, [carregarRelatorio, podeAcessarDre])
+
+  const alternarExpansaoGrupo = (id: string) => {
+    setGruposExpandidos((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }))
+  }
+
+  const handleExportarCsv = () => {
+    if (!dadosDre) return
+    try {
+      const csvContent = exportarDreCsv(dadosDre)
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute(
+        'download',
+        `dre_gerencial_${regime.toLowerCase()}_${dataInicio}_a_${dataFim}.csv`,
+      )
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: 'DRE exportada',
+        description: 'O arquivo CSV (pt-BR) foi gerado e baixado com sucesso.',
+      })
+    } catch {
+      toast({
+        title: 'Erro na exportação',
+        description: 'Não foi possível gerar o arquivo CSV.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  // Atalhos de período rápido
+  const setMesAtual = () => {
+    const dIni = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10)
+    const dFim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().slice(0, 10)
+    setDataInicio(dIni)
+    setDataFim(dFim)
+  }
+
+  const setMesAnterior = () => {
+    const dIni = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1).toISOString().slice(0, 10)
+    const dFim = new Date(hoje.getFullYear(), hoje.getMonth(), 0).toISOString().slice(0, 10)
+    setDataInicio(dIni)
+    setDataFim(dFim)
+  }
+
+  const setAnoAtual = () => {
+    const dIni = new Date(hoje.getFullYear(), 0, 1).toISOString().slice(0, 10)
+    const dFim = new Date(hoje.getFullYear(), 11, 31).toISOString().slice(0, 10)
+    setDataInicio(dIni)
+    setDataFim(dFim)
+  }
+
+  // Formatação em moeda pt-BR
+  const formatMoeda = (val: number | null | undefined) => {
+    if (val === null || val === undefined) return '-'
+    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  }
+
+  const formatPercentual = (val: number | null | undefined) => {
+    if (val === null || val === undefined) return '-'
+    const sinal = val > 0 ? '+' : ''
+    return `${sinal}${val.toFixed(1)}%`
+  }
+
+  // Tela de Acesso Negado se não for Administrador ou perfil Gerente
+  if (!podeAcessarDre) {
+    return (
+      <div className="p-8 max-w-4xl mx-auto">
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <ShieldAlert className="h-8 w-8 text-amber-600" />
+              <div>
+                <CardTitle className="text-lg text-amber-900">Acesso Restrito à DRE</CardTitle>
+                <CardDescription className="text-amber-700">
+                  A Demonstração do Resultado do Exercício Gerencial contém informações financeiras
+                  e estratégicas confidenciais.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-amber-800">
+            <p>
+              O acesso a esta tela é restrito aos perfis <strong>Administrador</strong> e{' '}
+              <strong>Gerente</strong>.
+            </p>
+            <p className="text-xs text-amber-600">
+              Seu perfil atual: <span className="font-semibold">{perfilNome || 'Usuário'}</span>.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Cabeçalho da Página */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2.5">
+            <FileText className="h-7 w-7 text-emerald-600" />
+            Demonstração do Resultado (DRE Gerencial)
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Análise estruturada de receitas, custos, despesas operacionais e resultado líquido.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={carregarRelatorio}
+            disabled={carregando}
+            className="text-xs h-9"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${carregando ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleExportarCsv}
+            disabled={!dadosDre || carregando}
+            className="text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            Exportar CSV
+          </Button>
+        </div>
+      </div>
+
+      {/* Observação Fixa Obrigatória do Requisito */}
+      <div className="flex items-start gap-3 p-3.5 bg-blue-50/80 border border-blue-200 rounded-lg text-xs text-blue-900">
+        <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+        <p className="leading-relaxed">
+          <strong>Aviso Gerencial:</strong> O custo das mercadorias aqui é o das compras pagas ou
+          lançadas; o custo das mercadorias vendidas pelo estoque entra quando houver vendas (Etapa
+          5).
+        </p>
+      </div>
+
+      {/* Barra de Filtros: Período, Regime e Atalhos */}
+      <Card className="shadow-xs border-slate-200">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 items-end">
+            {/* Regime */}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">Regime Contábil *</Label>
+              <Select value={regime} onValueChange={(val) => setRegime(val as RegimeDre)}>
+                <SelectTrigger className="text-xs h-9 bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Competencia">Competência (Data de emissão/fato)</SelectItem>
+                  <SelectItem value="Caixa">Caixa (Data do efetivo pagamento)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Data Início */}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">Data Inicial *</Label>
+              <Input
+                type="date"
+                value={dataInicio}
+                onChange={(e) => setDataInicio(e.target.value)}
+                className="text-xs h-9 bg-white"
+              />
+            </div>
+
+            {/* Data Fim */}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">Data Final *</Label>
+              <Input
+                type="date"
+                value={dataFim}
+                onChange={(e) => setDataFim(e.target.value)}
+                className="text-xs h-9 bg-white"
+              />
+            </div>
+
+            {/* Atalhos Rápidos de Período */}
+            <div className="lg:col-span-2 space-y-1">
+              <Label className="text-xs font-semibold text-slate-500">Períodos Pré-definidos</Label>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={setMesAtual}
+                  className="text-xs h-9 flex-1"
+                >
+                  Mês Atual
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={setMesAnterior}
+                  className="text-xs h-9 flex-1"
+                >
+                  Mês Anterior
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={setAnoAtual}
+                  className="text-xs h-9 flex-1"
+                >
+                  Ano {hoje.getFullYear()}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Comparativo de Datas Informadas */}
+          {dadosDre && (
+            <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-2">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                <span>
+                  <strong>Período Analisado:</strong>{' '}
+                  {new Date(dataInicio + 'T00:00:00').toLocaleDateString('pt-BR')} até{' '}
+                  {new Date(dataFim + 'T00:00:00').toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400">vs.</span>
+                <span>
+                  <strong>Período Anterior Equivalente:</strong>{' '}
+                  {new Date(dadosDre.periodoAnterior.dataInicio + 'T00:00:00').toLocaleDateString(
+                    'pt-BR',
+                  )}{' '}
+                  até{' '}
+                  {new Date(dadosDre.periodoAnterior.dataFim + 'T00:00:00').toLocaleDateString(
+                    'pt-BR',
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Cartões de Destaque Rápido */}
+      {dadosDre && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-slate-200">
+            <CardContent className="p-4">
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Receita Líquida
+              </span>
+              <div className="text-xl font-bold font-mono text-slate-900 mt-1">
+                {formatMoeda(dadosDre.totais.receitaLiquida)}
+              </div>
+              <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1">
+                <span>Bruta: {formatMoeda(dadosDre.totais.receitaBruta)}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200">
+            <CardContent className="p-4">
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Custos de Mercadorias
+              </span>
+              <div className="text-xl font-bold font-mono text-slate-900 mt-1">
+                {formatMoeda(dadosDre.totais.custoMercadorias)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">Compras do período ({regime})</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200">
+            <CardContent className="p-4">
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Lucro Bruto
+              </span>
+              <div
+                className={`text-xl font-bold font-mono mt-1 ${
+                  dadosDre.totais.lucroBruto >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                }`}
+              >
+                {formatMoeda(dadosDre.totais.lucroBruto)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                Margem:{' '}
+                {dadosDre.totais.receitaLiquida > 0
+                  ? ((dadosDre.totais.lucroBruto / dadosDre.totais.receitaLiquida) * 100).toFixed(
+                      1,
+                    ) + '%'
+                  : '-'}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card
+            className={`border ${
+              dadosDre.totais.resultadoPeriodo >= 0
+                ? 'border-emerald-200 bg-emerald-50/30'
+                : 'border-rose-200 bg-rose-50/30'
+            }`}
+          >
+            <CardContent className="p-4">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Resultado do Período
+              </span>
+              <div
+                className={`text-2xl font-bold font-mono mt-1 ${
+                  dadosDre.totais.resultadoPeriodo >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                }`}
+              >
+                {formatMoeda(dadosDre.totais.resultadoPeriodo)}
+              </div>
+              <div className="text-[11px] font-semibold mt-1">
+                {dadosDre.totais.resultadoPeriodo >= 0 ? (
+                  <span className="text-emerald-700 flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3" /> Lucro Líquido
+                  </span>
+                ) : (
+                  <span className="text-rose-700 flex items-center gap-1">
+                    <TrendingDown className="h-3 w-3" /> Prejuízo Líquido
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Tabela Principal da DRE com Comparação Lado a Lado e Drill-Down */}
+      <Card className="shadow-xs border-slate-200 overflow-hidden">
+        <CardHeader className="bg-slate-50/70 border-b border-slate-200 py-3.5 px-4 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-sm font-bold text-slate-900">
+              Estrutura Gerencial da DRE
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Clique nas linhas com seta para abrir as contas analíticas e seus lançamentos.
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const todasAbertas = Object.values(gruposExpandidos).every(Boolean)
+                const novoEstado: Record<string, boolean> = {}
+                dadosDre?.linhas.forEach((l) => {
+                  if (!l.ehSubtotal) novoEstado[l.id] = !todasAbertas
+                })
+                setGruposExpandidos(novoEstado)
+              }}
+              className="text-xs h-7 text-slate-600"
+            >
+              Expandir/Recolher todos
+            </Button>
+          </div>
+        </CardHeader>
+
+        <div className="overflow-x-auto">
+          <Table className="text-xs">
+            <TableHeader className="bg-slate-100">
+              <TableRow>
+                <TableHead className="w-[38%] font-bold text-slate-800">
+                  Estrutura de Resultados
+                </TableHead>
+                <TableHead className="text-right font-bold text-slate-800 w-[16%]">
+                  Período Atual (R$)
+                </TableHead>
+                <TableHead className="text-right font-bold text-slate-600 w-[10%]">
+                  % Margem
+                </TableHead>
+                <TableHead className="text-right font-bold text-slate-800 w-[16%]">
+                  Período Anterior (R$)
+                </TableHead>
+                <TableHead className="text-right font-bold text-slate-600 w-[10%]">
+                  % Margem Ant.
+                </TableHead>
+                <TableHead className="text-right font-bold text-slate-800 w-[10%]">
+                  Variação
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {!dadosDre || dadosDre.linhas.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10 text-slate-500">
+                    {carregando
+                      ? 'Calculando demonstração gerencial...'
+                      : 'Nenhum dado encontrado para o período.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                dadosDre.linhas.map((linha: LinhaDreEstruturada) => {
+                  const expandido = Boolean(gruposExpandidos[linha.id])
+                  const temContas = linha.contas && linha.contas.length > 0
+
+                  return (
+                    <React.Fragment key={linha.id}>
+                      {/* Linha de Grupo ou Subtotal */}
+                      <TableRow
+                        onClick={() => temContas && alternarExpansaoGrupo(linha.id)}
+                        className={`transition-colors ${
+                          linha.ehSubtotal
+                            ? 'bg-slate-100/90 font-bold border-y-2 border-slate-300 hover:bg-slate-200/60'
+                            : temContas
+                              ? 'hover:bg-slate-50/90 cursor-pointer font-semibold'
+                              : 'hover:bg-slate-50/50 font-semibold'
+                        }`}
+                      >
+                        <TableCell className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            {temContas ? (
+                              <button
+                                type="button"
+                                className="p-0.5 rounded-sm hover:bg-slate-200 text-slate-500"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  alternarExpansaoGrupo(linha.id)
+                                }}
+                              >
+                                {expandido ? (
+                                  <ChevronDown className="h-4 w-4 text-slate-700" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 text-slate-700" />
+                                )}
+                              </button>
+                            ) : (
+                              <div className="w-4 h-4 ml-1 flex items-center justify-center">
+                                <span className="font-mono text-slate-400 font-bold">
+                                  {linha.sinal}
+                                </span>
+                              </div>
+                            )}
+
+                            <span
+                              className={`${
+                                linha.id === 'resultado_periodo'
+                                  ? 'text-sm font-black text-slate-900'
+                                  : linha.ehSubtotal
+                                    ? 'text-xs font-bold text-slate-900'
+                                    : 'text-xs text-slate-800'
+                              }`}
+                            >
+                              {linha.titulo}
+                            </span>
+
+                            {temContas && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-normal py-0 px-1 text-slate-500 bg-white"
+                              >
+                                {linha.contas.length}{' '}
+                                {linha.contas.length === 1 ? 'conta' : 'contas'}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+
+                        {/* Valor Atual */}
+                        <TableCell
+                          className={`text-right font-mono py-2.5 px-3 ${
+                            linha.id === 'resultado_periodo'
+                              ? linha.valorPeriodoAtual >= 0
+                                ? 'text-emerald-700 text-sm font-bold'
+                                : 'text-rose-700 text-sm font-bold'
+                              : linha.ehSubtotal
+                                ? 'font-bold text-slate-900'
+                                : 'text-slate-800'
+                          }`}
+                        >
+                          {formatMoeda(linha.valorPeriodoAtual)}
+                        </TableCell>
+
+                        {/* Margem Atual */}
+                        <TableCell className="text-right font-mono py-2.5 px-3 text-slate-600">
+                          {linha.percentualReceitaLiquidaAtual !== null
+                            ? `${linha.percentualReceitaLiquidaAtual.toFixed(1)}%`
+                            : '-'}
+                        </TableCell>
+
+                        {/* Valor Anterior */}
+                        <TableCell
+                          className={`text-right font-mono py-2.5 px-3 text-slate-600 ${
+                            linha.ehSubtotal ? 'font-semibold' : ''
+                          }`}
+                        >
+                          {formatMoeda(linha.valorPeriodoAnterior)}
+                        </TableCell>
+
+                        {/* Margem Anterior */}
+                        <TableCell className="text-right font-mono py-2.5 px-3 text-slate-500">
+                          {linha.percentualReceitaLiquidaAnterior !== null
+                            ? `${linha.percentualReceitaLiquidaAnterior.toFixed(1)}%`
+                            : '-'}
+                        </TableCell>
+
+                        {/* Variação Percentual */}
+                        <TableCell className="text-right font-mono py-2.5 px-3">
+                          {linha.variacaoPercentual === null ? (
+                            <span className="text-slate-400">-</span>
+                          ) : linha.variacaoPercentual > 0 ? (
+                            <span className="text-emerald-600 font-semibold flex items-center justify-end gap-0.5">
+                              <TrendingUp className="h-3 w-3" />
+                              {formatPercentual(linha.variacaoPercentual)}
+                            </span>
+                          ) : linha.variacaoPercentual < 0 ? (
+                            <span className="text-rose-600 font-semibold flex items-center justify-end gap-0.5">
+                              <TrendingDown className="h-3 w-3" />
+                              {formatPercentual(linha.variacaoPercentual)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 flex items-center justify-end gap-0.5">
+                              <Minus className="h-3 w-3" /> 0.0%
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Contas Analíticas filhas (Drill-Down 1º nível) */}
+                      {expandido &&
+                        temContas &&
+                        linha.contas.map((conta: ContaAnaliticaDre) => (
+                          <TableRow
+                            key={conta.id}
+                            className="bg-slate-50/40 hover:bg-blue-50/40 transition-colors cursor-pointer"
+                            onClick={() => {
+                              setModalContaAberta(conta)
+                              setFiltroBuscaLancamento('')
+                            }}
+                          >
+                            <TableCell className="py-1.5 pl-9 pr-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-[11px] text-slate-500">
+                                    {conta.codigo}
+                                  </span>
+                                  <span className="text-slate-700 hover:text-blue-700 font-medium">
+                                    {conta.descricao}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-blue-600 underline flex items-center gap-1 opacity-80 hover:opacity-100">
+                                  {conta.lancamentos.length} lanc.
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                </span>
+                              </div>
+                            </TableCell>
+
+                            <TableCell className="text-right font-mono py-1.5 px-3 text-slate-700">
+                              {formatMoeda(conta.valorPeriodoAtual)}
+                            </TableCell>
+
+                            <TableCell className="text-right font-mono py-1.5 px-3 text-slate-400">
+                              -
+                            </TableCell>
+
+                            <TableCell className="text-right font-mono py-1.5 px-3 text-slate-500">
+                              {formatMoeda(conta.valorPeriodoAnterior)}
+                            </TableCell>
+
+                            <TableCell className="text-right font-mono py-1.5 px-3 text-slate-400">
+                              -
+                            </TableCell>
+
+                            <TableCell className="text-right font-mono py-1.5 px-3 text-[11px]">
+                              {conta.variacaoPercentual === null ? (
+                                <span className="text-slate-400">-</span>
+                              ) : conta.variacaoPercentual > 0 ? (
+                                <span className="text-emerald-600">
+                                  {formatPercentual(conta.variacaoPercentual)}
+                                </span>
+                              ) : conta.variacaoPercentual < 0 ? (
+                                <span className="text-rose-600">
+                                  {formatPercentual(conta.variacaoPercentual)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500">0.0%</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </React.Fragment>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+
+      {/* Modal de Drill-Down do 2º Nível: Lançamentos da Conta Analítica */}
+      <Dialog
+        open={Boolean(modalContaAberta)}
+        onOpenChange={(aberto) => !aberto && setModalContaAberta(null)}
+      >
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-5">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <FileText className="h-4 w-4 text-emerald-600" />
+              Lançamentos Analíticos da Conta
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-600">
+              {modalContaAberta ? (
+                <>
+                  <strong className="text-slate-800">
+                    {modalContaAberta.codigo} - {modalContaAberta.descricao}
+                  </strong>{' '}
+                  • Total no período ({regime}):{' '}
+                  <strong className="text-emerald-700">
+                    {formatMoeda(modalContaAberta.valorPeriodoAtual)}
+                  </strong>
+                </>
+              ) : (
+                'Detalhe dos registros'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Busca interna nos lançamentos */}
+          <div className="py-2 flex items-center gap-2">
+            <Search className="h-4 w-4 text-slate-400" />
+            <Input
+              placeholder="Filtrar por descrição, documento ou contraparte..."
+              value={filtroBuscaLancamento}
+              onChange={(e) => setFiltroBuscaLancamento(e.target.value)}
+              className="h-8 text-xs bg-slate-50"
+            />
+          </div>
+
+          <div className="flex-1 overflow-y-auto border rounded-md">
+            <Table className="text-xs">
+              <TableHeader className="bg-slate-100 sticky top-0">
+                <TableRow>
+                  <TableHead className="w-24">Data</TableHead>
+                  <TableHead className="w-24">Origem</TableHead>
+                  <TableHead>Descrição / Histórico</TableHead>
+                  <TableHead className="w-32">Documento</TableHead>
+                  <TableHead className="text-right w-28">Valor (R$)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {modalContaAberta?.lancamentos
+                  .filter((item: LancamentoDreItem) => {
+                    if (!filtroBuscaLancamento.trim()) return true
+                    const termo = filtroBuscaLancamento.toLowerCase()
+                    return (
+                      item.descricao.toLowerCase().includes(termo) ||
+                      (item.documento && item.documento.toLowerCase().includes(termo)) ||
+                      item.contraparte.toLowerCase().includes(termo)
+                    )
+                  })
+                  .map((l: LancamentoDreItem) => (
+                    <TableRow key={l.id} className="hover:bg-slate-50">
+                      <TableCell className="font-mono text-slate-600">
+                        {new Date(l.data + 'T00:00:00').toLocaleDateString('pt-BR')}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] py-0 px-1 font-normal bg-slate-50 text-slate-600"
+                        >
+                          {l.origem === 'pagar_baixa'
+                            ? 'Baixa Pagar'
+                            : l.origem === 'receber_baixa'
+                              ? 'Baixa Receber'
+                              : l.origem === 'titulo_pagar'
+                                ? 'Título Pagar'
+                                : l.origem === 'titulo_receber'
+                                  ? 'Título Receber'
+                                  : 'Avulso Banco'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-slate-800">
+                        <div className="font-medium">{l.descricao}</div>
+                        {l.contraparte && (
+                          <div className="text-[11px] text-slate-400">{l.contraparte}</div>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-slate-600">
+                        {l.documento || '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-semibold text-slate-900">
+                        {formatMoeda(l.valor)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+
+                {modalContaAberta?.lancamentos.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-6 text-slate-400">
+                      Nenhum lançamento no período para esta conta.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+export default DrePage

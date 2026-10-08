@@ -49,6 +49,15 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
         throw new Error('Fornecedor não informado ou não cadastrado.')
       }
 
+      let fornecedorNome = 'Fornecedor'
+      try {
+        const fornRec = txApp.findRecordById('fornecedores', fornecedorId)
+        if (fornRec) {
+          fornecedorNome =
+            fornRec.getString('nome_fantasia') || fornRec.getString('razao_social') || 'Fornecedor'
+        }
+      } catch (_) {}
+
       const dataEmissao = nota.getString('data_emissao') || ''
       const dataEntrada = nota.getString('data_entrada') || ''
       if (dataEmissao && dataEntrada && dataEntrada < dataEmissao) {

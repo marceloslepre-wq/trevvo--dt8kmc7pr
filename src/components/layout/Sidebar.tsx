@@ -32,6 +32,7 @@ import {
   FileText,
   ClipboardCheck,
   BookOpen,
+  AlertTriangle,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -279,6 +280,24 @@ const navItems: NavGroupItem[] = [
         modulo: 'financeiro_receber',
       },
       {
+        title: 'Resultado (DRE)',
+        path: '/financeiro/dre',
+        icon: FileText,
+        modulo: 'financeiro_bancos',
+      },
+      {
+        title: 'Fluxo de caixa',
+        path: '/financeiro/fluxo-caixa',
+        icon: TrendingUp,
+        modulo: 'financeiro_bancos',
+      },
+      {
+        title: 'Inadimplência',
+        path: '/financeiro/inadimplencia',
+        icon: AlertTriangle,
+        modulo: 'financeiro_receber',
+      },
+      {
         title: 'Bancos e caixas',
         path: '/financeiro/bancos',
         icon: Building,
@@ -378,6 +397,12 @@ const navItems: NavGroupItem[] = [
       {
         title: 'Integridade do Estoque',
         path: '/configuracoes/integridade-estoque',
+        icon: ShieldCheck,
+        adminOnly: true,
+      },
+      {
+        title: 'Integridade Financeira',
+        path: '/configuracoes/integridade-financeiro',
         icon: ShieldCheck,
         adminOnly: true,
       },

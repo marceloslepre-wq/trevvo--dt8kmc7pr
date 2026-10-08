@@ -38,8 +38,10 @@ export interface ListarFormasPagamentoParams {
 }
 
 export async function listarFormasPagamento(
-  params: ListarFormasPagamentoParams = {},
+  params?: ListarFormasPagamentoParams | string,
 ): Promise<FormaPagamento[]> {
+  const normParams: ListarFormasPagamentoParams = typeof params === 'string' ? {} : params || {}
+  params = normParams
   const condicoes: string[] = []
 
   if (params.situacao === 'ativos' || !params.situacao) {

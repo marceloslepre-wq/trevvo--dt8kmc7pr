@@ -136,10 +136,12 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
         })
 
         setLinhas(novasLinhas)
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const msg =
+          err instanceof Error ? err.message : 'Falha ao inicializar modal de recebimento.'
         toast({
           title: 'Erro ao carregar dados financeiros',
-          description: err.message || 'Falha ao inicializar modal de recebimento.',
+          description: msg,
           variant: 'destructive',
         })
       }
@@ -313,10 +315,11 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
       })
 
       onSucesso()
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao comunicar com o servidor.'
       toast({
         title: 'Erro ao processar recebimento',
-        description: err.message || 'Falha ao comunicar com o servidor.',
+        description: msg,
         variant: 'destructive',
       })
     } finally {

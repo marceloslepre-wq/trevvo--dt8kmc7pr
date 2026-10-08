@@ -518,6 +518,64 @@ export function somarMesesPreservandoDia(dataIso: string, meses: number): string
 /**
  * Criação de um ou mais títulos a pagar
  */
+export async function salvarContaPagar(
+  dados: Partial<ContaPagar> & { nota_entrada_parcela_id?: string },
+): Promise<ContaPagar> {
+  const user = pb.authStore.record
+  if (dados.id) {
+    const atualizado = await pb.collection('contas_pagar').update<ContaPagar>(dados.id, {
+      ...dados,
+      updated_by: user?.id || null,
+    })
+    return atualizado
+  }
+
+  const payload: Record<string, unknown> = {
+    empresa_id: dados.empresa_id,
+    fornecedor_id: dados.fornecedor_id,
+    numero_documento: dados.numero_documento,
+    parcela: dados.parcela || '1/1',
+    descricao: dados.descricao,
+    data_emissao: dados.data_emissao,
+    data_competencia: dados.data_competencia || dados.data_emissao,
+    data_vencimento: dados.data_vencimento,
+    plano_conta_id: dados.plano_conta_id,
+    centro_custo_id: dados.centro_custo_id || null,
+    forma_pagamento_prevista_id: dados.forma_pagamento_prevista_id || null,
+    codigo_barras: dados.codigo_barras || '',
+    valor_original: dados.valor_original,
+    valor_pago: dados.valor_pago || 0,
+    saldo: dados.saldo !== undefined ? dados.saldo : dados.valor_original,
+    status: dados.status || 'Em aberto',
+    origem: dados.origem || 'Manual',
+    origem_id: dados.origem_id || null,
+    nota_entrada_parcela_id: dados.nota_entrada_parcela_id || null,
+    recorrencia_id: dados.recorrencia_id || null,
+    recorrencia_numero: dados.recorrencia_numero || null,
+    recorrencia_total: dados.recorrencia_total || null,
+    observacao: dados.observacao || '',
+    ativo: dados.ativo !== undefined ? dados.ativo : true,
+    created_by: user?.id || null,
+    updated_by: user?.id || null,
+  }
+
+  const criado = await pb.collection('contas_pagar').create<ContaPagar>(payload)
+  await registrarAuditoria({
+    tabela: 'contas_pagar',
+    registro_id: criado.id,
+    acao: 'inclusao',
+    valores_depois: {
+      numero_documento: criado.numero_documento,
+      parcela: criado.parcela,
+      descricao: criado.descricao,
+      valor_original: criado.valor_original,
+      data_vencimento: criado.data_vencimento,
+      origem: criado.origem,
+    },
+  })
+  return criado
+}
+
 export async function criarTituloPagar(input: SalvarTituloPagarInput): Promise<ContaPagar[]> {
   const user = pb.authStore.record
   const meses = Math.max(1, input.repetir_meses || 1)

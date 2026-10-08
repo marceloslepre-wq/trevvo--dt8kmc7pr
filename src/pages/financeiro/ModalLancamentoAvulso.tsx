@@ -170,10 +170,11 @@ export const ModalLancamentoAvulso: React.FC<ModalLancamentoAvulsoProps> = ({
 
       onOpenChange(false)
       onSucesso?.(res.movimento.id)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao registrar lançamento avulso.'
       toast({
         title: 'Erro no lançamento',
-        description: err?.message || 'Falha ao registrar lançamento avulso.',
+        description: msg,
         variant: 'destructive',
       })
     } finally {
@@ -282,7 +283,7 @@ export const ModalLancamentoAvulso: React.FC<ModalLancamentoAvulsoProps> = ({
                 <SelectContent className="max-h-56">
                   {planosContas.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
-                      {p.codigo} - {p.nome}
+                      {p.codigo} - {p.descricao}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -304,7 +305,7 @@ export const ModalLancamentoAvulso: React.FC<ModalLancamentoAvulsoProps> = ({
                   <SelectItem value="nenhum">Nenhum</SelectItem>
                   {centrosCusto.map((cc) => (
                     <SelectItem key={cc.id} value={cc.id}>
-                      {cc.codigo} - {cc.nome}
+                      {cc.codigo} - {cc.descricao}
                     </SelectItem>
                   ))}
                 </SelectContent>
