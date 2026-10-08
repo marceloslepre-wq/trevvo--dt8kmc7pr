@@ -235,6 +235,34 @@ export const ConfiguracaoFinanceiraPage: React.FC = () => {
               Número de dias pós-vencimento sem incidência de multa nem juros.
             </p>
           </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="tolerancia_bloqueio" className="text-xs font-medium text-slate-700">
+              Tolerância para Bloqueio de Crédito (Dias)
+            </Label>
+            <Input
+              id="tolerancia_bloqueio"
+              type="number"
+              step="1"
+              min="0"
+              value={config?.dias_tolerancia_bloqueio ?? 5}
+              onChange={(e) =>
+                setConfig((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        dias_tolerancia_bloqueio: Math.max(0, parseInt(e.target.value, 10) || 0),
+                      }
+                    : null,
+                )
+              }
+              placeholder="Ex: 5"
+              className="text-xs h-9 font-mono"
+            />
+            <p className="text-[11px] text-slate-400">
+              Tolerância padrão em dias de atraso antes do cliente ficar Bloqueado (padrão: 5 dias).
+            </p>
+          </div>
         </div>
       </div>
 

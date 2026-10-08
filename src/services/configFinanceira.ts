@@ -21,6 +21,7 @@ export interface ConfigFinanceiraEmpresa {
   plano_descontos_concedidos_id?: string
   plano_transferencias_id?: string
   centro_custo_padrao_id?: string
+  dias_tolerancia_bloqueio?: number
   ativo: boolean
   created_by?: string
   updated_by?: string
@@ -123,6 +124,7 @@ export async function obterOuCriarConfigFinanceiraEmpresa(
     multa_atraso_percentual: 2.0,
     juros_mora_mensal_percentual: 1.0,
     dias_carencia: 0,
+    dias_tolerancia_bloqueio: 5,
     centro_custo_padrao_id: centroCustoPadraoId,
     ativo: true,
     created_by: pb.authStore.record?.id || null,
@@ -182,6 +184,12 @@ export async function salvarConfigFinanceiraEmpresa(
       dados.dias_carencia !== null &&
       !isNaN(Number(dados.dias_carencia))
         ? Math.max(0, Math.floor(Number(dados.dias_carencia)))
+        : 0,
+    dias_tolerancia_bloqueio:
+      dados.dias_tolerancia_bloqueio !== undefined &&
+      dados.dias_tolerancia_bloqueio !== null &&
+      !isNaN(Number(dados.dias_tolerancia_bloqueio))
+        ? Math.max(0, Math.floor(Number(dados.dias_tolerancia_bloqueio)))
         : 0,
     plano_compras_revenda_id: dados.plano_compras_revenda_id || null,
     plano_industrializacao_id: dados.plano_industrializacao_id || null,

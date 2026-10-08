@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T17:21:10.375Z",
+  "generatedAt": "2026-10-08T17:39:05.962Z",
   "collections": [
     {
       "name": "users",
@@ -6769,6 +6769,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "dias_tolerancia_bloqueio",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -7115,7 +7121,7 @@
         {
           "name": "conta_pagar_id",
           "type": "relation",
-          "required": true,
+          "required": false,
           "system": false,
           "collectionRef": "contas_pagar"
         },
@@ -7246,6 +7252,20 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "conta_receber_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contas_receber"
+        },
+        {
+          "name": "tipo_operacao",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Pagar", "Receber"]
         }
       ],
       "indexes": [
@@ -7254,7 +7274,8 @@
         "CREATE INDEX idx_pag_baixas_lote ON pagamentos_baixas (lote_baixa_id)",
         "CREATE INDEX idx_pag_baixas_data ON pagamentos_baixas (data_pagamento)",
         "CREATE INDEX idx_pag_baixas_estornado ON pagamentos_baixas (estornado)",
-        "CREATE INDEX idx_pag_baixas_ativo ON pagamentos_baixas (ativo)"
+        "CREATE INDEX idx_pag_baixas_ativo ON pagamentos_baixas (ativo)",
+        "CREATE INDEX idx_pag_baixas_receber ON pagamentos_baixas (conta_receber_id)"
       ]
     },
     {
@@ -7408,6 +7429,226 @@
         "CREATE INDEX idx_mov_fin_origem ON movimentacoes_financeiras (origem)",
         "CREATE INDEX idx_mov_fin_doc ON movimentacoes_financeiras (documento_tipo, documento_id)",
         "CREATE INDEX idx_mov_fin_ativo ON movimentacoes_financeiras (ativo)"
+      ]
+    },
+    {
+      "name": "contas_receber",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "cliente_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "clientes"
+        },
+        {
+          "name": "numero_documento",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "parcela",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_emissao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_competencia",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_vencimento",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "plano_conta_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "centro_custo_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "centros_custo"
+        },
+        {
+          "name": "forma_pagamento_prevista_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "formas_pagamento"
+        },
+        {
+          "name": "codigo_barras",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_original",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor_recebido",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "saldo",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Em aberto", "Recebido parcial", "Recebido", "Cancelado"]
+        },
+        {
+          "name": "origem",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Manual", "Venda", "Recorrência", "Outro"]
+        },
+        {
+          "name": "origem_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "venda_parcela_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recorrencia_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recorrencia_numero",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recorrencia_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_recebimento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anexo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_cancelamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_contas_receber_empresa ON contas_receber (empresa_id)",
+        "CREATE INDEX idx_contas_receber_cliente ON contas_receber (cliente_id)",
+        "CREATE INDEX idx_contas_receber_venc ON contas_receber (data_vencimento)",
+        "CREATE INDEX idx_contas_receber_status ON contas_receber (status)",
+        "CREATE INDEX idx_contas_receber_origem ON contas_receber (origem, origem_id)",
+        "CREATE INDEX idx_contas_receber_recorrencia ON contas_receber (recorrencia_id)",
+        "CREATE INDEX idx_contas_receber_doc ON contas_receber (numero_documento)",
+        "CREATE INDEX idx_contas_receber_ativo ON contas_receber (ativo)"
       ]
     }
   ]

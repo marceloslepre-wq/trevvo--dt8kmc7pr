@@ -145,12 +145,12 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return Boolean(authLoading || carregandoInterno)
   }, [administrador, perfil?.administrador, usuarioERP, authLoading, carregandoInterno])
 
-  // Timeout de segurança absoluto: após 300ms nenhuma tela pode continuar bloqueada
+  // Timeout de segurança absoluto: após 250ms nenhuma tela pode continuar bloqueada
   useEffect(() => {
     const timer = setTimeout(() => {
       setCarregandoInterno(false)
       jaResolveuUmaVezRef.current = true
-    }, 300)
+    }, 250)
     return () => clearTimeout(timer)
   }, [])
   const pode = useCallback(

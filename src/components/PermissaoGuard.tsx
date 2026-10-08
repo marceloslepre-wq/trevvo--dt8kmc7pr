@@ -74,8 +74,9 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     return <>{children}</>
   }
 
-  // Se a sessão já foi resolvida nesta aba ou o timeout de 250ms expirou:
-  // Se ainda estiver em fase de carregamento interno (ex. revalidação SWR), libera para não travar tela operacional.
+  // FAIL-SAFE DE RAIZ:
+  // 1) Se a sessão já foi resolvida nesta janela OU o timeout de 250ms expirou:
+  // Se ainda estiver carregando, libera a tela imediatamente (nunca bloqueia tela operacional).
   if (sessaoPermissoesResolvida || loadingExpirado) {
     if (carregando) {
       return <>{children}</>
@@ -89,42 +90,39 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     return <AcessoNegado />
   }
 
-  // Enquanto as permissões ou a sessão estão carregando E não temos usuário ERP nem cache
-  // Ocorre no máximo por 250ms no primeiro carregamento a frio da aplicação
+  // 2) Se o usuário estiver autenticado no PocketBase (token válido) ou se houver qualquer cache,
+  // ou se o módulo for novo / não configurado, JAMAIS exibe spinner que possa travar.
+  // Spinner de carregamento só ocorre estritamente nos primeiros 250ms se não houver NENHUM dado de autenticação pronto.
+  const temAuthAtiva = Boolean(pb.authStore.isValid && pb.authStore.record)
   const temCache = Boolean(
     obterUsuarioCacheLocal(pb.authStore.record?.id || pb.authStore.record?.email || undefined),
   )
 
-  if (carregando && !usuarioERP && !temCache) {
-    return (
-      <div
-        data-testid="permissao-guard-loading"
-        className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-slate-500 text-sm"
-      >
-        <div className="h-7 w-7 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="font-medium text-slate-700">Carregando permissões...</p>
-        <p className="text-xs text-slate-400 mt-1">
-          Aguarde um instante enquanto validamos seu acesso.
-        </p>
-      </div>
-    )
+  if (temAuthAtiva || temCache || usuarioERP) {
+    // Temos credencial ativa. Se pode, libera. Se ainda carregando perfil/permissões, libera otimista para não travar a rota.
+    if (pode(modulo, acao) || carregando) {
+      return <>{children}</>
+    }
+    // Se já terminou de carregar e explicitamente não tem permissão:
+    if (fallback !== undefined) {
+      return <>{fallback}</>
+    }
+    return <AcessoNegado />
   }
 
-  // Se tiver cache ou usuário mas não for admin e ainda estiver revalidando, libera o acesso se pode(modulo, acao)
-  if (pode(modulo, acao)) {
-    return <>{children}</>
-  }
-
-  // Se ainda está carregando mas há usuário/cache e não deu timeout, libera provisoriamente
-  if (carregando) {
-    return <>{children}</>
-  }
-
-  // Não possui a permissão requerida confirmada
-  if (fallback !== undefined) {
-    return <>{fallback}</>
-  }
-  return <AcessoNegado />
+  // 3) Carregamento a frio absoluto sem nenhuma credencial inicial no cache (máximo 250ms até o timer disparar)
+  return (
+    <div
+      data-testid="permissao-guard-loading"
+      className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-slate-500 text-sm"
+    >
+      <div className="h-7 w-7 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
+      <p className="font-medium text-slate-700">Carregando permissões...</p>
+      <p className="text-xs text-slate-400 mt-1">
+        Aguarde um instante enquanto validamos seu acesso.
+      </p>
+    </div>
+  )
 }
 
 export default PermissaoGuard
