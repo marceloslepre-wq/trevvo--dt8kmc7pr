@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T23:30:02.927Z",
+  "generatedAt": "2026-10-08T10:56:49.438Z",
   "collections": [
     {
       "name": "users",
@@ -5336,6 +5336,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "motivo_cancelamento",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

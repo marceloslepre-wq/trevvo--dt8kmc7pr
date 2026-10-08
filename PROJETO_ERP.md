@@ -485,6 +485,7 @@ Tabela mestre de notas fiscais de entrada (cabeçalho da nota, equivalente aos d
 - status (select: "Em conferência", "Lançada", "Cancelada", padrão "Em conferência")
 - data_lancamento (texto YYYY-MM-DD da efetivação)
 - usuario_lancamento_id (relation -> usuarios)
+- motivo_cancelamento (texto com justificativa obrigatória do cancelamento)
 - ativo (boolean, padrão true)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)

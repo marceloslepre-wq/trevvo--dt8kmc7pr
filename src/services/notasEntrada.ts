@@ -64,6 +64,7 @@ export interface NotaEntrada {
   status: StatusNotaEntrada
   data_lancamento?: string
   usuario_lancamento_id?: string
+  motivo_cancelamento?: string
 
   ativo: boolean
   created_by?: string
@@ -318,14 +319,29 @@ export async function buscarNotaPorChave(
   const chaveLimpa = chave.replace(/\D/g, '')
   if (!chaveLimpa || chaveLimpa.length !== 44) return null
   try {
+    // Regra: XML pode ser importado de novo se notas anteriores com mesma chave estiverem 'Cancelada'
     return await pb
       .collection('notas_entrada')
       .getFirstListItem<NotaEntrada>(
-        `empresa_id = '${empresaId}' && chave_acesso = '${chaveLimpa}' && ativo = true`,
+        `empresa_id = '${empresaId}' && chave_acesso = '${chaveLimpa}' && status != 'Cancelada' && ativo = true`,
       )
   } catch {
     return null
   }
+}
+
+/**
+ * Vincula ou desvincula um pedido de compra à nota de entrada
+ */
+export async function vincularPedidoNotaEntrada(
+  notaId: string,
+  pedidoCompraId: string | null,
+): Promise<NotaEntrada> {
+  const nota = await pb.collection('notas_entrada').update<NotaEntrada>(notaId, {
+    pedido_compra_id: pedidoCompraId,
+    updated_by: pb.authStore.record?.id || null,
+  })
+  return nota
 }
 
 // ==========================================
@@ -740,26 +756,59 @@ export async function vincularProdutoAoItemNota(
   })
 }
 
-export async function cancelarNotaEntrada(id: string, motivo: string): Promise<NotaEntrada> {
-  const user = pb.authStore.record
-  const antes = await pb.collection('notas_entrada').getOne<NotaEntrada>(id)
-  const atualizado = await pb.collection('notas_entrada').update<NotaEntrada>(id, {
-    status: 'Cancelada',
-    observacao: antes.observacao
-      ? `${antes.observacao}\nCancelamento: ${motivo}`
-      : `Cancelamento: ${motivo}`,
-    updated_by: user?.id || null,
-  })
+export interface ItemRevisaoPreco {
+  produto_id: string
+  codigo: number
+  descricao: string
+  custo_novo: number
+  preco_atual: number
+  margem_atual: number
+  margem_padrao: number
+  preco_sugerido: number
+}
 
-  await registrarAuditoria({
-    tabela: 'notas_entrada',
-    registro_id: id,
-    acao: 'alteracao',
-    valores_antes: antes as unknown as Record<string, unknown>,
-    valores_depois: atualizado as unknown as Record<string, unknown>,
-  })
+export interface ResultadoLancamentoNota {
+  sucesso: boolean
+  message: string
+  produtos_revisao: ItemRevisaoPreco[]
+}
 
-  return atualizado
+/**
+ * Lança nota de entrada via hook transacional no backend
+ */
+export async function lancarNotaEntrada(params: {
+  notaId: string
+  atualizarCustoProdutos?: boolean
+  justificativaDivergencia?: string
+  usuarioErpId?: string
+}): Promise<ResultadoLancamentoNota> {
+  const res = await pb.send<ResultadoLancamentoNota>('/notas-entrada/lancar', {
+    method: 'POST',
+    body: {
+      nota_id: params.notaId,
+      atualizar_custo_produtos: params.atualizarCustoProdutos !== false,
+      justificativa_divergencia: params.justificativaDivergencia || '',
+      usuario_erp_id: params.usuarioErpId || '',
+    },
+  })
+  return res
+}
+
+/**
+ * Cancela lançamento da nota de entrada via hook transacional no backend
+ */
+export async function cancelarNotaEntrada(
+  id: string,
+  motivo: string,
+): Promise<{ sucesso: boolean; message: string }> {
+  const res = await pb.send<{ sucesso: boolean; message: string }>('/notas-entrada/cancelar', {
+    method: 'POST',
+    body: {
+      nota_id: id,
+      motivo,
+    },
+  })
+  return res
 }
 
 // ==========================================

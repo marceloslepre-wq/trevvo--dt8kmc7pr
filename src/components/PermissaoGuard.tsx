@@ -64,8 +64,14 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
     return <>{children}</>
   }
 
-  // Enquanto as permissões ou a sessão estão carregando para usuário
-  if (carregando && !loadingExpirado) {
+  // Se o loading expirou sem confirmação contrária ou se já há cache, libera o render imediatamente
+  // para NUNCA travar o usuário indefinidamente em nenhuma rota
+  if (loadingExpirado) {
+    return <>{children}</>
+  }
+
+  // Enquanto as permissões ou a sessão estão carregando pela PRIMEIRA vez E não há nenhum usuário resolvido
+  if (carregando && !usuarioERP) {
     return (
       <div
         data-testid="permissao-guard-loading"
@@ -78,11 +84,6 @@ export const PermissaoGuard: React.FC<PermissaoGuardProps> = ({
         </p>
       </div>
     )
-  }
-
-  // Se o loading expirou sem confirmação contrária, libera o render para nunca prender o usuário
-  if (loadingExpirado) {
-    return <>{children}</>
   }
 
   // Não possui a permissão requerida

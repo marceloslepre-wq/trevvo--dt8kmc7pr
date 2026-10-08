@@ -43,7 +43,10 @@ import {
   NotaEntradaItem,
   NotaEntradaParcela,
   obterNotaEntradaPorId,
+  lancarNotaEntrada,
   cancelarNotaEntrada,
+  vincularPedidoNotaEntrada,
+  ItemRevisaoPreco,
   calcularCreditosItem,
   calcularCustoAquisicaoItem,
   sugerirCstPisCofinsEntrada,
@@ -51,7 +54,18 @@ import {
   executarVinculoAutomaticoNota,
   vincularProdutoAoItemNota,
 } from '@/services/notasEntrada'
-import { salvarProdutoFornecedor, obterProdutoPorId, Produto } from '@/services/produtos'
+import {
+  listarPedidosCompra,
+  obterPedidoCompraPorId,
+  PedidoCompraCompleto,
+  PedidoCompra,
+} from '@/services/pedidosCompra'
+import {
+  salvarProdutoFornecedor,
+  obterProdutoPorId,
+  salvarProduto,
+  Produto,
+} from '@/services/produtos'
 import { TIPOS_ENTRADA, TipoEntradaNota, converterCfopEntrada } from '@/services/cfopConversao'
 import { sugerirTributacao, SugestaoFiscalResultado } from '@/services/motorFiscal'
 import { aliquotaInterestadual } from '@/services/icmsMatriz'
@@ -116,6 +130,25 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
   const [cancelarModalAberto, setCancelarModalAberto] = useState(false)
   const [motivoCancelamento, setMotivoCancelamento] = useState('')
   const [cancelando, setCancelando] = useState(false)
+
+  // Vínculo com Pedido de Compra
+  const [pedidosFornecedor, setPedidosFornecedor] = useState<PedidoCompra[]>([])
+  const [pedidoSelecionado, setPedidoSelecionado] = useState<PedidoCompraCompleto | null>(null)
+  const [carregandoPedidos, setCarregandoPedidos] = useState(false)
+
+  // Lançamento da Nota
+  const [modalLancarAberto, setModalLancarAberto] = useState(false)
+  const [atualizarCustoProdutos, setAtualizarCustoProdutos] = useState(true)
+  const [justificativaDivergencia, setJustificativaDivergencia] = useState('')
+  const [precisaJustificativaDivergencia, setPrecisaJustificativaDivergencia] = useState(false)
+  const [valorDivergenciaItens, setValorDivergenciaItens] = useState(0)
+  const [lancando, setLancando] = useState(false)
+
+  // Modal de Revisão de Preços (pós-lançamento)
+  const [modalRevisaoPrecosAberto, setModalRevisaoPrecosAberto] = useState(false)
+  const [itensRevisao, setItensRevisao] = useState<ItemRevisaoPreco[]>([])
+  const [precosEditados, setPrecosEditados] = useState<Record<string, number>>({})
+  const [salvandoPrecos, setSalvandoPrecos] = useState(false)
 
   // Etapa 0.0.30: Cadastro Automático e Motor Fiscal
   const [modalLoteNaoCadastradosAberto, setModalLoteNaoCadastradosAberto] = useState(false)
@@ -799,6 +832,283 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
     toast({ title: 'Conteúdo do XML copiado!' })
   }
 
+  // Carregar pedidos do fornecedor para o seletor de vínculo
+  useEffect(() => {
+    if (!nota?.fornecedor_id || !empresaAtiva?.id) return
+    let ativo = true
+
+    const carregarPedidos = async () => {
+      setCarregandoPedidos(true)
+      try {
+        const res = await listarPedidosCompra({
+          empresaId: empresaAtiva.id,
+          fornecedorId: nota.fornecedor_id,
+          itensPorPagina: 50,
+        })
+        if (ativo) {
+          // Filtrar apenas pedidos com status "Enviado" ou "Parcialmente recebido",
+          // ou o pedido que já estiver vinculado à nota
+          const pedidosFiltrados = res.items.filter(
+            (p) =>
+              p.status === 'Enviado' ||
+              p.status === 'Parcialmente recebido' ||
+              p.id === nota.pedido_compra_id,
+          )
+          setPedidosFornecedor(pedidosFiltrados)
+        }
+      } catch (err) {
+        console.warn('Erro ao listar pedidos do fornecedor:', err)
+      } finally {
+        if (ativo) setCarregandoPedidos(false)
+      }
+    }
+
+    carregarPedidos()
+    return () => {
+      ativo = false
+    }
+  }, [nota?.fornecedor_id, nota?.pedido_compra_id, empresaAtiva?.id])
+
+  // Carregar detalhes do pedido vinculado atual
+  useEffect(() => {
+    if (!nota?.pedido_compra_id) {
+      setPedidoSelecionado(null)
+      return
+    }
+    let ativo = true
+    const carregarDetalhePedido = async () => {
+      try {
+        const ped = await obterPedidoCompraPorId(nota.pedido_compra_id!)
+        if (ativo) setPedidoSelecionado(ped)
+      } catch (err) {
+        console.warn('Erro ao carregar pedido de compra vinculado:', err)
+      }
+    }
+    carregarDetalhePedido()
+    return () => {
+      ativo = false
+    }
+  }, [nota?.pedido_compra_id])
+
+  // Handler para vincular/alterar pedido de compra
+  const handleVincularPedido = async (novoPedidoId: string) => {
+    if (!nota) return
+    const idFinal = novoPedidoId === 'nenhum' ? null : novoPedidoId
+    setProcessandoAcao(true)
+    try {
+      await vincularPedidoNotaEntrada(nota.id, idFinal)
+      toast({
+        title: idFinal ? 'Pedido de compra vinculado' : 'Vínculo com pedido removido',
+        description: idFinal
+          ? 'Itens e quantidades serão comparados com o pedido selecionado.'
+          : 'A nota não está mais associada a nenhum pedido.',
+      })
+      await carregarDados()
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao vincular pedido',
+        description: err instanceof Error ? err.message : 'Falha na atualização',
+        variant: 'destructive',
+      })
+    } finally {
+      setProcessandoAcao(false)
+    }
+  }
+
+  // Mapa de itens do pedido para comparação rápida por produto_id
+  const mapaItensPedido = React.useMemo(() => {
+    if (!pedidoSelecionado)
+      return new Map<
+        string,
+        { quantidade: number; custo_unitario: number; quantidade_recebida: number }
+      >()
+    const mapa = new Map<
+      string,
+      { quantidade: number; custo_unitario: number; quantidade_recebida: number }
+    >()
+    for (const it of pedidoSelecionado.itens) {
+      mapa.set(it.produto_id, {
+        quantidade: it.quantidade,
+        custo_unitario: it.custo_unitario,
+        quantidade_recebida: it.quantidade_recebida || 0,
+      })
+    }
+    return mapa
+  }, [pedidoSelecionado])
+
+  // Iniciar fluxo de lançamento com validações prévias
+  const handleIniciarLancamento = () => {
+    if (!nota) return
+
+    // 1. Fornecedor cadastrado
+    if (!nota.fornecedor_id) {
+      toast({
+        title: 'Fornecedor obrigatório',
+        description: 'Vincule um fornecedor cadastrado antes de efetivar o lançamento da nota.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // 2. Todos os itens com produto vinculado, fator e CFOP
+    for (const it of itens) {
+      if (!it.produto_id) {
+        toast({
+          title: `Item #${it.numero_item} sem produto`,
+          description: 'Todos os itens precisam estar vinculados a um produto do catálogo.',
+          variant: 'destructive',
+        })
+        return
+      }
+      if (!it.fator_conversao || it.fator_conversao <= 0) {
+        toast({
+          title: `Item #${it.numero_item} com fator inválido`,
+          description: 'Informe um fator de conversão válido maior que zero.',
+          variant: 'destructive',
+        })
+        return
+      }
+      if (!it.cfop_entrada) {
+        toast({
+          title: `Item #${it.numero_item} sem CFOP de entrada`,
+          description: 'Defina o CFOP de escrituração de entrada para todos os itens.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      // Validação de lote e validade se controla lote
+      const prod = it.expand?.produto_id
+      if (prod?.controla_lote_validade) {
+        if (!it.lote_numero?.trim() || !it.lote_validade?.trim()) {
+          toast({
+            title: `Lote obrigatório no item #${it.numero_item}`,
+            description: `O produto "${prod.descricao}" exige controle de lote e data de validade. Preencha antes de lançar.`,
+            variant: 'destructive',
+          })
+          return
+        }
+      }
+    }
+
+    // 3. Validação data de entrada >= data de emissão
+    if (nota.data_emissao && nota.data_entrada && nota.data_entrada < nota.data_emissao) {
+      toast({
+        title: 'Data de entrada inválida',
+        description: 'A data de entrada não pode ser anterior à data de emissão da nota.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // 4. Validação parcelas vs total (exceto Bonificação)
+    if (nota.tipo_entrada !== 'Bonificação') {
+      const somaParcelas = parcelas.reduce((acc, p) => acc + (p.valor || 0), 0)
+      const diffParcelas = Math.abs(somaParcelas - (nota.valor_total || 0))
+      if (diffParcelas > 0.05 && parcelas.length > 0) {
+        toast({
+          title: 'Divergência nas parcelas',
+          description: `A soma das parcelas (R$ ${somaParcelas.toFixed(2)}) difere do total da nota (R$ ${nota.valor_total.toFixed(2)}) em mais de R$ 0,05.`,
+          variant: 'destructive',
+        })
+        return
+      }
+    }
+
+    // 5. Validação da soma dos itens vs total da nota
+    const somaItens = itens.reduce((acc, i) => acc + (i.valor_produto || 0), 0)
+    const diffItens = Math.abs(somaItens - (nota.valor_total || 0))
+    if (diffItens > 0.05) {
+      setPrecisaJustificativaDivergencia(true)
+      setValorDivergenciaItens(diffItens)
+    } else {
+      setPrecisaJustificativaDivergencia(false)
+      setValorDivergenciaItens(0)
+    }
+
+    setModalLancarAberto(true)
+  }
+
+  // Confirmar Lançamento Efetivo
+  const handleConfirmarLancamento = async () => {
+    if (!nota) return
+    if (precisaJustificativaDivergencia && !justificativaDivergencia.trim()) {
+      toast({
+        title: 'Justificativa obrigatória',
+        description:
+          'Como há divergência entre a soma dos itens e o total da nota, informe o motivo para prosseguir.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setLancando(true)
+    try {
+      const res = await lancarNotaEntrada({
+        notaId: nota.id,
+        atualizarCustoProdutos,
+        justificativaDivergencia,
+        usuarioErpId: pb.authStore.record?.id,
+      })
+
+      setModalLancarAberto(false)
+      toast({
+        title: 'Nota de entrada lançada com sucesso!',
+        description: 'Estoque movimentado, custos calculados e nota bloqueada para edição.',
+      })
+
+      // Se houver produtos cuja margem ficou abaixo da margem padrão, abre Revisão de Preços
+      if (res.produtos_revisao && res.produtos_revisao.length > 0) {
+        setItensRevisao(res.produtos_revisao)
+        const mapaPrecos: Record<string, number> = {}
+        for (const itemRev of res.produtos_revisao) {
+          mapaPrecos[itemRev.produto_id] = Number(itemRev.preco_sugerido.toFixed(2))
+        }
+        setPrecosEditados(mapaPrecos)
+        setModalRevisaoPrecosAberto(true)
+      }
+
+      await carregarDados()
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao lançar nota',
+        description: err instanceof Error ? err.message : 'Falha ao processar lançamento',
+        variant: 'destructive',
+      })
+    } finally {
+      setLancando(false)
+    }
+  }
+
+  // Salvar preços na revisão de preços
+  const handleSalvarPrecosRevisao = async () => {
+    setSalvandoPrecos(true)
+    try {
+      for (const itemRev of itensRevisao) {
+        const novoPreco = precosEditados[itemRev.produto_id]
+        if (novoPreco !== undefined && novoPreco > 0) {
+          await salvarProduto({
+            id: itemRev.produto_id,
+            preco_venda: novoPreco,
+          })
+        }
+      }
+      toast({
+        title: 'Preços de venda atualizados com sucesso!',
+        description: 'Os novos preços foram gravados no catálogo de produtos.',
+      })
+      setModalRevisaoPrecosAberto(false)
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao atualizar preços',
+        description: err instanceof Error ? err.message : 'Falha ao gravar preços',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoPrecos(false)
+    }
+  }
+
   const handleCancelarNota = async () => {
     if (!nota || !motivoCancelamento.trim()) {
       toast({
@@ -811,16 +1121,16 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
 
     setCancelando(true)
     try {
-      await cancelarNotaEntrada(nota.id, motivoCancelamento)
+      const res = await cancelarNotaEntrada(nota.id, motivoCancelamento)
       toast({
-        title: 'Nota de entrada cancelada',
-        description: 'O status da nota foi atualizado para Cancelada.',
+        title: 'Nota cancelada com sucesso',
+        description: res.message || 'Status atualizado para Cancelada e movimentos estornados.',
       })
       setCancelarModalAberto(false)
-      carregarDados()
+      await carregarDados()
     } catch (err: unknown) {
       toast({
-        title: 'Erro ao cancelar',
+        title: 'Cancelamento não permitido',
         description: err instanceof Error ? err.message : 'Falha ao processar cancelamento',
         variant: 'destructive',
       })
@@ -899,11 +1209,31 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Se a nota estiver Lançada, o botão Cancelar Lançamento fica visível para quem tem permissão excluir */}
+          {nota.status === 'Lançada' && podeCancelar && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setMotivoCancelamento('')
+                setCancelarModalAberto(true)
+              }}
+              className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5 font-medium"
+            >
+              <Ban size={14} />
+              Cancelar Lançamento
+            </Button>
+          )}
+
+          {/* Se a nota estiver Em conferência, o botão de cancelar nota também pode ser usado */}
           {nota.status === 'Em conferência' && podeCancelar && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCancelarModalAberto(true)}
+              onClick={() => {
+                setMotivoCancelamento('')
+                setCancelarModalAberto(true)
+              }}
               className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5"
             >
               <Ban size={14} />
@@ -921,15 +1251,32 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
             Imprimir Espelho
           </Button>
 
-          <Button
-            size="sm"
-            disabled
-            title="O vínculo de produtos e cálculo de custo definitivo virão na próxima etapa"
-            className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 opacity-90 cursor-not-allowed"
-          >
-            <CheckCircle2 size={14} />
-            Efetivar Lançamento (Etapa 4)
-          </Button>
+          {/* Botão Lançar nota (apenas quando status for 'Em conferência' e tiver permissão editar) */}
+          {nota.status === 'Em conferência' && (
+            <Button
+              size="sm"
+              onClick={handleIniciarLancamento}
+              disabled={!podeEditar || processandoAcao}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-medium shadow-sm"
+            >
+              <CheckCircle2 size={14} />
+              Lançar nota
+            </Button>
+          )}
+
+          {nota.status === 'Lançada' && (
+            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 gap-1 text-xs py-1 px-2.5">
+              <CheckCircle2 size={13} className="text-emerald-600" />
+              Nota Lançada (Somente Leitura)
+            </Badge>
+          )}
+
+          {nota.status === 'Cancelada' && (
+            <Badge className="bg-rose-100 text-rose-800 border-rose-300 gap-1 text-xs py-1 px-2.5">
+              <Ban size={13} className="text-rose-600" />
+              Nota Cancelada
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -1095,6 +1442,41 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                     </Select>
                   </div>
                 </div>
+                {/* Seletor de Vínculo com Pedido de Compra */}
+                <div className="grid grid-cols-3 gap-2 items-center bg-blue-50/50 p-2 rounded-md border border-blue-100">
+                  <span className="text-blue-900 font-semibold flex items-center gap-1">
+                    <Package size={13} className="text-blue-600" />
+                    Pedido de compra:
+                  </span>
+                  <div className="col-span-2 flex items-center gap-2">
+                    <Select
+                      value={nota.pedido_compra_id || 'nenhum'}
+                      onValueChange={handleVincularPedido}
+                      disabled={
+                        nota.status !== 'Em conferência' ||
+                        !podeEditar ||
+                        processandoAcao ||
+                        carregandoPedidos
+                      }
+                    >
+                      <SelectTrigger className="h-8 text-xs bg-white border-blue-200">
+                        <SelectValue placeholder="Selecione um pedido deste fornecedor..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="nenhum" className="text-xs text-slate-500">
+                          Nenhum pedido vinculado
+                        </SelectItem>
+                        {pedidosFornecedor.map((ped) => (
+                          <SelectItem key={ped.id} value={ped.id} className="text-xs">
+                            Pedido #{ped.numero} ({ped.status}) - R${' '}
+                            {(ped.valor_total || 0).toFixed(2)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-3 gap-2">
                   <span className="text-slate-500">Natureza da Operação:</span>
                   <span className="col-span-2 text-slate-800">{nota.natureza_operacao || '—'}</span>
@@ -1301,6 +1683,82 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                       <span className="font-semibold text-slate-900 text-xs">
                         {item.descricao_fornecedor}
                       </span>
+
+                      {/* Destaque de divergência com Pedido de Compra se vinculado */}
+                      {(() => {
+                        if (!pedidoSelecionado || !item.produto_id) return null
+                        const itemPed = mapaItensPedido.get(item.produto_id)
+                        if (!itemPed) {
+                          return (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-purple-50 text-purple-700 border-purple-300"
+                            >
+                              Fora do Pedido #{pedidoSelecionado.numero}
+                            </Badge>
+                          )
+                        }
+
+                        const qtdNota =
+                          item.quantidade_estoque ||
+                          item.quantidade_fornecedor * (item.fator_conversao || 1)
+                        const precoNota =
+                          item.custo_unitario_estoque || item.valor_unitario_fornecedor
+                        const diffQtd = qtdNota - itemPed.quantidade
+                        const diffPreco = precoNota - itemPed.custo_unitario
+
+                        const divergenteQtd = Math.abs(diffQtd) > 0.001
+                        const divergentePreco = Math.abs(diffPreco) > 0.01
+
+                        if (!divergenteQtd && !divergentePreco) {
+                          return (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-300"
+                            >
+                              Pedido #{pedidoSelecionado.numero}: Qtd e Preço iguais
+                            </Badge>
+                          )
+                        }
+
+                        return (
+                          <div className="flex items-center gap-1">
+                            {divergenteQtd && (
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] ${
+                                  diffQtd > 0
+                                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                    : 'bg-rose-50 text-rose-800 border-rose-300'
+                                }`}
+                                title={`Qtd pedida: ${itemPed.quantidade} | Qtd nota: ${qtdNota}`}
+                              >
+                                {diffQtd > 0
+                                  ? `Qtd +${diffQtd.toFixed(2)}`
+                                  : `Qtd ${diffQtd.toFixed(2)}`}{' '}
+                                vs Pedido
+                              </Badge>
+                            )}
+                            {divergentePreco && (
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] ${
+                                  diffPreco > 0
+                                    ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                }`}
+                                title={`Preço pedido: R$ ${itemPed.custo_unitario.toFixed(2)} | Preço nota: R$ ${precoNota.toFixed(2)}`}
+                              >
+                                Preço{' '}
+                                {diffPreco > 0
+                                  ? `+R$ ${diffPreco.toFixed(2)}`
+                                  : `-R$ ${Math.abs(diffPreco).toFixed(2)}`}{' '}
+                                vs Pedido
+                              </Badge>
+                            )}
+                          </div>
+                        )
+                      })()}
                       {item.codigo_fornecedor && (
                         <span className="text-[11px] text-slate-500 font-mono">
                           (Cód. Forn: {item.codigo_fornecedor})
@@ -1385,7 +1843,7 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                             <code>{prod?.ncm}</code>).
                           </span>
                         </div>
-                        {podeEditar && prod && (
+                        {podeEditar && prod && nota.status === 'Em conferência' && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -1417,7 +1875,7 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                               : 'Fornecedor enviou sem ST, mas o produto no ERP está cadastrado com ST.'}
                           </span>
                         </div>
-                        {podeEditar && prod && (
+                        {podeEditar && prod && nota.status === 'Em conferência' && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -1455,7 +1913,7 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                             <code>{prod?.cest}</code>).
                           </span>
                         </div>
-                        {podeEditar && prod && (
+                        {podeEditar && prod && nota.status === 'Em conferência' && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -2495,29 +2953,248 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
         />
       )}
 
-      {/* Modal Cancelar Nota */}
+      {/* Modal Confirmar Lançamento da Nota */}
+      <Dialog open={modalLancarAberto} onOpenChange={setModalLancarAberto}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-800">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              Lançar Nota de Entrada #{nota.numero}
+            </DialogTitle>
+            <DialogDescription>
+              Ao efetivar o lançamento, os itens movimentarão o estoque e os custos serão
+              atualizados. A nota ficará gravada como <strong>Lançada</strong> (somente leitura).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            {/* Opção Atualizar custo dos produtos */}
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="flex items-start space-x-2">
+                <Checkbox
+                  id="atualizar_custo_produtos"
+                  checked={atualizarCustoProdutos}
+                  onCheckedChange={(c) => setAtualizarCustoProdutos(Boolean(c))}
+                  className="mt-0.5"
+                />
+                <div className="space-y-1">
+                  <label
+                    htmlFor="atualizar_custo_produtos"
+                    className="text-xs font-semibold text-slate-800 cursor-pointer block"
+                  >
+                    Atualizar custo dos produtos
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Grava o preço de custo no cadastro dos produtos com base no custo unitário de
+                    estoque da nota e recalcula a margem mantendo o preço de venda atual.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Aviso de divergência de soma dos itens vs total da nota */}
+            {precisaJustificativaDivergencia && (
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-300 space-y-2 text-amber-900">
+                <div className="flex items-center gap-1.5 font-semibold text-xs">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                  Divergência entre soma dos itens e total da nota (R${' '}
+                  {valorDivergenciaItens.toFixed(2)})
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  A soma dos itens diverge do total da nota em mais de R$ 0,05. Para prosseguir com
+                  o lançamento, justifique o motivo desta diferença:
+                </p>
+                <div className="space-y-1 pt-1">
+                  <Label
+                    htmlFor="justificativa_divergencia"
+                    className="text-[11px] font-semibold text-amber-900"
+                  >
+                    Motivo da divergência *
+                  </Label>
+                  <Textarea
+                    id="justificativa_divergencia"
+                    placeholder="Ex: Diferença de arredondamento de frete/seguro ou acréscimo comercial..."
+                    value={justificativaDivergencia}
+                    onChange={(e) => setJustificativaDivergencia(e.target.value)}
+                    rows={2}
+                    className="text-xs bg-white"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalLancarAberto(false)}
+              disabled={lancando}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleConfirmarLancamento}
+              disabled={
+                lancando || (precisaJustificativaDivergencia && !justificativaDivergencia.trim())
+              }
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+            >
+              {lancando ? 'Lançando...' : 'Confirmar Lançamento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Revisão de Preços (pós-lançamento) */}
+      <Dialog open={modalRevisaoPrecosAberto} onOpenChange={setModalRevisaoPrecosAberto}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-800">
+              <Sparkles className="h-5 w-5 text-amber-600" />
+              Revisão de Preços de Venda
+            </DialogTitle>
+            <DialogDescription>
+              Os seguintes produtos tiveram a margem reduzida abaixo da margem padrão após a
+              entrada. Ajuste os preços de venda desejados e salve tudo de uma só vez:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 space-y-3">
+            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold">
+                  <tr>
+                    <th className="py-2.5 px-3">Produto</th>
+                    <th className="py-2.5 px-3 text-right">Novo Custo</th>
+                    <th className="py-2.5 px-3 text-right">Preço Atual</th>
+                    <th className="py-2.5 px-3 text-right">Margem Atual</th>
+                    <th className="py-2.5 px-3 text-right">Margem Padrão</th>
+                    <th className="py-2.5 px-3 text-right">Preço Sugerido</th>
+                    <th className="py-2.5 px-3 text-right w-36">Novo Preço Venda</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {itensRevisao.map((rev) => {
+                    const precoDigitado = precosEditados[rev.produto_id] ?? rev.preco_sugerido
+                    const margemDigitada =
+                      rev.custo_novo > 0
+                        ? ((precoDigitado - rev.custo_novo) / rev.custo_novo) * 100
+                        : 0
+
+                    return (
+                      <tr key={rev.produto_id} className="hover:bg-slate-50/80">
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-slate-800">
+                            [{rev.codigo}] {rev.descricao}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-700">
+                          R$ {rev.custo_novo.toFixed(2)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-500">
+                          R$ {rev.preco_atual.toFixed(2)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-rose-600 font-semibold">
+                          {rev.margem_atual.toFixed(1)}%
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                          {rev.margem_padrao.toFixed(1)}%
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-emerald-700 font-bold">
+                          R$ {rev.preco_sugerido.toFixed(2)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="space-y-1">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={precoDigitado || ''}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0
+                                setPrecosEditados((prev) => ({
+                                  ...prev,
+                                  [rev.produto_id]: val,
+                                }))
+                              }}
+                              className="h-7 text-xs font-mono text-right font-semibold"
+                            />
+                            <div className="text-[10px] text-slate-500 font-mono">
+                              Margem: {margemDigitada.toFixed(1)}%
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalRevisaoPrecosAberto(false)}
+              disabled={salvandoPrecos}
+            >
+              Manter Preços Atuais
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSalvarPrecosRevisao}
+              disabled={salvandoPrecos}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+            >
+              {salvandoPrecos ? 'Salvando...' : 'Salvar Novos Preços'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Cancelar Lançamento / Cancelar Nota */}
       <Dialog open={cancelarModalAberto} onOpenChange={setCancelarModalAberto}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cancelar Nota de Entrada #{nota.numero}</DialogTitle>
+            <DialogTitle className="text-rose-700">
+              {nota.status === 'Lançada'
+                ? `Cancelar Lançamento da Nota #${nota.numero}`
+                : `Cancelar Nota de Entrada #${nota.numero}`}
+            </DialogTitle>
             <DialogDescription>
-              A nota passará para o status <strong>Cancelada</strong>. Esta ação não poderá ser
-              desfeita.
+              {nota.status === 'Lançada'
+                ? 'Esta ação estornará todos os movimentos de estoque gerados pela nota e desfarará as quantidades recebidas no pedido de compra vinculado. A nota passará para o status Cancelada.'
+                : 'A nota passará para o status Cancelada.'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-2 text-xs">
-            <Label htmlFor="motivo_cancelamento" className="text-xs font-semibold">
-              Justificativa do Cancelamento *
-            </Label>
-            <Textarea
-              id="motivo_cancelamento"
-              placeholder="Descreva o motivo do cancelamento da nota de entrada..."
-              value={motivoCancelamento}
-              onChange={(e) => setMotivoCancelamento(e.target.value)}
-              rows={3}
-              className="text-xs"
-            />
+            {nota.status === 'Lançada' && (
+              <Alert className="py-2 px-3 bg-amber-50 border-amber-300 text-amber-900 text-xs">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                <AlertDescription className="text-[11px]">
+                  <strong>Aviso importante:</strong> O preço de custo dos produtos não será
+                  revertido.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-1">
+              <Label htmlFor="motivo_cancelamento" className="text-xs font-semibold">
+                Justificativa do Cancelamento *
+              </Label>
+              <Textarea
+                id="motivo_cancelamento"
+                placeholder="Descreva detalhadamente o motivo do cancelamento..."
+                value={motivoCancelamento}
+                onChange={(e) => setMotivoCancelamento(e.target.value)}
+                rows={3}
+                className="text-xs"
+              />
+            </div>
           </div>
 
           <DialogFooter>

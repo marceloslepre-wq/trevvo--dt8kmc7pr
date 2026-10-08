@@ -40,13 +40,14 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return obterUsuarioCacheLocal(authId || email || undefined)
   })
   const [permissoes, setPermissoes] = useState<Record<string, PermissaoModulo>>({})
-  // Se já temos usuarioERP no cache (inclusive se for admin), carregandoInterno começa false
+  // SWR: se já temos usuário em cache ou sessão PocketBase, nunca começamos bloqueados
   const [carregandoInterno, setCarregandoInterno] = useState<boolean>(() => {
     const authId = pb.authStore.record?.id
     const email = pb.authStore.record?.email
     const cached = obterUsuarioCacheLocal(authId || email || undefined)
-    return !cached
+    return !cached && !pb.authStore.isValid
   })
+  const jaResolveuUmaVezRef = React.useRef<boolean>(false)
 
   // Evita re-execuções infinitas guardando as chaves que dispararam a busca
   const carregamentoRef = React.useRef<{ buscando: boolean; ultimaChave?: string }>({
@@ -54,21 +55,19 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   })
 
   const recarregarPermissoes = useCallback(async () => {
-    // Se ainda está validando o auth token inicial do PocketBase, aguarda
-    if (authLoading) {
-      return
-    }
-
     // Se temos login ativo no PocketBase (mesmo se o AuthContext ainda estiver sincronizando user.id)
     const effectiveAuthId = user?.id || pb.authStore.record?.id
     const effectiveEmail = user?.email || pb.authStore.record?.email
     const effectiveIsAuth = isAuthenticated || Boolean(pb.authStore.isValid && pb.authStore.record)
 
     if (!effectiveIsAuth || (!effectiveAuthId && !effectiveEmail)) {
-      setUsuarioERP(null)
-      salvarUsuarioCacheLocal(null)
-      setPermissoes({})
-      setCarregandoInterno(false)
+      if (!authLoading) {
+        setUsuarioERP(null)
+        salvarUsuarioCacheLocal(null)
+        setPermissoes({})
+        setCarregandoInterno(false)
+        jaResolveuUmaVezRef.current = true
+      }
       return
     }
 
@@ -115,6 +114,7 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } finally {
       carregamentoRef.current.buscando = false
       setCarregandoInterno(false)
+      jaResolveuUmaVezRef.current = true
     }
   }, [authLoading, isAuthenticated, user?.id, user?.email])
 
@@ -133,21 +133,22 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return Boolean(perfil?.administrador)
   }, [perfil?.administrador])
 
-  // Se o perfil do usuário ERP já é administrador (inclusive via cache síncrono inicial),
-  // não deixamos o estado 'carregando' bloquear guards ou a interface.
+  // Se já resolveu uma vez ou se temos cache / admin / token válido, nunca bloqueia como 'carregando'
   const carregando = useMemo(() => {
     if (administrador) return false
-    return authLoading || carregandoInterno
-  }, [administrador, authLoading, carregandoInterno])
+    if (jaResolveuUmaVezRef.current) return false
+    if (usuarioERP) return false
+    return authLoading && carregandoInterno
+  }, [administrador, usuarioERP, authLoading, carregandoInterno])
 
-  // Timeout de segurança estrutural: nenhuma rota deve ficar presa em carregando = true
+  // Timeout de segurança absoluto: após 500ms nenhuma tela pode continuar bloqueada
   useEffect(() => {
-    if (!carregandoInterno) return
     const timer = setTimeout(() => {
       setCarregandoInterno(false)
-    }, 800)
+      jaResolveuUmaVezRef.current = true
+    }, 500)
     return () => clearTimeout(timer)
-  }, [carregandoInterno])
+  }, [])
   const pode = useCallback(
     (modulo: ModuloSistema | string, acao?: AcaoPermissao | string): boolean => {
       // 0. Se for administrador (perfis_acesso.administrador = true), tem permissão irrestrita total
