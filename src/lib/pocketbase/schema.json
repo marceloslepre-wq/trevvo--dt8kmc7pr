@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T19:10:29.571Z",
+  "generatedAt": "2026-10-13T19:48:59.133Z",
   "collections": [
     {
       "name": "users",
@@ -7279,6 +7279,13 @@
           "required": false,
           "system": false,
           "selectValues": ["Pagar", "Receber"]
+        },
+        {
+          "name": "plano_desconto_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
         }
       ],
       "indexes": [
@@ -8106,6 +8113,589 @@
       "indexes": [
         "CREATE INDEX idx_pdv_terminais_empresa ON pdv_terminais (empresa_id)",
         "CREATE INDEX idx_pdv_terminais_ativo ON pdv_terminais (ativo)"
+      ]
+    },
+    {
+      "name": "vendas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && status != 'Finalizada' && status != 'Cancelada'",
+        "delete": "@request.auth.id != '' && status != 'Finalizada' && status != 'Cancelada'"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "numero",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Orçamento", "Pedido", "PDV"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Orçamento",
+            "Pedido em aberto",
+            "Finalizada",
+            "Cancelada",
+            "Orçamento expirado"
+          ]
+        },
+        {
+          "name": "cliente_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "clientes"
+        },
+        {
+          "name": "cpf_cnpj_consumidor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vendedor_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "operador_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "pdv_terminal_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "pdv_terminais"
+        },
+        {
+          "name": "caixa_sessao_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_emissao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_validade",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_finalizacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_produtos",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor_desconto_itens",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_desconto_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_acrescimo",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_frete",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_total",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "custo_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "condicao_pagamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "condicoes_pagamento"
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "venda_origem_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documento_fiscal_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Não emitido", "Autorizada", "Cancelada", "Rejeitada"]
+        },
+        {
+          "name": "documento_fiscal_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_cancelamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_cancelamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_cancelamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_vendas_empresa_num ON vendas (empresa_id, numero)",
+        "CREATE INDEX idx_vendas_cliente ON vendas (cliente_id)",
+        "CREATE INDEX idx_vendas_tipo ON vendas (tipo)",
+        "CREATE INDEX idx_vendas_status ON vendas (status)",
+        "CREATE INDEX idx_vendas_data_emissao ON vendas (data_emissao)",
+        "CREATE INDEX idx_vendas_vendedor ON vendas (vendedor_id)",
+        "CREATE INDEX idx_vendas_operador ON vendas (operador_id)",
+        "CREATE INDEX idx_vendas_terminal ON vendas (pdv_terminal_id)",
+        "CREATE INDEX idx_vendas_ativo ON vendas (ativo)"
+      ]
+    },
+    {
+      "name": "vendas_itens",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && @collection.vendas.id = venda_id && @collection.vendas.status != 'Finalizada' && @collection.vendas.status != 'Cancelada'",
+        "update": "@request.auth.id != '' && @collection.vendas.id = venda_id && @collection.vendas.status != 'Finalizada' && @collection.vendas.status != 'Cancelada'",
+        "delete": "@request.auth.id != '' && @collection.vendas.id = venda_id && @collection.vendas.status != 'Finalizada' && @collection.vendas.status != 'Cancelada'"
+      },
+      "fields": [
+        {
+          "name": "venda_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "vendas"
+        },
+        {
+          "name": "item",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "produto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "produtos"
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "unidade",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "quantidade",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "preco_unitario",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "preco_tabela",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "desconto_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "desconto_valor",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "acrescimo_valor",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_total",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "custo_unitario",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lote_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "lotes"
+        },
+        {
+          "name": "ncm",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cest",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cfop",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_icms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "csosn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aliquota_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_pis",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cst_cofins",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "perfil_tributario_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "perfis_tributarios"
+        },
+        {
+          "name": "quantidade_devolvida",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_vendas_itens_venda ON vendas_itens (venda_id)",
+        "CREATE INDEX idx_vendas_itens_produto ON vendas_itens (produto_id)",
+        "CREATE INDEX idx_vendas_itens_lote ON vendas_itens (lote_id)",
+        "CREATE INDEX idx_vendas_itens_ativo ON vendas_itens (ativo)"
+      ]
+    },
+    {
+      "name": "vendas_pagamentos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "venda_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "vendas"
+        },
+        {
+          "name": "forma_pagamento_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "formas_pagamento"
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "troco",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parcelas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bandeira",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nsu",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_autorizacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "taxa_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_taxa",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta_financeira_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contas_financeiras"
+        },
+        {
+          "name": "conta_receber_ids",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_vendas_pag_venda ON vendas_pagamentos (venda_id)",
+        "CREATE INDEX idx_vendas_pag_forma ON vendas_pagamentos (forma_pagamento_id)",
+        "CREATE INDEX idx_vendas_pag_conta ON vendas_pagamentos (conta_financeira_id)",
+        "CREATE INDEX idx_vendas_pag_ativo ON vendas_pagamentos (ativo)"
       ]
     }
   ]

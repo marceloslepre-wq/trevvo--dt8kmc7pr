@@ -31,9 +31,10 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
     conta_financeira_id,
     forma_pagamento_id,
     data_pagamento, // data do recebimento
-    titulos = [], // [{ conta_receber_id, valor_pago, acrescimo, desconto }]
+    titulos = [], // [{ conta_receber_id, valor_pago, acrescimo, desconto, plano_desconto_id }]
     historico,
     comprovante_url,
+    plano_desconto_id: plano_desconto_id_geral,
   } = body
 
   if (!empresa_id) {
@@ -113,6 +114,7 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
           valorPago,
           acrescimo,
           desconto,
+          plano_desconto_id: item.plano_desconto_id || plano_desconto_id_geral || null,
           valorLiquido,
         })
       }
@@ -156,6 +158,7 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         baixaRec.set('valor_multa', 0)
         baixaRec.set('valor_juros', item.acrescimo)
         baixaRec.set('valor_desconto', item.desconto)
+        baixaRec.set('plano_desconto_id', item.plano_desconto_id || null)
         baixaRec.set('valor_total_pago', item.valorLiquido)
         baixaRec.set(
           'observacao',
