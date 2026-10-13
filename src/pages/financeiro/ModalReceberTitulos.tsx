@@ -17,7 +17,9 @@ import { calcularEncargos } from '@/services/financeiro'
 import { ContaFinanceira, listarContasFinanceiras } from '@/services/contasFinanceiras'
 import { FormaPagamento, listarFormasPagamento } from '@/services/formasPagamento'
 import { obterOuCriarConfigFinanceiraEmpresa } from '@/services/configFinanceira'
+import { obterOuCriarConfigVendasEmpresa } from '@/services/configVendas'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import pb from '@/lib/pocketbase/client'
 import { toast } from '@/hooks/use-toast'
 
 interface ModalReceberTitulosProps {
@@ -34,6 +36,8 @@ interface LinhaRecebimento {
   multa: number
   juros: number
   desconto: number
+  plano_desconto_id?: string
+  taxa_cartao_sugerida?: number
   valorTotalReceber: number
   diasAtraso: number
 }
@@ -91,10 +95,11 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
 
     async function carregarDados() {
       try {
-        const [contas, formas, config] = await Promise.all([
+        const [contas, formas, config, configVendas] = await Promise.all([
           listarContasFinanceiras(empresaAtiva!.id),
           listarFormasPagamento(empresaAtiva!.id),
           obterOuCriarConfigFinanceiraEmpresa(empresaAtiva!.id),
+          obterOuCriarConfigVendasEmpresa(empresaAtiva!.id).catch(() => null),
         ])
 
         const ativas = contas.filter((c) => c.ativo)
@@ -109,31 +114,81 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
           setContaFinanceiraId(ativas[0].id)
         }
 
-        // Montar linhas calculando juros/multa pelo serviço central
-        const novasLinhas: LinhaRecebimento[] = titulos.map((t) => {
-          const saldo = Number((t.saldo ?? t.valor_original ?? 0).toFixed(2))
-          const encargos = calcularEncargos({
-            saldo,
-            dataVencimento: t.data_vencimento,
-            dataPagamento: dataRecebimento,
-            multaPercentual: config?.multa_atraso_percentual,
-            jurosMensalPercentual: config?.juros_mora_mensal_percentual,
-            diasCarencia: config?.dias_carencia,
-          })
+        // Buscar taxas de cartão para títulos de origem Venda ou PDV
+        const planoTaxasCartaoId = configVendas?.plano_taxas_cartao_id || ''
 
-          const totalLinha = Number((saldo + encargos.valorMulta + encargos.valorJuros).toFixed(2))
+        const novasLinhas: LinhaRecebimento[] = await Promise.all(
+          titulos.map(async (t) => {
+            const saldo = Number((t.saldo ?? t.valor_original ?? 0).toFixed(2))
+            const encargos = calcularEncargos({
+              saldo,
+              dataVencimento: t.data_vencimento,
+              dataPagamento: dataRecebimento,
+              multaPercentual: config?.multa_atraso_percentual,
+              jurosMensalPercentual: config?.juros_mora_mensal_percentual,
+              diasCarencia: config?.dias_carencia,
+            })
 
-          return {
-            titulo: t,
-            saldo,
-            valorRecebidoPrincipal: saldo,
-            multa: encargos.valorMulta,
-            juros: encargos.valorJuros,
-            desconto: 0,
-            valorTotalReceber: totalLinha,
-            diasAtraso: encargos.diasAtraso,
-          }
-        })
+            let taxaCartaoSugerida = 0
+            let planoDescontoId = ''
+
+            // Se origem for Venda ou PDV, buscar venda_pagamento correspondente para sugerir valor_taxa
+            const ehVendaOuPdv = t.origem === 'Venda' || t.origem === 'PDV'
+            if (ehVendaOuPdv && t.origem_id) {
+              try {
+                const vPags = await pb.collection('vendas_pagamentos').getList(1, 10, {
+                  filter: `venda_id = '${t.origem_id}' && valor_taxa > 0 && ativo = true`,
+                  requestKey: null,
+                })
+                // Se encontrar pagamento com valor_taxa e o título estiver ligado a ele
+                for (const vp of vPags.items) {
+                  let idsLigados: string[] = []
+                  try {
+                    const cIds = vp.conta_receber_ids
+                    if (Array.isArray(cIds)) idsLigados = cIds
+                    else if (typeof cIds === 'string') idsLigados = JSON.parse(cIds)
+                  } catch {
+                    /* intentionally ignored */
+                  }
+
+                  if (idsLigados.includes(t.id) || vPags.items.length === 1) {
+                    const taxaVal = Number(vp.valor_taxa) || 0
+                    if (taxaVal > 0) {
+                      taxaCartaoSugerida = taxaVal
+                      if (planoTaxasCartaoId) {
+                        planoDescontoId = planoTaxasCartaoId
+                      }
+                      break
+                    }
+                  }
+                }
+              } catch {
+                /* intentionally ignored */
+              }
+            }
+
+            const descontoInicial = taxaCartaoSugerida > 0 ? taxaCartaoSugerida : 0
+            const totalLinha = Math.max(
+              0,
+              Number(
+                (saldo + encargos.valorMulta + encargos.valorJuros - descontoInicial).toFixed(2),
+              ),
+            )
+
+            return {
+              titulo: t,
+              saldo,
+              valorRecebidoPrincipal: saldo,
+              multa: encargos.valorMulta,
+              juros: encargos.valorJuros,
+              desconto: descontoInicial,
+              plano_desconto_id: planoDescontoId || undefined,
+              taxa_cartao_sugerida: taxaCartaoSugerida > 0 ? taxaCartaoSugerida : undefined,
+              valorTotalReceber: totalLinha,
+              diasAtraso: encargos.diasAtraso,
+            }
+          }),
+        )
 
         setLinhas(novasLinhas)
       } catch (err: unknown) {
@@ -275,6 +330,7 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
           valor_pago: l.valorRecebidoPrincipal,
           acrescimo: Number((l.multa + l.juros).toFixed(2)),
           desconto: l.desconto,
+          plano_desconto_id: l.plano_desconto_id || undefined,
         })),
         observacao: observacaoLote || undefined,
       })
@@ -873,6 +929,14 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
                             }
                             className="h-7 text-xs font-mono text-right w-20 ml-auto text-emerald-700"
                           />
+                          {Boolean(linha.taxa_cartao_sugerida) && (
+                            <span
+                              className="text-[10px] text-emerald-600 block truncate cursor-help"
+                              title={`Taxa de cartão sugerida pela venda: R$ ${linha.taxa_cartao_sugerida?.toFixed(2)}`}
+                            >
+                              Tx cartão: R$ {linha.taxa_cartao_sugerida?.toFixed(2)}
+                            </span>
+                          )}
                         </td>
                         <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
                           R$ {linha.valorTotalReceber.toFixed(2)}

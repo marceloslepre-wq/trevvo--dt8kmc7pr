@@ -656,13 +656,14 @@ export async function inativarContaReceber(id: string): Promise<void> {
  */
 export interface ItemReceberInput {
   conta_receber_id: string
-  valor_pago: number // valor principal amortizado
+  valor_pago: number
   valor_multa?: number
   valor_juros?: number
   valor_desconto?: number
   valor_total_pago?: number
   acrescimo?: number
   desconto?: number
+  plano_desconto_id?: string
 }
 
 export interface ReceberTitulosInput {
@@ -672,9 +673,9 @@ export interface ReceberTitulosInput {
   data_pagamento: string // data do recebimento
   itens?: ItemReceberInput[]
   titulos?: ItemReceberInput[]
+  plano_desconto_id?: string
   observacao?: string
 }
-
 export interface ResultadoRecebimento {
   lote: PagamentoLote
   baixas: PagamentoBaixa[]
@@ -700,7 +701,9 @@ export async function receberTitulos(dados: ReceberTitulosInput): Promise<Result
           ? t.acrescimo
           : Number(((t.valor_multa || 0) + (t.valor_juros || 0)).toFixed(2)),
       desconto: t.desconto !== undefined ? t.desconto : t.valor_desconto || 0,
+      plano_desconto_id: t.plano_desconto_id || dados.plano_desconto_id || undefined,
     })),
+    plano_desconto_id: dados.plano_desconto_id || undefined,
     historico: dados.observacao,
   }
 
