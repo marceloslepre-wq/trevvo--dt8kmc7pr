@@ -14,14 +14,14 @@
  */
 
 routerAdd('POST', '/financeiro/receber/baixar', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    body = c.requestInfo().body || {}
   } catch (_e) {
     body = {}
   }
@@ -170,7 +170,7 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         const novoRecebido = recebidoAnterior + item.valorPago
         const valorOriginal = Number(titRecord.get('valor_original') || 0)
         const novoSaldo = Math.max(0, valorOriginal - novoRecebido)
-        const novoStatus = novoSaldo <= 0.009 ? 'Recebido' : 'Recebido parcial'
+        const novoStatus = novoSaldo <= 0.009 ? 'Recebido' : 'Parcial'
 
         titRecord.set('valor_recebido', novoRecebido)
         titRecord.set('saldo', novoSaldo)

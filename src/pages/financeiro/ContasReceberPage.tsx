@@ -413,7 +413,7 @@ export const ContasReceberPage: React.FC = () => {
               className="w-full h-8 text-xs px-2 rounded-md border border-slate-300 bg-white text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
             >
               <option value="todos">Todos</option>
-              <option value="abertos">Em aberto</option>
+              <option value="abertos">Aberto</option>
               <option value="vencidos">Vencidos</option>
               <option value="pagos">Pagos (Recebidos)</option>
               <option value="cancelados">Cancelados</option>
@@ -753,7 +753,7 @@ export const ContasReceberPage: React.FC = () => {
                             variant="outline"
                             className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] py-0.5 px-2"
                           >
-                            Em aberto
+                            Aberto
                           </Badge>
                         )}
                       </td>

@@ -13,14 +13,14 @@
  */
 
 routerAdd('POST', '/financeiro/receber/estornar-recebimento', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    body = c.requestInfo().body || {}
   } catch (_e) {
     body = {}
   }
@@ -136,9 +136,9 @@ routerAdd('POST', '/financeiro/receber/estornar-recebimento', (c) => {
               const valorOriginal = Number(tit.get('valor_original') || 0)
               const novoSaldo = Math.max(0, valorOriginal - novoRecebido)
 
-              let novoStatus = 'Em aberto'
+              let novoStatus = 'Aberto'
               if (novoRecebido > 0) {
-                novoStatus = 'Recebido parcial'
+                novoStatus = 'Parcial'
               }
 
               tit.set('valor_recebido', novoRecebido)

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T22:15:12.341Z",
+  "generatedAt": "2026-10-13T18:10:37.641Z",
   "collections": [
     {
       "name": "users",
@@ -7586,14 +7586,14 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Em aberto", "Recebido parcial", "Recebido", "Cancelado"]
+          "selectValues": ["Aberto", "Parcial", "Recebido", "Cancelado"]
         },
         {
           "name": "origem",
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Manual", "Venda", "Recorrência", "Outro"]
+          "selectValues": ["Manual", "Venda", "PDV", "Recorrência", "Outro"]
         },
         {
           "name": "origem_id",

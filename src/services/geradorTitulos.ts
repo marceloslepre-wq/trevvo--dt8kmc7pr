@@ -29,7 +29,7 @@ export interface GerarTitulosParcelasInput {
   plano_conta_id: string
   centro_custo_id?: string
   forma_pagamento_id?: string
-  origem: 'Manual' | 'NF Entrada' | 'Venda' | 'Recorrência' | 'Outro'
+  origem: 'Manual' | 'NF Entrada' | 'Venda' | 'PDV' | 'Recorrência' | 'Outro'
   origem_id?: string
   nota_entrada_parcela_id?: string
   venda_parcela_id?: string
@@ -145,8 +145,8 @@ export async function gerarTitulosFromParcelas(
         valor_original: valor,
         valor_recebido: 0,
         saldo: valor,
-        status: 'Em aberto',
-        origem: origem as 'Manual' | 'Venda' | 'Recorrência' | 'Outro',
+        status: 'Aberto',
+        origem: origem as 'Manual' | 'Venda' | 'PDV' | 'Recorrência' | 'Outro',
         origem_id: origem_id || undefined,
         venda_parcela_id: input.venda_parcela_id,
         observacao: p.observacao || '',

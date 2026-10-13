@@ -7,14 +7,8 @@ import { Cliente } from './clientes'
 import { ConfigFinanceiraEmpresa, obterOuCriarConfigFinanceiraEmpresa } from './configFinanceira'
 import { PagamentoLote, PagamentoBaixa, EncargosCalculados, calcularEncargos } from './financeiro'
 
-export type StatusContaReceber =
-  | 'Em aberto'
-  | 'Recebido parcial'
-  | 'Recebido'
-  | 'Cancelado'
-  | 'Aberto'
-  | 'Parcial'
-export type OrigemContaReceber = 'Manual' | 'Venda' | 'Recorrência' | 'Outro'
+export type StatusContaReceber = 'Aberto' | 'Parcial' | 'Recebido' | 'Cancelado'
+export type OrigemContaReceber = 'Manual' | 'Venda' | 'PDV' | 'Recorrência' | 'Outro'
 
 export interface ContaReceber {
   id: string
@@ -122,7 +116,7 @@ export interface SituacaoCreditoCliente {
 /**
  * Calcula a situação de crédito de um cliente específico com base nos títulos de contas a receber.
  * Regras:
- * - total em aberto: soma dos saldos de títulos com status 'Em aberto' ou 'Recebido parcial'
+ * - total em aberto: soma dos saldos de títulos com status 'Aberto' ou 'Parcial'
  * - total vencido: soma dos saldos com vencimento anterior a hoje
  * - maior atraso: maior diferença em dias entre hoje e o vencimento vencido
  * - limite_credito do cadastro do cliente (se <= 0 ou nulo, considera ilimitado)
@@ -284,13 +278,9 @@ export async function listarContasReceber(
   }
 
   if (situacao === 'aberto' || situacao === 'abertos') {
-    filtros.push(
-      "(status = 'Em aberto' || status = 'Recebido parcial' || status = 'Aberto' || status = 'Parcial')",
-    )
+    filtros.push("(status = 'Aberto' || status = 'Parcial')")
   } else if (situacao === 'vencidos') {
-    filtros.push(
-      `(status = 'Em aberto' || status = 'Recebido parcial' || status = 'Aberto' || status = 'Parcial') && data_vencimento < '${hoje}'`,
-    )
+    filtros.push(`(status = 'Aberto' || status = 'Parcial') && data_vencimento < '${hoje}'`)
   } else if (situacao === 'pagos') {
     filtros.push("(status = 'Recebido' || status = 'Pago')")
   } else if (situacao === 'cancelados') {
@@ -319,13 +309,7 @@ export async function listarContasReceber(
     const hojeDate = new Date()
     hojeDate.setHours(0, 0, 0, 0)
     items = items.filter((t) => {
-      if (
-        t.status !== 'Em aberto' &&
-        t.status !== 'Recebido parcial' &&
-        t.status !== 'Aberto' &&
-        t.status !== 'Parcial'
-      )
-        return false
+      if (t.status !== 'Aberto' && t.status !== 'Parcial') return false
       const vDate = new Date(t.data_vencimento + 'T00:00:00')
       const diffDias = Math.floor((hojeDate.getTime() - vDate.getTime()) / (1000 * 60 * 60 * 24))
       return diffDias >= minAtraso
@@ -395,11 +379,11 @@ export async function salvarContaReceber(
   const valorRecebido = Number(dados.valor_recebido) || 0
   const saldo = Math.max(0, valorOriginal - valorRecebido)
 
-  let statusCalculado: StatusContaReceber = dados.status || 'Em aberto'
+  let statusCalculado: StatusContaReceber = dados.status || 'Aberto'
   if (saldo <= 0.0001 && valorOriginal > 0) {
     statusCalculado = 'Recebido'
   } else if (valorRecebido > 0 && saldo > 0.0001) {
-    statusCalculado = 'Recebido parcial'
+    statusCalculado = 'Parcial'
   }
 
   const payload: Record<string, unknown> = {
@@ -531,7 +515,7 @@ export async function criarTitulosRecorrentesReceber(
       recorrencia_id: recorrenciaId,
       recorrencia_numero: i + 1,
       recorrencia_total: quantidadeMeses,
-      status: 'Em aberto',
+      status: 'Aberto',
       valor_original: inputOuBase.valor_original,
       valor_recebido: 0,
       saldo: inputOuBase.valor_original,
@@ -567,7 +551,7 @@ export async function atualizarRecorrenciaReceber(
     dados = novosDados || {}
   }
 
-  let filter = `recorrencia_id = '${recId}' && status = 'Em aberto' && ativo = true`
+  let filter = `recorrencia_id = '${recId}' && status = 'Aberto' && ativo = true`
   if (numMin !== undefined) {
     filter += ` && recorrencia_numero >= ${numMin}`
   } else if (aPartirDe) {
