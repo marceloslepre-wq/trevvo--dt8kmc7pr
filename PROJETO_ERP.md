@@ -2044,6 +2044,56 @@ Nenhuma tela, hook ou componente do sistema tem permissão para alterar diretame
 - `/financeiro/pagar/estornar-baixa` (função client `estornarBaixaPagamento`): cancela uma baixa de pagamento, marca `estornado = true`, registra o motivo e o usuário operador, estorna a movimentação gerando crédito de recomposição no saldo da conta financeira e devolve o saldo devedor ao título (`contas_pagar.saldo` e status).
 - `/financeiro/pagar/gerar-titulos-retroativos` (função client `gerarTitulosRetroativosNotas`): varre notas de entrada já lançadas que não possuíam títulos gerados e cria os registros em `contas_pagar` com base nas duplicatas de `notas_entrada_parcelas`.
 
+#### Serviços Reutilizáveis de Apoio Financeiro e Vendas:
+
+1. **`creditoCliente(clienteId, empresaId?)` (`@/services/contasReceber.ts`):**
+   - **Parâmetros:**
+     - `clienteId` (obrigatório, string): identificador único do cliente em `clientes`.
+     - `empresaId` (opcional, string): identificador da empresa/filial ativa em `empresas`. Quando informado, filtra os títulos de contas a receber da filial e busca a tolerância de atraso parametrizada em `config_financeira_empresa.dias_tolerancia_bloqueio` (padrão: 5 dias caso não informada ou não encontrada).
+   - **Retorno (`SituacaoCreditoCliente`):**
+     - `total_aberto`: soma dos saldos dos títulos ativos não cancelados do cliente com status `'Aberto'` ou `'Parcial'`.
+     - `total_vencido`: soma dos saldos dos títulos ativos do cliente com vencimento anterior à data atual (`data_vencimento < hoje`).
+     - `maior_atraso_dias`: maior diferença em dias corridos entre a data atual e a data de vencimento vencida (0 se não houver títulos vencidos).
+     - `limite_credito`: valor numérico do limite cadastrado em `clientes.limite_credito` (retorna `null` quando não informado ou menor/igual a zero, indicando crédito ilimitado).
+     - `credito_disponivel`: saldo de crédito remanescente calculado como `limite_credito - total_aberto` (retorna `null` quando o limite for ilimitado).
+     - `dias_tolerancia`: tolerância máxima em dias de atraso considerada (lida de `config_financeira_empresa.dias_tolerancia_bloqueio` da filial ou padrão 5).
+     - `situacao`: classificação da situação do cliente entre três estados:
+       - `"Bloqueado"`: ocorre quando o cliente possui bloqueio cadastral manual (`cliente.bloqueado = true`), ou quando `maior_atraso_dias > dias_tolerancia`, ou quando `credito_disponivel < 0` (limite estourado);
+       - `"Atenção"`: ocorre quando o cliente não está bloqueado, mas possui título(s) vencido(s) dentro do período de tolerância (`maior_atraso_dias > 0 && maior_atraso_dias <= dias_tolerancia`);
+       - `"Liberado"`: cliente sem bloqueio cadastral, sem títulos vencidos e com crédito dentro do limite.
+     - `motivos`: array de strings descritivas justificando o bloqueio ou o aviso de atenção (ex.: bloqueio cadastral com motivo, dias de atraso vs tolerância, valor excedido do limite).
+   - **Regra de Integração:** A Etapa 5 (Vendas e PDV) utiliza obrigatoriamente esse serviço no checkout/fechamento de pedidos para alertar o operador ou bloquear vendas a prazo quando o cliente estiver em situação impeditiva.
+
+2. **`gerarTitulosFromParcelas(input)` (`@/services/geradorTitulos.ts`):**
+   - **Parâmetros (`GerarTitulosParcelasInput`):**
+     - `tipo`: `'Pagar' | 'Receber'`.
+     - `empresa_id` (obrigatório): filial proprietária dos títulos gerados.
+     - `cliente_id` (obrigatório se tipo for `'Receber'`): vínculo do cliente devedor em `clientes`.
+     - `fornecedor_id` (obrigatório se tipo for `'Pagar'`): vínculo do fornecedor credor em `fornecedores`.
+     - `numero_documento_base`: identificador base do documento de origem (ex.: número do pedido, nota fiscal ou venda).
+     - `descricao_base`: texto descritivo base para o lançamento.
+     - `data_emissao`: data de emissão do documento.
+     - `data_competencia` (opcional): data de competência contábil (assume `data_emissao` se omitida).
+     - `plano_conta_id`: conta contábil analítica do plano de contas.
+     - `centro_custo_id` (opcional): centro de custo gerencial associado.
+     - `forma_pagamento_id` (opcional): forma de pagamento prevista para quitação.
+     - `origem`: `'Manual' | 'NF Entrada' | 'Venda' | 'PDV' | 'Recorrência' | 'Outro'`.
+     - `origem_id` (opcional): identificador do registro de origem (ex.: id da venda ou nota).
+     - `venda_parcela_id` (opcional): vínculo específico com a parcela da venda (Etapa 5).
+     - `nota_entrada_parcela_id` (opcional): vínculo com duplicata da nota de entrada (Etapa 3/4).
+     - `parcelas`: array de `ParcelaTituloInput` contendo `numero_parcela`, `data_vencimento`, `valor`, `forma_pagamento_id`, `observacao`.
+   - **O que grava no banco:**
+     - Grava exatamente **um título por parcela** na tabela `contas_receber` (quando tipo for `'Receber'`) ou `contas_pagar` (quando tipo for `'Pagar'`).
+     - Formata `numero_documento` como `"${numero_documento_base}-${numParcela}"`.
+     - Formata o campo `parcela` no padrão `"n/total"` (ex.: `"1/3"`, `"2/3"`, `"3/3"`).
+     - Inicializa `saldo = valor` da parcela, `valor_recebido = 0` (ou `valor_pago = 0`) e status inicial `'Aberto'` para tipo `'Receber'` (e `'Em aberto'` para tipo `'Pagar'`).
+   - **Como as vendas (Etapa 5) devem chamá-lo:**
+     - `tipo`: `"Receber"`.
+     - `cliente_id`: cliente selecionado na venda.
+     - `origem`: `"Venda"` (para vendas do módulo comercial) ou `"PDV"` (para vendas da frente de caixa).
+     - `origem_id`: ID da venda correspondente.
+     - `plano_conta_id`: conta analítica obtida de `config_financeira_empresa.plano_vendas_id` (padrão 1.1.01).
+
 #### Regras de Integração com Lançamento e Cancelamento de Notas de Entrada:
 
 1. **Geração por Parcela:** Ao lançar uma nota fiscal de entrada (via importação XML ou digitação manual), o sistema gera automaticamente um registro na tabela `contas_pagar` para cada parcela existente em `notas_entrada_parcelas` (`parcela_numero`, `parcela_total`, `data_vencimento`, `valor_original`). Se a nota não possuir duplicatas cadastradas, gera 1 título único com o valor total da nota e vencimento na data de entrada.
@@ -2301,6 +2351,38 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Não foram criadas rotas ou tabelas de frente de caixa/PDV, vendas ou emissão de NF-e/NFC-e (mantidos para as Etapas 5 e 6).
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.55** — Conclusão dos Ajustes Pré-Etapa 5 (Documentação dos Serviços Centrais Financeiros e Validação Integral do Contas a Receber):
+
+1. **Documentação Rigorosa dos Serviços no PROJETO_ERP.md:**
+   - Detalhamento completo do serviço `creditoCliente(clienteId, empresaId?)` de `src/services/contasReceber.ts`: especificação formal de todos os parâmetros (`clienteId`, `empresaId`), objeto completo de retorno (`total_aberto`, `total_vencido`, `maior_atraso_dias`, `limite_credito`, `credito_disponivel`, `dias_tolerancia`, `situacao` com `'Liberado'` | `'Atenção'` | `'Bloqueado'`, `motivos`), regra de tolerância via `config_financeira_empresa.dias_tolerancia_bloqueio` (padrão 5 dias) e o contrato obrigatório da Etapa 5 (Vendas e PDV) para validação, alerta e bloqueio de vendas a prazo.
+   - Detalhamento completo do serviço `gerarTitulosFromParcelas(input)` de `src/services/geradorTitulos.ts`: tipagem de `GerarTitulosParcelasInput`, estrutura de gravação (exatamente um título por parcela em `contas_receber` ou `contas_pagar`, `numero_documento` formatado como `"${numero_documento_base}-${numParcela}"` e campo `parcela` como `"n/total"`, saldo inicial igual ao valor da parcela e status inicial `'Aberto'` para tipo `'Receber'`) e especificação exata de como os módulos de Vendas e PDV (Etapa 5) devem invocá-lo (`tipo: 'Receber'`, `origem: 'Venda' | 'PDV'`, `origem_id: idVenda`, `plano_conta_id` a partir de `config_financeira_empresa.plano_vendas_id`).
+2. **Conferência Residual e Homologação de Status e Origens em Contas a Receber:**
+   - Verificação exaustiva de código em todo o projeto: confirmado que não restou nenhum ponto gravando ou filtrando valores obsoletos (`'Em aberto'` ou `'Recebido parcial'`) para a coleção `contas_receber`. Todos os pontos usam `'Aberto'` e `'Parcial'`.
+   - Confirmado que a origem `'PDV'` é aceita nativamente pelo tipo `OrigemContaReceber`, pelo schema de `contas_receber` e pela validação de `gerarTitulosFromParcelas`.
+   - Verificação e homologação dos formulários e páginas (`ClienteForm.tsx`, `ContasReceberPage.tsx`, hooks transacionais `/financeiro/receber/baixar` e `/financeiro/receber/estornar-recebimento`).
+3. **Validação de Compilação e QA:**
+   - Execução completa do pipeline de QA (oxlint, TypeScript tsc, Vite build) com 100% de aprovação em todos os módulos e componentes do projeto.
+
+---
+
+**Versão 0.0.54** — Padronização de Status e Origens do Contas a Receber e Documentação da Etapa 4/5:
+
+1. **Correção e Padronização do Status e Origem de `contas_receber` (Migration 0038):**
+   - Correção dos valores permitidos no select `status` de `contas_receber`: padronizado para `['Aberto', 'Parcial', 'Recebido', 'Cancelado']` (o valor `'Em aberto'` pertencia ao padrão de `contas_pagar`, e `'Recebido parcial'` foi unificado como `'Parcial'`).
+   - Inclusão da origem `'PDV'` no select `origem` de `contas_receber`: agora aceita `['Manual', 'Venda', 'PDV', 'Recorrência', 'Outro']`, preparando a integração nativa com o módulo de frente de caixa da Etapa 5.
+   - Script de migração de dados na migration 0038: verificação e atualização dos registros existentes de `contas_receber` (`'Em aberto'` → `'Aberto'` e `'Recebido parcial'` → `'Parcial'`), com contagem prévia (confirmado 0 registros no banco de dados).
+2. **Alinhamento dos Serviços e Telas do Frontend:**
+   - `src/services/geradorTitulos.ts`: atualizado para gravar status inicial `'Aberto'` para títulos a receber e aceitar tipo de origem `'PDV'`.
+   - `src/services/contasReceber.ts`: tipos `StatusContaReceber` e `OrigemContaReceber` alinhados com `Aberto` / `Parcial` e `PDV`; filtros e rotinas de salvamento/recorrência ajustados para usar `'Aberto'` e `'Parcial'`.
+   - Hooks de backend (`/financeiro/receber/baixar` e `/financeiro/receber/estornar-recebimento`): atualizados para gravar e recompor o status `'Aberto'` e `'Parcial'`.
+   - Telas `ContasReceberPage.tsx` e `ClienteForm.tsx`: filtros e badges atualizados para os valores oficiais `'Aberto'` e `'Parcial'`.
+3. **Documentação dos Serviços Centrais Financeiros no PROJETO_ERP.md:**
+   - Inclusão da especificação formal e detalhada dos serviços `creditoCliente(clienteId, empresaId?)` e `gerarTitulosFromParcelas(input)` na seção de serviços centrais financeiros da Etapa 4, com parâmetros, formato de retorno e contratos de chamada para a Etapa 5 (Vendas e PDV).
+4. **Reconfirmação das Origens de Estoque:**
+   - Reconfirmado que o select `origem` da tabela `estoque_movimentos` (migration 0021) já contempla `'VENDA'` e `'DEVOLUCAO_VENDA'`, o tipo TypeScript `OrigemMovimentoEstoque` as inclui e o hook `/estoque/movimentar` opera perfeitamente. Nenhuma alteração necessária no estoque.
+
+---
 
 **Versão 0.0.53** — Fechamento Oficial da Etapa 4 (Financeiro Completo):
 
