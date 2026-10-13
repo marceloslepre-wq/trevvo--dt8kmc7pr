@@ -8,6 +8,7 @@ import {
   DollarSign,
   TrendingUp,
   Receipt,
+  Monitor,
   FileSpreadsheet,
   BarChart3,
   Settings,
@@ -343,10 +344,24 @@ const navItems: NavGroupItem[] = [
   },
   {
     id: 'vendas',
-    title: 'Vendas, PDV e caixa',
+    title: 'Vendas e PDV',
     icon: TrendingUp,
-    status: 'soon',
+    status: 'active',
     modulo: 'vendas',
+    items: [
+      {
+        title: 'Configurações de vendas',
+        path: '/vendas/configuracoes',
+        icon: Settings,
+        modulo: 'vendas',
+      },
+      {
+        title: 'Terminais',
+        path: '/vendas/terminais',
+        icon: Monitor,
+        modulo: 'caixa',
+      },
+    ],
   },
   {
     id: 'fiscal',
@@ -421,11 +436,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isEstoqueActive = location.pathname.startsWith('/estoque')
   const isComprasActive = location.pathname.startsWith('/compras')
   const isFinanceiroActive = location.pathname.startsWith('/financeiro')
+  const isVendasActive = location.pathname.startsWith('/vendas')
   const isConfiguracoesActive = location.pathname.startsWith('/configuracoes')
   const [cadastrosOpen, setCadastrosOpen] = useState(true)
   const [estoqueOpen, setEstoqueOpen] = useState(true)
   const [comprasOpen, setComprasOpen] = useState(true)
   const [financeiroOpen, setFinanceiroOpen] = useState(true)
+  const [vendasOpen, setVendasOpen] = useState(true)
   const [configuracoesOpen, setConfiguracoesOpen] = useState(true)
 
   const { pode, administrador } = usePermissoes()
@@ -535,7 +552,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? isComprasActive
                       : item.id === 'financeiro'
                         ? isFinanceiroActive
-                        : isConfiguracoesActive
+                        : item.id === 'vendas'
+                          ? isVendasActive
+                          : isConfiguracoesActive
               const isOpen =
                 item.id === 'cadastros'
                   ? cadastrosOpen
@@ -545,7 +564,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? comprasOpen
                       : item.id === 'financeiro'
                         ? financeiroOpen
-                        : configuracoesOpen
+                        : item.id === 'vendas'
+                          ? vendasOpen
+                          : configuracoesOpen
               const setOpen =
                 item.id === 'cadastros'
                   ? setCadastrosOpen
@@ -555,7 +576,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? setComprasOpen
                       : item.id === 'financeiro'
                         ? setFinanceiroOpen
-                        : setConfiguracoesOpen
+                        : item.id === 'vendas'
+                          ? setVendasOpen
+                          : setConfiguracoesOpen
 
               if (isCollapsed) {
                 return (

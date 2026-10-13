@@ -1661,6 +1661,8 @@ Será utilizada no Caixa/PDV (Etapa 5) e na emissão de cupons NFC-e e notas NF-
 - taxa_percentual (número opcional, taxa cobrada pela credenciadora/meio)
 - dias_para_recebimento (número inteiro opcional de dias para liquidação do crédito)
 - conta_financeira_padrao_id (relation -> contas_financeiras, conta destino padrão opcional)
+- operadora_cliente_id (relation -> clientes, operadora/adquirente cadastrada como cliente jurídica para repasse financeiro)
+- parcelado_pela_operadora (boolean, se ativado a operadora assume o parcelamento)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
@@ -1671,6 +1673,77 @@ Regras:
 1. Carga inicial oficial da SEFAZ semeada via migration: 01 Dinheiro, 02 Cheque, 03 Cartão de crédito, 04 Cartão de débito, 05 Crédito loja, 15 Boleto, 16 Depósito bancário, 17 PIX, 18 Transferência bancária, 90 Sem pagamento, 99 Outros.
 2. Documentada para consumo mandatório na frente de caixa (PDV) e motor de autorização NFC-e.
 3. Inclusão, alteração e inativação gravam em `logs_auditoria`.
+
+### formas_pagamento_taxas
+
+Tabela de faixas de taxas e prazos de liquidação por número de parcelas para cartões de crédito e débito.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- forma_pagamento_id (relation -> formas_pagamento, obrigatório, cascadeDelete: true)
+- parcelas_de (número inteiro, obrigatório, ex: 1)
+- parcelas_ate (número inteiro, obrigatório, ex: 6)
+- taxa_percentual (número percentual, obrigatório, ex: 3.90)
+- dias_para_recebimento (número inteiro opcional de dias para repasse, ex: 30)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. Permite definir taxas escalonadas (ex: 1x 3.2% em 30 dias; 2x a 6x 3.9% em 30 dias; 7x a 12x 4.8%).
+2. O serviço `obterTaxaEPrazoFormaPagamento({ formaPagamentoId, numeroParcelas })` consulta esta tabela: caso encontre faixa compatível, aplica a taxa e dias específicos da faixa; se não houver faixa, recorre à `taxa_percentual` e `dias_para_recebimento` gerais da própria forma de pagamento.
+3. Exclusões e alterações gravam em `logs_auditoria`.
+
+### config_vendas_empresa
+
+Tabela de parametrização comercial e frente de caixa (PDV) individualizada por empresa/filial, com índice único (`empresa_id` único).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório, índice único)
+- cliente_padrao_id (relation -> clientes, consumidor final padrão da frente de caixa)
+- permite_vender_sem_estoque (boolean nulo/opcional; quando nulo/vazio, segue a regra `permite_estoque_negativo` da tabela `empresas`)
+- exige_cliente_identificado_acima_de (número monetário opcional; vendas acima desse valor exigem identificação de CPF/CNPJ)
+- bloquear_venda_prazo_cliente_bloqueado (boolean, padrão true; quando false, apenas avisa na venda a prazo)
+- validade_orcamento_dias (número inteiro, padrão 7 — validade em dias para propostas e orçamentos)
+- dias_para_troca (número inteiro, padrão 30 — prazo legal/comercial para trocas no balcão)
+- mensagem_rodape_comprovante (texto opcional, impresso no rodapé do cupom/comprovante do PDV)
+- plano_vendas_id (relation -> plano_contas, conta analítica padrão para receitas de vendas — padrão herdado da `config_financeira_empresa`)
+- plano_taxas_cartao_id (relation -> plano_contas, conta analítica para despesas com taxas de cartão — padrão 2.5.03)
+- plano_quebra_caixa_id (relation -> plano_contas, conta analítica para diferenças negativas/quebra de caixa — padrão 2.8.01)
+- plano_sobra_caixa_id (relation -> plano_contas, conta analítica para diferenças positivas/sobra de caixa — padrão 1.3.01)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. Criada automaticamente na primeira abertura da tela `/vendas/configuracoes` com os padrões estabelecidos e resolução automática de IDs do plano de contas.
+2. O cliente padrão "Consumidor Final" é garantido e criado automaticamente caso não exista (Pessoa Física, sem CPF, `indicador_ie = '9'` e `consumidor_final = true`).
+3. Toda alteração grava em `logs_auditoria`.
+
+### pdv_terminais
+
+Tabela de pontos de venda e terminais de caixa físicos das empresas/filiais.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- nome (texto obrigatório, ex: "Caixa 01", "Balcão PDV")
+- conta_financeira_id (relation -> contas_financeiras, obrigatório; validação rígida: deve pertencer à mesma empresa e ser do tipo "Caixa físico")
+- conta_cofre_id (relation -> contas_financeiras, opcional; conta para destino de sangrias de caixa; padrão sugerido = `conta_padrao_recebimentos` da empresa)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. Toda alteração, inclusão ou inativação grava em `logs_auditoria`.
+2. Regra da próxima mensagem (sessão do caixa): o terminal terá controle de sessão única aberta (um operador por vez com turno aberto).
 
 ### config_financeira_empresa
 
@@ -1967,7 +2040,7 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 26. `/cadastros/condicoes-pagamento` (`@/pages/cadastros/CondicoesPagamentoPage.tsx`): Gestão de condições de pagamento com listagem, busca, filtros de tipo/uso/situação, simulação interativa de parcelas com cálculo em tempo real e exportação CSV.
 27. `/estoque/lotes` (`@/pages/estoque/LotesValidadePage.tsx`): Gestão e rastreabilidade de lotes e datas de validade com classificação automática (Vencido, Vence em até X dias, OK), contagem regressiva em dias, filtros por produto/situação/período e exportação CSV.
 
-### Todas as Tabelas Criadas (44 tabelas)
+### Todas as Tabelas Criadas (47 tabelas)
 
 1. `users`: Coleção de autenticação do Skip Cloud / PocketBase com e-mail, senha e verificação.
 2. `logs_auditoria`: Trilha de auditoria com usuário, tabela, registro, ação (inclusao, alteracao, inativacao, ativacao) e diff JSON.
@@ -2013,6 +2086,9 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 42. `pagamentos_lotes`: Lotes de pagamentos com conta financeira, forma de pagamento e totalizações.
 43. `pagamentos_baixas`: Baixas analíticas de pagamento com amortização, juros, multa, desconto e rastro de estorno.
 44. `movimentacoes_financeiras`: Movimentações e extrato de débito/crédito das contas financeiras com recomposição de saldo anterior e posterior.
+45. `formas_pagamento_taxas`: Faixas de taxas e prazos de recebimento por número de parcelas para cartões de crédito e débito.
+46. `config_vendas_empresa`: Parametrização comercial, frente de caixa, consumidor padrão, políticas de estoque e contas contábeis por filial (`empresa_id` único).
+47. `pdv_terminais`: Terminais de caixa físico e pontos de atendimento do PDV com contas financeiras vinculadas.
 
 ### Todos os Componentes Reutilizáveis e Funções Utilitárias
 
@@ -2351,6 +2427,42 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Não foram criadas rotas ou tabelas de frente de caixa/PDV, vendas ou emissão de NF-e/NFC-e (mantidos para as Etapas 5 e 6).
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.56** — Preparação da Etapa 5 (Vendas e PDV — Configurações, Terminais, Taxas de Operadoras e Serviços de Desconto):
+
+1. **Ativação do Menu "Vendas" e Mapeamento de Permissões:**
+   - Menu lateral "Vendas e PDV" ativado (removido estado "Em breve"/desabilitado).
+   - Subitem **Configurações de vendas** (`/vendas/configuracoes`): protegido pelo módulo de permissão existente `vendas` (`pode('vendas', 'ver')` e `pode('vendas', 'editar')`).
+   - Subitem **Terminais** (`/vendas/terminais`): protegido pelo módulo de permissão existente `caixa` (`pode('caixa', 'ver')`, `pode('caixa', 'criar')` e `pode('caixa', 'editar')`).
+   - Módulos pré-existentes da grade de permissões mantidos intactos (`vendas`, `pdv` e `caixa`).
+
+2. **Configurações Comerciais e Frente de Caixa (`config_vendas_empresa` - Migration 0039):**
+   - Criação da tabela `config_vendas_empresa` com índice único `empresa_id` e campos: `cliente_padrao_id`, `permite_vender_sem_estoque`, `exige_cliente_identificado_acima_de`, `bloquear_venda_prazo_cliente_bloqueado` (padrão true), `validade_orcamento_dias` (padrão 7), `dias_para_troca` (padrão 30), `mensagem_rodape_comprovante`, `plano_vendas_id`, `plano_taxas_cartao_id` (2.5.03), `plano_quebra_caixa_id` (2.8.01) e `plano_sobra_caixa_id` (1.3.01).
+   - Serviço central `src/services/configVendas.ts` com funções `obterOuCriarConfigVendasEmpresa` e `salvarConfigVendasEmpresa`.
+   - Inicialização e garantia automática do "Consumidor Final" em `clientes` (`obterOuCriarConsumidorFinal`): tipo pessoa Física, sem CPF, `indicador_ie = '9'` e `consumidor_final = true`.
+   - Todas as inclusões e alterações gravam em `logs_auditoria`.
+   - Tela `src/pages/vendas/ConfigVendasPage.tsx` com parametrização completa e feedback visual.
+
+3. **Terminais de Caixa Físico (`pdv_terminais` - Migration 0039):**
+   - Criação da tabela `pdv_terminais` com campos `empresa_id`, `nome`, `conta_financeira_id`, `conta_cofre_id` e `ativo`.
+   - Validação mandatória no serviço `src/services/terminais.ts`: `conta_financeira_id` deve pertencer à mesma empresa e ser obrigatoriamente do tipo `"Caixa físico"`.
+   - Tela `src/pages/vendas/TerminaisPage.tsx` no padrão do ERP: listagem, busca, filtros de situação, badges, alternância ativo/inativo e modal de cadastro.
+   - Registro de regra futura no PROJETO_ERP.md: cada terminal terá controle de sessão única aberta de caixa.
+
+4. **Operadoras de Cartão e Faixas de Taxas Escalonadas (`formas_pagamento_taxas` - Migration 0039):**
+   - Adicionados campos em `formas_pagamento`: `operadora_cliente_id` (relation -> `clientes`) e `parcelado_pela_operadora` (boolean).
+   - Nova tabela `formas_pagamento_taxas`: `forma_pagamento_id`, `parcelas_de`, `parcelas_ate`, `taxa_percentual`, `dias_para_recebimento`, `ativo` e auditoria.
+   - Serviço `src/services/formasPagamento.ts` ampliado: `listarTaxasPorFormaPagamento`, `salvarFormaPagamentoTaxa`, `excluirFormaPagamentoTaxa` e `obterTaxaEPrazoFormaPagamento` (reutilizável: usa faixa quando compatível, senão recorre aos padrões da forma).
+   - Tela `src/pages/financeiro/cadastros/FormasPagamentoPage.tsx` atualizada: exibe campos de operadora e faixas de taxas exclusivamente quando o tipo for "Cartão de crédito" ou "Cartão de débito", com botão "Criar cliente da operadora" (modal com cadastro rápido de Pessoa Jurídica com CNPJ opcional) e mini-grade interativa para inclusão/exclusão de faixas.
+
+5. **Serviço Central e Reutilizável de Desconto e Autorização de Supervisor:**
+   - Serviço `src/services/descontos.ts` implementando a função central:
+     `validarDescontoItem({ descontoPercentual, produto, usuario })`
+   - Regra do Menor dos Limites: apura o limite do usuário (`usuario.desconto_maximo_percentual`) e o do produto (`produto.desconto_maximo_percentual` e `produto.permite_desconto`). Se `produto.permite_desconto === false`, o limite é 0%. Caso contrário, o limite permitido é `Math.min(limiteUsuario, limiteProduto)`.
+   - Função `autorizarDescontoSupervisor({ email, senha, descontoPercentual, ... })`: valida credenciais via auth nativo (`users.authWithPassword`), checa se o supervisor/administrador tem limite compatível e grava registro formal em `logs_auditoria` com valores, autorizador, operador e contexto da venda.
+   - Modal reutilizável `<ModalAutorizacaoSupervisor />` (`@/components/ModalAutorizacaoSupervisor.tsx`) pronto para ser consumido pela tela de venda na próxima etapa.
+
+---
 
 **Versão 0.0.55** — Conclusão dos Ajustes Pré-Etapa 5 (Documentação dos Serviços Centrais Financeiros e Validação Integral do Contas a Receber):
 

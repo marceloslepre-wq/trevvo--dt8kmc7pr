@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T18:10:37.641Z",
+  "generatedAt": "2026-10-13T19:10:29.571Z",
   "collections": [
     {
       "name": "users",
@@ -6609,6 +6609,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "operadora_cliente_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "clientes"
+        },
+        {
+          "name": "parcelado_pela_operadora",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -7804,6 +7817,295 @@
         "CREATE INDEX idx_extratos_linhas_conta_data ON extratos_linhas (conta_financeira_id, data)",
         "CREATE INDEX idx_extratos_linhas_situacao ON extratos_linhas (situacao)",
         "CREATE INDEX idx_extratos_linhas_ativo ON extratos_linhas (ativo)"
+      ]
+    },
+    {
+      "name": "formas_pagamento_taxas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "forma_pagamento_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "formas_pagamento"
+        },
+        {
+          "name": "parcelas_de",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "parcelas_ate",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "taxa_percentual",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "dias_para_recebimento",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_formas_taxas_forma ON formas_pagamento_taxas (forma_pagamento_id)",
+        "CREATE INDEX idx_formas_taxas_ativo ON formas_pagamento_taxas (ativo)"
+      ]
+    },
+    {
+      "name": "config_vendas_empresa",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "cliente_padrao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "clientes"
+        },
+        {
+          "name": "permite_vender_sem_estoque",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "exige_cliente_identificado_acima_de",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bloquear_venda_prazo_cliente_bloqueado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "validade_orcamento_dias",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dias_para_troca",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mensagem_rodape_comprovante",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "plano_vendas_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_taxas_cartao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_quebra_caixa_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "plano_sobra_caixa_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "plano_contas"
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_config_vendas_empresa_uid ON config_vendas_empresa (empresa_id)",
+        "CREATE INDEX idx_config_vendas_empresa_ativo ON config_vendas_empresa (ativo)"
+      ]
+    },
+    {
+      "name": "pdv_terminais",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "conta_financeira_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "contas_financeiras"
+        },
+        {
+          "name": "conta_cofre_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contas_financeiras"
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_pdv_terminais_empresa ON pdv_terminais (empresa_id)",
+        "CREATE INDEX idx_pdv_terminais_ativo ON pdv_terminais (ativo)"
       ]
     }
   ]

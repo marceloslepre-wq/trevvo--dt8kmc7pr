@@ -83,6 +83,10 @@ import { FluxoCaixaPage } from '@/pages/financeiro/FluxoCaixaPage'
 import { InadimplenciaPage } from '@/pages/financeiro/InadimplenciaPage'
 import IntegridadeFinanceiroPage from '@/pages/configuracoes/IntegridadeFinanceiroPage'
 
+// Páginas de Vendas e PDV (Etapa 5)
+import ConfigVendasPage from '@/pages/vendas/ConfigVendasPage'
+import TerminaisPage from '@/pages/vendas/TerminaisPage'
+
 const App = () => (
   <BrowserRouter>
     <AuthProvider>
@@ -138,7 +142,6 @@ const App = () => (
                   {/* Rota raiz redireciona para /painel */}
                   <Route path="/" element={<Navigate to="/painel" replace />} />
                   <Route path="/painel" element={<Index />} />
-
                   {/* Cadastros */}
                   <Route
                     path="/cadastros/empresas"
@@ -164,7 +167,6 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
-
                   {/* Usuários */}
                   <Route
                     path="/cadastros/usuarios"
@@ -190,7 +192,6 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
-
                   {/* Perfis de Acesso */}
                   <Route
                     path="/cadastros/perfis-acesso"
@@ -216,7 +217,6 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
-
                   <Route
                     path="/cadastros/clientes"
                     element={
@@ -401,7 +401,6 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
-
                   {/* Financeiro: Contas a Pagar, Contas a Receber e Cadastros */}
                   <Route
                     path="/financeiro"
@@ -515,7 +514,6 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
-
                   {/* Estoque */}
                   <Route path="/estoque" element={<Navigate to="/estoque/posicao" replace />} />
                   <Route
@@ -526,7 +524,6 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
-
                   {/* Etapa 3: Compras */}
                   <Route path="/compras" element={<Navigate to="/compras/pedidos" replace />} />
                   <Route
@@ -561,7 +558,6 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
-
                   {/* Notas Fiscais de Entrada */}
                   <Route
                     path="/compras/notas-entrada"
@@ -691,11 +687,29 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
+                  {/* Vendas e PDV (Etapa 5) */}
+                  <Route path="/vendas" element={<Navigate to="/vendas/configuracoes" replace />} />
+                  <Route
+                    path="/vendas/configuracoes"
+                    element={
+                      <PermissaoGuard modulo="vendas" acao="ver">
+                        <ConfigVendasPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/vendas/terminais"
+                    element={
+                      <PermissaoGuard modulo="caixa" acao="ver">
+                        <TerminaisPage />
+                      </PermissaoGuard>
+                    }
+                  />
                   {/* Configurações */}
                   <Route
                     path="/configuracoes"
                     element={<Navigate to="/configuracoes/geral" replace />}
-                  />
+                  />{' '}
                   <Route
                     path="/configuracoes/geral"
                     element={
