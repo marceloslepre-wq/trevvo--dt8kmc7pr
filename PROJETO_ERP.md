@@ -1745,6 +1745,123 @@ Regras:
 1. Toda alteração, inclusão ou inativação grava em `logs_auditoria`.
 2. Regra da próxima mensagem (sessão do caixa): o terminal terá controle de sessão única aberta (um operador por vez com turno aberto).
 
+### vendas
+
+Tabela mestre de cabeçalhos de vendas comerciais, orçamentos, pedidos e vendas na frente de caixa (PDV) da empresa/filial.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- numero (número inteiro sequencial por empresa, obrigatório)
+- tipo (select: 'Orçamento' | 'Pedido' | 'PDV', obrigatório)
+- status (select: 'Orçamento' | 'Pedido em aberto' | 'Finalizada' | 'Cancelada' | 'Orçamento expirado', obrigatório)
+- cliente_id (relation -> clientes, obrigatório)
+- cpf_cnpj_consumidor (texto opcional — CPF/CNPJ informado no cupom/PDV)
+- vendedor_id (relation -> usuarios, opcional — vendedor comissionado)
+- operador_id (relation -> usuarios, opcional — usuário que registrou a venda)
+- pdv_terminal_id (relation -> pdv_terminais, opcional — terminal físico de caixa)
+- caixa_sessao_id (texto opcional — ID da sessão/turno de caixa)
+- data_emissao (texto/data YYYY-MM-DD, obrigatório)
+- data_validade (texto/data opcional — validade para orçamentos)
+- data_finalizacao (texto/data opcional — data/hora em que a venda foi finalizada)
+- valor_produtos (número monetário, 2 casas, obrigatório)
+- valor_desconto_itens (número monetário, soma dos descontos dos itens)
+- valor_desconto_total (número monetário, desconto global da venda)
+- valor_acrescimo (número monetário, acréscimos globais)
+- valor_frete (número monetário, frete cobrado do cliente)
+- valor_total (número monetário, 2 casas, obrigatório)
+- custo_total (número monetário, custo consolidado apurado via FEFO dos produtos)
+- condicao_pagamento_id (relation -> condicoes_pagamento, opcional)
+- observacao (texto opcional — observações internas)
+- observacao_cliente (texto opcional — mensagem impressa no comprovante)
+- venda_origem_id (texto opcional — ID do orçamento/pedido de origem)
+- documento_fiscal_status (select: 'Não emitido' | 'Autorizada' | 'Cancelada' | 'Rejeitada', opcional)
+- documento_fiscal_id (texto opcional — ID do documento fiscal na Etapa 6)
+- motivo_cancelamento (texto opcional — preenchido quando status = 'Cancelada')
+- data_cancelamento (texto/data opcional)
+- usuario_cancelamento_id (relation -> usuarios, opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras de Banco e Acesso (API Rules):
+
+- `listRule: "@request.auth.id != ''"`, `viewRule: "@request.auth.id != ''"`
+- `createRule: "@request.auth.id != ''"` (para rascunhos, orçamentos e pré-vendas)
+- `updateRule: "@request.auth.id != '' && status != 'Finalizada' && status != 'Cancelada'"`
+- `deleteRule: "@request.auth.id != '' && status != 'Finalizada' && status != 'Cancelada'"`
+- Vendas com status 'Finalizada' e 'Cancelada' são categoricamente imutáveis via client direto; só o serviço central de backend pode finalizá-las ou cancelá-las.
+
+### vendas_itens
+
+Tabela analítica de itens e mercadorias negociadas em cada venda/orçamento/pedido.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- venda_id (relation -> vendas, obrigatório, cascadeDelete: true)
+- item (número inteiro sequencial, obrigatório 1..N)
+- produto_id (relation -> produtos, obrigatório)
+- descricao (texto obrigatório — descrição da mercadoria no momento da venda)
+- unidade (texto obrigatório — UN, KG, CX, etc.)
+- quantidade (número, obrigatório > 0)
+- preco_unitario (número monetário, valor líquido unitário faturado)
+- preco_tabela (número monetário opcional — preço original de catálogo)
+- desconto_percentual (número percentual opcional)
+- desconto_valor (número monetário opcional)
+- acrescimo_valor (número monetário opcional)
+- valor_total (número monetário, 2 casas, obrigatório)
+- custo_unitario (número monetário, custo ponderado/FEFO apurado na saída de estoque)
+- lote_id (relation -> lotes, opcional — lote específico atribuído na saída)
+- ncm (texto fiscal opcional)
+- cest (texto fiscal opcional)
+- cfop (texto fiscal opcional)
+- origem (texto fiscal opcional — origem da mercadoria 0..8)
+- cst_icms (texto fiscal opcional)
+- csosn (texto fiscal opcional)
+- aliquota_icms (número percentual opcional)
+- cst_pis (texto fiscal opcional)
+- cst_cofins (texto fiscal opcional)
+- perfil_tributario_id (relation -> perfis_tributarios, opcional)
+- quantidade_devolvida (número opcional — controle de devoluções)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras de Banco e Acesso (API Rules):
+
+- `createRule`, `updateRule`, `deleteRule` permitidos somente se a venda pai (`@collection.vendas.id = venda_id`) não estiver 'Finalizada' nem 'Cancelada'.
+
+### vendas_pagamentos
+
+Tabela de registro e conciliação dos pagamentos efetuados na finalização da venda.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- venda_id (relation -> vendas, obrigatório, cascadeDelete: true)
+- forma_pagamento_id (relation -> formas_pagamento, obrigatório)
+- valor (número monetário, obrigatório > 0)
+- troco (número monetário opcional — troco devolvido em dinheiro)
+- parcelas (número inteiro opcional — quantidade de parcelas no cartão/crediário)
+- bandeira (texto opcional — ex: Visa, Mastercard)
+- nsu (texto opcional — número sequencial único do TEF/POS)
+- codigo_autorizacao (texto opcional — autorização da adquirente)
+- taxa_percentual (número percentual — taxa da operadora de cartão aplicada)
+- valor_taxa (número monetário — valor descontado pela adquirente)
+- conta_financeira_id (relation -> contas_financeiras, opcional — caixa físico ou conta de crédito)
+- conta_receber_ids (json opcional — array com os IDs dos títulos a receber gerados no crediário/cartão)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras de Banco e Acesso (API Rules):
+
+- `listRule: "@request.auth.id != ''"`, `viewRule: "@request.auth.id != ''"`
+- `createRule: null`, `updateRule: null`, `deleteRule: null` (TOTALMENTE FECHADAS PARA O NAVEGADOR).
+- Nenhuma tela cliente ou hook de frontend grava diretamente nesta tabela; gravação exclusiva pelo serviço central `/backend/v1/vendas/finalizar`.
+
 ### config_financeira_empresa
 
 Tabela de parametrização financeira individualizada por empresa/filial, com índice único por empresa (`empresa_id` único).
@@ -2089,6 +2206,9 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 45. `formas_pagamento_taxas`: Faixas de taxas e prazos de recebimento por número de parcelas para cartões de crédito e débito.
 46. `config_vendas_empresa`: Parametrização comercial, frente de caixa, consumidor padrão, políticas de estoque e contas contábeis por filial (`empresa_id` único).
 47. `pdv_terminais`: Terminais de caixa físico e pontos de atendimento do PDV com contas financeiras vinculadas.
+48. `vendas`: Cabeçalho comercial e de PDV com numeração sequencial, tipo, status analítico, valores consolidados, cliente e auditoria.
+49. `vendas_itens`: Itens e mercadorias negociadas por venda com quantidades, valores unitários, tributos e rastro de lote.
+50. `vendas_pagamentos`: Conciliação de pagamentos da finalização da venda (dinheiro com troco, cartão com taxa e crediário com títulos).
 
 ### Todos os Componentes Reutilizáveis e Funções Utilitárias
 
@@ -2182,6 +2302,80 @@ Nenhuma tela, hook ou componente do sistema tem permissão para alterar diretame
 3. **Exceções Legais de Geração:** Tipos de entrada "Bonificação" e "Devolução de venda" **não geram títulos a pagar**, pois não representam desembolso financeiro a fornecedor.
 4. **Notas à Vista com Baixa Imediata ("Já paga"):** Quando a nota de entrada for selecionada com condição de pagamento à vista com quitação imediata, o título é gerado com status "Pago", gerando a baixa e a movimentação financeira de saída na conta bancária/caixa padrão.
 5. **Cancelamento Recusado com Baixas Ativas:** O cancelamento de uma nota fiscal de entrada é **terminantemente bloqueado** caso existam títulos vinculados com baixas ativas de pagamento. O operador recebe mensagem clara instruindo a estornar previamente todas as baixas de pagamento no Contas a Pagar antes de proceder ao cancelamento da nota fiscal.
+
+### Serviços Centrais de Vendas (`@/services/vendas.ts` e Endpoints de Backend)
+
+⚠ **REGRA DE ARQUITETURA MANDATÓRIA (EM DESTAQUE):**
+Nenhuma tela, PDV, componente ou hook do navegador tem permissão para alterar diretamente o status de uma venda para `'Finalizada'` ou `'Cancelada'`, nem para inserir, editar ou excluir registros na tabela `vendas_pagamentos` (`createRule`, `updateRule` e `deleteRule` fechadas para o navegador). Toda e qualquer operação de finalização comercial ou cancelamento de venda deve transitar única e exclusivamente pelos endpoints transacionais centrais do backend PocketBase:
+
+- `POST /backend/v1/vendas/finalizar` (invocado pela função client `finalizarVenda(input)` via `pb.send(...)`).
+- `POST /backend/v1/vendas/cancelar` (invocado pela função client `cancelarVenda(input)` via `pb.send(...)`).
+
+O navegador opera apenas na criação e manutenção de orçamentos, pedidos em aberto e rascunhos de venda com itens (`vendas` e `vendas_itens`), enquanto a transição para venda efetivada exige o serviço central do servidor em uma única transação atômica.
+
+#### 1. `finalizarVenda(input)` (`/backend/v1/vendas/finalizar`)
+
+Endpoint transacional atômico no backend que consolida e efetiva a venda:
+
+- **Parâmetros (`FinalizarVendaInput`):**
+  - `venda_id` (obrigatório, string): ID da venda em `vendas` a ser finalizada.
+  - `pagamentos` (obrigatório, array de `VendaPagamentoInput`): lista de pagamentos efetuados. Cada elemento possui:
+    - `forma_pagamento_id` (obrigatório): forma cadastrada em `formas_pagamento`.
+    - `valor` (obrigatório, número > 0): valor pago na forma.
+    - `troco` (opcional, número >= 0): troco devolvido (específico para dinheiro).
+    - `parcelas` (opcional, inteiro >= 1): quantidade de parcelas informada para cartão/crediário.
+    - `bandeira`, `nsu`, `codigo_autorizacao` (opcionais, texto): dados do comprovante POS/TEF.
+    - `taxa_percentual`, `valor_taxa` (opcionais, número): taxas apuradas da operadora de cartão.
+    - `conta_financeira_id` (opcional): conta financeira de crédito imediato ou caixa físico.
+    - `vencimentos` (opcional, array de strings YYYY-MM-DD): datas de vencimento das parcelas no crediário.
+  - `pdv_terminal_id` (opcional, string): ID do terminal de caixa físico em `pdv_terminais`.
+  - `caixa_sessao_id` (opcional, string): ID da sessão de turno aberta do operador de caixa.
+  - `cliente_id` (opcional, string): cliente da venda se atualizado no momento da finalização.
+  - `observacao`, `observacao_cliente` (opcionais, texto): observações impressas no comprovante.
+
+- **Comportamentos e Validações Rígidas Executadas pelo Backend:**
+  1. **Validação de Estado:** A venda deve existir, estar ativa e com status `'Orçamento'` ou `'Pedido em aberto'`. Se já estiver `'Finalizada'` ou `'Cancelada'`, a requisição é rejeitada.
+  2. **Validação de Itens:** A venda deve conter pelo menos 1 item ativo em `vendas_itens`.
+  3. **Conferência Matemática de Pagamentos:** A soma dos valores de pagamentos menos trocos (`soma(valor - troco)`) deve coincidir exatamente com o `valor_total` da venda (tolerância de R$ 0,02 para centavos de arredondamento). Não permite valor pago inferior ao total. Troco só é permitido para pagamentos do tipo dinheiro.
+  4. **Validação de Crediário com `creditoCliente`:**
+     - Quando houver pagamento via crediário/a prazo (`Credito loja`), o cliente não pode ser o Consumidor Final genérico.
+     - O backend invoca o serviço central financeiro de análise de crédito: se `situacao === 'Bloqueado'` (bloqueio cadastral, títulos vencidos além da tolerância em dias de `config_financeira_empresa` ou limite de crédito excedido pelo saldo + total da venda), a finalização é categoricamente rejeitada informando os motivos do bloqueio.
+  5. **Baixa Atômica de Estoque com FEFO:**
+     - Para cada item da venda com `produto.controla_estoque = true`:
+     - Se `produto.tipo === 'Kit'`, expande recursivamente seus componentes via `produtos_kit_itens`.
+     - Verifica a política de estoque da empresa (`config_vendas_empresa.permite_vender_sem_estoque` e `empresas.permite_estoque_negativo`). Se não permitir saldo negativo e a quantidade for insuficiente, rejeita a finalização.
+     - Para itens com controle de lote/validade, aplica o critério **FEFO automático** (_First Expire, First Out_ — lote com vencimento mais próximo sai primeiro, recusando lotes vencidos).
+     - Registra os movimentos analíticos no Kardex (`estoque_movimentos`) com tipo `'Saída'`, origem `'VENDA'`, documento `'Venda'`, número sequencial e o lote específico baixado, deduzindo em `estoque_saldos`.
+     - Apura o custo unitário de saída de cada item e calcula o `custo_total` consolidado da venda.
+  6. **Tratamento Financeiro Conforme Forma de Pagamento:**
+     - **Dinheiro / À Vista:** Se houver terminal ou conta de caixa físico informada, gera a movimentação financeira de crédito imediata em `movimentacoes_financeiras` com status conciliado na hora e atualiza o `saldo_atual` da conta física.
+     - **Cartão de Crédito / Débito:** Busca a taxa da adquirente em `formas_pagamento_taxas` pelo número de parcelas (ou os padrões da forma de pagamento). Se houver `operadora_cliente_id` parametrizada, gera o título de repasse a receber contra a operadora líquida da taxa (`valor - valor_taxa`), gravando `taxa_percentual` e `valor_taxa` no pagamento e vinculando a conta do plano para despesas bancárias/taxas de cartão (2.5.03).
+     - **Crediário / A Prazo:** Gera as parcelas em `contas_receber` via regra equivalente a `gerarTitulosFromParcelas` vinculando `cliente_id`, origem `'Venda'` (ou `'PDV'`), status inicial `'Aberto'`, plano de contas `plano_vendas_id` e vencimentos informados.
+  7. **Gravação de `vendas_pagamentos`:** Grava com privilégio de servidor cada parcela/forma paga em `vendas_pagamentos` com auditoria.
+  8. **Atualização da Venda e Auditoria:** Altera o status da venda para `'Finalizada'`, data de finalização com carimbo atual, `custo_total` consolidado, grava registro em `logs_auditoria` e retorna o cabeçalho completo atualizado. Se qualquer etapa falhar, toda a operação sofre rollback atômico.
+
+#### 2. `cancelarVenda(input)` (`/backend/v1/vendas/cancelar`)
+
+Endpoint transacional atômico no backend que reverte integralmente os efeitos da venda:
+
+- **Parâmetros (`CancelarVendaInput`):**
+  - `venda_id` (obrigatório, string): ID da venda em `vendas`.
+  - `motivo` (obrigatório, texto com no mínimo 5 caracteres): justificativa formal do cancelamento.
+
+- **Comportamentos e Validações Rígidas Executadas pelo Backend:**
+  1. **Validação de Estado:** A venda deve estar com status `'Finalizada'`. Vendas já canceladas não podem ser canceladas novamente.
+  2. **Bloqueio Rígido contra Recebimentos Posteriores:** Se houver títulos em `contas_receber` gerados por esta venda que já possuam baixas ativas registradas em `pagamentos_baixas` (parcela que o cliente já pagou), o cancelamento é **terminantemente recusado**. O operador recebe mensagem clara instruindo a estornar previamente os recebimentos no Contas a Receber.
+  3. **Estorno Financeiro Completo:**
+     - Cancela todos os títulos a receber em aberto (`contas_receber.status = 'Cancelado'`).
+     - Estorna todas as movimentações financeiras imediatas geradas na finalização (caixa/banco), criando movimentações de contrapartida com origem `'ESTORNO'` e recompondo o `saldo_atual` das contas financeiras.
+  4. **Estorno de Estoque com Devolução de Lotes:**
+     - Localiza todos os movimentos de saída com origem `'VENDA'` vinculados a esta venda.
+     - Executa o estorno do movimento gerando movimento contraposto de entrada `'ESTORNO'`, devolvendo com precisão a quantidade ao saldo do lote específico (`lotes.saldo`) de onde saiu e recompondo `estoque_saldos`.
+  5. **Atualização da Venda e Auditoria:**
+     - Altera o status da venda para `'Cancelada'`, registra `motivo_cancelamento`, `data_cancelamento` e `usuario_cancelamento_id`.
+     - Inativa os registros de `vendas_pagamentos` vinculados e grava o evento em `logs_auditoria`.
+
+---
 
 ### Serviços Centrais de Estoque (`@/services/estoque.ts`)
 
@@ -2427,6 +2621,31 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Não foram criadas rotas ou tabelas de frente de caixa/PDV, vendas ou emissão de NF-e/NFC-e (mantidos para as Etapas 5 e 6).
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.59** — Fechamento da Base de Vendas e PDV (Serviço Central Transacional, API Rules Fechadas e Integração de Estoque e Financeiro):
+
+1. **Estrutura de Banco de Dados da Base de Vendas (Migration 0040):**
+   - Criação das 3 tabelas nucleares de vendas comerciais e frente de caixa:
+     - `vendas`: cabeçalho analítico por filial, numeração sequencial por empresa, tipos ('Orçamento' | 'Pedido' | 'PDV'), status analíticos ('Orçamento' | 'Pedido em aberto' | 'Finalizada' | 'Cancelada' | 'Orçamento expirado'), totalizadores monetários, campos de terminal, turno de caixa, consumidor e rastro de cancelamento.
+     - `vendas_itens`: itens com quantidade, preços de tabela e praticado, descontos, acréscimos, custos de saída apurados via FEFO, rastro de lote e campos fiscais completos (NCM, CEST, CFOP, CST/CSOSN, alíquotas).
+     - `vendas_pagamentos`: conciliação analítica das formas de pagamento (dinheiro com troco, cartões com taxas e prazos, crediário com vínculo a títulos a receber).
+   - **Fechamento de API Rules (Segurança Rígida):**
+     - `vendas_pagamentos`: `createRule: null`, `updateRule: null`, `deleteRule: null` (100% blindada contra gravação direta pelo navegador).
+     - `vendas`: update e delete bloqueados via SDK do cliente quando status for 'Finalizada' ou 'Cancelada'.
+     - `vendas_itens`: criação, alteração e exclusão bloqueadas se a venda pai estiver 'Finalizada' ou 'Cancelada'.
+
+2. **Serviço Central Transacional de Vendas (`pocketbase/hooks/vendas_operacoes.js` e `src/services/vendas.ts`):**
+   - Implementação de endpoints atômicos no servidor PocketBase:
+     - `POST /backend/v1/vendas/finalizar`: validação matemática rigorosa entre pagamentos e total da venda, recusa de finalização sem itens, validação de crédito via `creditoCliente` para crediário/a prazo, saída de estoque atômica com FEFO automático no Kardex (`estoque_movimentos` com origem `VENDA` e lote específico), crédito imediato em caixa para dinheiro, geração de títulos a receber contra operadora para cartões e parcelas em `contas_receber` para crediário, gravação protegida de `vendas_pagamentos` e atualização para 'Finalizada' com auditoria.
+     - `POST /backend/v1/vendas/cancelar`: validação de status 'Finalizada', bloqueio categórico caso parcelas a receber já possuam baixas ativas em `pagamentos_baixas`, cancelamento de títulos a receber, estorno de movimentações financeiras imediatas com origem 'ESTORNO', estorno de movimentos de estoque devolvendo saldo aos lotes específicos e atualização para 'Cancelada'.
+   - Ajuste nas chamadas do frontend em `src/services/vendas.ts` para utilização do cliente centralizado `pb.send('/backend/v1/vendas/finalizar', ...)` e `pb.send('/backend/v1/vendas/cancelar', ...)`.
+
+3. **Homologação e Estabilidade Operacional:**
+   - Conferência de integridade de estoque e financeiro com conformidade das regras de negócio.
+   - Navegação blindada através do `PermissaoGuard` resiliente sem bloqueios na inicialização e transições.
+   - Zero telas prematuras de PDV ou emissão de NF-e (preservadas para as próximas etapas).
+
+---
 
 **Versão 0.0.56** — Preparação da Etapa 5 (Vendas e PDV — Configurações, Terminais, Taxas de Operadoras e Serviços de Desconto):
 

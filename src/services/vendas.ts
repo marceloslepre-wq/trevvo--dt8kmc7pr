@@ -470,22 +470,16 @@ export async function sincronizarItensVenda(
  * POST /backend/v1/vendas/finalizar
  */
 export async function finalizarVenda(input: FinalizarVendaInput): Promise<FinalizarVendaResponse> {
-  const token = pb.authStore.token
-  const response = await fetch('/backend/v1/vendas/finalizar', {
+  const res = await pb.send<FinalizarVendaResponse>('/backend/v1/vendas/finalizar', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token ? `Bearer ${token}` : '',
-    },
-    body: JSON.stringify(input),
+    body: input,
   })
 
-  const data = await response.json()
-  if (!response.ok || !data.sucesso) {
-    throw new Error(data.message || data.error || 'Erro ao finalizar venda.')
+  if (!res || !res.sucesso) {
+    throw new Error(res?.message || 'Erro ao finalizar venda.')
   }
 
-  return data as FinalizarVendaResponse
+  return res
 }
 
 /**
@@ -493,22 +487,16 @@ export async function finalizarVenda(input: FinalizarVendaInput): Promise<Finali
  * POST /backend/v1/vendas/cancelar
  */
 export async function cancelarVenda(input: CancelarVendaInput): Promise<CancelarVendaResponse> {
-  const token = pb.authStore.token
-  const response = await fetch('/backend/v1/vendas/cancelar', {
+  const res = await pb.send<CancelarVendaResponse>('/backend/v1/vendas/cancelar', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token ? `Bearer ${token}` : '',
-    },
-    body: JSON.stringify(input),
+    body: input,
   })
 
-  const data = await response.json()
-  if (!response.ok || !data.sucesso) {
-    throw new Error(data.message || data.error || 'Erro ao cancelar venda.')
+  if (!res || !res.sucesso) {
+    throw new Error(res?.message || 'Erro ao cancelar venda.')
   }
 
-  return data as CancelarVendaResponse
+  return res
 }
 
 /**
