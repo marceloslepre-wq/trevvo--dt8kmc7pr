@@ -228,8 +228,8 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
       {modalNovoClienteAberto && (
         <ClienteCadastroRapido
           aberto={modalNovoClienteAberto}
-          aoFechar={() => setModalNovoClienteAberto(false)}
-          aoSalvarSucesso={handleNovoClienteCriado}
+          onOpenChange={(ab) => setModalNovoClienteAberto(ab)}
+          onSucesso={handleNovoClienteCriado}
         />
       )}
     </>

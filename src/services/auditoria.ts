@@ -1,6 +1,13 @@
 import pb from '@/lib/pocketbase/client'
 
-export type AcaoAuditoria = 'inclusao' | 'alteracao' | 'inativacao' | 'ativacao' | 'exclusao'
+export type AcaoAuditoria =
+  | 'inclusao'
+  | 'alteracao'
+  | 'inativacao'
+  | 'ativacao'
+  | 'exclusao'
+  | 'CANCELAR_ITEM_PDV'
+  | 'CANCELAR_VENDA_PDV_EM_ANDAMENTO'
 
 export interface LogAuditoriaItem {
   id?: string
