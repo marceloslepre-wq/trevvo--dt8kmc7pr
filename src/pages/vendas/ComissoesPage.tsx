@@ -48,13 +48,14 @@ import pb from '@/lib/pocketbase/client'
 
 export const ComissoesPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
-  const { usuario, isAdmin } = usePermissoes()
+  const { usuarioERP, administrador, perfil, pode } = usePermissoes()
   const { toast } = useToast()
 
-  // Regra de acesso: só Administrador, Gerente e Financeiro
-  const perfilNome = usuario?.perfil?.nome?.toLowerCase() || ''
+  // Regra de acesso: só Administrador, Gerente e Financeiro ou quem pode ver vendas
+  const perfilNome = (perfil?.nome || usuarioERP?.expand?.perfil_id?.nome || '').toLowerCase()
   const temAcesso =
-    isAdmin ||
+    administrador ||
+    pode('vendas', 'ver') ||
     perfilNome.includes('gerente') ||
     perfilNome.includes('admin') ||
     perfilNome.includes('financeiro')
@@ -130,10 +131,7 @@ export const ComissoesPage: React.FC = () => {
 
   if (!temAcesso) {
     return (
-      <AcessoNegado
-        titulo="Acesso Restrito às Comissões"
-        mensagem="Apenas Administradores, Gerentes e usuários do departamento Financeiro possuem permissão para apurar comissões de vendas."
-      />
+      <AcessoNegado mensagem="Acesso Restrito: Apenas Administradores, Gerentes e usuários do departamento Financeiro possuem permissão para apurar comissões de vendas." />
     )
   }
 

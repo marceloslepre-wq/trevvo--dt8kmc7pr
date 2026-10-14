@@ -348,14 +348,13 @@ export async function processarDevolucao(
     }
 
     const resAvulso = await lancarAvulso({
-      empresaId: empresa_id,
-      contaFinanceiraId: contaFinId,
+      empresa_id,
+      conta_financeira_id: contaFinId,
       data: dataHojeIso,
       tipo: 'Saída',
       valor: valorTotalDevolucao,
-      planoContaId: planoDevolucaoId,
+      plano_conta_id: planoDevolucaoId,
       historico: `Devolução em dinheiro - Venda #${vendaOrig.numero} (Devolução #${proximoNumero})`,
-      documento: `DEV-${proximoNumero}`,
     })
 
     movFinanceiroId = resAvulso.movimento.id
@@ -419,7 +418,6 @@ export async function processarDevolucao(
         forma_pagamento_id: formaPagId,
         data_pagamento: dataHojeIso,
         titulos: baixasParaProcessar,
-        documento_pagamento: `DEV-${proximoNumero}`,
         observacao: `Abatimento por Devolução #${proximoNumero} (Venda #${vendaOrig.numero})`,
         plano_desconto_id: planoDescontoId,
       })

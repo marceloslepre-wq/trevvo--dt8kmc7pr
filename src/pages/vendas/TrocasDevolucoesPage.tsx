@@ -38,7 +38,7 @@ import {
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useToast } from '@/hooks/use-toast'
-import { obterConfigVendasEmpresa } from '@/services/configVendas'
+import { obterOuCriarConfigVendasEmpresa } from '@/services/configVendas'
 import { obterVendaCompleta, listarVendas, Venda, VendaItem } from '@/services/vendas'
 import {
   processarDevolucao,
@@ -107,7 +107,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
   // Carrega configurações da empresa e contas financeiras
   useEffect(() => {
     if (!empresaAtiva?.id) return
-    obterConfigVendasEmpresa(empresaAtiva.id)
+    obterOuCriarConfigVendasEmpresa(empresaAtiva.id)
       .then((cfg) => {
         setDiasParaTroca(cfg.dias_para_troca ?? 30)
       })

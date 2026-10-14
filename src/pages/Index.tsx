@@ -18,6 +18,8 @@ import {
   ArrowLeftRight,
   ShoppingCart,
   FileText,
+  ShoppingBag,
+  CreditCard,
 } from 'lucide-react'
 import { contarTransferenciasAguardandoRecebimento } from '@/services/transferencias'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
