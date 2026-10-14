@@ -1714,6 +1714,7 @@ Tabela de parametrização comercial e frente de caixa (PDV) individualizada por
 - plano_taxas_cartao_id (relation -> plano_contas, conta analítica para despesas com taxas de cartão — padrão 2.5.03)
 - plano_quebra_caixa_id (relation -> plano_contas, conta analítica para diferenças negativas/quebra de caixa — padrão 2.8.01)
 - plano_sobra_caixa_id (relation -> plano_contas, conta analítica para diferenças positivas/sobra de caixa — padrão 1.3.01)
+- fechamento_cego (boolean, padrão true — quando ativo, oculta os valores esperados no fechamento de caixa até que o operador informe a contagem física)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
@@ -1743,7 +1744,71 @@ Tabela de pontos de venda e terminais de caixa físicos das empresas/filiais.
 Regras:
 
 1. Toda alteração, inclusão ou inativação grava em `logs_auditoria`.
-2. Regra da próxima mensagem (sessão do caixa): o terminal terá controle de sessão única aberta (um operador por vez com turno aberto).
+2. O terminal possui controle de sessão única aberta (um operador por vez com turno aberto).
+
+### caixa_sessoes
+
+Tabela mestre de turnos e sessões de caixa da empresa/filial, operada exclusivamente por usuários com `e_caixa = true`.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- pdv_terminal_id (relation -> pdv_terminais, obrigatório)
+- operador_id (relation -> usuarios, obrigatório)
+- status (select: "Aberto" | "Fechado", obrigatório)
+- data_abertura (texto/ISO, obrigatório)
+- valor_abertura (número monetário — fundo de troco informado)
+- data_fechamento (texto/ISO, opcional)
+- valor_esperado_dinheiro (número monetário — apurado na finalização do turno)
+- valor_contado_dinheiro (número monetário — contado pelo operador)
+- diferenca_dinheiro (número monetário — valor_contado - valor_esperado)
+- totais_por_forma (json — array com forma_id, forma_descricao, codigo_tpag, quantidade_vendas, valor_esperado, valor_informado, diferenca)
+- quantidade_vendas (número inteiro — total de vendas finalizadas na sessão)
+- valor_vendas (número monetário — soma do valor das vendas finalizadas)
+- valor_cancelado (número monetário — soma do valor de vendas canceladas)
+- valor_sangrias (número monetário — acumulado de sangrias do turno)
+- valor_suprimentos (número monetário — acumulado de suprimentos do turno)
+- observacao_fechamento (texto opcional)
+- conferido_por_id (relation -> usuarios, supervisor que auditou o fechamento)
+- data_conferencia (texto/ISO, data em que foi homologado)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. `createRule: null`, `updateRule: null`, `deleteRule: null` — gravação e mutação restritas aos endpoints transacionais `/backend/v1/caixa/abrir`, `/backend/v1/caixa/fechar` e `/backend/v1/caixa/conferir`.
+2. Sessão Fechada não reabre em hipótese alguma.
+3. Diferenças no dinheiro geram lançamento avulso automático na conta de caixa do terminal: falta debita no `plano_quebra_caixa_id` e sobra credita no `plano_sobra_caixa_id`.
+4. Auditoria obrigatória em `logs_auditoria` para todas as ações.
+
+### caixa_sessoes_movimentos
+
+Tabela analítica de movimentações financeiras de caixa da sessão (sangrias, suprimentos e ajustes).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- caixa_sessao_id (relation -> caixa_sessoes, obrigatório)
+- tipo (select: "Sangria" | "Suprimento" | "Fundo_Inicial" | "Ajuste_Falta" | "Ajuste_Sobra", obrigatório)
+- valor (número monetário, obrigatório > 0)
+- motivo (texto obrigatório)
+- movimentacao_financeira_id (relation -> movimentacoes_financeiras, opcional — vínculo com o extrato bancário/caixa)
+- transferencia_id (texto opcional — identificador da transferência cofre ↔ caixa)
+- operador_id (relation -> usuarios, opcional)
+- data_hora (texto/ISO, obrigatório)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras:
+
+1. `createRule: null`, `updateRule: null`, `deleteRule: null` — gravação exclusiva via serviços de backend (`/backend/v1/caixa/sangria`, `/backend/v1/caixa/suprimento`, `/backend/v1/caixa/abrir` e `/backend/v1/caixa/fechar`).
+2. Sangrias transferem automaticamente o numerário para a `conta_cofre_id` do terminal pelo serviço central `/financeiro/bancos/transferir`.
+3. Suprimentos transferem da `conta_cofre_id` para a conta de caixa do terminal.
+4. Gera comprovante de sangria para impressão imediata com assinatura do operador e supervisor.
 
 ### vendas
 

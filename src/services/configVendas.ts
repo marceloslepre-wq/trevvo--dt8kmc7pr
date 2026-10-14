@@ -18,6 +18,7 @@ export interface ConfigVendasEmpresa {
   plano_taxas_cartao_id?: string
   plano_quebra_caixa_id?: string
   plano_sobra_caixa_id?: string
+  fechamento_cego?: boolean
   ativo: boolean
   created_by?: string
   updated_by?: string
@@ -177,6 +178,7 @@ export async function obterOuCriarConfigVendasEmpresa(
     plano_taxas_cartao_id: planoTaxasCartaoId,
     plano_quebra_caixa_id: planoQuebraCaixaId,
     plano_sobra_caixa_id: planoSobraCaixaId,
+    fechamento_cego: true,
     ativo: true,
     created_by: pb.authStore.record?.id || null,
   }
@@ -245,6 +247,7 @@ export async function salvarConfigVendasEmpresa(
     plano_taxas_cartao_id: dados.plano_taxas_cartao_id || null,
     plano_quebra_caixa_id: dados.plano_quebra_caixa_id || null,
     plano_sobra_caixa_id: dados.plano_sobra_caixa_id || null,
+    fechamento_cego: dados.fechamento_cego !== undefined ? Boolean(dados.fechamento_cego) : true,
     ativo: dados.ativo !== undefined ? dados.ativo : true,
     updated_by: pb.authStore.record?.id || null,
   }

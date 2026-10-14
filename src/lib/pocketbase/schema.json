@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T10:30:30.162Z",
+  "generatedAt": "2026-10-14T10:38:51.885Z",
   "collections": [
     {
       "name": "users",
@@ -8030,6 +8030,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "fechamento_cego",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -8696,6 +8702,290 @@
         "CREATE INDEX idx_vendas_pag_forma ON vendas_pagamentos (forma_pagamento_id)",
         "CREATE INDEX idx_vendas_pag_conta ON vendas_pagamentos (conta_financeira_id)",
         "CREATE INDEX idx_vendas_pag_ativo ON vendas_pagamentos (ativo)"
+      ]
+    },
+    {
+      "name": "caixa_sessoes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "pdv_terminal_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "pdv_terminais"
+        },
+        {
+          "name": "operador_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Aberto", "Fechado"]
+        },
+        {
+          "name": "data_abertura",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor_abertura",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_fechamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_esperado_dinheiro",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_contado_dinheiro",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "diferenca_dinheiro",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "totais_por_forma",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quantidade_vendas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_vendas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_cancelado",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_sangrias",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_suprimentos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacao_fechamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conferido_por_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "data_conferencia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_caixa_sessoes_empresa ON caixa_sessoes (empresa_id)",
+        "CREATE INDEX idx_caixa_sessoes_terminal ON caixa_sessoes (pdv_terminal_id)",
+        "CREATE INDEX idx_caixa_sessoes_operador ON caixa_sessoes (operador_id)",
+        "CREATE INDEX idx_caixa_sessoes_status ON caixa_sessoes (status)",
+        "CREATE INDEX idx_caixa_sessoes_abertura ON caixa_sessoes (data_abertura)"
+      ]
+    },
+    {
+      "name": "caixa_sessoes_movimentos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "caixa_sessao_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "caixa_sessoes"
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Sangria", "Suprimento", "Fundo_Inicial", "Ajuste_Falta", "Ajuste_Sobra"]
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "motivo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "movimentacao_financeira_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "movimentacoes_financeiras"
+        },
+        {
+          "name": "transferencia_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "operador_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "data_hora",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_caixa_mov_sessao ON caixa_sessoes_movimentos (caixa_sessao_id)",
+        "CREATE INDEX idx_caixa_mov_tipo ON caixa_sessoes_movimentos (tipo)",
+        "CREATE INDEX idx_caixa_mov_empresa ON caixa_sessoes_movimentos (empresa_id)"
       ]
     }
   ]

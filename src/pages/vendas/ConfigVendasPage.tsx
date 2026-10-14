@@ -319,6 +319,32 @@ export const ConfigVendasPage: React.FC = () => {
           </div>
         </div>
 
+        <div className="pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200">
+            <div className="space-y-0.5 pr-4">
+              <Label
+                htmlFor="fechamento_cego"
+                className="text-xs font-medium text-slate-800 cursor-pointer"
+              >
+                Fechamento de Caixa "Às Cegas"
+              </Label>
+              <p className="text-[11px] text-slate-500">
+                Quando ativado, oculta os valores esperados do sistema na tela de fechamento. O
+                operador informa o dinheiro contado e comprovantes primeiro, revelando o saldo e
+                possíveis diferenças apenas após a digitação.
+              </p>
+            </div>
+            <Switch
+              id="fechamento_cego"
+              checked={config?.fechamento_cego !== false}
+              onCheckedChange={(val) => {
+                setConfig((prev) => (prev ? { ...prev, fechamento_cego: val } : null))
+                setModificado(true)
+              }}
+            />
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
           <div className="space-y-1.5">
             <Label htmlFor="validade_orcamento_dias" className="text-xs font-medium text-slate-700">
