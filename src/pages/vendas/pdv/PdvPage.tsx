@@ -1,19 +1,27 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
-import { useEmpresa } from '@/contexts/EmpresaContext'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useToast } from '@/hooks/use-toast'
 
-import { obterSessaoAbertaUsuario, CaixaSessao } from '@/services/caixa'
-import { listarTerminais, PDVTerminal } from '@/services/terminais'
-import { obterConfigVendasEmpresa, ConfigVendasEmpresa } from '@/services/configVendas'
+import { obterSessaoAbertaOperador, CaixaSessao } from '@/services/caixa'
+import { listarTerminais, PdvTerminal } from '@/services/terminais'
+import { obterOuCriarConfigVendasEmpresa, ConfigVendasEmpresa } from '@/services/configVendas'
 import { listarFormasPagamento, FormaPagamento } from '@/services/formasPagamento'
 import { listarContasFinanceiras, ContaFinanceira } from '@/services/contasFinanceiras'
-import { listarCondicoesPagamento, CondicaoPagamento } from '@/services/condicoesPagamento'
-import { salvarVenda, finalizarVenda, SalvarVendaInput, VendaCompleta } from '@/services/vendas'
-import { imprimirComprovanteNaoFiscal } from '@/services/vendasImpressao'
+import { listarTodasCondicoesAtivas, CondicaoPagamento } from '@/services/condicoesPagamento'
+import {
+  salvarVenda,
+  finalizarVenda,
+  obterVendaCompleta,
+  SalvarVendaInput,
+  Venda,
+  VendaItem,
+  VendaPagamento,
+} from '@/services/vendas'
+import { imprimirComprovanteNaoFiscal, DadosImpressaoVenda } from '@/services/vendasImpressao'
 import { registrarAuditoria } from '@/services/auditoria'
 import type { Produto } from '@/services/produtos'
 import type { Cliente } from '@/services/clientes'
@@ -65,16 +73,17 @@ import {
 } from 'lucide-react'
 
 export const PdvPage: React.FC = () => {
-  const { empresaAtual } = useEmpresa()
-  const { usuario } = useAuth()
-  const { pode } = usePermissoes()
+  const { empresaAtiva } = useEmpresaAtiva()
+  const { user } = useAuth()
+  const { usuarioERP, pode } = usePermissoes()
+  const usuario = usuarioERP || (user ? { id: user.id, nome: user.name || user.email } : null)
   const { toast } = useToast()
   const navigate = useNavigate()
 
   // Sessão de Caixa e Terminal
   const [sessaoCaixa, setSessaoCaixa] = useState<CaixaSessao | null>(null)
-  const [terminais, setTerminais] = useState<PDVTerminal[]>([])
-  const [terminalAtivo, setTerminalAtivo] = useState<PDVTerminal | null>(null)
+  const [terminais, setTerminais] = useState<PdvTerminal[]>([])
+  const [terminalAtivo, setTerminalAtivo] = useState<PdvTerminal | null>(null)
   const [configVendas, setConfigVendas] = useState<ConfigVendasEmpresa | null>(null)
   const [formasPagamento, setFormasPagamento] = useState<FormaPagamento[]>([])
   const [contasFinanceiras, setContasFinanceiras] = useState<ContaFinanceira[]>([])
@@ -163,16 +172,16 @@ export const PdvPage: React.FC = () => {
 
   // Carrega configurações iniciais
   const carregarDadosIniciais = useCallback(async () => {
-    if (!empresaAtual?.id || !usuario?.id) return
+    if (!empresaAtiva?.id || !usuario?.id) return
 
     try {
       const [sessao, terms, cfg, formas, contas, conds] = await Promise.all([
-        obterSessaoAbertaUsuario(empresaAtual.id, usuario.id),
-        listarTerminais(empresaAtual.id),
-        obterConfigVendasEmpresa(empresaAtual.id),
-        listarFormasPagamento(empresaAtual.id),
-        listarContasFinanceiras(empresaAtual.id),
-        listarCondicoesPagamento(empresaAtual.id),
+        obterSessaoAbertaOperador(empresaAtiva.id, usuario.id),
+        listarTerminais(empresaAtiva.id),
+        obterOuCriarConfigVendasEmpresa(empresaAtiva.id),
+        listarFormasPagamento(empresaAtiva.id),
+        listarContasFinanceiras(empresaAtiva.id),
+        listarTodasCondicoesAtivas('Vendas'),
       ])
 
       setSessaoCaixa(sessao)
@@ -195,7 +204,7 @@ export const PdvPage: React.FC = () => {
     } catch (err) {
       console.error('Erro ao carregar dados iniciais do PDV:', err)
     }
-  }, [empresaAtual?.id, usuario?.id])
+  }, [empresaAtiva?.id, usuario?.id])
 
   useEffect(() => {
     carregarDadosIniciais()
@@ -204,10 +213,10 @@ export const PdvPage: React.FC = () => {
   // Carrega catálogo de produtos na inicialização e atualiza a cada 5 minutos
   const recarregarProdutos = useCallback(
     async (forcar = false) => {
-      if (!empresaAtual?.id) return
+      if (!empresaAtiva?.id) return
       setCarregandoCatalogo(true)
       try {
-        const prods = await carregarCatalogoProdutosPDV(empresaAtual.id, forcar)
+        const prods = await carregarCatalogoProdutosPDV(empresaAtiva.id, forcar)
         setProdutosCatalogo(prods)
       } catch (err) {
         console.error('Falha ao carregar produtos no PDV:', err)
@@ -215,7 +224,7 @@ export const PdvPage: React.FC = () => {
         setCarregandoCatalogo(false)
       }
     },
-    [empresaAtual?.id],
+    [empresaAtiva?.id],
   )
 
   useEffect(() => {
@@ -231,23 +240,23 @@ export const PdvPage: React.FC = () => {
 
   // Checa se há rascunho salvo no localStorage
   useEffect(() => {
-    if (empresaAtual?.id) {
-      const rascunho = obterRascunhoPDV(empresaAtual.id)
+    if (empresaAtiva?.id) {
+      const rascunho = obterRascunhoPDV(empresaAtiva.id)
       if (rascunho && rascunho.itens.length > 0) {
         setRascunhoPendente(rascunho)
         setModalPerguntaRascunhoAberto(true)
       }
     }
-  }, [empresaAtual?.id])
+  }, [empresaAtiva?.id])
 
   // Salva rascunho sempre que itens mudarem
   useEffect(() => {
-    if (!empresaAtual?.id) return
+    if (!empresaAtiva?.id) return
     if (itens.length > 0) {
       salvarRascunhoPDV({
         versao: 1,
         timestamp: Date.now(),
-        empresa_id: empresaAtual.id,
+        empresa_id: empresaAtiva.id,
         terminal_id: terminalAtivo?.id,
         caixa_sessao_id: sessaoCaixa?.id,
         cliente_id: cliente?.id || '',
@@ -267,7 +276,7 @@ export const PdvPage: React.FC = () => {
     cliente,
     cpfCnpjCupom,
     vendedor,
-    empresaAtual?.id,
+    empresaAtiva?.id,
     terminalAtivo?.id,
     sessaoCaixa?.id,
   ])
@@ -327,11 +336,11 @@ export const PdvPage: React.FC = () => {
         peso_liquido_kg:
           pesoBalancaKg ||
           (produto.peso_liquido_kg ? produto.peso_liquido_kg * quantidade : undefined),
-        saldo_estoque: produto.estoque_saldo,
-        eh_balanca: ehBalanca,
+        saldo_estoque: undefined,
+        eh_balanca: false,
         ncm: produto.ncm,
         cest: produto.cest,
-        cfop: produto.cfop_padrao,
+        cfop: produto.cfop_venda_interna || undefined,
       }
 
       setItens((prev) => [...prev, novoItem])
@@ -534,15 +543,15 @@ export const PdvPage: React.FC = () => {
       return
     }
 
-    if (empresaAtual?.id) {
+    if (empresaAtiva?.id) {
       try {
         await registrarAuditoria({
-          empresa_id: empresaAtual.id,
-          modulo: 'vendas',
-          acao: 'CANCELAR_VENDA_PDV_EM_ANDAMENTO',
+          tabela: 'vendas',
           registro_id: sessaoCaixa?.id || 'PDV',
-          descricao: `Cancelamento de venda PDV em andamento com ${itens.length} itens no valor total de R$ ${totalVendaFinal.toFixed(2)}.`,
-          dados_anteriores: {
+          acao: 'CANCELAR_VENDA_PDV_EM_ANDAMENTO',
+          empresa_id: empresaAtiva.id,
+          valores_antes: {
+            descricao: `Cancelamento de venda PDV em andamento com ${itens.length} itens no valor total de R$ ${totalVendaFinal.toFixed(2)}.`,
             itens: itens.map((it) => ({
               codigo: it.codigo,
               descricao: it.descricao,
@@ -572,15 +581,17 @@ export const PdvPage: React.FC = () => {
     const itemAlvo = itens.find((it) => it.item === numeroItem)
     if (!itemAlvo) return
 
-    if (empresaAtual?.id) {
+    if (empresaAtiva?.id) {
       try {
         await registrarAuditoria({
-          empresa_id: empresaAtual.id,
-          modulo: 'vendas',
-          acao: 'CANCELAR_ITEM_PDV',
+          tabela: 'vendas_itens',
           registro_id: sessaoCaixa?.id || 'PDV',
-          descricao: `Item #${numeroItem} (${itemAlvo.descricao}, Qtd: ${itemAlvo.quantidade}, Total: R$ ${itemAlvo.valor_total.toFixed(2)}) cancelado no PDV. Motivo: ${motivo}`,
-          dados_anteriores: itemAlvo,
+          acao: 'CANCELAR_ITEM_PDV',
+          empresa_id: empresaAtiva.id,
+          valores_antes: {
+            descricao: `Item #${numeroItem} (${itemAlvo.descricao}, Qtd: ${itemAlvo.quantidade}, Total: R$ ${itemAlvo.valor_total.toFixed(2)}) cancelado no PDV. Motivo: ${motivo}`,
+            item: itemAlvo as unknown as Record<string, unknown>,
+          },
         })
       } catch (err) {
         console.warn('Erro ao registrar auditoria de item cancelado:', err)
@@ -682,7 +693,7 @@ export const PdvPage: React.FC = () => {
     }>,
     troco: number,
   ) => {
-    if (!empresaAtual?.id) return
+    if (!empresaAtiva?.id) return
     if (!sessaoCaixa?.id) {
       throw new Error('Não há sessão de caixa aberta para registrar os pagamentos.')
     }
@@ -690,33 +701,43 @@ export const PdvPage: React.FC = () => {
       throw new Error('PDV desconectado. Aguarde a conexão retornar para finalizar.')
     }
 
-    // 1. Cria a venda em status Rascunho pelo serviço central salvarVenda
+    // 1. Cria a venda pelo serviço central salvarVenda com payload PLANO
+    const clienteIdFinal = cliente?.id || configVendas?.cliente_padrao_id || ''
+    if (!clienteIdFinal) {
+      throw new Error('Cliente é obrigatório para registrar a venda.')
+    }
+
     const inputSalvar: SalvarVendaInput = {
-      venda: {
-        empresa_id: empresaAtual.id,
-        tipo: 'PDV',
-        status: 'Rascunho',
-        cliente_id: cliente?.id || null,
-        cpf_cnpj_consumidor: cpfCnpjCupom || null,
-        nome_consumidor: cliente ? cliente.nome_razao_social : 'Consumidor Final',
-        vendedor_id: vendedor?.id || null,
-        pdv_terminal_id: terminalAtivo?.id || sessaoCaixa.pdv_terminal_id || null,
-        desconto_total: descontoTotal,
-      },
+      empresa_id: empresaAtiva.id,
+      tipo: 'PDV',
+      cliente_id: clienteIdFinal,
+      cpf_cnpj_consumidor: cpfCnpjCupom || undefined,
+      vendedor_id: vendedor?.id || undefined,
+      operador_id: usuario?.id || undefined,
+      valor_desconto_total: descontoTotal,
       itens: itens.map((it) => ({
         produto_id: it.produto_id,
         item: it.item,
-        quantidade: it.quantidade,
+        descricao: it.descricao,
         unidade: it.unidade,
+        quantidade: it.quantidade,
         preco_unitario: it.preco_unitario,
         preco_tabela: it.preco_tabela,
         desconto_percentual: it.desconto_percentual,
         desconto_valor: it.desconto_valor,
         acrescimo_valor: it.acrescimo_valor,
+        valor_total: it.valor_total,
         ncm: it.ncm,
         cest: it.cest,
         cfop: it.cfop,
       })),
+    }
+
+    const vendaSalva = await salvarVenda(inputSalvar)
+
+    // 2. Chama finalizarVenda que dispara o hook /backend/v1/vendas/finalizar (baixa estoque, financeiro, caixa)
+    const vendaFinalizada = await finalizarVenda({
+      venda_id: vendaSalva.id,
       pagamentos: pagamentos.map((p) => ({
         forma_pagamento_id: p.forma_pagamento_id,
         valor: p.valor,
@@ -727,73 +748,95 @@ export const PdvPage: React.FC = () => {
         conta_financeira_id: p.conta_financeira_id,
         condicao_pagamento_id: p.condicao_pagamento_id,
       })),
-    }
-
-    const vendaSalva = await salvarVenda(inputSalvar)
-
-    // 2. Chama finalizarVenda que dispara o hook /backend/v1/vendas/finalizar (baixa estoque, financeiro, caixa)
-    const vendaFinalizada = await finalizarVenda({
-      venda_id: vendaSalva.id,
-      caixa_sessao_id: sessaoCaixa.id,
-      pdv_terminal_id: terminalAtivo?.id || sessaoCaixa.pdv_terminal_id,
     })
 
     // 3. Imprime Comprovante Não Fiscal no formato 80mm
     try {
-      const vendaCompletaParaImpressao: VendaCompleta = {
-        ...vendaFinalizada,
-        itens: itens.map((it) => ({
+      let vendaImpressao: Venda = vendaSalva
+      let itensImpressao: VendaItem[] = []
+      let pagamentosImpressao: VendaPagamento[] = []
+
+      try {
+        const completa = await obterVendaCompleta(vendaSalva.id)
+        vendaImpressao = completa.venda
+        itensImpressao = completa.itens
+        pagamentosImpressao = completa.pagamentos
+      } catch {
+        vendaImpressao = {
+          ...vendaSalva,
+          status: 'Finalizada',
+          valor_troco: vendaFinalizada.valor_troco ?? troco,
+          valor_total: vendaFinalizada.valor_total ?? vendaSalva.valor_total,
+        }
+        itensImpressao = itens.map((it) => ({
           id: it.tempId,
-          venda_id: vendaFinalizada.id,
-          produto_id: it.produto_id,
+          venda_id: vendaSalva.id,
           item: it.item,
-          quantidade: it.quantidade,
+          produto_id: it.produto_id,
+          descricao: it.descricao,
           unidade: it.unidade,
+          quantidade: it.quantidade,
           preco_unitario: it.preco_unitario,
           preco_tabela: it.preco_tabela,
           desconto_percentual: it.desconto_percentual,
           desconto_valor: it.desconto_valor,
           acrescimo_valor: it.acrescimo_valor,
           valor_total: it.valor_total,
-          expand: {
-            produto_id: {
-              id: it.produto_id,
-              descricao: it.descricao,
-              codigo: it.codigo,
-            } as Produto,
-          },
-        })),
-        pagamentos: pagamentos.map((p, idx) => ({
+          ativo: true,
+        }))
+        pagamentosImpressao = pagamentos.map((p, idx) => ({
           id: String(idx),
-          venda_id: vendaFinalizada.id,
+          venda_id: vendaSalva.id,
           forma_pagamento_id: p.forma_pagamento_id,
           valor: p.valor,
-          parcelas: p.parcelas || 1,
+          parcelas: p.parcelas,
           bandeira: p.bandeira,
           nsu: p.nsu,
           codigo_autorizacao: p.codigo_autorizacao,
           conta_financeira_id: p.conta_financeira_id,
+          ativo: true,
           expand: {
             forma_pagamento_id: formasPagamento.find((f) => f.id === p.forma_pagamento_id),
           },
-        })),
-        cliente: cliente || undefined,
-        vendedor: vendedor || undefined,
-        terminal: terminalAtivo || undefined,
+        }))
       }
 
-      imprimirComprovanteNaoFiscal(vendaCompletaParaImpressao, {
-        nomeFantasia: empresaAtual.nome_fantasia || empresaAtual.razao_social,
-        razaoSocial: empresaAtual.razao_social,
-        cnpj: empresaAtual.cnpj,
-        endereco: empresaAtual.endereco,
-        numero: empresaAtual.numero,
-        bairro: empresaAtual.bairro,
-        cidade: empresaAtual.cidade,
-        uf: empresaAtual.uf,
-        telefone: empresaAtual.telefone,
+      const dadosImpressao: DadosImpressaoVenda = {
+        venda: vendaImpressao,
+        itens: itensImpressao,
+        pagamentos: pagamentosImpressao,
+        empresa: {
+          razao_social: empresaAtiva.razao_social,
+          nome_fantasia: empresaAtiva.nome_fantasia,
+          cnpj: empresaAtiva.cnpj,
+          telefone: empresaAtiva.telefone,
+          email: empresaAtiva.email,
+          logradouro: empresaAtiva.logradouro,
+          numero: empresaAtiva.numero,
+          bairro: empresaAtiva.bairro,
+          cidade: empresaAtiva.municipio,
+          uf: empresaAtiva.uf,
+        },
+        cliente: cliente
+          ? {
+              nome_razao_social: cliente.nome_razao_social,
+              nome: cliente.nome_fantasia || cliente.nome_razao_social,
+              cpf_cnpj: cliente.cpf_cnpj || cpfCnpjCupom,
+              telefone: cliente.telefone,
+              celular: cliente.celular,
+              email: cliente.email,
+              logradouro: cliente.logradouro,
+              numero: cliente.numero,
+              bairro: cliente.bairro,
+              cidade: cliente.municipio,
+              uf: cliente.uf,
+            }
+          : undefined,
+        vendedorNome: vendedor?.nome || undefined,
         mensagemRodape: configVendas?.mensagem_rodape_comprovante || undefined,
-      })
+      }
+
+      imprimirComprovanteNaoFiscal(dadosImpressao)
     } catch (errImp) {
       console.warn('Erro ao acionar impressão do cupom:', errImp)
     }
@@ -828,7 +871,7 @@ export const PdvPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="font-black text-xl tracking-wider text-blue-400">PDV</span>
             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-950 border border-blue-800 text-blue-300">
-              {empresaAtual?.nome_fantasia || empresaAtual?.razao_social || 'Empresa'}
+              {empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || 'Empresa'}
             </span>
           </div>
 
@@ -844,7 +887,7 @@ export const PdvPage: React.FC = () => {
             <span title="Sessão de Caixa">
               Caixa:{' '}
               {sessaoCaixa ? (
-                <strong className="text-emerald-400">#{sessaoCaixa.numero_sessao} Aberto</strong>
+                <strong className="text-emerald-400">Aberto</strong>
               ) : (
                 <button
                   type="button"
@@ -1349,7 +1392,7 @@ export const PdvPage: React.FC = () => {
           contas={contasFinanceiras}
           condicoes={condicoesPagamento}
           contaPadraoCaixaId={terminalAtivo?.conta_financeira_id}
-          empresaId={empresaAtual?.id || ''}
+          empresaId={empresaAtiva?.id || ''}
           onConfirmar={handleFinalizarVenda}
         />
       )}
@@ -1396,7 +1439,7 @@ export const PdvPage: React.FC = () => {
             if (!ab) focarLeitor()
           }}
           vendedorAtualId={vendedor?.id}
-          empresaId={empresaAtual?.id || ''}
+          empresaId={empresaAtiva?.id || ''}
           onConfirmar={(v) => {
             setVendedor(v)
             focarLeitor()
@@ -1462,16 +1505,12 @@ export const PdvPage: React.FC = () => {
       )}
 
       {/* MODAL ABRIR CAIXA */}
-      {modalAbrirCaixaAberto && empresaAtual?.id && usuario?.id && (
+      {modalAbrirCaixaAberto && empresaAtiva?.id && (
         <ModalAbrirCaixa
-          aberto={modalAbrirCaixaAberto}
-          aoFechar={() => {
-            setModalAbrirCaixaAberto(false)
-            focarLeitor()
-          }}
-          empresaId={empresaAtual.id}
-          usuarioId={usuario.id}
-          aoSucesso={() => {
+          open={modalAbrirCaixaAberto}
+          onOpenChange={setModalAbrirCaixaAberto}
+          empresaId={empresaAtiva.id}
+          onSucesso={() => {
             setModalAbrirCaixaAberto(false)
             carregarDadosIniciais()
             focarLeitor()
@@ -1482,13 +1521,11 @@ export const PdvPage: React.FC = () => {
       {/* MODAL SANGRIA (F9) */}
       {modalSangriaAberto && sessaoCaixa && (
         <ModalSangria
-          aberto={modalSangriaAberto}
-          aoFechar={() => {
-            setModalSangriaAberto(false)
-            focarLeitor()
-          }}
+          open={modalSangriaAberto}
+          onOpenChange={setModalSangriaAberto}
           sessao={sessaoCaixa}
-          aoSucesso={() => {
+          empresaNome={empresaAtiva?.razao_social || ''}
+          onSucesso={() => {
             setModalSangriaAberto(false)
             carregarDadosIniciais()
             focarLeitor()
@@ -1499,13 +1536,10 @@ export const PdvPage: React.FC = () => {
       {/* MODAL SUPRIMENTO */}
       {modalSuprimentoAberto && sessaoCaixa && (
         <ModalSuprimento
-          aberto={modalSuprimentoAberto}
-          aoFechar={() => {
-            setModalSuprimentoAberto(false)
-            focarLeitor()
-          }}
+          open={modalSuprimentoAberto}
+          onOpenChange={setModalSuprimentoAberto}
           sessao={sessaoCaixa}
-          aoSucesso={() => {
+          onSucesso={() => {
             setModalSuprimentoAberto(false)
             carregarDadosIniciais()
             focarLeitor()

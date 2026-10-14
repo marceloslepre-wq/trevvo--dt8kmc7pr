@@ -2692,6 +2692,36 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.69** — Alinhamento Integral da Tela de PDV (`PdvPage.tsx`), Fechamento de Build e Homologação de Serviços de Caixa e Vendas:
+
+1. **Correções Estruturais e Alinhamento de Contratos no PDV (`/vendas/pdv`):**
+   - **Contexto de Empresa:** Substituição da importação legada `useEmpresa` por `useEmpresaAtiva` e renomeação sistemática de todas as referências para `empresaAtiva`.
+   - **Sessão de Caixa e Configurações Comerciais:**
+     - Integração com `obterSessaoAbertaOperador(empresaAtiva.id, usuario.id)` de `@/services/caixa` (apuração de sessões no status 'Aberto').
+     - Carregamento e instanciação com `obterOuCriarConfigVendasEmpresa(empresaAtiva.id)` de `@/services/configVendas`.
+   - **Modais de Caixa Alinhados aos Componentes Oficiais:**
+     - `ModalAbrirCaixa`: props padronizadas para `open`, `onOpenChange`, `empresaId` e `onSucesso`.
+     - `ModalSangria`: props padronizadas para `open`, `onOpenChange`, `sessao`, `empresaNome` e `onSucesso`.
+     - `ModalSuprimento`: props padronizadas para `open`, `onOpenChange`, `sessao` e `onSucesso`.
+   - **Payload Plano de `salvarVenda` (`SalvarVendaInput`):**
+     - Alinhamento do contrato do serviço central `salvarVenda`: payload plano com `empresa_id`, `tipo: 'PDV'`, `cliente_id`, `cpf_cnpj_consumidor`, `vendedor_id`, `operador_id`, `valor_desconto_total` e `itens` tipados com `ItemVendaInput`.
+   - **Assinatura Real de `finalizarVenda`:**
+     - Envio direto de `{ venda_id: vendaSalva.id, pagamentos: [...] }` tipados com `PagamentoVendaInput`, eliminando campos de terminal/sessão que não pertencem ao contrato do método.
+   - **Tipagem e Impressão Térmica 80mm:**
+     - Eliminação da tipagem inexistente `VendaCompleta` em favor de `Venda`, `VendaItem` e `VendaPagamento` exportados de `@/services/vendas`.
+     - Estruturação completa de `DadosImpressaoVenda` com dados cadastrais de `empresaAtiva` (razão social, nome fantasia, CNPJ, telefone, email, logradouro, número, bairro, cidade, UF), cliente, vendedor e `mensagemRodape`, acionando `imprimirComprovanteNaoFiscal`.
+
+2. **Tela de Operação Rápida do PDV (`/vendas/pdv`):**
+   - **Layout em Tela Cheia:** Topo com dados da empresa ativa, terminal vinculado, operador logado, sessão aberta de caixa e relógio digital contínuo.
+   - **Campo de Leitura Universal com Auto-Foco:** Suporte a código de barras, código interno e notação de quantidade rápida `quantidade*código`.
+   - **Etiqueta de Balança EAN-13:** Decodificação configurada por prefixo (`balanca_prefixo`), extração de código e identificação de peso/preço.
+   - **Atalhos Operacionais (F2 a F12):** F2 (busca de produtos), F3 (cliente/CPF), F4 (quantidade), F5 (vendedor), F6 (desconto no item), F7 (desconto total), F8 (cancelar item com auditoria `CANCELAR_ITEM_PDV`), F9 (sangria/suprimento), F10 (pagamento/finalização), F12 (cancelamento da venda com auditoria `CANCELAR_VENDA_PDV_EM_ANDAMENTO`).
+   - **Finalização de Pagamentos:** Modal com formas numeradas, troco dinâmico em dinheiro, cartões de débito/crédito, chave PIX manual e crediário com consulta a `creditoCliente`.
+   - **Comprovante Térmico 80mm:** Emissão direta com aviso obrigatório 'NÃO É DOCUMENTO FISCAL'.
+   - **Cache de Produtos (5 min) e Rascunho:** Carregamento local do catálogo em memória, persistência de venda em andamento no `localStorage` e aviso de desconexão de rede (bloqueio de venda offline).
+
+---
+
 **Versão 0.0.66** — Frente de Caixa Completa (PDV), Integração com Balança de Checkout (EAN-13), Módulo de Permissão `pdv`, Atalhos de Teclado, Resiliência Offline e Rascunho de Venda:
 
 1. **Tela de Operação Rápida do PDV (`/vendas/pdv`):**
