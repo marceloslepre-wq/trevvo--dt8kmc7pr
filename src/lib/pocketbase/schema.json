@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T11:27:40.178Z",
+  "generatedAt": "2026-10-14T11:45:20.852Z",
   "collections": [
     {
       "name": "users",
@@ -8034,6 +8034,37 @@
         {
           "name": "fechamento_cego",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "balanca_ativa",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "balanca_prefixo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "balanca_tipo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Preço", "Peso"]
+        },
+        {
+          "name": "balanca_posicao_codigo",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "balanca_tamanho_codigo",
+          "type": "number",
           "required": false,
           "system": false
         }

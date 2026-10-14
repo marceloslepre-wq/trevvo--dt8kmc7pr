@@ -419,6 +419,121 @@ export const ConfigVendasPage: React.FC = () => {
             className="text-xs h-9"
           />
         </div>
+
+        {/* Integração com Balança de Checkout / EAN-13 */}
+        <div className="pt-4 border-t border-slate-100 space-y-4">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200">
+            <div className="space-y-0.5 pr-4">
+              <Label
+                htmlFor="balanca_ativa"
+                className="text-xs font-medium text-slate-800 cursor-pointer"
+              >
+                Integração com Etiquetas de Balança (EAN-13 no Checkout)
+              </Label>
+              <p className="text-[11px] text-slate-500">
+                Lê códigos EAN-13 de balança de pesagem/etiquetagem gerados no açougue, padaria ou
+                hortifrúti.
+              </p>
+            </div>
+            <Switch
+              id="balanca_ativa"
+              checked={Boolean(config?.balanca_ativa)}
+              onCheckedChange={(val) => {
+                setConfig((prev) => (prev ? { ...prev, balanca_ativa: val } : null))
+                setModificado(true)
+              }}
+            />
+          </div>
+
+          {config?.balanca_ativa && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 bg-blue-50/50 rounded-lg border border-blue-100 text-xs">
+              <div>
+                <Label htmlFor="balanca_prefixo" className="text-[11px] font-medium text-slate-700">
+                  Prefixo EAN-13
+                </Label>
+                <Input
+                  id="balanca_prefixo"
+                  value={config.balanca_prefixo || '2'}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setConfig((prev) => (prev ? { ...prev, balanca_prefixo: val } : null))
+                    setModificado(true)
+                  }}
+                  className="h-8 text-xs bg-white font-mono mt-1"
+                  placeholder="2"
+                  maxLength={5}
+                />
+                <span className="text-[10px] text-slate-400">Padrão nacional: "2"</span>
+              </div>
+
+              <div>
+                <Label htmlFor="balanca_tipo" className="text-[11px] font-medium text-slate-700">
+                  Tipo de Etiqueta
+                </Label>
+                <Select
+                  value={config.balanca_tipo || 'Preço'}
+                  onValueChange={(val: 'Preço' | 'Peso') => {
+                    setConfig((prev) => (prev ? { ...prev, balanca_tipo: val } : null))
+                    setModificado(true)
+                  }}
+                >
+                  <SelectTrigger id="balanca_tipo" className="h-8 text-xs bg-white mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Preço">Valor Total (Centavos)</SelectItem>
+                    <SelectItem value="Peso">Peso Líquido (Gramas)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-[10px] text-slate-400">Posições 8 a 12</span>
+              </div>
+
+              <div>
+                <Label htmlFor="balanca_posicao" className="text-[11px] font-medium text-slate-700">
+                  Posição do Código
+                </Label>
+                <Input
+                  id="balanca_posicao"
+                  type="number"
+                  min={1}
+                  max={7}
+                  value={config.balanca_posicao_codigo ?? 2}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    setConfig((prev) =>
+                      prev ? { ...prev, balanca_posicao_codigo: isNaN(val) ? 2 : val } : null,
+                    )
+                    setModificado(true)
+                  }}
+                  className="h-8 text-xs bg-white font-mono mt-1"
+                />
+                <span className="text-[10px] text-slate-400">1-based (padrão: 2)</span>
+              </div>
+
+              <div>
+                <Label htmlFor="balanca_tamanho" className="text-[11px] font-medium text-slate-700">
+                  Tamanho do Código
+                </Label>
+                <Input
+                  id="balanca_tamanho"
+                  type="number"
+                  min={1}
+                  max={6}
+                  value={config.balanca_tamanho_codigo ?? 5}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    setConfig((prev) =>
+                      prev ? { ...prev, balanca_tamanho_codigo: isNaN(val) ? 5 : val } : null,
+                    )
+                    setModificado(true)
+                  }}
+                  className="h-8 text-xs bg-white font-mono mt-1"
+                />
+                <span className="text-[10px] text-slate-400">Dígitos (padrão: 5)</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Seção 2: Integração Contábil com o Plano de Contas */}

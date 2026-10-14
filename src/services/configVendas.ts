@@ -19,6 +19,11 @@ export interface ConfigVendasEmpresa {
   plano_quebra_caixa_id?: string
   plano_sobra_caixa_id?: string
   fechamento_cego?: boolean
+  balanca_ativa?: boolean
+  balanca_prefixo?: string
+  balanca_tipo?: 'Preço' | 'Peso'
+  balanca_posicao_codigo?: number
+  balanca_tamanho_codigo?: number
   ativo: boolean
   created_by?: string
   updated_by?: string
@@ -179,6 +184,11 @@ export async function obterOuCriarConfigVendasEmpresa(
     plano_quebra_caixa_id: planoQuebraCaixaId,
     plano_sobra_caixa_id: planoSobraCaixaId,
     fechamento_cego: true,
+    balanca_ativa: false,
+    balanca_prefixo: '2',
+    balanca_tipo: 'Preço',
+    balanca_posicao_codigo: 2,
+    balanca_tamanho_codigo: 5,
     ativo: true,
     created_by: pb.authStore.record?.id || null,
   }
@@ -248,6 +258,17 @@ export async function salvarConfigVendasEmpresa(
     plano_quebra_caixa_id: dados.plano_quebra_caixa_id || null,
     plano_sobra_caixa_id: dados.plano_sobra_caixa_id || null,
     fechamento_cego: dados.fechamento_cego !== undefined ? Boolean(dados.fechamento_cego) : true,
+    balanca_ativa: dados.balanca_ativa !== undefined ? Boolean(dados.balanca_ativa) : false,
+    balanca_prefixo: dados.balanca_prefixo || '2',
+    balanca_tipo: dados.balanca_tipo || 'Preço',
+    balanca_posicao_codigo:
+      dados.balanca_posicao_codigo !== undefined && !isNaN(Number(dados.balanca_posicao_codigo))
+        ? Number(dados.balanca_posicao_codigo)
+        : 2,
+    balanca_tamanho_codigo:
+      dados.balanca_tamanho_codigo !== undefined && !isNaN(Number(dados.balanca_tamanho_codigo))
+        ? Number(dados.balanca_tamanho_codigo)
+        : 5,
     ativo: dados.ativo !== undefined ? dados.ativo : true,
     updated_by: pb.authStore.record?.id || null,
   }

@@ -347,8 +347,13 @@ const navItems: NavGroupItem[] = [
     title: 'Vendas e PDV',
     icon: TrendingUp,
     status: 'active',
-    modulo: 'vendas',
     items: [
+      {
+        title: 'PDV (Frente de Caixa)',
+        path: '/vendas/pdv',
+        icon: Monitor,
+        modulo: 'pdv',
+      },
       {
         title: 'Orçamentos e pedidos',
         path: '/vendas/pedidos',

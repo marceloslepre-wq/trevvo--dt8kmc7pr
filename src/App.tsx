@@ -89,6 +89,7 @@ import TerminaisPage from '@/pages/vendas/TerminaisPage'
 import CaixaPage from '@/pages/vendas/CaixaPage'
 import VendasListaPage from '@/pages/vendas/pedidos/VendasListaPage'
 import VendaFormPage from '@/pages/vendas/pedidos/VendaFormPage'
+import PdvPage from '@/pages/vendas/pdv/PdvPage'
 
 const App = () => (
   <BrowserRouter>
@@ -713,6 +714,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="vendas" acao="ver">
                         <VendaFormPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/vendas/pdv"
+                    element={
+                      <PermissaoGuard modulo="pdv" acao="ver">
+                        <PdvPage />
                       </PermissaoGuard>
                     }
                   />

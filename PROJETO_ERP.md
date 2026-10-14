@@ -1715,6 +1715,11 @@ Tabela de parametrização comercial e frente de caixa (PDV) individualizada por
 - plano_quebra_caixa_id (relation -> plano_contas, conta analítica para diferenças negativas/quebra de caixa — padrão 2.8.01)
 - plano_sobra_caixa_id (relation -> plano_contas, conta analítica para diferenças positivas/sobra de caixa — padrão 1.3.01)
 - fechamento_cego (boolean, padrão true — quando ativo, oculta os valores esperados no fechamento de caixa até que o operador informe a contagem física)
+- balanca_ativa (boolean, padrão false — habilita leitura de etiquetas EAN-13 de balança de pesagem no checkout)
+- balanca_prefixo (texto, padrão '2' — dígito inicial da etiqueta EAN-13 de balança)
+- balanca_tipo (select: 'Preço' | 'Peso', padrão 'Preço' — se 'Preço', posições 8 a 12 contêm centavos do valor total; se 'Peso', posições 8 a 12 contêm gramas)
+- balanca_posicao_codigo (número, padrão 2 — posição inicial 1-based do código do produto no código de barras)
+- balanca_tamanho_codigo (número, padrão 5 — quantidade de dígitos do código do produto na etiqueta)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
@@ -2686,6 +2691,53 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Não foram criadas rotas ou tabelas de frente de caixa/PDV, vendas ou emissão de NF-e/NFC-e (mantidos para as Etapas 5 e 6).
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.66** — Frente de Caixa Completa (PDV), Integração com Balança de Checkout (EAN-13), Módulo de Permissão `pdv`, Atalhos de Teclado, Resiliência Offline e Rascunho de Venda:
+
+1. **Tela de Operação Rápida do PDV (`/vendas/pdv`):**
+   - **Módulo de Permissão:** Criado e protegido pelo módulo `pdv` (`pode('pdv', 'ver')`). Integrado no menu lateral (Vendas > PDV) e nas rotas protegidas em `App.tsx`.
+   - **Interface em Tela Cheia:** Desenvolvida para operação contínua sem mouse, compatível com monitor touch e modo fullscreen nativo do navegador via tecla ou botão superior.
+   - **Layout Ergonômico de Caixa:**
+     - **Topo:** Identificação da empresa/filial, nome do terminal (`pdv_terminais`), operador logado, sessão aberta de caixa (`caixa_sessoes`) com atalho para abertura rápida se fechado, status de conectividade em tempo real (Online / Offline) e relógio contínuo digital.
+     - **Coluna Esquerda (Grade de Itens):** Lista rolável de itens com numeração sequencial (1 a N), código interno, descrição, quantidade com unidade, preço unitário, desconto por item e valor total. Destaque no rodapé para o **último item bipado** com foto do produto ampliada, quantidade e subtotal.
+     - **Coluna Direita (Totais e Atalhos):** Painel de valor total em destaque gigante com contraste visual, quantidade acumulada de itens e unidades, cliente vinculado (F3), vendedor atribuído (F5), campo de leitura rápida e painel de atalhos de teclado.
+     - **Campo de Leitura Universal (Sempre com Foco):** Reconhece leitura de código de barras padrão, código numérico interno, referência de fábrica e notação rápida de quantidade com multiplicação `quantidade*código` (ex.: `3*7891000000014` ou `2.5*101`).
+
+2. **Integração com Balança de Checkout (EAN-13 - Migration 0043):**
+   - **Campos em `config_vendas_empresa`:** `balanca_ativa` (boolean), `balanca_prefixo` (string, padrão "2"), `balanca_tipo` ("Preço" | "Peso"), `balanca_posicao_codigo` (início 2, 1-based) e `balanca_tamanho_codigo` (tamanho 5).
+   - **Serviço Decodificador de Balança (`src/services/balanca.ts`):**
+     - Identifica etiquetas de pesagem com 13 dígitos que iniciam com o prefixo configurado.
+     - Extrai o código do produto na posição configurada e busca no catálogo em memória.
+     - Extrai valor ou peso das posições 8 a 12 (índices 7 a 11): se etiqueta por **Preço**, divide por 100 para obter o valor em reais e calcula a quantidade em kg dividindo pelo preço unitário do produto cadastrado; se etiqueta por **Peso**, divide por 1000 para apurar o peso exato em kg.
+
+3. **Grade Completa de Atalhos de Teclado:**
+   - **F2 (Buscar Produto):** Abre modal de busca textual (`ModalBuscaProdutoPDV`) com pesquisa dinâmica por descrição, GTIN, código interno ou referência, navegação com setas do teclado (↑ e ↓) e seleção com Enter.
+   - **F3 (Cliente):** Identificação de cliente cadastrado ou digitação de CPF/CNPJ direto para constar no cupom não fiscal/fiscal (`ModalClientePDV`), com atalho para cadastro rápido.
+   - **F4 (Alterar Quantidade):** Modifica a quantidade do último item bipado (`ModalQuantidadeItemPDV`).
+   - **F5 (Vendedor):** Seleciona vendedor responsável pela comissão/atendimento (`ModalVendedorPDV`).
+   - **F6 (Desconto no Item):** Aplica desconto em valor (R$) ou percentual (%) no último item adicionado (`ModalDescontoItemPDV`).
+   - **F7 (Desconto no Total):** Aplica abatimento global na venda em valor ou percentual (`ModalDescontoTotalPDV`).
+   - **F8 (Cancelar Item):** Solicita o número sequencial do item e motivo do cancelamento (`ModalCancelarItemPDV`). Registrado formalmente em `logs_auditoria` com prevenção de perdas e detalhamento do item descartado.
+   - **F9 (Sangria e Suprimento):** Acesso direto às janelas de movimentação de numerário da sessão de caixa (`ModalSangria` e `ModalSuprimento`).
+   - **F10 (Finalizar Venda):** Abre modal de pagamento com formas numeradas.
+   - **F12 (Cancelar Venda em Andamento):** Cancelamento completo com confirmação e gravação em `logs_auditoria`.
+   - **Esc:** Fecha qualquer modal secundário e devolve o foco imediatamente para o campo de leitura.
+
+4. **Finalização de Pagamento e Impressão (F10 - `ModalPagamentoPDV.tsx`):**
+   - **Formas de Pagamento Numeradas:** Botões rápidos (1 Dinheiro, 2 PIX, 3 Débito, 4 Crédito, 5 Crediário...), com atalho numérico `Alt + 1..9`. Digitação do valor com Enter para lançar múltiplos pagamentos parciais até zerar o restante.
+   - **Dinheiro e Troco:** Cálculo automático e destaque em tamanho grande do troco a devolver ao cliente quando o valor em dinheiro superar o total devido.
+   - **Cartão de Crédito e Débito:** Seleção de número de parcelas (respeitando faixas de taxas da operadora) e digitação opcional de bandeira, NSU e código de autorização.
+   - **PIX:** Exibição imediata da chave PIX cadastrada na conta financeira da loja e confirmação manual obrigatória de recebimento pelo operador.
+   - **Crediário / Venda a Prazo:** Exigência mandatória de cliente cadastrado com consulta automática via `creditoCliente` para verificar limite disponível, inadimplência e bloqueio.
+   - **Integração com Serviço Central:** Disparo atômico de `salvarVenda` e `finalizarVenda` via hook backend `/backend/v1/vendas/finalizar` (baixa de estoque FEFO, lançamento financeiro e conciliação de caixa).
+   - **Impressão Não Fiscal 80mm:** Emissão direta via `imprimirComprovanteNaoFiscal` no formato de bobina térmica 80mm com CSS `@media print`: dados da empresa, número da venda, operador, itens, totais, formas de pagamento, troco, mensagem de rodapé e aviso obrigatório 'NÃO É DOCUMENTO FISCAL'.
+
+5. **Desempenho, Segurança e Resiliência:**
+   - **Catálogo em Memória (Cache Local):** Carregamento síncrono e em background dos produtos ativos (código, GTIN, descrição, preço, unidade e saldo) com renovação a cada 5 minutos via `carregarCatalogoProdutosPDV`, permitindo leitura instantânea sem requisições HTTP adicionais por item.
+   - **Rascunho no Navegador:** Venda em andamento gravada no `localStorage`. Ao reabrir ou recarregar o PDV, o sistema pergunta ao operador se deseja continuar a venda anterior ou iniciar uma nova.
+   - **Bloqueio de Venda Offline:** Monitoramento de `navigator.onLine` com alerta visual; se a internet cair, o PDV avisa o operador e bloqueia a finalização até a rede restabelecer, impedindo inconsistência no banco de dados.
+
+---
 
 **Versão 0.0.65** — Conclusão da Tela de Orçamentos e Pedidos de Venda, Histórico nas Abas de Cliente e Produto, e Impressão de Documentos Não Fiscais:
 
