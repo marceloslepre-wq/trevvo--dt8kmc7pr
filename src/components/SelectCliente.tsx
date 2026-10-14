@@ -65,7 +65,13 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
     const numero = parseInt(termo, 10)
 
     return clientes.filter((c) => {
-      const nomeOuRazao = (c.razao_social || c.nome_fantasia || '').toLowerCase()
+      const nomeOuRazao = (
+        c.nome_razao_social ||
+        c.razao_social ||
+        c.nome ||
+        c.nome_fantasia ||
+        ''
+      ).toLowerCase()
       if (nomeOuRazao.includes(termo)) return true
       if (c.nome_fantasia && c.nome_fantasia.toLowerCase().includes(termo)) return true
       if (c.municipio && c.municipio.toLowerCase().includes(termo)) return true
@@ -125,7 +131,10 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
             ) : selecionado ? (
               <span className="text-slate-900 font-medium">
                 <span className="font-mono text-slate-500 mr-1.5">#{selecionado.codigo}</span>
-                {selecionado.razao_social || selecionado.nome_fantasia}
+                {selecionado.nome_razao_social ||
+                  selecionado.razao_social ||
+                  selecionado.nome ||
+                  selecionado.nome_fantasia}
                 {selecionado.municipio && (
                   <span className="text-slate-400 text-xs ml-1.5 font-normal">
                     ({selecionado.municipio}/{selecionado.uf || ''})
@@ -207,7 +216,10 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-slate-500 text-[11px]">#{item.codigo}</span>
                       <span className="font-medium text-slate-900 truncate">
-                        {item.razao_social || item.nome_fantasia}
+                        {item.nome_razao_social ||
+                          item.razao_social ||
+                          item.nome ||
+                          item.nome_fantasia}
                       </span>
                     </div>
                     {item.nome_fantasia &&

@@ -350,6 +350,12 @@ const navItems: NavGroupItem[] = [
     modulo: 'vendas',
     items: [
       {
+        title: 'Orçamentos e pedidos',
+        path: '/vendas/pedidos',
+        icon: FileText,
+        modulo: 'vendas',
+      },
+      {
         title: 'Caixa',
         path: '/vendas/caixa',
         icon: Receipt,

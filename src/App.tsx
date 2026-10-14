@@ -87,6 +87,8 @@ import IntegridadeFinanceiroPage from '@/pages/configuracoes/IntegridadeFinancei
 import ConfigVendasPage from '@/pages/vendas/ConfigVendasPage'
 import TerminaisPage from '@/pages/vendas/TerminaisPage'
 import CaixaPage from '@/pages/vendas/CaixaPage'
+import VendasListaPage from '@/pages/vendas/pedidos/VendasListaPage'
+import VendaFormPage from '@/pages/vendas/pedidos/VendaFormPage'
 
 const App = () => (
   <BrowserRouter>
@@ -689,7 +691,31 @@ const App = () => (
                     }
                   />
                   {/* Vendas e PDV (Etapa 5) */}
-                  <Route path="/vendas" element={<Navigate to="/vendas/caixa" replace />} />
+                  <Route path="/vendas" element={<Navigate to="/vendas/pedidos" replace />} />
+                  <Route
+                    path="/vendas/pedidos"
+                    element={
+                      <PermissaoGuard modulo="vendas" acao="ver">
+                        <VendasListaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/vendas/pedidos/novo"
+                    element={
+                      <PermissaoGuard modulo="vendas" acao="criar">
+                        <VendaFormPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/vendas/pedidos/:id"
+                    element={
+                      <PermissaoGuard modulo="vendas" acao="ver">
+                        <VendaFormPage />
+                      </PermissaoGuard>
+                    }
+                  />
                   <Route
                     path="/vendas/caixa"
                     element={

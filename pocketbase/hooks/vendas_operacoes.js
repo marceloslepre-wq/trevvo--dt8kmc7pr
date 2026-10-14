@@ -65,7 +65,9 @@ routerAdd(
         const docNumero = venda.getInt('numero') || venda.id
         const valorTotalVenda = venda.getFloat('valor_total') || 0
         const dataVenda = (
-          venda.getString('data_venda') || new Date().toISOString().slice(0, 10)
+          venda.getString('data_emissao') ||
+          venda.getString('data_venda') ||
+          new Date().toISOString().slice(0, 10)
         ).slice(0, 10)
 
         // Carregar config_vendas_empresa e empresa
