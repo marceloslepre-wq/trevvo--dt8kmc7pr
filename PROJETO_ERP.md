@@ -2622,6 +2622,16 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.61** — Reforço de Segurança na API Rule de Update da Tabela `vendas` (Migration 0041):
+
+1. **Ajuste Cirúrgico na Regra de Update de `vendas`:**
+   - Mantida a proteção original impedindo edição pelo navegador quando o registro já estiver em status 'Finalizada' ou 'Cancelada' (`status != 'Finalizada' && status != 'Cancelada'`).
+   - Bloqueio de alteração direta via navegador do status para 'Finalizada' ou 'Cancelada' através de verificação em `@request.body.status` (`@request.body.status = '' || (@request.body.status != 'Finalizada' && @request.body.status != 'Cancelada')`).
+   - Bloqueio estrito de envio de valores pelo navegador para os campos sensíveis que devem ser gerenciados exclusivamente pelo serviço central de vendas do backend: `documento_fiscal_status`, `custo_total`, `data_finalizacao` e `caixa_sessao_id` (`@request.body.<campo> = ''`).
+   - Nenhuma alteração nas demais regras (list, view, create, delete) de `vendas` nem em qualquer outra coleção do ERP.
+
+---
+
 **Versão 0.0.59** — Fechamento da Base de Vendas e PDV (Serviço Central Transacional, API Rules Fechadas e Integração de Estoque e Financeiro):
 
 1. **Estrutura de Banco de Dados da Base de Vendas (Migration 0040):**

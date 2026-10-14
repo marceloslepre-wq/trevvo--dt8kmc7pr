@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T22:49:12.645Z",
+  "generatedAt": "2026-10-14T10:30:30.162Z",
   "collections": [
     {
       "name": "users",
@@ -8122,7 +8122,7 @@
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
         "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != '' && status != 'Finalizada' && status != 'Cancelada'",
+        "update": "@request.auth.id != '' && status != 'Finalizada' && status != 'Cancelada' && (@request.body.status = '' || (@request.body.status != 'Finalizada' && @request.body.status != 'Cancelada')) && @request.body.documento_fiscal_status = '' && @request.body.custo_total = '' && @request.body.data_finalizacao = '' && @request.body.caixa_sessao_id = ''",
         "delete": "@request.auth.id != '' && status != 'Finalizada' && status != 'Cancelada'"
       },
       "fields": [
