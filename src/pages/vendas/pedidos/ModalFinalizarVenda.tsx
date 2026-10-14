@@ -36,6 +36,7 @@ import {
   PagamentoVendaInput,
   Venda,
 } from '@/services/vendas'
+import { abaterSaldoValeTroca } from '@/services/devolucoes'
 
 export interface ItemPagamentoLinha {
   id: string
@@ -261,6 +262,26 @@ export const ModalFinalizarVenda: React.FC<ModalFinalizarVendaProps> = ({
 
     setSalvando(true)
     try {
+      // Abater vales-troca se houver
+      for (const linha of linhas) {
+        const formaObj = formas.find((f) => f.id === linha.forma_pagamento_id)
+        const ehVale =
+          formaObj?.codigo_tpag === '99' ||
+          formaObj?.descricao.toLowerCase().includes('vale-troca') ||
+          formaObj?.descricao.toLowerCase().includes('vale troca')
+
+        if (ehVale && linha.codigo_autorizacao) {
+          try {
+            await abaterSaldoValeTroca({
+              valeId: linha.codigo_autorizacao,
+              valorAbater: linha.valor,
+            })
+          } catch (errVale) {
+            console.warn('Erro ao abater vale na venda:', errVale)
+          }
+        }
+      }
+
       const res = await finalizarVenda({
         venda_id: venda.id,
         pagamentos: pagamentosPayload,

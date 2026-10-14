@@ -34,6 +34,8 @@ import {
   ClipboardCheck,
   BookOpen,
   AlertTriangle,
+  RotateCcw,
+  Award,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -361,6 +363,12 @@ const navItems: NavGroupItem[] = [
         modulo: 'vendas',
       },
       {
+        title: 'Trocas e devoluções',
+        path: '/vendas/trocas',
+        icon: RotateCcw,
+        modulo: 'vendas',
+      },
+      {
         title: 'Caixa',
         path: '/vendas/caixa',
         icon: Receipt,
@@ -371,6 +379,18 @@ const navItems: NavGroupItem[] = [
         path: '/vendas/terminais',
         icon: Monitor,
         modulo: 'caixa',
+      },
+      {
+        title: 'Comissões',
+        path: '/vendas/comissoes',
+        icon: Award,
+        modulo: 'vendas',
+      },
+      {
+        title: 'Consultas',
+        path: '/vendas/consultas',
+        icon: BarChart3,
+        modulo: 'vendas',
       },
       {
         title: 'Configurações de vendas',

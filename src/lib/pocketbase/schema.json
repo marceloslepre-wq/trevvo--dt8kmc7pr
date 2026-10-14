@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T13:35:32.445Z",
+  "generatedAt": "2026-10-14T19:59:30.585Z",
   "collections": [
     {
       "name": "users",
@@ -8181,7 +8181,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Orçamento", "Pedido", "PDV"]
+          "selectValues": ["Orçamento", "Pedido", "PDV", "Devolução"]
         },
         {
           "name": "status",
@@ -9017,6 +9017,118 @@
         "CREATE INDEX idx_caixa_mov_sessao ON caixa_sessoes_movimentos (caixa_sessao_id)",
         "CREATE INDEX idx_caixa_mov_tipo ON caixa_sessoes_movimentos (tipo)",
         "CREATE INDEX idx_caixa_mov_empresa ON caixa_sessoes_movimentos (empresa_id)"
+      ]
+    },
+    {
+      "name": "vales_troca",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "codigo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cliente_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "clientes"
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "saldo",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "validade",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "venda_origem_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "vendas"
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Ativo", "Usado", "Expirado", "Cancelado"]
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_vales_troca_empresa_codigo ON vales_troca (empresa_id, codigo)",
+        "CREATE INDEX idx_vales_troca_cliente ON vales_troca (cliente_id)",
+        "CREATE INDEX idx_vales_troca_status ON vales_troca (status)",
+        "CREATE INDEX idx_vales_troca_venda_origem ON vales_troca (venda_origem_id)",
+        "CREATE INDEX idx_vales_troca_ativo ON vales_troca (ativo)"
       ]
     }
   ]

@@ -122,6 +122,19 @@ export default function Index() {
   const [dadosFluxo30Dias, setDadosFluxo30Dias] = useState<PeriodoFluxoCaixa[]>([])
   const [carregandoFluxo, setCarregandoFluxo] = useState<boolean>(false)
 
+  // Indicadores de Vendas e PDV (Etapa 5)
+  const [vendasHojeValor, setVendasHojeValor] = useState<number>(0)
+  const [vendasHojeQtd, setVendasHojeQtd] = useState<number>(0)
+  const [ticketMedioHoje, setTicketMedioHoje] = useState<number>(0)
+  const [caixasAbertosCount, setCaixasAbertosCount] = useState<number>(0)
+  const [orcamentosVencendoCount, setOrcamentosVencendoCount] = useState<number>(0)
+  const [vendasMesAtualTotal, setVendasMesAtualTotal] = useState<number>(0)
+  const [vendasMesAnteriorTotal, setVendasMesAnteriorTotal] = useState<number>(0)
+  const [graficoVendas30Dias, setGraficoVendas30Dias] = useState<
+    Array<{ dia: string; rotulo: string; valor: number }>
+  >([])
+  const [carregandoVendas, setCarregandoVendas] = useState<boolean>(false)
+
   // Últimos cadastros
   const [ultimosCadastros, setUltimosCadastros] = useState<UltimoCadastro[]>([])
 
@@ -141,6 +154,7 @@ export default function Index() {
   const podeVerFinanceiroPagar = pode('financeiro_pagar', 'ver')
   const podeVerFinanceiroReceber = pode('financeiro_receber', 'ver')
   const podeVerFinanceiroBancos = pode('financeiro_bancos', 'ver')
+  const podeVerVendas = pode('vendas', 'ver') || pode('pdv', 'ver')
 
   const carregarDadosPainel = useCallback(async () => {
     try {
@@ -514,6 +528,120 @@ export default function Index() {
             })(),
           )
         }
+
+        // Indicadores de Vendas e PDV (Etapa 5)
+        if (podeVerVendas) {
+          promisesContagens.push(
+            (async () => {
+              try {
+                setCarregandoVendas(true)
+                const dHoje = new Date()
+                const hojeStr = dHoje.toISOString().slice(0, 10)
+
+                // 1. Vendas de Hoje
+                const vendasHojeRes = await pb.collection('vendas').getFullList({
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && status = 'Finalizada' && tipo != 'Devolução' && data_emissao = '${hojeStr}'`,
+                  fields: 'valor_total',
+                })
+                const qtdHoje = vendasHojeRes.length
+                const valHoje = vendasHojeRes.reduce(
+                  (acc, v: any) => acc + (Number(v.valor_total) || 0),
+                  0,
+                )
+                setVendasHojeQtd(qtdHoje)
+                setVendasHojeValor(valHoje)
+                setTicketMedioHoje(qtdHoje > 0 ? Number((valHoje / qtdHoje).toFixed(2)) : 0)
+
+                // 2. Caixas abertos da empresa ativa
+                const caixasRes = await pb.collection('caixa_sessoes').getList(1, 1, {
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && status = 'Aberta'`,
+                })
+                setCaixasAbertosCount(caixasRes.totalItems)
+
+                // 3. Orçamentos a vencer em até 2 dias (status = 'Orçamento' e data_validade <= hoje + 2dias e >= hoje)
+                const dMais2 = new Date(dHoje.getTime() + 2 * 24 * 60 * 60 * 1000)
+                const dMais2Str = dMais2.toISOString().slice(0, 10)
+                const orcsRes = await pb.collection('vendas').getList(1, 1, {
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && tipo = 'Orçamento' && status = 'Orçamento' && data_validade >= '${hojeStr}' && data_validade <= '${dMais2Str}'`,
+                })
+                setOrcamentosVencendoCount(orcsRes.totalItems)
+
+                // 4. Vendas do mês atual x mês anterior
+                const pDiaMesAtual = new Date(dHoje.getFullYear(), dHoje.getMonth(), 1)
+                  .toISOString()
+                  .slice(0, 10)
+                const uDiaMesAtual = new Date(dHoje.getFullYear(), dHoje.getMonth() + 1, 0)
+                  .toISOString()
+                  .slice(0, 10)
+
+                const pDiaMesAnt = new Date(dHoje.getFullYear(), dHoje.getMonth() - 1, 1)
+                  .toISOString()
+                  .slice(0, 10)
+                const uDiaMesAnt = new Date(dHoje.getFullYear(), dHoje.getMonth(), 0)
+                  .toISOString()
+                  .slice(0, 10)
+
+                const [vendasMesAt, vendasMesAnt] = await Promise.all([
+                  pb.collection('vendas').getFullList({
+                    filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && status = 'Finalizada' && tipo != 'Devolução' && data_emissao >= '${pDiaMesAtual}' && data_emissao <= '${uDiaMesAtual}'`,
+                    fields: 'valor_total',
+                  }),
+                  pb.collection('vendas').getFullList({
+                    filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && status = 'Finalizada' && tipo != 'Devolução' && data_emissao >= '${pDiaMesAnt}' && data_emissao <= '${uDiaMesAnt}'`,
+                    fields: 'valor_total',
+                  }),
+                ])
+
+                const totMesAt = vendasMesAt.reduce(
+                  (acc, v: any) => acc + (Number(v.valor_total) || 0),
+                  0,
+                )
+                const totMesAnt = vendasMesAnt.reduce(
+                  (acc, v: any) => acc + (Number(v.valor_total) || 0),
+                  0,
+                )
+                setVendasMesAtualTotal(totMesAt)
+                setVendasMesAnteriorTotal(totMesAnt)
+
+                // 5. Gráfico de vendas dos últimos 30 dias
+                const dMenos30 = new Date(dHoje.getTime() - 29 * 24 * 60 * 60 * 1000)
+                const dMenos30Str = dMenos30.toISOString().slice(0, 10)
+
+                const vendas30 = await pb.collection('vendas').getFullList({
+                  filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && status = 'Finalizada' && tipo != 'Devolução' && data_emissao >= '${dMenos30Str}' && data_emissao <= '${hojeStr}'`,
+                  fields: 'data_emissao,valor_total',
+                })
+
+                const mapa30 = new Map<string, number>()
+                // Inicializa os 30 dias com 0
+                for (let i = 0; i < 30; i++) {
+                  const d = new Date(dMenos30.getTime() + i * 24 * 60 * 60 * 1000)
+                  const diaIso = d.toISOString().slice(0, 10)
+                  mapa30.set(diaIso, 0)
+                }
+
+                vendas30.forEach((v: any) => {
+                  const dt = (v.data_emissao || '').slice(0, 10)
+                  if (mapa30.has(dt)) {
+                    mapa30.set(dt, (mapa30.get(dt) || 0) + (Number(v.valor_total) || 0))
+                  }
+                })
+
+                const listaGrafico = Array.from(mapa30.entries()).map(([dia, valor]) => ({
+                  dia,
+                  rotulo: `${dia.slice(8, 10)}/${dia.slice(5, 7)}`,
+                  valor: Number(valor.toFixed(2)),
+                }))
+
+                setGraficoVendas30Dias(listaGrafico)
+              } catch (err) {
+                console.warn('Erro ao carregar indicadores de vendas no painel:', err)
+              } finally {
+                setCarregandoVendas(false)
+              }
+            })(),
+          )
+        }
       }
 
       // 2. Carregar últimos registros para compor os 10 últimos cadastros
@@ -713,6 +841,7 @@ export default function Index() {
     podeVerFinanceiroPagar,
     podeVerFinanceiroReceber,
     podeVerFinanceiroBancos,
+    podeVerVendas,
     empresaAtiva,
   ])
 
@@ -1158,6 +1287,295 @@ export default function Index() {
               </Card>
             </Link>
           </div>
+        </div>
+      )}
+
+      {/* SEÇÃO VENDAS E PDV (Etapa 5) — Respeita permissão de vendas ou pdv */}
+      {podeVerVendas && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-t border-slate-200 pt-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="h-5 w-5 text-indigo-600" />
+                <h2 className="text-lg font-bold tracking-tight text-slate-900">
+                  Visão Geral de Vendas e PDV
+                </h2>
+                {empresaAtiva && (
+                  <Badge variant="secondary" className="text-[11px] font-normal">
+                    {empresaAtiva.nome_fantasia || empresaAtiva.razao_social}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Vendas de hoje, ticket médio, caixas em operação, orçamentos a vencer e comparação
+                mensal.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                <Link to="/vendas/pedidos">
+                  Orçamentos e Pedidos
+                  <ArrowRight size={13} />
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                <Link to="/vendas/consultas">
+                  Consultas
+                  <ArrowRight size={13} />
+                </Link>
+              </Button>
+            </div>
+          </div>
+
+          {/* Cartões da Seção de Vendas */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* 1. Vendas de Hoje (Valor e Quantidade) */}
+            <Link
+              to={`/vendas/consultas`}
+              className="group block focus:outline-none"
+              title="Ver vendas do dia de hoje"
+            >
+              <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500">Vendas de Hoje</span>
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <DollarSign size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors font-mono">
+                      {carregandoVendas ? '—' : formatarMoeda(vendasHojeValor)}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-700">{vendasHojeQtd}</span>
+                      <span>{vendasHojeQtd === 1 ? 'venda finalizada' : 'vendas finalizadas'}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* 2. Ticket Médio do Dia */}
+            <Card className="border-slate-200 shadow-xs">
+              <CardContent className="p-4 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">Ticket Médio Hoje</span>
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <TrendingUp size={18} />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-xl font-bold tracking-tight text-slate-900 font-mono">
+                    {carregandoVendas ? '—' : formatarMoeda(ticketMedioHoje)}
+                  </div>
+                  <span className="text-[11px] text-slate-400">por venda faturada</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 3. Caixas Abertos */}
+            <Link
+              to="/vendas/caixa"
+              className="group block focus:outline-none"
+              title="Acompanhar operadores e caixas"
+            >
+              <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-700">Caixas Abertos</span>
+                    <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+                      <CreditCard size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2">
+                      {carregandoVendas ? '—' : caixasAbertosCount}
+                      {caixasAbertosCount > 0 && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                          Em operação
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-slate-500">
+                      {caixasAbertosCount > 0
+                        ? 'terminais com sessões ativas'
+                        : 'nenhum caixa aberto no momento'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* 4. Orçamentos a Vencer em 2 Dias */}
+            <Link
+              to="/vendas/pedidos"
+              className="group block focus:outline-none"
+              title="Acompanhar propostas comerciais prestes a vencer"
+            >
+              <Card
+                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                  orcamentosVencendoCount > 0
+                    ? 'border-amber-300 bg-amber-50/20 ring-1 ring-amber-200'
+                    : 'hover:border-slate-300'
+                }`}
+              >
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-amber-800">Orçamentos a Vencer</span>
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                      <CalendarClock size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-bold tracking-tight text-amber-700 group-hover:text-amber-900 transition-colors flex items-center gap-2">
+                      {carregandoVendas ? '—' : orcamentosVencendoCount}
+                      {orcamentosVencendoCount > 0 && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
+                          Cobrar
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-amber-700/80">
+                      {orcamentosVencendoCount > 0
+                        ? 'vencem em até 2 dias →'
+                        : 'nenhuma proposta a expirar'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* 5. Vendas Mês Atual x Mês Anterior */}
+            <Card className="border-slate-200 shadow-xs">
+              <CardContent className="p-4 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">Mês Atual x Anterior</span>
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <Layers size={18} />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-lg font-bold tracking-tight text-indigo-900 font-mono">
+                    {carregandoVendas ? '—' : formatarMoeda(vendasMesAtualTotal)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Ant:{' '}
+                    <span className="font-mono text-slate-600">
+                      {formatarMoeda(vendasMesAnteriorTotal)}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Gráfico de Vendas dos Últimos 30 Dias */}
+          <Card className="border-slate-200 shadow-xs">
+            <CardHeader className="pb-2 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <LineChartIcon className="w-4 h-4 text-indigo-600" />
+                  <CardTitle className="text-sm font-semibold text-slate-900">
+                    Faturamento Diário de Vendas (Últimos 30 dias)
+                  </CardTitle>
+                </div>
+                <CardDescription className="text-xs text-slate-500 mt-0.5">
+                  Evolução do faturamento líquido de vendas finalizadas na empresa ativa.
+                </CardDescription>
+              </div>
+
+              <Button asChild variant="ghost" size="sm" className="h-7 text-xs text-indigo-600">
+                <Link to="/vendas/consultas">
+                  Ver relatório completo
+                  <ArrowRight size={12} className="ml-1" />
+                </Link>
+              </Button>
+            </CardHeader>
+
+            <CardContent className="pt-4 pb-2">
+              {carregandoVendas ? (
+                <div className="h-56 flex flex-col items-center justify-center text-xs text-slate-400">
+                  <RefreshCw className="w-4 h-4 animate-spin text-primary mb-2" />
+                  Carregando vendas dos últimos 30 dias...
+                </div>
+              ) : graficoVendas30Dias.length === 0 ? (
+                <div className="h-48 flex items-center justify-center text-xs text-slate-500">
+                  Nenhuma venda realizada nos últimos 30 dias.
+                </div>
+              ) : (
+                <div className="h-56 w-full">
+                  <ChartContainer
+                    config={
+                      {
+                        valor: {
+                          label: 'Vendas (R$)',
+                          color: '#4f46e5',
+                        },
+                      } satisfies ChartConfig
+                    }
+                    className="h-full w-full"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart
+                        data={graficoVendas30Dias}
+                        margin={{ top: 8, right: 12, left: 8, bottom: 8 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.25} />
+                        <XAxis
+                          dataKey="rotulo"
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={6}
+                          interval={2}
+                          className="text-[10px]"
+                        />
+                        <YAxis
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`}
+                          className="text-[10px]"
+                        />
+                        <ChartTooltip
+                          content={
+                            <ChartTooltipContent
+                              formatter={(value) => (
+                                <div className="flex items-center justify-between gap-4 font-mono text-xs">
+                                  <span>Faturamento:</span>
+                                  <span className="font-bold text-indigo-600">
+                                    R${' '}
+                                    {Number(value || 0).toLocaleString('pt-BR', {
+                                      minimumFractionDigits: 2,
+                                    })}
+                                  </span>
+                                </div>
+                              )}
+                            />
+                          }
+                        />
+                        <Bar
+                          dataKey="valor"
+                          name="Vendas"
+                          fill="#6366f1"
+                          radius={[3, 3, 0, 0]}
+                          maxBarSize={18}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="valor"
+                          name="Tendência"
+                          stroke="#312e81"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 

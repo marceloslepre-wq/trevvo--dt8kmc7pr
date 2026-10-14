@@ -4,7 +4,7 @@ import pb from '@/lib/pocketbase/client'
 // TIPOS DAS 3 TABELAS CENTRAIS DE VENDAS
 // ============================================================================
 
-export type TipoVenda = 'Orçamento' | 'Pedido' | 'PDV'
+export type TipoVenda = 'Orçamento' | 'Pedido' | 'PDV' | 'Devolução'
 export type StatusVenda =
   | 'Orçamento'
   | 'Pedido em aberto'

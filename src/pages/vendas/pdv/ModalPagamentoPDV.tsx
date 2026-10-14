@@ -27,6 +27,7 @@ import type { ContaFinanceira } from '@/services/contasFinanceiras'
 import type { CondicaoPagamento } from '@/services/condicoesPagamento'
 import type { Cliente } from '@/services/clientes'
 import { creditoCliente, type SituacaoCreditoCliente } from '@/services/contasReceber'
+import { consultarValeTroca, abaterSaldoValeTroca } from '@/services/devolucoes'
 
 export interface PagamentoPDVLinha {
   id: string
@@ -86,12 +87,15 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
   const [analiseCredito, setAnaliseCredito] = useState<SituacaoCreditoCliente | null>(null)
   const [checandoCredito, setChecandoCredito] = useState(false)
 
-  // Campos adicionais da forma ativa (ex.: parcelas, cartão, PIX)
+  // Campos adicionais da forma ativa (ex.: parcelas, cartão, PIX, vale-troca)
   const [parcelasCartao, setParcelasCartao] = useState<number>(1)
   const [nsuCartao, setNsuCartao] = useState<string>('')
   const [autCartao, setAutCartao] = useState<string>('')
   const [bandeiraCartao, setBandeiraCartao] = useState<string>('')
   const [condicaoCrediarioId, setCondicaoCrediarioId] = useState<string>('')
+  const [codigoValeTroca, setCodigoValeTroca] = useState<string>('')
+  const [valeCarregado, setValeCarregado] = useState<any>(null)
+  const [buscandoVale, setBuscandoVale] = useState(false)
   const [pixConfirmadoManualmente, setPixConfirmadoManualmente] = useState(false)
 
   const inputValorRef = useRef<HTMLInputElement>(null)
@@ -207,11 +211,32 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
       return
     }
 
+    const ehValeTroca =
+      formaAtivaAtual.codigo_tpag === '99' ||
+      formaAtivaAtual.descricao.toLowerCase().includes('vale-troca') ||
+      formaAtivaAtual.descricao.toLowerCase().includes('vale troca')
+
+    if (ehValeTroca) {
+      if (!codigoValeTroca.trim()) {
+        setErro('Digite o código do vale-troca para validar e aplicar o saldo.')
+        return
+      }
+      if (!valeCarregado) {
+        setErro('Valide o código do vale-troca antes de lançar.')
+        return
+      }
+      if (valorNum > valeCarregado.saldo + 0.009) {
+        setErro(`O valor supera o saldo disponível do vale (R$ ${valeCarregado.saldo.toFixed(2)}).`)
+        return
+      }
+    }
+
     const ehCrediario =
-      formaAtivaAtual.tipo === 'Crédito loja' ||
-      formaAtivaAtual.tipo === 'Boleto' ||
-      formaAtivaAtual.codigo_tpag === '05' ||
-      formaAtivaAtual.descricao.toLowerCase().includes('crediário')
+      !ehValeTroca &&
+      (formaAtivaAtual.tipo === 'Crédito loja' ||
+        formaAtivaAtual.tipo === 'Boleto' ||
+        formaAtivaAtual.codigo_tpag === '05' ||
+        formaAtivaAtual.descricao.toLowerCase().includes('crediário'))
 
     if (ehCrediario) {
       if (
@@ -260,6 +285,8 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
     setNsuCartao('')
     setAutCartao('')
     setBandeiraCartao('')
+    setCodigoValeTroca('')
+    setValeCarregado(null)
 
     const novoTotal = novasLinhas.reduce((acc, l) => acc + l.valor, 0)
     const novoRestante = Math.max(0, Number((totalVenda - novoTotal).toFixed(2)))
@@ -296,6 +323,26 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
 
     setSalvando(true)
     try {
+      // Se houver pagamentos em Vale-troca, abate do banco
+      for (const linha of linhas) {
+        const formaLinha = formas.find((f) => f.id === linha.forma_pagamento_id)
+        const ehVale =
+          formaLinha?.codigo_tpag === '99' ||
+          formaLinha?.descricao.toLowerCase().includes('vale-troca') ||
+          formaLinha?.descricao.toLowerCase().includes('vale troca')
+
+        if (ehVale && linha.codigo_autorizacao) {
+          try {
+            await abaterSaldoValeTroca({
+              valeId: linha.codigo_autorizacao,
+              valorAbater: linha.valor,
+            })
+          } catch (errVale) {
+            console.warn('Erro ao abater vale:', errVale)
+          }
+        }
+      }
+
       const payload = linhas.map((l) => ({
         forma_pagamento_id: l.forma_pagamento_id,
         valor: l.valor,
@@ -352,6 +399,11 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
     )
   }, [contas])
 
+  const ehValeTrocaAtual =
+    formaAtivaAtual?.codigo_tpag === '99' ||
+    formaAtivaAtual?.descricao.toLowerCase().includes('vale-troca') ||
+    formaAtivaAtual?.descricao.toLowerCase().includes('vale troca')
+
   const ehCartaoAtual =
     formaAtivaAtual?.tipo === 'Cartão de crédito' ||
     formaAtivaAtual?.tipo === 'Cartão de débito' ||
@@ -359,15 +411,45 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
     formaAtivaAtual?.codigo_tpag === '04'
 
   const ehCrediarioAtual =
-    formaAtivaAtual?.tipo === 'Crédito loja' ||
-    formaAtivaAtual?.tipo === 'Boleto' ||
-    formaAtivaAtual?.codigo_tpag === '05' ||
-    formaAtivaAtual?.descricao.toLowerCase().includes('crediário')
+    !ehValeTrocaAtual &&
+    (formaAtivaAtual?.tipo === 'Crédito loja' ||
+      formaAtivaAtual?.tipo === 'Boleto' ||
+      formaAtivaAtual?.codigo_tpag === '05' ||
+      formaAtivaAtual?.descricao.toLowerCase().includes('crediário'))
 
   const ehPixAtual =
     formaAtivaAtual?.tipo === 'PIX' ||
     formaAtivaAtual?.codigo_tpag === '17' ||
     formaAtivaAtual?.descricao.toLowerCase().includes('pix')
+
+  // Consulta e validação rápida do vale
+  const handleValidarVale = async () => {
+    if (!codigoValeTroca.trim() || !empresaId) return
+    setBuscandoVale(true)
+    setErro(null)
+    try {
+      const vale = await consultarValeTroca(empresaId, codigoValeTroca.trim())
+      if (!vale) {
+        setErro('Vale-troca não encontrado ou inativo.')
+        setValeCarregado(null)
+      } else if (vale.status !== 'Ativo') {
+        setErro(`Vale-troca está com status "${vale.status}".`)
+        setValeCarregado(null)
+      } else if (vale.saldo <= 0.009) {
+        setErro('Vale-troca sem saldo disponível.')
+        setValeCarregado(null)
+      } else {
+        setValeCarregado(vale)
+        const valorSugerido = Math.min(vale.saldo, restante > 0 ? restante : totalVenda)
+        setValorDigitado(valorSugerido.toFixed(2))
+        setAutCartao(vale.id) // guarda o ID do vale no campo autorização
+      }
+    } catch {
+      setErro('Erro ao consultar o vale-troca.')
+    } finally {
+      setBuscandoVale(false)
+    }
+  }
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
@@ -569,6 +651,37 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                       className="h-8 text-xs bg-slate-900 border-slate-700 mt-1"
                     />
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Campos Especiais: VALE-TROCA */}
+            {ehValeTrocaAtual && (
+              <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700 space-y-2 text-xs">
+                <div className="font-semibold text-blue-300 flex items-center justify-between">
+                  <span>Código do Vale-Troca</span>
+                  {valeCarregado && (
+                    <Badge className="bg-emerald-600 text-white text-[10px]">
+                      Saldo: R$ {Number(valeCarregado.saldo).toFixed(2)}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Ex: VT-9482-K3X"
+                    value={codigoValeTroca}
+                    onChange={(e) => setCodigoValeTroca(e.target.value.toUpperCase())}
+                    className="h-8 text-xs bg-slate-900 border-slate-700 uppercase font-mono"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={buscandoVale}
+                    onClick={handleValidarVale}
+                    className="h-8 text-xs bg-slate-700 hover:bg-slate-600 text-white"
+                  >
+                    {buscandoVale ? 'Validando...' : 'Validar'}
+                  </Button>
                 </div>
               </div>
             )}

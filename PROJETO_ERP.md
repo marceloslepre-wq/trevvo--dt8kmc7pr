@@ -1903,6 +1903,31 @@ Regras de Banco e Acesso (API Rules):
 
 - `createRule`, `updateRule`, `deleteRule` permitidos somente se a venda pai (`@collection.vendas.id = venda_id`) não estiver 'Finalizada' nem 'Cancelada'.
 
+### vales_troca
+
+Tabela de cupons de crédito loja gerados a partir de trocas e devoluções de mercadorias.
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- empresa_id (relation -> empresas, obrigatório)
+- codigo (text, obrigatório — código único do cupom, ex: "VT-1042-AB3X")
+- cliente_id (relation -> clientes, opcional — cliente titular do vale)
+- valor (número monetário, valor original emitido)
+- saldo (número monetário, saldo disponível para abatimento em novas compras)
+- validade (texto/data YYYY-MM-DD, data limite para utilização)
+- venda_origem_id (relation -> vendas, opcional — venda original que originou a devolução)
+- status (select: 'Ativo' | 'Usado' | 'Expirado' | 'Cancelado', obrigatório)
+- observacao (texto opcional)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Regras de Banco e Acesso (API Rules):
+
+- `listRule: "@request.auth.id != ''"`, `viewRule: "@request.auth.id != ''"`, `createRule: "@request.auth.id != ''"`, `updateRule: "@request.auth.id != ''"`, `deleteRule: "@request.auth.id != ''"`
+- Aceito no PDV e na venda convencional como forma de pagamento "Vale-troca" (`codigo_tpag = '99'`), abatendo o saldo do vale diretamente via serviço central `abaterSaldoValeTroca`.
+
 ### vendas_pagamentos
 
 Tabela de registro e conciliação dos pagamentos efetuados na finalização da venda.
@@ -2690,9 +2715,35 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 - **Garantia de Não Criação Prematura:**
   - Não foram criadas rotas ou tabelas de frente de caixa/PDV, vendas ou emissão de NF-e/NFC-e (mantidos para as Etapas 5 e 6).
 
+## Etapa 5 concluída (Vendas e PDV Completo)
+
+- **Telas Entregues:**
+  - `src/pages/vendas/TrocasDevolucoesPage.tsx`: busca de venda original, conferência de limite `dias_para_troca`, autorização por supervisor via senha para trocas fora do prazo (`ModalAutorizacaoSupervisor`), escolha de itens até o saldo devolvível, destinos do valor (Vale-troca com impressão e código único, Dinheiro de volta via lançamento avulso na conta 2.2.05, Abater do crediário com baixa de títulos).
+  - `src/pages/vendas/ComissoesPage.tsx`: apuração de comissões por vendedor com percentual de `usuarios.comissao_percentual`, filtros por período e base ("Venda finalizada" ou "Venda recebida"), abatimento automático de devoluções, extrato detalhado por venda, exportação CSV e geração de conta a pagar no plano 2.5.01 com vendedor cadastrado como fornecedor.
+  - `src/pages/vendas/ConsultasVendasPage.tsx`: vendas por período (total, quantidade, ticket médio, visões por dia, forma de pagamento, vendedor e terminal), ranking de produtos e curva ABC (por valor e por quantidade) com classes A (80%), B (15%) e C (5%), margem bruta de contribuição (preço − custo médio) protegida por permissão de produtos, com exportação CSV em todas as consultas.
+  - `src/pages/vendas/pdv/PdvPage.tsx`: frente de caixa ágil, atalhos F2 a F12, leitura universal, balança EAN-13, cancelamentos auditados e finalização com impressão não fiscal.
+  - `src/pages/vendas/pedidos/VendasListaPage.tsx` e `VendaFormPage.tsx`: gestão completa de orçamentos e pedidos comerciais.
+  - `src/pages/vendas/CaixaPage.tsx` e `TerminaisPage.tsx`: controle de sessões e fechamento às cegas.
+
+- **Tabelas e Estrutura de Banco:**
+  - `vales_troca` (Migration 0044): cupons de crédito de loja vinculados à empresa e venda original.
+  - `vendas`: select do campo `tipo` atualizado com o valor 'Devolução'.
+  - `plano_contas`: conta analítica 2.2.05 "Devoluções de vendas" (Deduções da receita).
+  - `formas_pagamento`: cadastrada forma "Vale-troca" (`codigo_tpag = '99'`, tipo 'Crédito loja').
+
+- **Serviços Centrais:**
+  - `src/services/devolucoes.ts`: processamento atômico de devolução (`processarDevolucao`), entrada em estoque com origem `DEVOLUCAO_VENDA` pelo custo da venda original, atualização de `quantidade_devolvida` em `vendas_itens`, gestão e abatimento de vales (`abaterSaldoValeTroca`).
+  - `src/services/comissoes.ts`: apuração temporal por vendedor com base bruta, dedução de devoluções e geração de títulos em contas a pagar (`gerarContaPagarComissao`).
+  - `src/services/consultasVendas.ts`: consolidação multidimensional de vendas por período, curva ABC e margens.
+  - `src/services/dre.ts`: opção "Custo das mercadorias pelo estoque" (CMV pelas saídas `VENDA` menos entradas `DEVOLUCAO_VENDA`, com exclusão das compras do período da DRE).
+
+- **Painel Geral (`src/pages/Index.tsx`):**
+  - Cartões de vendas de hoje (valor e quantidade), ticket médio do dia, caixas abertos em operação, orçamentos a vencer em 2 dias e comparativo mês atual x mês anterior.
+  - Gráfico diário de faturamento dos últimos 30 dias com linha de tendência.
+
 ## Versão Atual do Projeto
 
-**Versão 0.0.69** — Alinhamento Integral da Tela de PDV (`PdvPage.tsx`), Fechamento de Build e Homologação de Serviços de Caixa e Vendas:
+**Versão 0.0.70** — Fechamento Oficial da Etapa 5 do ERP (Trocas e Devoluções, Vales-Troca, Comissões de Vendas, Consultas Gerenciais com Curva ABC, DRE com CMV de Estoque e Dashboard de Vendas):
 
 1. **Correções Estruturais e Alinhamento de Contratos no PDV (`/vendas/pdv`):**
    - **Contexto de Empresa:** Substituição da importação legada `useEmpresa` por `useEmpresaAtiva` e renomeação sistemática de todas as referências para `empresaAtiva`.

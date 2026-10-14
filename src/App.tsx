@@ -90,6 +90,9 @@ import CaixaPage from '@/pages/vendas/CaixaPage'
 import VendasListaPage from '@/pages/vendas/pedidos/VendasListaPage'
 import VendaFormPage from '@/pages/vendas/pedidos/VendaFormPage'
 import PdvPage from '@/pages/vendas/pdv/PdvPage'
+import { TrocasDevolucoesPage } from '@/pages/vendas/TrocasDevolucoesPage'
+import { ComissoesPage } from '@/pages/vendas/ComissoesPage'
+import { ConsultasVendasPage } from '@/pages/vendas/ConsultasVendasPage'
 
 const App = () => (
   <BrowserRouter>
@@ -738,6 +741,34 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="caixa" acao="ver">
                         <TerminaisPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/vendas/trocas"
+                    element={
+                      <PermissaoGuard modulo="vendas" acao="criar">
+                        <TrocasDevolucoesPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/vendas/devolucoes"
+                    element={<Navigate to="/vendas/trocas" replace />}
+                  />
+                  <Route
+                    path="/vendas/comissoes"
+                    element={
+                      <PermissaoGuard modulo="vendas" acao="ver">
+                        <ComissoesPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/vendas/consultas"
+                    element={
+                      <PermissaoGuard modulo="vendas" acao="ver">
+                        <ConsultasVendasPage />
                       </PermissaoGuard>
                     }
                   />

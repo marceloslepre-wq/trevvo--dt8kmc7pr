@@ -1,0 +1,791 @@
+import React, { useState, useEffect, useCallback } from 'react'
+import {
+  BarChart3,
+  Calendar,
+  Download,
+  Filter,
+  DollarSign,
+  TrendingUp,
+  Percent,
+  Layers,
+  ShoppingBag,
+  CreditCard,
+  User,
+  Monitor,
+  Lock,
+} from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useToast } from '@/hooks/use-toast'
+import {
+  consultarVendasPorPeriodo,
+  consultarCurvaAbcProdutos,
+  consultarMargemVendas,
+  exportarConsultaCsv,
+  ConsultaPeriodoResultado,
+  CurvaAbcResultado,
+  MargemVendaItem,
+} from '@/services/consultasVendas'
+
+export const ConsultasVendasPage: React.FC = () => {
+  const { empresaAtiva } = useEmpresaAtiva()
+  const { pode } = usePermissoes()
+  const { toast } = useToast()
+
+  // Margem visível só para quem tem editar em produtos
+  const podeVerMargem = pode('produtos', 'editar')
+
+  // Aba ativa: 'periodo' | 'abc' | 'margem'
+  const [abaAtiva, setAbaAtiva] = useState<'periodo' | 'abc' | 'margem'>('periodo')
+
+  // Filtro de datas padrão: mês atual
+  const hoje = new Date()
+  const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10)
+  const hojeIso = hoje.toISOString().slice(0, 10)
+
+  const [dataInicio, setDataInicio] = useState(primeiroDiaMes)
+  const [dataFim, setDataFim] = useState(hojeIso)
+
+  // Sub-aba dentro de período: 'resumo' | 'dia' | 'formas' | 'vendedores' | 'terminais'
+  const [subAbaPeriodo, setSubAbaPeriodo] = useState<
+    'resumo' | 'dia' | 'formas' | 'vendedores' | 'terminais'
+  >('resumo')
+
+  // Critério curva ABC: 'valor' | 'quantidade'
+  const [criterioAbc, setCriterioAbc] = useState<'valor' | 'quantidade'>('valor')
+
+  // Estados de dados
+  const [dadosPeriodo, setDadosPeriodo] = useState<ConsultaPeriodoResultado | null>(null)
+  const [dadosAbc, setDadosAbc] = useState<CurvaAbcResultado | null>(null)
+  const [dadosMargem, setDadosMargem] = useState<MargemVendaItem[]>([])
+  const [carregando, setCarregando] = useState(false)
+
+  // Carregar dados de acordo com a aba ativa
+  const carregarDados = useCallback(async () => {
+    if (!empresaAtiva?.id) return
+    setCarregando(true)
+
+    try {
+      if (abaAtiva === 'periodo') {
+        const res = await consultarVendasPorPeriodo({
+          empresa_id: empresaAtiva.id,
+          data_inicio: dataInicio,
+          data_fim: dataFim,
+        })
+        setDadosPeriodo(res)
+      } else if (abaAtiva === 'abc') {
+        const res = await consultarCurvaAbcProdutos({
+          empresa_id: empresaAtiva.id,
+          data_inicio: dataInicio,
+          data_fim: dataFim,
+          criterio: criterioAbc,
+        })
+        setDadosAbc(res)
+      } else if (abaAtiva === 'margem') {
+        if (!podeVerMargem) return
+        const res = await consultarMargemVendas({
+          empresa_id: empresaAtiva.id,
+          data_inicio: dataInicio,
+          data_fim: dataFim,
+        })
+        setDadosMargem(res)
+      }
+    } catch {
+      toast({
+        title: 'Erro na consulta',
+        description: 'Falha ao buscar indicadores de vendas.',
+        variant: 'destructive',
+      })
+    } finally {
+      setCarregando(false)
+    }
+  }, [empresaAtiva?.id, abaAtiva, dataInicio, dataFim, criterioAbc, podeVerMargem, toast])
+
+  useEffect(() => {
+    carregarDados()
+  }, [carregarDados])
+
+  // Exportadores CSV
+  const handleExportarCsvPeriodo = () => {
+    if (!dadosPeriodo) return
+    let csv = ''
+    if (subAbaPeriodo === 'dia') {
+      csv = exportarConsultaCsv(
+        ['Data', 'Valor Vendas (R$)', 'Quantidade', 'Ticket Médio (R$)'],
+        dadosPeriodo.por_dia.map((d) => [d.data, d.valor, d.quantidade, d.ticket_medio]),
+      )
+    } else if (subAbaPeriodo === 'formas') {
+      csv = exportarConsultaCsv(
+        ['Forma de Pagamento', 'Código tPag', 'Valor Total (R$)', 'Participação (%)'],
+        dadosPeriodo.por_forma_pagamento.map((f) => [
+          f.descricao,
+          f.codigo_tpag,
+          f.valor,
+          f.percentual,
+        ]),
+      )
+    } else if (subAbaPeriodo === 'vendedores') {
+      csv = exportarConsultaCsv(
+        ['Vendedor', 'Valor Total (R$)', 'Quantidade', 'Ticket Médio (R$)', 'Participação (%)'],
+        dadosPeriodo.por_vendedor.map((v) => [
+          v.nome,
+          v.valor,
+          v.quantidade,
+          v.ticket_medio,
+          v.percentual,
+        ]),
+      )
+    } else if (subAbaPeriodo === 'terminais') {
+      csv = exportarConsultaCsv(
+        ['Terminal / Canal', 'Valor Total (R$)', 'Quantidade', 'Participação (%)'],
+        dadosPeriodo.por_terminal.map((t) => [t.nome, t.valor, t.quantidade, t.percentual]),
+      )
+    } else {
+      // Resumo geral
+      csv = exportarConsultaCsv(
+        ['Métrica', 'Valor'],
+        [
+          ['Total Vendas Bruto (R$)', dadosPeriodo.totais.valor_total],
+          ['Quantidade de Vendas', dadosPeriodo.totais.quantidade_vendas],
+          ['Ticket Médio (R$)', dadosPeriodo.totais.ticket_medio],
+          ['Total Devoluções (R$)', dadosPeriodo.totais.valor_devolucoes],
+          ['Qtd Devoluções', dadosPeriodo.totais.quantidade_devolucoes],
+          ['Total Líquido (R$)', dadosPeriodo.totais.valor_liquido],
+        ],
+      )
+    }
+
+    fazerDownloadCsv(csv, `vendas_periodo_${subAbaPeriodo}_${dataInicio}_a_${dataFim}.csv`)
+  }
+
+  const handleExportarCsvAbc = () => {
+    if (!dadosAbc) return
+    const csv = exportarConsultaCsv(
+      [
+        'Código',
+        'Produto',
+        'Unidade',
+        'Qtd Vendida',
+        'Valor Total (R$)',
+        'Preço Médio (R$)',
+        'Custo Médio (R$)',
+        'Margem Bruta (R$)',
+        'Margem (%)',
+        '% s/ Total',
+        '% Acumulado',
+        'Classe ABC',
+      ],
+      dadosAbc.itens.map((i) => [
+        i.codigo,
+        i.descricao,
+        i.unidade,
+        i.quantidade_vendida,
+        i.valor_total,
+        i.preco_medio_venda,
+        i.custo_medio_venda,
+        i.margem_bruta_valor,
+        i.margem_bruta_percentual,
+        i.percentual_sobre_total,
+        i.percentual_acumulado,
+        i.classe_abc,
+      ]),
+    )
+    fazerDownloadCsv(csv, `curva_abc_produtos_${criterioAbc}_${dataInicio}_a_${dataFim}.csv`)
+  }
+
+  const handleExportarCsvMargem = () => {
+    const csv = exportarConsultaCsv(
+      [
+        'Venda #',
+        'Data',
+        'Tipo',
+        'Cliente',
+        'Vendedor',
+        'Valor Venda (R$)',
+        'Custo Total (R$)',
+        'Margem Lucro (R$)',
+        'Margem (%)',
+      ],
+      dadosMargem.map((m) => [
+        m.numero,
+        m.data_emissao,
+        m.tipo,
+        m.cliente_nome,
+        m.vendedor_nome,
+        m.valor_venda,
+        m.custo_total,
+        m.margem_lucro_valor,
+        m.margem_lucro_percentual,
+      ]),
+    )
+    fazerDownloadCsv(csv, `margem_vendas_${dataInicio}_a_${dataFim}.csv`)
+  }
+
+  const fazerDownloadCsv = (conteudo: string, nomeArquivo: string) => {
+    const blob = new Blob([conteudo], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', nomeArquivo)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  return (
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2.5">
+            <BarChart3 className="h-7 w-7 text-indigo-600" />
+            Consultas e Relatórios de Vendas
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Análise periódica de vendas, curva ABC de produtos e margem de contribuição.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {abaAtiva === 'periodo' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportarCsvPeriodo}
+              disabled={!dadosPeriodo}
+              className="text-xs h-9"
+            >
+              <Download className="h-3.5 w-3.5 mr-1.5" />
+              Exportar CSV
+            </Button>
+          )}
+
+          {abaAtiva === 'abc' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportarCsvAbc}
+              disabled={!dadosAbc || dadosAbc.itens.length === 0}
+              className="text-xs h-9"
+            >
+              <Download className="h-3.5 w-3.5 mr-1.5" />
+              Exportar CSV
+            </Button>
+          )}
+
+          {abaAtiva === 'margem' && podeVerMargem && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportarCsvMargem}
+              disabled={dadosMargem.length === 0}
+              className="text-xs h-9"
+            >
+              <Download className="h-3.5 w-3.5 mr-1.5" />
+              Exportar CSV
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Navegação entre Abas Principais */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+        <Button
+          variant={abaAtiva === 'periodo' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setAbaAtiva('periodo')}
+          className="text-xs h-8"
+        >
+          <Calendar className="h-3.5 w-3.5 mr-1.5" />
+          Vendas por Período
+        </Button>
+
+        <Button
+          variant={abaAtiva === 'abc' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setAbaAtiva('abc')}
+          className="text-xs h-8"
+        >
+          <Layers className="h-3.5 w-3.5 mr-1.5" />
+          Produtos Mais Vendidos e Curva ABC
+        </Button>
+
+        <Button
+          variant={abaAtiva === 'margem' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setAbaAtiva('margem')}
+          disabled={!podeVerMargem}
+          className={`text-xs h-8 ${!podeVerMargem ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {podeVerMargem ? (
+            <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
+          ) : (
+            <Lock className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          Margem por Venda e Produto
+        </Button>
+      </div>
+
+      {/* Barra de Filtro de Datas Comum */}
+      <Card className="border-slate-200">
+        <CardContent className="p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-slate-700">Data Inicial</Label>
+              <Input
+                type="date"
+                value={dataInicio}
+                onChange={(e) => setDataInicio(e.target.value)}
+                className="text-xs h-8 bg-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium text-slate-700">Data Final</Label>
+              <Input
+                type="date"
+                value={dataFim}
+                onChange={(e) => setDataFim(e.target.value)}
+                className="text-xs h-8 bg-white"
+              />
+            </div>
+
+            {abaAtiva === 'abc' && (
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-slate-700">Critério da Curva ABC</Label>
+                <select
+                  value={criterioAbc}
+                  onChange={(e) => setCriterioAbc(e.target.value as any)}
+                  className="text-xs h-8 bg-white border border-slate-200 rounded px-2"
+                >
+                  <option value="valor">Por Valor Financeiro (Faturamento)</option>
+                  <option value="quantidade">Por Quantidade de Itens Vendidos</option>
+                </select>
+              </div>
+            )}
+
+            <Button
+              size="sm"
+              onClick={carregarDados}
+              disabled={carregando}
+              className="text-xs h-8 bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              <Filter className="h-3.5 w-3.5 mr-1.5" />
+              {carregando ? 'Atualizando...' : 'Filtrar'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* CONTEÚDO DA ABA 1: Vendas por Período */}
+      {abaAtiva === 'periodo' && dadosPeriodo && (
+        <div className="space-y-6">
+          {/* Cartões de Indicadores Gerais */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="border-slate-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 font-medium">Faturamento Bruto</p>
+                  <p className="text-xl font-bold text-slate-900 mt-1 font-mono">
+                    R$ {dadosPeriodo.totais.valor_total.toFixed(2)}
+                  </p>
+                </div>
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-lg">
+                  <DollarSign className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 font-medium">Quantidade de Vendas</p>
+                  <p className="text-xl font-bold text-slate-900 mt-1 font-mono">
+                    {dadosPeriodo.totais.quantidade_vendas}
+                  </p>
+                </div>
+                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                  <ShoppingBag className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 font-medium">Ticket Médio</p>
+                  <p className="text-xl font-bold text-slate-900 mt-1 font-mono">
+                    R$ {dadosPeriodo.totais.ticket_medio.toFixed(2)}
+                  </p>
+                </div>
+                <div className="p-2.5 bg-amber-50 text-amber-600 rounded-lg">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 font-medium">Devoluções / Líquido</p>
+                  <p className="text-sm font-bold text-red-600 mt-1 font-mono">
+                    - R$ {dadosPeriodo.totais.valor_devolucoes.toFixed(2)}
+                  </p>
+                  <p className="text-xs font-semibold text-emerald-600 font-mono">
+                    Líq: R$ {dadosPeriodo.totais.valor_liquido.toFixed(2)}
+                  </p>
+                </div>
+                <div className="p-2.5 bg-red-50 text-red-600 rounded-lg">
+                  <Percent className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Sub-abas de agrupamento */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={subAbaPeriodo === 'dia' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setSubAbaPeriodo('dia')}
+              className="text-xs h-7"
+            >
+              <Calendar className="h-3 w-3 mr-1" />
+              Por Dia
+            </Button>
+            <Button
+              variant={subAbaPeriodo === 'formas' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setSubAbaPeriodo('formas')}
+              className="text-xs h-7"
+            >
+              <CreditCard className="h-3 w-3 mr-1" />
+              Por Forma de Pagamento
+            </Button>
+            <Button
+              variant={subAbaPeriodo === 'vendedores' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setSubAbaPeriodo('vendedores')}
+              className="text-xs h-7"
+            >
+              <User className="h-3 w-3 mr-1" />
+              Por Vendedor
+            </Button>
+            <Button
+              variant={subAbaPeriodo === 'terminais' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setSubAbaPeriodo('terminais')}
+              className="text-xs h-7"
+            >
+              <Monitor className="h-3 w-3 mr-1" />
+              Por Terminal
+            </Button>
+          </div>
+
+          {/* Tabelas de Visão do Período */}
+          <Card className="border-slate-200">
+            <CardContent className="pt-4">
+              {subAbaPeriodo === 'dia' && (
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className="text-xs">Data</TableHead>
+                      <TableHead className="text-xs text-right">Vendas (R$)</TableHead>
+                      <TableHead className="text-xs text-right">Quantidade</TableHead>
+                      <TableHead className="text-xs text-right">Ticket Médio (R$)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dadosPeriodo.por_dia.map((d) => (
+                      <TableRow key={d.data}>
+                        <TableCell className="text-xs font-medium">
+                          {d.data.split('-').reverse().join('/')}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono font-semibold">
+                          R$ {d.valor.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono">
+                          {d.quantidade}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono text-slate-600">
+                          R$ {d.ticket_medio.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+
+              {subAbaPeriodo === 'formas' && (
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className="text-xs">Forma de Pagamento</TableHead>
+                      <TableHead className="text-xs text-center w-24">Código tPag</TableHead>
+                      <TableHead className="text-xs text-right">Valor Total (R$)</TableHead>
+                      <TableHead className="text-xs text-right">Participação (%)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dadosPeriodo.por_forma_pagamento.map((f) => (
+                      <TableRow key={f.forma_id}>
+                        <TableCell className="text-xs font-medium">{f.descricao}</TableCell>
+                        <TableCell className="text-xs text-center font-mono">
+                          {f.codigo_tpag}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono font-semibold">
+                          R$ {f.valor.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono text-blue-600">
+                          {f.percentual.toFixed(1)}%
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+
+              {subAbaPeriodo === 'vendedores' && (
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className="text-xs">Vendedor</TableHead>
+                      <TableHead className="text-xs text-right">Valor Total (R$)</TableHead>
+                      <TableHead className="text-xs text-right">Qtd Vendas</TableHead>
+                      <TableHead className="text-xs text-right">Ticket Médio (R$)</TableHead>
+                      <TableHead className="text-xs text-right">Participação (%)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dadosPeriodo.por_vendedor.map((v) => (
+                      <TableRow key={v.vendedor_id}>
+                        <TableCell className="text-xs font-medium">{v.nome}</TableCell>
+                        <TableCell className="text-xs text-right font-mono font-semibold">
+                          R$ {v.valor.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono">
+                          {v.quantidade}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono text-slate-600">
+                          R$ {v.ticket_medio.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono text-indigo-600">
+                          {v.percentual.toFixed(1)}%
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+
+              {subAbaPeriodo === 'terminais' && (
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className="text-xs">Terminal / Origem</TableHead>
+                      <TableHead className="text-xs text-right">Valor Total (R$)</TableHead>
+                      <TableHead className="text-xs text-right">Quantidade</TableHead>
+                      <TableHead className="text-xs text-right">Participação (%)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dadosPeriodo.por_terminal.map((t) => (
+                      <TableRow key={t.terminal_id}>
+                        <TableCell className="text-xs font-medium">{t.nome}</TableCell>
+                        <TableCell className="text-xs text-right font-mono font-semibold">
+                          R$ {t.valor.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono">
+                          {t.quantidade}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono text-purple-600">
+                          {t.percentual.toFixed(1)}%
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* CONTEÚDO DA ABA 2: Curva ABC de Produtos */}
+      {abaAtiva === 'abc' && dadosAbc && (
+        <Card className="border-slate-200">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base font-semibold text-slate-900">
+                  Ranking de Produtos e Classificação ABC
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Total faturado em itens: R$ {dadosAbc.total_geral_valor.toFixed(2)} | Quantidade
+                  total: {dadosAbc.total_geral_quantidade} itens.
+                </CardDescription>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-xs">
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
+                  Classe A: até 80%
+                </Badge>
+                <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                  Classe B: 80% a 95%
+                </Badge>
+                <Badge className="bg-slate-100 text-slate-700 border-slate-200">
+                  Classe C: 95% a 100%
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {dadosAbc.itens.length === 0 ? (
+              <p className="text-xs text-slate-400 py-6 text-center">
+                Nenhum produto vendido no período.
+              </p>
+            ) : (
+              <div className="border border-slate-200 rounded-md overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className="text-xs text-center w-16">Classe</TableHead>
+                      <TableHead className="text-xs">Código</TableHead>
+                      <TableHead className="text-xs">Produto</TableHead>
+                      <TableHead className="text-xs text-right">Qtd Vendida</TableHead>
+                      <TableHead className="text-xs text-right">Valor Total (R$)</TableHead>
+                      <TableHead className="text-xs text-right">Preço Médio (R$)</TableHead>
+                      <TableHead className="text-xs text-right">% s/ Total</TableHead>
+                      <TableHead className="text-xs text-right">% Acumulado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dadosAbc.itens.map((p) => {
+                      const badgeBg =
+                        p.classe_abc === 'A'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : p.classe_abc === 'B'
+                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                            : 'bg-slate-100 text-slate-700 border-slate-300'
+                      return (
+                        <TableRow key={p.produto_id}>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className={`text-xs font-bold ${badgeBg}`}>
+                              {p.classe_abc}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-slate-500">
+                            {p.codigo || '-'}
+                          </TableCell>
+                          <TableCell className="text-xs font-medium">{p.descricao}</TableCell>
+                          <TableCell className="text-xs text-right font-mono font-medium">
+                            {p.quantidade_vendida} {p.unidade}
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono font-bold text-slate-900">
+                            R$ {p.valor_total.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono text-slate-600">
+                            R$ {p.preco_medio_venda.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono text-blue-600">
+                            {p.percentual_sobre_total.toFixed(2)}%
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono font-semibold text-slate-700">
+                            {p.percentual_acumulado.toFixed(2)}%
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* CONTEÚDO DA ABA 3: Margem por Venda */}
+      {abaAtiva === 'margem' && podeVerMargem && (
+        <Card className="border-slate-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold text-slate-900">
+              Margem de Lucro Bruta por Venda (Preço − Custo Médio)
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Visível exclusivamente para usuários com permissão de edição em produtos.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {dadosMargem.length === 0 ? (
+              <p className="text-xs text-slate-400 py-6 text-center">Nenhuma venda encontrada.</p>
+            ) : (
+              <div className="border border-slate-200 rounded-md overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className="text-xs">Venda #</TableHead>
+                      <TableHead className="text-xs">Data</TableHead>
+                      <TableHead className="text-xs">Cliente</TableHead>
+                      <TableHead className="text-xs">Vendedor</TableHead>
+                      <TableHead className="text-xs text-right">Venda (R$)</TableHead>
+                      <TableHead className="text-xs text-right">Custo Total (R$)</TableHead>
+                      <TableHead className="text-xs text-right">Margem (R$)</TableHead>
+                      <TableHead className="text-xs text-right font-bold">Margem (%)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dadosMargem.map((m) => (
+                      <TableRow key={m.venda_id}>
+                        <TableCell className="text-xs font-mono font-semibold">
+                          #{m.numero}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {m.data_emissao ? m.data_emissao.split('-').reverse().join('/') : '-'}
+                        </TableCell>
+                        <TableCell className="text-xs">{m.cliente_nome}</TableCell>
+                        <TableCell className="text-xs">{m.vendedor_nome}</TableCell>
+                        <TableCell className="text-xs text-right font-mono font-medium">
+                          R$ {m.valor_venda.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono text-slate-500">
+                          R$ {m.custo_total.toFixed(2)}
+                        </TableCell>
+                        <TableCell
+                          className={`text-xs text-right font-mono font-semibold ${
+                            m.margem_lucro_valor < 0 ? 'text-red-600' : 'text-emerald-600'
+                          }`}
+                        >
+                          R$ {m.margem_lucro_valor.toFixed(2)}
+                        </TableCell>
+                        <TableCell
+                          className={`text-xs text-right font-mono font-bold ${
+                            m.margem_lucro_percentual < 0 ? 'text-red-600' : 'text-emerald-700'
+                          }`}
+                        >
+                          {m.margem_lucro_percentual.toFixed(1)}%
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}

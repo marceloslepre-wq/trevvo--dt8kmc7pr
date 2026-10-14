@@ -56,6 +56,8 @@ export interface RelatorioDreCompleto {
     dataFim: string
   }
   linhas: LinhaDreEstruturada[]
+  custoPeloEstoque?: boolean
+  observacaoCustoEstoque?: string
   totais: {
     receitaBruta: number
     deducoes: number
@@ -115,8 +117,9 @@ export async function obterDreGerencial(params: {
   dataInicio: string
   dataFim: string
   regime: RegimeDre
+  custoPeloEstoque?: boolean
 }): Promise<RelatorioDreCompleto> {
-  const { empresaId, dataInicio, dataFim, regime } = params
+  const { empresaId, dataInicio, dataFim, regime, custoPeloEstoque } = params
   const anterior = calcularPeriodoAnteriorEquivalente(dataInicio, dataFim)
 
   // 1. Carrega o plano de contas completo da empresa/sistema
@@ -224,6 +227,59 @@ export async function obterDreGerencial(params: {
     }
     const cItem = ag.contas.get(conta.id)!
     cItem.valorPeriodoAnterior += l.valor
+  }
+
+  // 3.1 Se opção "Custo das mercadorias pelo estoque" estiver marcada:
+  // A linha "Custo das mercadorias" passa a ser a soma do custo das saídas por VENDA
+  // menos as entradas por DEVOLUCAO_VENDA no período (custo médio), e as compras
+  // de mercadorias para revenda saem da DRE (vão para o estoque).
+  let observacaoCustoEstoque: string | undefined
+
+  if (custoPeloEstoque) {
+    observacaoCustoEstoque =
+      'Custo calculado pelo CMV do Estoque: soma dos custos das saídas por Vendas deduzidas as entradas por Devoluções de Vendas no período. Compras de mercadorias foram direcionadas ao ativo (Estoque).'
+
+    // Buscar saídas por VENDA e entradas por DEVOLUCAO_VENDA no período atual
+    const [movsAtual, movsAnt] = await Promise.all([
+      pb.collection('estoque_movimentos').getFullList({
+        filter: `empresa_id = '${empresaId}' && ativo = true && (origem = 'VENDA' || origem = 'DEVOLUCAO_VENDA') && data_movimento >= '${dataInicio}' && data_movimento <= '${dataFim}'`,
+      }),
+      pb.collection('estoque_movimentos').getFullList({
+        filter: `empresa_id = '${empresaId}' && ativo = true && (origem = 'VENDA' || origem = 'DEVOLUCAO_VENDA') && data_movimento >= '${anterior.dataInicio}' && data_movimento <= '${anterior.dataFim}'`,
+      }),
+    ])
+
+    const calcCmvEstoque = (movs: any[]) => {
+      let cmv = 0
+      for (const m of movs) {
+        const qtd = Number(m.quantidade) || 0
+        const custoUnit = Number(m.custo_unitario) || 0
+        const tot = qtd * custoUnit
+        if (m.origem === 'VENDA') {
+          cmv += tot
+        } else if (m.origem === 'DEVOLUCAO_VENDA') {
+          cmv -= tot
+        }
+      }
+      return Math.max(0, Number(cmv.toFixed(2)))
+    }
+
+    const cmvAtual = calcCmvEstoque(movsAtual)
+    const cmvAnterior = calcCmvEstoque(movsAnt)
+
+    const agCusto = mapaGrupos.get('Custo das mercadorias')!
+    agCusto.atual = cmvAtual
+    agCusto.anterior = cmvAnterior
+    agCusto.contas.clear()
+    agCusto.contas.set('cmv_estoque', {
+      id: 'cmv_estoque',
+      codigo: 'CMV-EST',
+      descricao: 'Custo das Mercadorias Vendidas (CMV Real do Estoque)',
+      valorPeriodoAtual: cmvAtual,
+      valorPeriodoAnterior: cmvAnterior,
+      variacaoPercentual: calcularVariacao(cmvAtual, cmvAnterior),
+      lancamentos: [],
+    })
   }
 
   // Preenche contas analíticas com variação e ordenação
@@ -407,6 +463,8 @@ export async function obterDreGerencial(params: {
     periodoAtual: { dataInicio, dataFim },
     periodoAnterior: anterior,
     linhas,
+    custoPeloEstoque,
+    observacaoCustoEstoque,
     totais: {
       receitaBruta: gReceitaBruta.atual,
       deducoes: gDeducoes.atual,
