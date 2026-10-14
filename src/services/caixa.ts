@@ -119,95 +119,81 @@ export interface SuprimentoResultado {
  * Chamadas para os endpoints transacionais de caixa
  */
 export async function abrirSessaoCaixa(payload: AbrirCaixaPayload): Promise<CaixaSessao> {
-  const token = pb.authStore.token
-  const response = await fetch('/backend/v1/caixa/abrir', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+  const json = await pb.send<{ success: boolean; message?: string; sessao?: CaixaSessao }>(
+    '/backend/v1/caixa/abrir',
+    {
+      method: 'POST',
+      body: payload,
     },
-    body: JSON.stringify(payload),
-  })
+  )
 
-  const json = await response.json()
-  if (!response.ok || !json.success) {
-    throw new Error(json.message || 'Falha ao abrir sessão de caixa.')
+  if (!json?.success || !json.sessao) {
+    throw new Error(json?.message || 'Falha ao abrir sessão de caixa.')
   }
-  return json.sessao as CaixaSessao
+  return json.sessao
 }
 
 export async function realizarSangriaCaixa(payload: SangriaPayload): Promise<SangriaResultado> {
-  const token = pb.authStore.token
-  const response = await fetch('/backend/v1/caixa/sangria', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+  const json = await pb.send<{ success: boolean; message?: string; sangria?: SangriaResultado }>(
+    '/backend/v1/caixa/sangria',
+    {
+      method: 'POST',
+      body: payload,
     },
-    body: JSON.stringify(payload),
-  })
+  )
 
-  const json = await response.json()
-  if (!response.ok || !json.success) {
-    throw new Error(json.message || 'Falha ao registrar sangria de caixa.')
+  if (!json?.success || !json.sangria) {
+    throw new Error(json?.message || 'Falha ao registrar sangria de caixa.')
   }
-  return json.sangria as SangriaResultado
+  return json.sangria
 }
 
 export async function realizarSuprimentoCaixa(
   payload: SuprimentoPayload,
 ): Promise<SuprimentoResultado> {
-  const token = pb.authStore.token
-  const response = await fetch('/backend/v1/caixa/suprimento', {
+  const json = await pb.send<{
+    success: boolean
+    message?: string
+    suprimento?: SuprimentoResultado
+  }>('/backend/v1/caixa/suprimento', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
+    body: payload,
   })
 
-  const json = await response.json()
-  if (!response.ok || !json.success) {
-    throw new Error(json.message || 'Falha ao registrar suprimento de caixa.')
+  if (!json?.success || !json.suprimento) {
+    throw new Error(json?.message || 'Falha ao registrar suprimento de caixa.')
   }
-  return json.suprimento as SuprimentoResultado
+  return json.suprimento
 }
 
 export async function fecharSessaoCaixa(payload: FecharCaixaPayload): Promise<CaixaSessao> {
-  const token = pb.authStore.token
-  const response = await fetch('/backend/v1/caixa/fechar', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+  const json = await pb.send<{ success: boolean; message?: string; sessao?: CaixaSessao }>(
+    '/backend/v1/caixa/fechar',
+    {
+      method: 'POST',
+      body: payload,
     },
-    body: JSON.stringify(payload),
-  })
+  )
 
-  const json = await response.json()
-  if (!response.ok || !json.success) {
-    throw new Error(json.message || 'Falha ao fechar sessão de caixa.')
+  if (!json?.success || !json.sessao) {
+    throw new Error(json?.message || 'Falha ao fechar sessão de caixa.')
   }
-  return json.sessao as CaixaSessao
+  return json.sessao
 }
 
 export async function conferirSessaoCaixa(payload: ConferirCaixaPayload): Promise<CaixaSessao> {
-  const token = pb.authStore.token
-  const response = await fetch('/backend/v1/caixa/conferir', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+  const json = await pb.send<{ success: boolean; message?: string; sessao?: CaixaSessao }>(
+    '/backend/v1/caixa/conferir',
+    {
+      method: 'POST',
+      body: payload,
     },
-    body: JSON.stringify(payload),
-  })
+  )
 
-  const json = await response.json()
-  if (!response.ok || !json.success) {
-    throw new Error(json.message || 'Falha ao conferir sessão de caixa.')
+  if (!json?.success || !json.sessao) {
+    throw new Error(json?.message || 'Falha ao conferir sessão de caixa.')
   }
-  return json.sessao as CaixaSessao
+  return json.sessao
 }
 
 /**

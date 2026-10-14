@@ -2,6 +2,8 @@ import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
 import type { ContaFinanceira } from '@/services/contasFinanceiras'
 
+export type Terminal = PdvTerminal
+
 export interface PdvTerminal {
   id: string
   empresa_id: string
@@ -25,19 +27,22 @@ export interface ListarTerminaisParams {
   situacao?: 'todos' | 'ativos' | 'inativos'
 }
 
-export async function listarTerminais(params: ListarTerminaisParams): Promise<PdvTerminal[]> {
-  if (!params.empresa_id) return []
+export async function listarTerminais(
+  params: ListarTerminaisParams | string,
+): Promise<PdvTerminal[]> {
+  const p: ListarTerminaisParams = typeof params === 'string' ? { empresa_id: params } : params
+  if (!p.empresa_id) return []
 
-  const condicoes: string[] = [`empresa_id = '${params.empresa_id}'`]
+  const condicoes: string[] = [`empresa_id = '${p.empresa_id}'`]
 
-  if (params.situacao === 'ativos' || !params.situacao) {
+  if (p.situacao === 'ativos' || !p.situacao) {
     condicoes.push('ativo = true')
-  } else if (params.situacao === 'inativos') {
+  } else if (p.situacao === 'inativos') {
     condicoes.push('ativo = false')
   }
 
-  if (params.busca && params.busca.trim()) {
-    const b = params.busca.trim().replace(/['"]/g, '')
+  if (p.busca && p.busca.trim()) {
+    const b = p.busca.trim().replace(/['"]/g, '')
     condicoes.push(`nome ~ '${b}'`)
   }
 

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useEmpresa } from '@/contexts/EmpresaContext'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
-import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import { listarSessoesCaixa, obterSessaoAbertaOperador, type CaixaSessao } from '@/services/caixa'
 import { listarTerminais, type Terminal } from '@/services/terminais'
@@ -33,9 +32,8 @@ import { ModalDetalhesSessao } from './caixa/ModalDetalhesSessao'
 import { imprimirRelatorioFechamentoPdf } from '@/services/caixaImpressao'
 
 export default function CaixaPage() {
-  const { empresaAtiva } = useEmpresa()
-  const { pode, perfil } = usePermissoes()
-  const { usuarioERP } = useAuth()
+  const { empresaAtiva } = useEmpresaAtiva()
+  const { pode, perfil, usuarioERP } = usePermissoes()
   const { toast } = useToast()
 
   const podeOperarCaixa = Boolean(usuarioERP?.e_caixa)
