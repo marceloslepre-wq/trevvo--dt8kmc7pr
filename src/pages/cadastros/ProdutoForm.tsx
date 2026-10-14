@@ -84,6 +84,8 @@ import { SelectProduto } from '@/components/SelectProduto'
 import { listarTodasUnidadesMedidaAtivas, UnidadeMedida } from '@/services/unidadesMedida'
 import { formatarCNPJ, formatarCPF } from '@/lib/validacoes'
 import { listarEntradasDoProduto, EntradaHistoricoProduto } from '@/services/consultasCompras'
+import { obterHistoricoSaidasProduto, SaidaVendaProduto } from '@/services/vendas'
+import { ShoppingCart } from 'lucide-react'
 
 export const ProdutoForm: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -174,6 +176,8 @@ export const ProdutoForm: React.FC = () => {
   const [historicoSPED, setHistoricoSPED] = useState<ProdutoHistorico[]>([])
   const [entradasCompras, setEntradasCompras] = useState<EntradaHistoricoProduto[]>([])
   const [carregandoEntradas, setCarregandoEntradas] = useState<boolean>(false)
+  const [saidasVendas, setSaidasVendas] = useState<SaidaVendaProduto[]>([])
+  const [carregandoSaidas, setCarregandoSaidas] = useState<boolean>(false)
 
   // Modais de CRUD auxiliares
   const [modalFornecedorAberto, setModalFornecedorAberto] = useState(false)
@@ -277,6 +281,13 @@ export const ProdutoForm: React.FC = () => {
           .then((ent) => setEntradasCompras(ent))
           .catch((e) => console.warn('Erro ao carregar entradas de compras:', e))
           .finally(() => setCarregandoEntradas(false))
+
+        // Carregar histórico de saídas por vendas
+        setCarregandoSaidas(true)
+        obterHistoricoSaidasProduto(produtoId, empresaAtiva?.id)
+          .then((sai) => setSaidasVendas(sai))
+          .catch((e) => console.warn('Erro ao carregar saídas de vendas:', e))
+          .finally(() => setCarregandoSaidas(false))
       } catch (err: unknown) {
         toast({
           title: 'Erro ao carregar produto',
@@ -786,6 +797,11 @@ export const ProdutoForm: React.FC = () => {
           {ehEdicao && (
             <TabsTrigger value="compras" className="text-xs">
               Compras {entradasCompras.length > 0 && `(${entradasCompras.length})`}
+            </TabsTrigger>
+          )}
+          {ehEdicao && (
+            <TabsTrigger value="vendas" className="text-xs">
+              Vendas {saidasVendas.length > 0 && `(${saidasVendas.length})`}
             </TabsTrigger>
           )}
           <TabsTrigger value="historico" className="text-xs">
@@ -2037,6 +2053,138 @@ export const ProdutoForm: React.FC = () => {
                                 <Link to={`/compras/notas-entrada/${ent.nota_id}/conferencia`}>
                                   Ver Nota
                                 </Link>
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* ======================================================== */}
+        {/* ABA: HISTÓRICO DE VENDAS (Saídas do Produto) */}
+        {/* ======================================================== */}
+        {ehEdicao && (
+          <TabsContent value="vendas" className="space-y-4">
+            <Card>
+              <CardContent className="pt-6 space-y-4 text-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                      <ShoppingCart className="h-4 w-4 text-emerald-600" />
+                      Últimas Saídas do Produto por Venda
+                    </h3>
+                    <p className="text-slate-500 text-[11px] mt-0.5">
+                      Histórico das últimas vendas finalizadas que continham este produto (data,
+                      cliente, quantidade e preços praticados).
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (id) {
+                        setCarregandoSaidas(true)
+                        obterHistoricoSaidasProduto(id, empresaAtiva?.id)
+                          .then(setSaidasVendas)
+                          .finally(() => setCarregandoSaidas(false))
+                      }
+                    }}
+                    className="h-7 text-xs text-blue-600"
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 mr-1 ${carregandoSaidas ? 'animate-spin' : ''}`}
+                    />
+                    Atualizar
+                  </Button>
+                </div>
+
+                {carregandoSaidas ? (
+                  <div className="py-8 text-center text-slate-400">
+                    <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
+                    <p>Buscando histórico de saídas por vendas...</p>
+                  </div>
+                ) : saidasVendas.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                    <ShoppingCart className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                    <p className="font-medium text-slate-600">
+                      Nenhuma saída registrada em vendas finalizadas
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      As saídas aparecerão aqui automaticamente quando orçamentos/pedidos deste
+                      produto forem finalizados.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[10px] font-semibold">
+                        <tr>
+                          <th className="p-2.5">Data Venda</th>
+                          <th className="p-2.5">Nº Pedido/Venda</th>
+                          <th className="p-2.5">Cliente</th>
+                          <th className="p-2.5 text-right">Quantidade</th>
+                          <th className="p-2.5 text-right">Preço Unitário</th>
+                          <th className="p-2.5 text-right">Valor Total</th>
+                          <th className="p-2.5 text-center">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {saidasVendas.map((s) => (
+                          <tr key={s.id} className="hover:bg-slate-50">
+                            <td className="p-2.5 font-mono text-slate-700 whitespace-nowrap">
+                              {s.data
+                                ? new Date(
+                                    s.data.includes('T') ? s.data : s.data + 'T00:00:00',
+                                  ).toLocaleDateString('pt-BR')
+                                : '—'}
+                            </td>
+                            <td className="p-2.5 whitespace-nowrap font-mono font-semibold text-slate-800">
+                              #{String(s.venda_numero).padStart(6, '0')}
+                            </td>
+                            <td
+                              className="p-2.5 font-medium text-slate-900 max-w-[200px] truncate"
+                              title={s.cliente_nome}
+                            >
+                              {s.cliente_nome}
+                            </td>
+                            <td className="p-2.5 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
+                              {s.quantidade.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 3,
+                              })}{' '}
+                              <span className="text-[10px] text-slate-400 font-normal">
+                                {s.unidade || 'UN'}
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-right font-mono text-slate-700 whitespace-nowrap">
+                              R${' '}
+                              {s.preco_unitario.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td className="p-2.5 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
+                              R${' '}
+                              {s.valor_total.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td className="p-2.5 text-center whitespace-nowrap">
+                              <Button
+                                asChild
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[11px] text-blue-600 hover:text-blue-800 p-1"
+                              >
+                                <Link to={`/vendas/pedidos/${s.venda_id}`}>Ver Venda</Link>
                               </Button>
                             </td>
                           </tr>

@@ -163,11 +163,15 @@ export const VendasListaPage: React.FC = () => {
       case 'Orçamento':
         return <Badge className="bg-amber-100 text-amber-800 border-amber-300">Orçamento</Badge>
       case 'Orçamento expirado':
-        return <Badge className="bg-slate-100 text-slate-700 border-slate-300">Orçamento expirado</Badge>
+        return (
+          <Badge className="bg-slate-100 text-slate-700 border-slate-300">Orçamento expirado</Badge>
+        )
       case 'Pedido em aberto':
         return <Badge className="bg-blue-100 text-blue-800 border-blue-300">Pedido em aberto</Badge>
       case 'Finalizada':
-        return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">Finalizada</Badge>
+        return (
+          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">Finalizada</Badge>
+        )
       case 'Cancelada':
         return <Badge className="bg-red-100 text-red-800 border-red-300">Cancelada</Badge>
       default:
@@ -289,7 +293,10 @@ export const VendasListaPage: React.FC = () => {
     if (!podeGravarVendas) return
     try {
       setCarregando(true)
-      const nova = await duplicarVenda(venda.id, venda.tipo === 'Orçamento' ? 'Orçamento' : 'Pedido')
+      const nova = await duplicarVenda(
+        venda.id,
+        venda.tipo === 'Orçamento' ? 'Orçamento' : 'Pedido',
+      )
       toast({
         title: 'Venda duplicada',
         description: `Novo registro #${nova.numero} gerado a partir da venda #${venda.numero}.`,
@@ -336,7 +343,8 @@ export const VendasListaPage: React.FC = () => {
             </Badge>
           </div>
           <p className="text-xs md:text-sm text-slate-500 mt-0.5">
-            Gerenciamento comercial: orçamentos, pedidos de venda, finalização financeira e comprovantes.
+            Gerenciamento comercial: orçamentos, pedidos de venda, finalização financeira e
+            comprovantes.
           </p>
         </div>
 
@@ -449,7 +457,9 @@ export const VendasListaPage: React.FC = () => {
 
           {/* Período Data Inicial */}
           <div className="space-y-1">
-            <label className="text-[11px] font-semibold text-slate-600 uppercase">Data Início</label>
+            <label className="text-[11px] font-semibold text-slate-600 uppercase">
+              Data Início
+            </label>
             <Input
               type="date"
               value={filtroDataInicio}
@@ -582,7 +592,8 @@ export const VendasListaPage: React.FC = () => {
                         {v.data_validade && ehOrcamento && (
                           <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
                             <Clock size={10} />
-                            Val: {new Date(v.data_validade + 'T00:00:00').toLocaleDateString('pt-BR')}
+                            Val:{' '}
+                            {new Date(v.data_validade + 'T00:00:00').toLocaleDateString('pt-BR')}
                           </div>
                         )}
                       </td>
@@ -602,7 +613,10 @@ export const VendasListaPage: React.FC = () => {
 
                       {/* Total */}
                       <td className="py-3 px-3 text-right font-bold text-slate-900">
-                        R$ {Number(v.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        R${' '}
+                        {Number(v.valor_total || 0).toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                        })}
                       </td>
 
                       {/* Status */}
@@ -623,10 +637,7 @@ export const VendasListaPage: React.FC = () => {
                       </td>
 
                       {/* Ações */}
-                      <td
-                        className="py-3 px-3 text-right"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <td className="py-3 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 px-2 text-xs">
@@ -727,7 +738,7 @@ export const VendasListaPage: React.FC = () => {
                 variant="outline"
                 size="sm"
                 disabled={pagina * porPagina >= totalItems}
-                onClick={() => setPagina((p) => p + 1))}
+                onClick={() => setPagina((p) => p + 1)}
                 className="h-7 text-xs"
               >
                 Próxima

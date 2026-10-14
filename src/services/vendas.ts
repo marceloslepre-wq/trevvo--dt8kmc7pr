@@ -35,6 +35,7 @@ export interface Venda {
   valor_acrescimo: number
   valor_frete: number
   valor_total: number
+  valor_troco?: number
   custo_total?: number
   condicao_pagamento_id?: string
   observacao?: string
@@ -138,6 +139,7 @@ export interface VendaItem {
       desconto_maximo_percentual?: number
     }
     lote_id?: { id: string; numero_lote: string; data_validade?: string }
+    venda_id?: Venda
   }
 }
 

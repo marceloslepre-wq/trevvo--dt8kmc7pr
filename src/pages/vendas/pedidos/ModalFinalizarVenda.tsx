@@ -92,7 +92,7 @@ export const ModalFinalizarVenda: React.FC<ModalFinalizarVendaProps> = ({
 
     Promise.all([
       listarFormasPagamento({ situacao: 'ativos' }),
-      listarContasFinanceiras({ empresa_id: empresaAtiva.id, situacao: 'ativas' }),
+      listarContasFinanceiras({ empresa_id: empresaAtiva.id, situacao: 'ativos' }),
       listarCondicoesPagamento({ uso: 'Vendas', situacao: 'ativos', porPagina: 50 }),
       obterOuCriarConfigFinanceiraEmpresa(empresaAtiva.id),
     ])
@@ -150,7 +150,7 @@ export const ModalFinalizarVenda: React.FC<ModalFinalizarVendaProps> = ({
   const recalcularParcelasCrediario = useCallback(() => {
     const linhaCrediario = linhas.find((l) => {
       const f = formas.find((forma) => forma.id === l.forma_pagamento_id)
-      return f?.tipo === 'Crediário'
+      return (f?.tipo as string) === 'Crediário' || (f?.tipo as string) === 'Boleto bancário'
     })
 
     if (!linhaCrediario || !linhaCrediario.condicao_pagamento_id) {
@@ -381,7 +381,9 @@ export const ModalFinalizarVenda: React.FC<ModalFinalizarVendaProps> = ({
                   const ehCartao =
                     formaSelecionada?.tipo === 'Cartão de crédito' ||
                     formaSelecionada?.tipo === 'Cartão de débito'
-                  const ehCrediario = formaSelecionada?.tipo === 'Crediário'
+                  const ehCrediario =
+                    (formaSelecionada?.tipo as string) === 'Crediário' ||
+                    (formaSelecionada?.tipo as string) === 'Boleto bancário'
                   const ehDinheiro = formaSelecionada?.tipo === 'Dinheiro'
 
                   return (

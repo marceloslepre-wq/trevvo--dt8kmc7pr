@@ -2687,6 +2687,48 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.65** — Conclusão da Tela de Orçamentos e Pedidos de Venda, Histórico nas Abas de Cliente e Produto, e Impressão de Documentos Não Fiscais:
+
+1. **Correção do Build e Estabilidade de Compilação:**
+   - Correção de erro de sintaxe em `src/pages/vendas/pedidos/VendasListaPage.tsx` na paginação (`setPagina((p) => p + 1)`).
+   - Homologação completa de compilação sem avisos ou erros em TypeScript e Vite build.
+
+2. **Tela de Vendas > Orçamentos e Pedidos (`/vendas/pedidos`):**
+   - **Listagem Analítica (`VendasListaPage.tsx`):** visualização paginada das vendas/orçamentos com filtros combinados (período de emissão, status 'Orçamento' | 'Pedido em aberto' | 'Finalizada' | 'Cancelada', tipo 'Orçamento' | 'Pedido' | 'PDV', cliente e vendedor), badges de status e documento fiscal, totalizadores de quantidade e valor em tempo real.
+   - **Ações Rápidas por Registro:** visualização/edição, duplicar venda/orçamento, impressão de orçamento/pedido em PDF/HTML, impressão de comprovante não fiscal (térmica 80mm/58mm), compartilhamento via WhatsApp com texto formatado e acionamento dos modais de finalização e cancelamento.
+   - **Formulário Completo de Venda (`VendaFormPage.tsx`):**
+     - Cabeçalho: tipo da venda (Orçamento ou Pedido), número sequencial por empresa, cliente (com suporte a busca rápida de cliente e cadastro rápido), vendedor responsável, condição de pagamento e lista de preços.
+     - Grade de Itens: bipagem via leitor de código de barras ou busca por GTIN/descrição (`BuscaProdutoGtin`), cálculo automático de preços, descontos com respeito ao limite do usuário/produto e acionamento de autorização de supervisor (`ModalAutorizacaoSupervisor`).
+     - Totais e Descontos: subtotal de produtos, desconto em valor/percentual, acréscimos e frete rateados.
+     - Formas de Pagamento e Condição: cálculo de parcelas com base na condição de pagamento, suporte a múltiplas formas de pagamento no fechamento e conferência de troco para dinheiro.
+   - **Modais Transacionais Centrais:**
+     - `ModalFinalizarVenda.tsx`: validação de pagamentos com troco, acionamento do endpoint atômico do backend (`/backend/v1/vendas/finalizar`), baixa de estoque por FEFO, geração de títulos a receber ou débito em caixa, e emissão de comprovante.
+     - `ModalCancelarVenda.tsx`: cancelamento rastreado com justificativa obrigatória, estorno atômico de estoque e cancelamento dos títulos a receber gerados.
+
+3. **Histórico de Vendas no Cadastro do Cliente (`ClienteForm.tsx`):**
+   - Nova aba dedicada **"Vendas"** no formulário do cliente (`ClienteForm.tsx`), consumindo `obterHistoricoVendasCliente` de `src/services/vendas.ts`.
+   - Cards com **Resumo de Compras por Ano**: agrupamento do total faturado e quantidade de vendas por ano, além do totalizador geral do cliente.
+   - Tabela detalhada das **Últimas Vendas**: número sequencial, data de emissão, tipo, status analítico, valor total formatado e atalho direto para a venda (`/vendas/pedidos/:id`).
+
+4. **Histórico de Saídas por Venda no Cadastro do Produto (`ProdutoForm.tsx`):**
+   - Nova aba dedicada **"Vendas"** no formulário do produto (`ProdutoForm.tsx`), consumindo `obterHistoricoSaidasProduto` de `src/services/vendas.ts`.
+   - Listagem cronológica das últimas saídas do produto vinculadas a vendas finalizadas na empresa ativa.
+   - Exibição de: data da venda, número do pedido/venda, cliente destinatário, quantidade na unidade de estoque, preço unitário praticado, valor total da linha e atalho direto para a venda.
+
+5. **Serviço de Impressão e Compartilhamento (`src/services/vendasImpressao.ts`):**
+   - Layout de impressão formatado A4 para Orçamento / Pedido de Venda.
+   - Layout de impressão para Comprovante Não Fiscal térmico (80mm e 58mm).
+   - Gerador de mensagem formatada para envio direto por WhatsApp Web / API (`https://wa.me/...`).
+
+---
+
+**Versão 0.0.63** — Controle de Caixa e Sessões de Frente de Caixa (Migration 0042):
+
+- Criação das tabelas `caixa_sessoes` e `caixa_sessoes_movimentos` com suporte a abertura, conferência, fechamento cego (`fechamento_cego`), suprimento, sangria e emissão de comprovante/PDF de fechamento.
+- Proteção de regras pelo módulo de permissão `caixa`.
+
+---
+
 **Versão 0.0.61** — Reforço de Segurança na API Rule de Update da Tabela `vendas` (Migration 0041):
 
 1. **Ajuste Cirúrgico na Regra de Update de `vendas`:**

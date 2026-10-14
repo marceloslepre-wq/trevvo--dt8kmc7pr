@@ -62,6 +62,8 @@ import {
   normalizarCpfCnpj,
   validarDadosCliente,
 } from '@/services/clientes'
+import { obterHistoricoVendasCliente, ResumoVendasCliente } from '@/services/vendas'
+import { ShoppingCart } from 'lucide-react'
 import { SelectCondicaoPagamento } from '@/components/SelectCondicaoPagamento'
 import {
   ContaReceber,
@@ -218,6 +220,10 @@ export const ClienteForm: React.FC = () => {
   const [tituloParaReceberAba, setTituloParaReceberAba] = useState<ContaReceber | null>(null)
   const [modalReceberAbaAberto, setModalReceberAbaAberto] = useState(false)
 
+  // Histórico de Vendas do Cliente
+  const [historicoVendas, setHistoricoVendas] = useState<ResumoVendasCliente | null>(null)
+  const [carregandoVendas, setCarregandoVendas] = useState(false)
+
   // Erros e Avisos
   const [erros, setErros] = useState<Record<string, string>>({})
   const [buscandoCnpjApi, setBuscandoCnpjApi] = useState(false)
@@ -254,6 +260,23 @@ export const ClienteForm: React.FC = () => {
         console.error('Erro ao carregar dados financeiros do cliente:', err)
       } finally {
         setCarregandoCredito(false)
+      }
+    },
+    [empresaAtiva?.id],
+  )
+
+  // Carregar histórico de vendas do cliente
+  const carregarVendasCliente = useCallback(
+    async (clienteIdParam: string) => {
+      if (!clienteIdParam) return
+      setCarregandoVendas(true)
+      try {
+        const resumo = await obterHistoricoVendasCliente(clienteIdParam, empresaAtiva?.id)
+        setHistoricoVendas(resumo)
+      } catch (err) {
+        console.error('Erro ao carregar histórico de vendas do cliente:', err)
+      } finally {
+        setCarregandoVendas(false)
       }
     },
     [empresaAtiva?.id],
@@ -350,8 +373,9 @@ export const ClienteForm: React.FC = () => {
             }),
           )
 
-          // Carrega crédito financeiro do cliente
+          // Carrega crédito financeiro do cliente e histórico de vendas
           carregarFinanceiroCliente(c.id)
+          carregarVendasCliente(c.id)
         })
         .catch((err) => {
           toast({
@@ -934,7 +958,7 @@ export const ClienteForm: React.FC = () => {
 
       <form id="form-cliente" onSubmit={handleSalvar}>
         <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-4">
-          <TabsList className="grid grid-cols-3 sm:grid-cols-7 h-auto p-1 bg-slate-100/80 border border-slate-200">
+          <TabsList className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 h-auto p-1 bg-slate-100/80 border border-slate-200 gap-1">
             <TabsTrigger value="dados" className="text-xs py-2">
               <UserCheck size={14} className="mr-1.5 hidden sm:inline" />
               Dados
@@ -958,6 +982,10 @@ export const ClienteForm: React.FC = () => {
             <TabsTrigger value="financeiro" className="text-xs py-2">
               <RotateCcw size={14} className="mr-1.5 hidden sm:inline" />
               Financeiro
+            </TabsTrigger>
+            <TabsTrigger value="vendas" className="text-xs py-2">
+              <ShoppingCart size={14} className="mr-1.5 hidden sm:inline" />
+              Vendas
             </TabsTrigger>
             <TabsTrigger value="observacoes" className="text-xs py-2">
               <FileText size={14} className="mr-1.5 hidden sm:inline" />
@@ -2031,6 +2059,177 @@ export const ClienteForm: React.FC = () => {
                                           Receber
                                         </Button>
                                       )}
+                                    </td>
+                                  </tr>
+                                )
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ================= ABA: VENDAS ================= */}
+          <TabsContent value="vendas">
+            <Card className="border-slate-200 shadow-2xs">
+              <CardContent className="p-5 space-y-5">
+                {!ehEdicao ? (
+                  <div className="py-12 text-center text-slate-400 text-xs">
+                    Salve o cadastro do cliente para consultar o histórico de vendas.
+                  </div>
+                ) : carregandoVendas ? (
+                  <div className="py-12 flex flex-col items-center justify-center text-slate-500 gap-2">
+                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                    <span className="text-xs">Carregando histórico de vendas...</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Resumo por Ano e Geral */}
+                    <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                        <div>
+                          <h3 className="text-xs font-semibold text-slate-800 uppercase tracking-wider">
+                            Resumo de Compras por Ano
+                          </h3>
+                          <p className="text-[11px] text-slate-500">
+                            Total geral faturado:{' '}
+                            <strong className="text-slate-800">
+                              R${' '}
+                              {(historicoVendas?.totalGeral || 0).toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </strong>{' '}
+                            em {historicoVendas?.quantidadeGeral || 0} venda(s) finalizada(s).
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => id && carregarVendasCliente(id)}
+                          className="h-7 text-xs"
+                        >
+                          Atualizar
+                        </Button>
+                      </div>
+
+                      {!historicoVendas?.totalPorAno || historicoVendas.totalPorAno.length === 0 ? (
+                        <div className="p-4 bg-slate-50 border rounded text-xs text-slate-500 text-center">
+                          Nenhuma venda finalizada encontrada para este cliente até o momento.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                          {historicoVendas.totalPorAno.map((anoInfo) => (
+                            <div
+                              key={anoInfo.ano}
+                              className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs"
+                            >
+                              <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                                Ano {anoInfo.ano}
+                              </span>
+                              <span className="font-mono font-bold text-slate-900 text-sm block mt-0.5">
+                                R${' '}
+                                {anoInfo.valorTotal.toLocaleString('pt-BR', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                {anoInfo.quantidade} {anoInfo.quantidade === 1 ? 'venda' : 'vendas'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Tabela de Últimas Vendas */}
+                    <div className="border rounded-lg bg-white overflow-hidden">
+                      <div className="px-3 py-2 bg-slate-100 flex items-center justify-between text-xs font-semibold text-slate-700">
+                        <span>Últimas Vendas ({historicoVendas?.ultimasVendas.length || 0})</span>
+                        <span className="text-[11px] font-normal text-slate-500">
+                          Orçamentos/pedidos finalizados
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 border-b text-slate-600 sticky top-0">
+                            <tr>
+                              <th className="py-2 px-3 text-left">Número</th>
+                              <th className="py-2 px-3 text-left">Data</th>
+                              <th className="py-2 px-3 text-left">Tipo</th>
+                              <th className="py-2 px-3 text-center">Status</th>
+                              <th className="py-2 px-3 text-right">Total</th>
+                              <th className="py-2 px-3 text-center">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {!historicoVendas?.ultimasVendas ||
+                            historicoVendas.ultimasVendas.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="py-8 text-center text-slate-400">
+                                  Nenhuma venda registrada para este cliente.
+                                </td>
+                              </tr>
+                            ) : (
+                              historicoVendas.ultimasVendas.map((v) => {
+                                const dataFmt = v.data_emissao
+                                  ? new Date(v.data_emissao + 'T00:00:00').toLocaleDateString(
+                                      'pt-BR',
+                                    )
+                                  : v.created
+                                    ? new Date(v.created).toLocaleDateString('pt-BR')
+                                    : '-'
+                                const valorTotal = Number(v.valor_total) || 0
+
+                                return (
+                                  <tr key={v.id} className="hover:bg-slate-50">
+                                    <td className="py-2 px-3 font-mono font-medium text-slate-800">
+                                      #{String(v.numero).padStart(6, '0')}
+                                    </td>
+                                    <td className="py-2 px-3 font-mono">{dataFmt}</td>
+                                    <td className="py-2 px-3">
+                                      <Badge variant="outline" className="text-[10px]">
+                                        {v.tipo}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-2 px-3 text-center">
+                                      <Badge
+                                        className={
+                                          v.status === 'Finalizada'
+                                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px]'
+                                            : v.status === 'Cancelada'
+                                              ? 'bg-red-100 text-red-800 border-red-200 text-[10px]'
+                                              : 'bg-blue-100 text-blue-800 border-blue-200 text-[10px]'
+                                        }
+                                      >
+                                        {v.status}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                                      R${' '}
+                                      {valorTotal.toLocaleString('pt-BR', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                    <td className="py-2 px-3 text-center">
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => navigate(`/vendas/pedidos/${v.id}`)}
+                                        className="h-6 text-[11px] px-2 text-blue-600 hover:text-blue-800"
+                                      >
+                                        Ver Venda
+                                      </Button>
                                     </td>
                                   </tr>
                                 )

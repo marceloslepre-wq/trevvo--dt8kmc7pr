@@ -53,10 +53,11 @@ import {
   abrirEnvioWhatsApp,
 } from '@/services/vendasImpressao'
 import { obterClientePorId, listarVendedoresAtivos, Cliente } from '@/services/clientes'
-import { obterProdutoPorId, obterSaldoEstoqueGeral, Produto } from '@/services/produtos'
-import { obterCreditoCliente, CreditoCliente } from '@/services/contasReceber'
+import { obterProdutoPorId, Produto } from '@/services/produtos'
+import { obterSaldoAtual } from '@/services/estoque'
+import { creditoCliente, SituacaoCreditoCliente } from '@/services/contasReceber'
 import { obterOuCriarConfigVendasEmpresa } from '@/services/configVendas'
-import { calcularDescontoItem, ResultadoValidacaoDesconto } from '@/services/descontos'
+import { validarDescontoItem } from '@/services/descontos'
 import SelectCliente from '@/components/SelectCliente'
 import { ClienteCadastroRapido } from '@/components/ClienteCadastroRapido'
 import SelectProduto from '@/components/SelectProduto'
@@ -114,7 +115,7 @@ export const VendaFormPage: React.FC = () => {
   const [itens, setItens] = useState<LinhaItemForm[]>([])
 
   // Quadro de Crédito do Cliente
-  const [credito, setCredito] = useState<CreditoCliente | null>(null)
+  const [credito, setCredito] = useState<SituacaoCreditoCliente | null>(null)
   const [carregandoCredito, setCarregandoCredito] = useState(false)
 
   // Vendedores ativos
@@ -171,8 +172,9 @@ export const VendaFormPage: React.FC = () => {
           itensRes.map(async (it) => {
             let saldo = 0
             try {
-              if (it.produto_id) {
-                saldo = await obterSaldoEstoqueGeral(it.produto_id)
+              if (it.produto_id && empresaAtiva?.id) {
+                const s = await obterSaldoAtual(empresaAtiva.id, it.produto_id)
+                saldo = s?.quantidade || 0
               }
             } catch {
               /* intentionally ignored */
@@ -267,7 +269,7 @@ export const VendaFormPage: React.FC = () => {
     }
 
     setCarregandoCredito(true)
-    obterCreditoCliente(clienteId, empresaAtiva.id)
+    creditoCliente(clienteId, empresaAtiva.id)
       .then((cr) => {
         setCredito(cr)
       })
@@ -338,7 +340,10 @@ export const VendaFormPage: React.FC = () => {
   const handleAdicionarProduto = async (prod: Produto) => {
     let saldo = 0
     try {
-      saldo = await obterSaldoEstoqueGeral(prod.id)
+      if (empresaAtiva?.id) {
+        const s = await obterSaldoAtual(empresaAtiva.id, prod.id)
+        saldo = s?.quantidade || 0
+      }
     } catch {
       /* intentionally ignored */
     }
@@ -360,10 +365,10 @@ export const VendaFormPage: React.FC = () => {
       custo_unitario: Number(prod.preco_custo || 0),
       ncm: prod.ncm || '',
       cest: prod.cest || '',
-      cfop: prod.cfop_padrao || '',
+      cfop: prod.cfop_venda_interna || '',
       origem: prod.origem || '0',
-      cst_icms: prod.cst_padrao || '',
-      csosn: prod.csosn_padrao || '',
+      cst_icms: prod.cst_icms || '',
+      csosn: prod.csosn || '',
       aliquota_icms: Number(prod.aliquota_icms || 0),
       perfil_tributario_id: prod.perfil_tributario_id || '',
       saldoEstoque: saldo,
@@ -424,14 +429,13 @@ export const VendaFormPage: React.FC = () => {
       }
     }
 
-    const resultado = await calcularDescontoItem({
-      usuarioERP,
+    const resultado = validarDescontoItem({
+      usuario: usuarioERP || {},
       produto: it.produtoRef,
-      precoOriginal: it.preco_tabela || it.preco_unitario,
-      descontoPercentualSolicitado: Number(it.desconto_percentual) || 0,
+      descontoPercentual: Number(it.desconto_percentual) || 0,
     })
 
-    if (!resultado.permitido) {
+    if (!resultado.valido) {
       setItemParaAutorizar({
         tempId: it.tempId,
         descontoPercentual: Number(it.desconto_percentual) || 0,
@@ -853,9 +857,13 @@ export const VendaFormPage: React.FC = () => {
                     <DollarSign size={15} className="text-blue-600" />
                     <span>Situação de Crédito e Vendas a Prazo</span>
                   </div>
-                  {credito?.bloqueado ? (
+                  {credito?.situacao === 'Bloqueado' ? (
                     <Badge className="bg-red-100 text-red-800 border-red-300">
                       Cliente Bloqueado
+                    </Badge>
+                  ) : credito?.situacao === 'Atenção' ? (
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-300">
+                      Crédito em Atenção
                     </Badge>
                   ) : (
                     <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">
@@ -876,13 +884,15 @@ export const VendaFormPage: React.FC = () => {
                         Limite Total
                       </span>
                       <strong className="text-slate-800 font-semibold">
-                        R$ {credito.limite_credito.toFixed(2)}
+                        {credito.limite_credito !== null
+                          ? `R$ ${Number(credito.limite_credito).toFixed(2)}`
+                          : 'Ilimitado'}
                       </strong>
                     </div>
                     <div className="p-2 bg-white rounded border border-slate-100">
                       <span className="text-slate-400 block text-[10px] uppercase">Em Aberto</span>
                       <strong className="text-blue-700 font-semibold">
-                        R$ {credito.total_em_aberto.toFixed(2)}
+                        R$ {Number(credito.total_aberto || 0).toFixed(2)}
                       </strong>
                     </div>
                     <div className="p-2 bg-white rounded border border-slate-100">
@@ -890,7 +900,7 @@ export const VendaFormPage: React.FC = () => {
                       <strong
                         className={`font-semibold ${credito.total_vencido > 0 ? 'text-red-600' : 'text-slate-600'}`}
                       >
-                        R$ {credito.total_vencido.toFixed(2)}
+                        R$ {Number(credito.total_vencido || 0).toFixed(2)}
                       </strong>
                     </div>
                     <div className="p-2 bg-white rounded border border-slate-100">
@@ -898,9 +908,11 @@ export const VendaFormPage: React.FC = () => {
                         Saldo Disponível
                       </span>
                       <strong
-                        className={`font-semibold ${credito.saldo_disponivel <= 0 ? 'text-amber-600' : 'text-emerald-700'}`}
+                        className={`font-semibold ${(credito.credito_disponivel ?? 0) <= 0 && credito.limite_credito !== null ? 'text-amber-600' : 'text-emerald-700'}`}
                       >
-                        R$ {credito.saldo_disponivel.toFixed(2)}
+                        {credito.credito_disponivel !== null
+                          ? `R$ ${Number(credito.credito_disponivel).toFixed(2)}`
+                          : 'Ilimitado'}
                       </strong>
                     </div>
                   </div>
@@ -992,9 +1004,9 @@ export const VendaFormPage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2">
               <div className="w-56">
                 <BuscaProdutoGtin
-                  placeholder="Bipar código de barras..."
-                  onProdutoEncontrado={(prod) => handleAdicionarProduto(prod)}
-                />
+                  placeholder="Bipe o código de barras (GTIN) ou digite descrição para adicionar item rápido..."
+                  onSelecionarProduto={(prod) => handleAdicionarProduto(prod)}
+                />{' '}
               </div>
               <div className="w-64">
                 <SelectProduto
