@@ -26,7 +26,7 @@ import type { FormaPagamento } from '@/services/formasPagamento'
 import type { ContaFinanceira } from '@/services/contasFinanceiras'
 import type { CondicaoPagamento } from '@/services/condicoesPagamento'
 import type { Cliente } from '@/services/clientes'
-import { creditoCliente, ResumoCreditoCliente } from '@/services/contasReceber'
+import { creditoCliente, type SituacaoCreditoCliente } from '@/services/contasReceber'
 
 export interface PagamentoPDVLinha {
   id: string
@@ -83,7 +83,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
   const [formaSelecionadaId, setFormaSelecionadaId] = useState<string>('')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [analiseCredito, setAnaliseCredito] = useState<ResumoCreditoCliente | null>(null)
+  const [analiseCredito, setAnaliseCredito] = useState<SituacaoCreditoCliente | null>(null)
   const [checandoCredito, setChecandoCredito] = useState(false)
 
   // Campos adicionais da forma ativa (ex.: parcelas, cartão, PIX)
@@ -643,7 +643,11 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                         </span>
                         <span>
                           Limite disp.:{' '}
-                          <strong>R$ {analiseCredito.credito_disponivel.toFixed(2)}</strong>
+                          <strong>
+                            {analiseCredito.credito_disponivel !== null
+                              ? `R$ ${analiseCredito.credito_disponivel.toFixed(2)}`
+                              : 'Ilimitado'}
+                          </strong>
                         </span>
                       </div>
                     ) : null}
