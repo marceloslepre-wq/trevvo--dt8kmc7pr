@@ -59,9 +59,10 @@ export async function testarConexaoFocus(empresaId: string): Promise<TestarConex
     return res
   } catch (err: any) {
     const msg =
+      err?.response?.message ||
       err?.data?.message ||
       err?.message ||
-      'Falha ao executar teste de conexão fiscal com a Focus NFe.'
+      'Falha na comunicação com o servidor de emissão fiscal.'
     return {
       sucesso: false,
       message: msg,

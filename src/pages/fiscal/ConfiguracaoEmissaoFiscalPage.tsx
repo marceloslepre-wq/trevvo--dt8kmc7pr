@@ -330,16 +330,26 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
         })
       } else {
         toast({
-          title: 'Falha no teste de conexão',
+          title: 'Resultado do teste de conexão',
           description: res.message,
           variant: 'destructive',
         })
       }
       await carregarQuadroGeralEmpresas()
     } catch (err: any) {
+      const msgErro =
+        err?.response?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Sem comunicação com a API emissora.'
       setResultadoTeste({
         sucesso: false,
-        message: err.message || 'Sem comunicação com a API emissora.',
+        message: msgErro,
+      })
+      toast({
+        title: 'Aviso de conexão',
+        description: msgErro,
+        variant: 'destructive',
       })
     } finally {
       setTestandoConexao(false)

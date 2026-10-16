@@ -44,41 +44,55 @@ routerAdd(
     }
 
     // Validação da empresa
-    const empresa = $app.findRecordById('empresas', empresaId)
+    let empresa = null
+    try {
+      empresa = $app.findRecordById('empresas', empresaId)
+    } catch (_) {
+      empresa = null
+    }
+
     if (!empresa || !empresa.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
+      return c.json(200, {
+        sucesso: false,
+        message: 'Empresa emitente não encontrada ou inativa no sistema.',
+      })
     }
 
     const nomeEmpresa =
       empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
 
     // Carregar config fiscal
-    const configs = $app.findRecordsByFilter(
-      'config_emissao_fiscal',
-      `empresa_id = '${empresaId}' && ativo = true`,
-      '-created',
-      1,
-      0,
-    )
+    let configs = []
+    try {
+      configs = $app.findRecordsByFilter(
+        'config_emissao_fiscal',
+        `empresa_id = '${empresaId}' && ativo = true`,
+        '-created',
+        1,
+        0,
+      )
+    } catch (_) {
+      configs = []
+    }
 
     if (!configs || configs.length === 0) {
-      return c.json(400, {
+      return c.json(200, {
         sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
+        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa. Salve os parâmetros antes de testar.`,
       })
     }
 
     const config = configs[0]
     if (!config.getBool('emite_documentos_fiscais')) {
-      return c.json(400, {
+      return c.json(200, {
         sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não emite NF-e/NFC-e.`,
+        message: `Esta empresa (${nomeEmpresa}) não está configurada para emitir NF-e/NFC-e (opção desativada).`,
       })
     }
 
     const ie = (empresa.getString('inscricao_estadual') || '').trim().toUpperCase()
     if (!ie || ie === 'ISENTO') {
-      return c.json(400, {
+      return c.json(200, {
         sucesso: false,
         message: `Esta empresa (${nomeEmpresa}) possui Inscrição Estadual ${ie || 'vazia'} e não pode emitir NF-e/NFC-e.`,
       })
@@ -99,9 +113,21 @@ routerAdd(
     }
 
     if (!token) {
-      return c.json(400, {
+      const msgSemToken = `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`
+      try {
+        config.set('ultimo_teste_conexao_data', new Date().toISOString())
+        config.set('ultimo_teste_conexao_sucesso', false)
+        config.set('ultimo_teste_conexao_mensagem', msgSemToken)
+        config.set('updated_by', authRecord.id)
+        $app.save(config)
+      } catch (_) {}
+
+      return c.json(200, {
         sucesso: false,
-        message: `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+        message: msgSemToken,
+        ambiente: ambiente,
+        segredo_nome: nomeSegredo,
+        status_code: null,
       })
     }
 
@@ -110,7 +136,47 @@ routerAdd(
         ? 'https://api.focusnfe.com.br/v2'
         : 'https://homologacao.focusnfe.com.br/v2'
 
-    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+    const encodeBase64 = (str) => {
+      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+        try {
+          return Buffer.from(str, 'utf8').toString('base64')
+        } catch (_) {}
+      }
+      if (typeof btoa === 'function') {
+        try {
+          return btoa(str)
+        } catch (_) {}
+      }
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+      let out = ''
+      let i = 0
+      const len = str.length
+      while (i < len) {
+        const c1 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt((c1 & 0x3) << 4)
+          out += '=='
+          break
+        }
+        const c2 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+          out += chars.charAt((c2 & 0x0f) << 2)
+          out += '='
+          break
+        }
+        const c3 = str.charCodeAt(i++) & 0xff
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+        out += chars.charAt(c3 & 0x3f)
+      }
+      return out
+    }
+
+    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
     let sucesso = false
     let mensagemRetorno = ''
     let statusCode = 0
@@ -312,7 +378,47 @@ routerAdd(
       url += `&forma_emissao=${encodeURIComponent(formaEmissao)}`
     }
 
-    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+    const encodeBase64 = (str) => {
+      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+        try {
+          return Buffer.from(str, 'utf8').toString('base64')
+        } catch (_) {}
+      }
+      if (typeof btoa === 'function') {
+        try {
+          return btoa(str)
+        } catch (_) {}
+      }
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+      let out = ''
+      let i = 0
+      const len = str.length
+      while (i < len) {
+        const c1 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt((c1 & 0x3) << 4)
+          out += '=='
+          break
+        }
+        const c2 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+          out += chars.charAt((c2 & 0x0f) << 2)
+          out += '='
+          break
+        }
+        const c3 = str.charCodeAt(i++) & 0xff
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+        out += chars.charAt(c3 & 0x3f)
+      }
+      return out
+    }
+
+    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
 
     try {
       const res = $http.send({
@@ -461,8 +567,48 @@ routerAdd(
         ? 'https://api.focusnfe.com.br/v2'
         : 'https://homologacao.focusnfe.com.br/v2'
 
+    const encodeBase64 = (str) => {
+      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+        try {
+          return Buffer.from(str, 'utf8').toString('base64')
+        } catch (_) {}
+      }
+      if (typeof btoa === 'function') {
+        try {
+          return btoa(str)
+        } catch (_) {}
+      }
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+      let out = ''
+      let i = 0
+      const len = str.length
+      while (i < len) {
+        const c1 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt((c1 & 0x3) << 4)
+          out += '=='
+          break
+        }
+        const c2 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+          out += chars.charAt((c2 & 0x0f) << 2)
+          out += '='
+          break
+        }
+        const c3 = str.charCodeAt(i++) & 0xff
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+        out += chars.charAt(c3 & 0x3f)
+      }
+      return out
+    }
+
     const url = `${baseUrl}/nfe?ref=${encodeURIComponent(ref)}`
-    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
 
     try {
       const res = $http.send({
@@ -596,9 +742,49 @@ routerAdd(
         ? 'https://api.focusnfe.com.br/v2'
         : 'https://homologacao.focusnfe.com.br/v2'
 
+    const encodeBase64 = (str) => {
+      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+        try {
+          return Buffer.from(str, 'utf8').toString('base64')
+        } catch (_) {}
+      }
+      if (typeof btoa === 'function') {
+        try {
+          return btoa(str)
+        } catch (_) {}
+      }
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+      let out = ''
+      let i = 0
+      const len = str.length
+      while (i < len) {
+        const c1 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt((c1 & 0x3) << 4)
+          out += '=='
+          break
+        }
+        const c2 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+          out += chars.charAt((c2 & 0x0f) << 2)
+          out += '='
+          break
+        }
+        const c3 = str.charCodeAt(i++) & 0xff
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+        out += chars.charAt(c3 & 0x3f)
+      }
+      return out
+    }
+
     const endpoint = modelo === '65' ? 'nfce' : 'nfe'
     const url = `${baseUrl}/${endpoint}/${encodeURIComponent(ref)}?completa=1`
-    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
 
     try {
       const res = $http.send({
@@ -729,9 +915,49 @@ routerAdd(
         ? 'https://api.focusnfe.com.br/v2'
         : 'https://homologacao.focusnfe.com.br/v2'
 
+    const encodeBase64 = (str) => {
+      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+        try {
+          return Buffer.from(str, 'utf8').toString('base64')
+        } catch (_) {}
+      }
+      if (typeof btoa === 'function') {
+        try {
+          return btoa(str)
+        } catch (_) {}
+      }
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+      let out = ''
+      let i = 0
+      const len = str.length
+      while (i < len) {
+        const c1 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt((c1 & 0x3) << 4)
+          out += '=='
+          break
+        }
+        const c2 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+          out += chars.charAt((c2 & 0x0f) << 2)
+          out += '='
+          break
+        }
+        const c3 = str.charCodeAt(i++) & 0xff
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+        out += chars.charAt(c3 & 0x3f)
+      }
+      return out
+    }
+
     const endpoint = modelo === '65' ? 'nfce' : 'nfe'
     const url = `${baseUrl}/${endpoint}/${encodeURIComponent(ref)}`
-    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
 
     try {
       const res = $http.send({
@@ -872,8 +1098,48 @@ routerAdd(
         ? 'https://api.focusnfe.com.br/v2'
         : 'https://homologacao.focusnfe.com.br/v2'
 
+    const encodeBase64 = (str) => {
+      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+        try {
+          return Buffer.from(str, 'utf8').toString('base64')
+        } catch (_) {}
+      }
+      if (typeof btoa === 'function') {
+        try {
+          return btoa(str)
+        } catch (_) {}
+      }
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+      let out = ''
+      let i = 0
+      const len = str.length
+      while (i < len) {
+        const c1 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt((c1 & 0x3) << 4)
+          out += '=='
+          break
+        }
+        const c2 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+          out += chars.charAt((c2 & 0x0f) << 2)
+          out += '='
+          break
+        }
+        const c3 = str.charCodeAt(i++) & 0xff
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+        out += chars.charAt(c3 & 0x3f)
+      }
+      return out
+    }
+
     const url = `${baseUrl}/nfe/${encodeURIComponent(ref)}/carta_correcao`
-    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
 
     try {
       const res = $http.send({
@@ -1031,9 +1297,49 @@ routerAdd(
         : 'https://homologacao.focusnfe.com.br/v2'
 
     const cnpjLimpo = (empresa.getString('cnpj') || '').replace(/\D/g, '')
+    const encodeBase64 = (str) => {
+      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+        try {
+          return Buffer.from(str, 'utf8').toString('base64')
+        } catch (_) {}
+      }
+      if (typeof btoa === 'function') {
+        try {
+          return btoa(str)
+        } catch (_) {}
+      }
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+      let out = ''
+      let i = 0
+      const len = str.length
+      while (i < len) {
+        const c1 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt((c1 & 0x3) << 4)
+          out += '=='
+          break
+        }
+        const c2 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+          out += chars.charAt((c2 & 0x0f) << 2)
+          out += '='
+          break
+        }
+        const c3 = str.charCodeAt(i++) & 0xff
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+        out += chars.charAt(c3 & 0x3f)
+      }
+      return out
+    }
+
     const endpoint = modelo === '65' ? 'nfce' : 'nfe'
     const url = `${baseUrl}/${endpoint}/inutilizacao`
-    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
 
     const bodyInutilizacao = {
       cnpj: cnpjLimpo,
@@ -1181,7 +1487,47 @@ routerAdd(
       urlFinal = `${serverOrigin}${caminho}`
     }
 
-    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+    const encodeBase64 = (str) => {
+      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+        try {
+          return Buffer.from(str, 'utf8').toString('base64')
+        } catch (_) {}
+      }
+      if (typeof btoa === 'function') {
+        try {
+          return btoa(str)
+        } catch (_) {}
+      }
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+      let out = ''
+      let i = 0
+      const len = str.length
+      while (i < len) {
+        const c1 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt((c1 & 0x3) << 4)
+          out += '=='
+          break
+        }
+        const c2 = str.charCodeAt(i++) & 0xff
+        if (i === len) {
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+          out += chars.charAt((c2 & 0x0f) << 2)
+          out += '='
+          break
+        }
+        const c3 = str.charCodeAt(i++) & 0xff
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+        out += chars.charAt(c3 & 0x3f)
+      }
+      return out
+    }
+
+    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
 
     try {
       const res = $http.send({

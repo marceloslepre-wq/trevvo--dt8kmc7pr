@@ -2945,6 +2945,22 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.74** — Correção do Endpoint de Teste de Conexão com Focus NFe e Codificação Base64 no Backend:
+
+1. **Correção do Hook de Integração Focus NFe (`pocketbase/hooks/fiscal_focus_integracao.js`):**
+   - **Codificação Base64 Compatível:** Substituição de `$security.base64Encode` (inexistente no JSVM do PocketBase) por função de codificação Base64 pura compatível com Goja (`Buffer.from` com fallback universal em JavaScript) declarada no escopo interno dos callbacks (`routerAdd`).
+   - **Resiliência e Retorno Amigável de Erros (200 com Objeto de Resultado):**
+     - O endpoint `/backend/v1/fiscal/testar-conexao` nunca mais retorna HTTP 400 genérico sem mensagem explicativa.
+     - Quando o token/segredo do ambiente não estiver configurado no Skip Cloud (`FOCUS_NFE_TOKEN_HOMOLOGACAO_*` ou `FOCUS_NFE_TOKEN_PRODUCAO_*`), empresa não existir ou a configuração fiscal estiver desativada/ausente, a resposta é HTTP 200 com `{ sucesso: false, message: "..." }` orientando com clareza o que verificar/criar.
+     - Persistência imediata do resultado do teste (`ultimo_teste_conexao_data`, `ultimo_teste_conexao_sucesso`, `ultimo_teste_conexao_mensagem`) na tabela `config_emissao_fiscal`.
+     - Tratamento defensivo em todas as chamadas HTTP à API da Focus NFe (timeouts, códigos HTTP 401, 4xx, 5xx).
+
+2. **Frontend Resiliente (`src/services/fiscalIntegracao.ts` e `src/pages/fiscal/ConfiguracaoEmissaoFiscalPage.tsx`):**
+   - `testarConexaoFocus` captura com segurança respostas de erro da API ou do cliente sem quebrar nem propagar exceções não tratadas.
+   - `handleTestarConexao` atualiza o card de resultado e exibe aviso amigável ao usuário sem derrubar a tela.
+
+---
+
 **Versão 0.0.73** — Emissão Fiscal (Etapa 6: Tabelas `documentos_fiscais` e `documentos_fiscais_itens`, Serviço de Montagem de Impostos com Rateio, DIFAL e Pré-visualização de Nota Fiscal):
 
 1. **Novas Tabelas e Migrations (Migration 0047):**
