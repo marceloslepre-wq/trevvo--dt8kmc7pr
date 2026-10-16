@@ -306,6 +306,7 @@ Configuração e parâmetros de emissão fiscal (NF-e modelo 55 e NFC-e modelo 6
 - certificado_validade (date, data de expiração informada para avisos de vencimento em 30 dias ou vencido)
 - csc_configurado (bool, flag marcada pelo usuário quando o CSC/IdToken for configurado no painel da Focus NFe)
 - informar_ibs_cbs (bool, padrão false; ativação para destaque das tags de tributação da Reforma Tributária)
+- calcular_difal_consumidor_final (bool, padrão false; ativação do cálculo do DIFAL em vendas interestaduais a consumidor final não contribuinte, grupo ICMSUFDest)
 - ultimo_teste_conexao_data (date, data e hora da última chamada de teste de conexão com o provedor)
 - ultimo_teste_conexao_sucesso (bool, resultado do último teste de conexão)
 - ultimo_teste_conexao_mensagem (text, mensagem de retorno do último teste de conexão)
@@ -316,6 +317,150 @@ Configuração e parâmetros de emissão fiscal (NF-e modelo 55 e NFC-e modelo 6
 - updated (autodate, onCreate, onUpdate)
 
 Índices: `empresa_id` (único: `idx_config_emissao_fiscal_empresa`), `ativo` (`idx_config_emissao_fiscal_ativo`).
+
+### documentos_fiscais
+
+Tabela mestre de documentos fiscais emitidos/processados (NF-e modelo 55 e NFC-e modelo 65), espelho e controle das notas enviadas e recebidas da SEFAZ via Focus NFe. Permissões estritas: somente leitura pelo navegador (`listRule` e `viewRule` autenticados); inserção, alteração e exclusão bloqueadas via SDK do cliente (`createRule: null`, `updateRule: null`, `deleteRule: null`), gravadas exclusivamente pelos serviços de backend.
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório, emissora da nota)
+- modelo (select: "55" NF-e, "65" NFC-e, obrigatório)
+- tipo_documento (number, obrigatório: 0 entrada, 1 saída)
+- finalidade (number, obrigatório: 1 normal, 4 devolução)
+- ambiente (select: "Homologação" ou "Produção", obrigatório)
+- origem (select: "Venda", "Devolução de venda", "Devolução de compra", obrigatório)
+- venda_id (text, opcional)
+- nota_entrada_id (text, opcional)
+- documento_referenciado_chave (text, opcional, chave da nota referenciada em devoluções)
+- referencia (text, obrigatório, identificador único enviado à Focus NFe)
+- status (select: "Rascunho", "Processando", "Autorizada", "Rejeitada", "Cancelada", "Denegada", obrigatório)
+- contingencia (bool)
+- numero (number, número da nota retornado pela SEFAZ)
+- serie (text, série da nota)
+- chave_acesso (text, chave de 44 dígitos)
+- protocolo (text, número de protocolo de autorização)
+- data_emissao (text, ISO string)
+- data_autorizacao (text, ISO string)
+- status_sefaz (text, código de status SEFAZ, ex.: 100)
+- mensagem_sefaz (text, mensagem descritiva retornada pela SEFAZ)
+- erros (json, lista de inconsistências ou rejeições retornadas)
+- presenca_comprador (text)
+- intermediador_id (text, opcional)
+- identificador_intermediador (text, opcional)
+- natureza_operacao (text)
+- cfop_principal (text)
+- destinatario_nome (text)
+- destinatario_cpf_cnpj (text)
+- destinatario_uf (text)
+- valor_produtos (number, 2 casas)
+- valor_desconto (number, 2 casas)
+- valor_frete (number, 2 casas)
+- valor_seguro (number, 2 casas)
+- valor_outras_despesas (number, 2 casas)
+- base_icms (number, 2 casas)
+- valor_icms (number, 2 casas)
+- base_icms_st (number, 2 casas)
+- valor_icms_st (number, 2 casas)
+- valor_fcp (number, 2 casas)
+- valor_icms_uf_destino (number, 2 casas)
+- valor_fcp_uf_destino (number, 2 casas)
+- valor_icms_uf_remetente (number, 2 casas)
+- valor_ipi (number, 2 casas)
+- valor_pis (number, 2 casas)
+- valor_cofins (number, 2 casas)
+- valor_ibs (number, 2 casas)
+- valor_cbs (number, 2 casas)
+- valor_total (number, 2 casas)
+- json_enviado (json, payload plano enviado para a Focus NFe para auditoria)
+- json_retorno (json, payload retornado pela Focus NFe)
+- xml_arquivo (file, XML autorizado)
+- danfe_url (text, URL do PDF da DANFE)
+- qrcode_url (text, URL do QR Code da NFC-e)
+- url_consulta (text, URL pública da SEFAZ)
+- motivo_cancelamento (text)
+- data_cancelamento (text)
+- xml_cancelamento (file, XML do evento de cancelamento)
+- usuario_emissao_id (relation -> users)
+- usuario_cancelamento_id (relation -> users)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `referencia` (único: `idx_documentos_fiscais_ref`), `empresa_id`, `modelo + status`, `venda_id`, `chave_acesso`.
+
+### documentos_fiscais_itens
+
+Itens dos documentos fiscais emitidos/processados. Base oficial de escrituração para os registros C170 e C190 do SPED Fiscal. Permissões estritas: somente leitura pelo navegador (`listRule` e `viewRule` autenticados); criação e modificação 100% restritas ao backend.
+
+- id (text, PK)
+- documento_id (relation -> documentos_fiscais, obrigatório, cascadeDelete)
+- item (number, sequencial 1 a N, obrigatório)
+- produto_id (relation -> produtos, opcional)
+- codigo (text)
+- descricao (text, obrigatório)
+- ncm (text, 8 dígitos numéricos)
+- cest (text, 7 dígitos numéricos)
+- cfop (text, 4 dígitos numéricos)
+- unidade (text)
+- quantidade (number, obrigatório)
+- valor_unitario (number, obrigatório)
+- valor_bruto (number, quantidade × valor_unitario)
+- valor_desconto (number, desconto do item + rateio proporcional)
+- valor_frete (number, rateio proporcional com ajuste no último item)
+- valor_outras (number, rateio proporcional com ajuste no último item)
+- valor_total (number, obrigatório)
+- origem (text, 0 a 8)
+- cst_icms (text, regime normal)
+- csosn (text, Simples Nacional)
+- mod_bc_icms (text)
+- reducao_bc_icms (number)
+- base_icms (number)
+- aliquota_icms (number)
+- valor_icms (number)
+- aliquota_fcp (number)
+- valor_fcp (number)
+- base_icms_uf_destino (number, DIFAL)
+- aliquota_interna_uf_destino (number, DIFAL)
+- aliquota_interestadual (number, DIFAL)
+- percentual_partilha (number, 100% destino)
+- aliquota_fcp_uf_destino (number, DIFAL FCP)
+- valor_fcp_uf_destino (number, DIFAL FCP)
+- valor_icms_uf_destino (number, DIFAL ICMS Destino)
+- valor_icms_uf_remetente (number)
+- mod_bc_icms_st (text)
+- mva (number, margem de valor agregado ST)
+- base_icms_st (number)
+- aliquota_icms_st (number)
+- valor_icms_st (number)
+- valor_fcp_st (number)
+- cst_ipi (text)
+- codigo_enquadramento_ipi (text, ex.: 999)
+- base_ipi (number)
+- aliquota_ipi (number)
+- valor_ipi (number)
+- cst_pis (text)
+- base_pis (number)
+- aliquota_pis (number)
+- valor_pis (number)
+- cst_cofins (text)
+- base_cofins (number)
+- aliquota_cofins (number)
+- valor_cofins (number)
+- cst_ibs_cbs (text)
+- c_class_trib (text)
+- base_ibs_cbs (number)
+- aliquota_ibs_uf (number)
+- aliquota_ibs_municipio (number)
+- aliquota_cbs (number)
+- valor_ibs (number)
+- valor_cbs (number)
+- c_benef (text)
+- gtin (text)
+- lote (text)
+- validade (text)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `documento_id` (`idx_doc_itens_documento`), `produto_id` (`idx_doc_itens_produto`).
 
 ### config_fiscal_empresa
 
@@ -2799,6 +2944,38 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Gráfico diário de faturamento dos últimos 30 dias com linha de tendência.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.73** — Emissão Fiscal (Etapa 6: Tabelas `documentos_fiscais` e `documentos_fiscais_itens`, Serviço de Montagem de Impostos com Rateio, DIFAL e Pré-visualização de Nota Fiscal):
+
+1. **Novas Tabelas e Migrations (Migration 0047):**
+   - Criação das tabelas `documentos_fiscais` e `documentos_fiscais_itens` com índices e integridade relacional.
+   - **Regras de Acesso Blindadas:** SÓ LEITURA pelo navegador (`listRule` e `viewRule` com `@request.auth.id != ''`); inserção, atualização e exclusão completamente bloqueadas via SDK do cliente (`createRule: null`, `updateRule: null`, `deleteRule: null`), operadas exclusivamente via backend.
+   - Adição do campo `calcular_difal_consumidor_final` (boolean, padrão false) na tabela `config_emissao_fiscal`.
+
+2. **Serviço Central de Montagem e Cálculo de Documento Fiscal (`pocketbase/hooks/fiscal_documentos_operacoes.js`):**
+   - Endpoint transacional `POST /backend/v1/fiscal/montar-rascunho`.
+   - **Emitente por Documento:** Sempre `empresa_id` do documento (nunca a matriz ou a sessão ativa), checando CNPJ, IE, CRT, UF e código IBGE.
+   - **Motor Tributário:** Seleciona o cenário do perfil (`VENDA_INTERNA_CONSUMIDOR`, `VENDA_INTERNA_CONTRIBUINTE`, `VENDA_INTERESTADUAL_CONSUMIDOR`, `VENDA_INTERESTADUAL_CONTRIBUINTE`).
+   - **Rateio Proporcional:** Frete, seguro, outras despesas e desconto global são rateados proporcionalmente pelo valor bruto dos itens, acertando centavos no último item.
+   - **Cálculo de Impostos por Item:**
+     - Base do ICMS próprio com redução quando parametrizada.
+     - Simples Nacional: CSOSN com cálculo de crédito da alíquota do Simples para CSOSN 101.
+     - Substituição Tributária (ST) por MVA para CST/CSOSN 10, 30, 70, 201, 202, 203.
+     - IPI, PIS e COFINS (Simples: CST da regra sem destacar valores).
+     - Reforma Tributária (IBS e CBS) quando `informar_ibs_cbs = true`.
+     - **DIFAL:** Quando `calcular_difal_consumidor_final = true` em venda interestadual a não contribuinte (indicador 9, local destino 2), calcula base única, alíquota interestadual (4%, 7% ou 12%), alíquota interna e FCP do destino da matriz `icms_aliquotas_uf`, partilha 100% destino. Quando desligado, gera aviso amarelo explicativo.
+   - **Validações Pré-emissão:** Verifica NCM de 8 dígitos, coerência de CFOP (5xxx interno, 6xxx externo, 6107/6108 a consumidor), dados cadastrais do cliente e endereço com IBGE de 7 dígitos.
+   - **Formato Focus NFe:** Monta payload plano oficial (`campos.focusnfe.com.br`) e grava na tabela `documentos_fiscais` com status "Rascunho".
+
+3. **Pré-visualização da Nota Fiscal no Detalhe da Venda Finalizada:**
+   - Botão **"Pré-visualizar nota fiscal"** exibido no detalhe de vendas com status "Finalizada" (`VendaFormPage.tsx`).
+   - Modal somente leitura `<ModalPrevisualizarNota />` (`@/components/fiscal/ModalPrevisualizarNota.tsx`):
+     - Destaque para emitente, destinatário, avisos e pendências impeditivas.
+     - Aba de totais e impostos consolidados (ICMS, FCP, ST, IPI, PIS, COFINS, DIFAL).
+     - Aba de itens com detalhe por linha (CFOP, CST/CSOSN, bases e valores calculados).
+     - Aba do payload JSON oficial pronto para envio à Focus NFe.
+
+---
 
 **Versão 0.0.72** — Início da Emissão Fiscal (Etapa 6: Configuração de Emissão, Serviço Central de Integração Focus NFe e Validações por Empresa):
 

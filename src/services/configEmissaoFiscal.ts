@@ -29,6 +29,7 @@ export interface ConfigEmissaoFiscal {
   certificado_validade?: string | null
   csc_configurado: boolean
   informar_ibs_cbs: boolean
+  calcular_difal_consumidor_final?: boolean
   ultimo_teste_conexao_data?: string | null
   ultimo_teste_conexao_sucesso?: boolean | null
   ultimo_teste_conexao_mensagem?: string | null
@@ -88,6 +89,7 @@ export async function obterOuCriarConfigEmissaoFiscal(
     certificado_validade: null,
     csc_configurado: false,
     informar_ibs_cbs: false,
+    calcular_difal_consumidor_final: false,
     ativo: true,
     created_by: pb.authStore.record?.id || null,
   }
@@ -182,6 +184,7 @@ export async function salvarConfigEmissaoFiscal(
     certificado_validade: dados.certificado_validade || null,
     csc_configurado: Boolean(dados.csc_configurado),
     informar_ibs_cbs: Boolean(dados.informar_ibs_cbs),
+    calcular_difal_consumidor_final: Boolean(dados.calcular_difal_consumidor_final),
     ativo: dados.ativo !== undefined ? Boolean(dados.ativo) : true,
     updated_by: pb.authStore.record?.id || null,
   }
@@ -244,6 +247,7 @@ export async function copiarConfigEmissaoDeOutraEmpresa(params: {
     enviar_email_cliente: origem.enviar_email_cliente,
     informar_ibs_cbs: origem.informar_ibs_cbs,
     csc_configurado: origem.csc_configurado,
+    calcular_difal_consumidor_final: origem.calcular_difal_consumidor_final,
     // Não copia codigo_token nem certificado_validade
     codigo_token: destinoAtual.codigo_token,
     certificado_validade: destinoAtual.certificado_validade,

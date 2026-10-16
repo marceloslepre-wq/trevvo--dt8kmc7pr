@@ -66,6 +66,8 @@ import SelectCondicaoPagamento from '@/components/SelectCondicaoPagamento'
 import { ModalAutorizacaoSupervisor } from '@/components/ModalAutorizacaoSupervisor'
 import { ModalFinalizarVenda } from './ModalFinalizarVenda'
 import { ModalCancelarVenda } from './ModalCancelarVenda'
+import { ModalPrevisualizarNota } from '@/components/fiscal/ModalPrevisualizarNota'
+import { montarDocumentoFiscal, ResultadoPrevisualizacaoNota } from '@/services/documentosFiscais'
 
 interface LinhaItemForm extends ItemVendaInput {
   tempId: string
@@ -125,6 +127,11 @@ export const VendaFormPage: React.FC = () => {
   const [modalClienteRapidoAberto, setModalClienteRapidoAberto] = useState(false)
   const [modalFinalizarAberto, setModalFinalizarAberto] = useState(false)
   const [modalCancelarAberto, setModalCancelarAberto] = useState(false)
+  const [modalPrevisualizarNotaAberto, setModalPrevisualizarNotaAberto] = useState(false)
+  const [carregandoPrevisualizacao, setCarregandoPrevisualizacao] = useState(false)
+  const [dadosPrevisualizacao, setDadosPrevisualizacao] =
+    useState<ResultadoPrevisualizacaoNota | null>(null)
+  const [erroPrevisualizacao, setErroPrevisualizacao] = useState<string | null>(null)
 
   // Modal Autorização de Supervisor para desconto
   const [modalSupervisorAberto, setModalSupervisorAberto] = useState(false)
@@ -625,6 +632,33 @@ export const VendaFormPage: React.FC = () => {
   const ehCancelada = status === 'Cancelada'
   const formularioBloqueado = ehFinalizada || ehCancelada
 
+  // Ação de Pré-visualização da Nota Fiscal (Só leitura)
+  const handlePrevisualizarNota = async () => {
+    if (!vendaAtual?.id) return
+    setModalPrevisualizarNotaAberto(true)
+    setCarregandoPrevisualizacao(true)
+    setErroPrevisualizacao(null)
+    try {
+      const res = await montarDocumentoFiscal({
+        origem: 'Venda',
+        id: vendaAtual.id,
+        modelo: '55',
+      })
+      setDadosPrevisualizacao(res)
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Falha ao montar pré-visualização da nota fiscal.'
+      setErroPrevisualizacao(msg)
+      toast({
+        title: 'Erro na pré-visualização',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setCarregandoPrevisualizacao(false)
+    }
+  }
+
   return (
     <div className="space-y-4 p-4 md:p-6 max-w-7xl mx-auto">
       {/* Barra de Título e Ações */}
@@ -728,6 +762,19 @@ export const VendaFormPage: React.FC = () => {
                 >
                   <CheckCircle2 size={14} />
                   <span>Finalizar Venda</span>
+                </Button>
+              )}
+
+              {ehFinalizada && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrevisualizarNota}
+                  className="text-xs text-blue-700 border-blue-200 hover:bg-blue-50 gap-1.5"
+                >
+                  <FileText size={14} />
+                  <span>Pré-visualizar nota fiscal</span>
                 </Button>
               )}
 
@@ -1397,6 +1444,18 @@ export const VendaFormPage: React.FC = () => {
             setStatus('Cancelada')
             if (vendaAtual) setVendaAtual({ ...vendaAtual, status: 'Cancelada' })
           }}
+        />
+      )}
+
+      {/* Modal de Pré-visualização da Nota Fiscal */}
+      {vendaAtual && (
+        <ModalPrevisualizarNota
+          aberto={modalPrevisualizarNotaAberto}
+          onOpenChange={setModalPrevisualizarNotaAberto}
+          dados={dadosPrevisualizacao}
+          carregando={carregandoPrevisualizacao}
+          erro={erroPrevisualizacao}
+          onRecarregar={handlePrevisualizarNota}
         />
       )}
     </div>

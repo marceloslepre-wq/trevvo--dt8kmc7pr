@@ -82,6 +82,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
   const [certificadoValidade, setCertificadoValidade] = useState<string>('')
   const [cscConfigurado, setCscConfigurado] = useState<boolean>(false)
   const [informarIbsCbs, setInformarIbsCbs] = useState<boolean>(false)
+  const [calcularDifalConsumidorFinal, setCalcularDifalConsumidorFinal] = useState<boolean>(false)
 
   // Lista de empresas para o quadro geral e cópia
   const [empresas, setEmpresas] = useState<Empresa[]>([])
@@ -138,6 +139,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
       setCertificadoValidade(cfg.certificado_validade ? cfg.certificado_validade.slice(0, 10) : '')
       setCscConfigurado(Boolean(cfg.csc_configurado))
       setInformarIbsCbs(Boolean(cfg.informar_ibs_cbs))
+      setCalcularDifalConsumidorFinal(Boolean(cfg.calcular_difal_consumidor_final))
 
       if (cfg.ultimo_teste_conexao_data) {
         setResultadoTeste({
@@ -293,6 +295,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
         certificado_validade: certificadoValidade || null,
         csc_configurado: cscConfigurado,
         informar_ibs_cbs: informarIbsCbs,
+        calcular_difal_consumidor_final: calcularDifalConsumidorFinal,
       })
 
       setConfig(salva)
@@ -364,6 +367,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
       setEnviarEmailCliente(atualizada.enviar_email_cliente)
       setCscConfigurado(atualizada.csc_configurado)
       setInformarIbsCbs(atualizada.informar_ibs_cbs)
+      setCalcularDifalConsumidorFinal(Boolean(atualizada.calcular_difal_consumidor_final))
 
       setModalCopiarAberto(false)
       toast({
@@ -836,6 +840,27 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
                     id="ibs_cbs"
                     checked={informarIbsCbs}
                     onCheckedChange={setInformarIbsCbs}
+                    disabled={!administrador}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-lg border border-blue-200 bg-blue-50/40">
+                  <div className="space-y-0.5 pr-2">
+                    <Label
+                      htmlFor="difal_cons_final"
+                      className="text-xs font-semibold text-blue-900"
+                    >
+                      Calcular DIFAL na Venda Interestadual a Consumidor Final
+                    </Label>
+                    <p className="text-[11px] text-blue-700">
+                      Confirme com o contador. Empresa do Simples Nacional normalmente não recolhe o
+                      DIFAL na venda ao consumidor de outro estado.
+                    </p>
+                  </div>
+                  <Switch
+                    id="difal_cons_final"
+                    checked={calcularDifalConsumidorFinal}
+                    onCheckedChange={setCalcularDifalConsumidorFinal}
                     disabled={!administrador}
                   />
                 </div>
