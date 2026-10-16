@@ -43,6 +43,79 @@ export interface BaixarArquivoFiscalResponse {
   message?: string
 }
 
+export interface EmissaoNFCeVendaResponse {
+  sucesso: boolean
+  status?: 'Autorizada' | 'Rejeitada'
+  contingencia?: boolean
+  documento_id?: string
+  numero?: number
+  serie?: string
+  chave?: string
+  protocolo?: string
+  danfe_url?: string
+  qrcode_url?: string
+  url_consulta?: string
+  ja_autorizada?: boolean
+  message: string
+  ref?: string
+  detalhes?: any
+}
+
+export interface CancelarNFCeVendaResponse {
+  sucesso: boolean
+  message: string
+  venda_cancelada?: boolean
+  venda_cancelada_mensagem?: string
+  documento_id?: string
+  prazo_expirado?: boolean
+  detalhes?: any
+}
+
+/**
+ * Emite a NFC-e (modelo 65) pelo backend central de fiscal da venda
+ */
+export async function emitirNFCeVenda(params: {
+  vendaId: string
+  contingencia?: boolean
+}): Promise<EmissaoNFCeVendaResponse> {
+  return await pb.send<EmissaoNFCeVendaResponse>('/backend/v1/fiscal/emitir-nfce-venda', {
+    method: 'POST',
+    body: {
+      venda_id: params.vendaId,
+      contingencia: Boolean(params.contingencia),
+    },
+  })
+}
+
+/**
+ * Cancela a NFC-e (modelo 65) autorizada na SEFAZ e opcionalmente cancela a venda no ERP
+ */
+export async function cancelarNFCeVenda(params: {
+  vendaId: string
+  justificativa: string
+  cancelarVenda?: boolean
+}): Promise<CancelarNFCeVendaResponse> {
+  return await pb.send<CancelarNFCeVendaResponse>('/backend/v1/fiscal/cancelar-nfce-venda', {
+    method: 'POST',
+    body: {
+      venda_id: params.vendaId,
+      justificativa: params.justificativa,
+      cancelar_venda: Boolean(params.cancelarVenda),
+    },
+  })
+}
+
+/**
+ * Abre o DANFCe (PDF ou URL Focus) ou imprime em bobina 80mm
+ */
+export function imprimirDanfeUrl(danfeUrl: string) {
+  if (!danfeUrl) return
+  const win = window.open(danfeUrl, '_blank')
+  if (win) {
+    win.focus()
+  }
+}
+
 /**
  * Testa a conexão com a API da Focus NFe no ambiente configurado para a empresa
  */

@@ -292,6 +292,7 @@ Configuração e parâmetros de emissão fiscal (NF-e modelo 55 e NFC-e modelo 6
 - empresa_id (relation -> empresas, obrigatório, cascadeDelete, índice único)
 - provedor (text, padrão "Focus NFe")
 - emite_documentos_fiscais (bool, padrão true; bloqueado para ativação se a empresa tiver Inscrição Estadual vazia ou ISENTO)
+- emite_nfce (bool, padrão false; habilita a filial para emitir NFC-e Modelo 65 no PDV; filiais/matriz que só emitem NF-e mantêm false, ocultando campos e avisos de CSC)
 - codigo_token (text, letras maiúsculas, números e sublinhado; sufixo dos segredos de token; único entre as empresas emissoras; vazio = segredo padrão)
 - presenca_comprador_padrao_nfe (select: "1 Presencial", "2 Internet", "3 Teleatendimento", "4 Entrega em domicílio", "9 Outros", padrão "1 Presencial")
 - ambiente (select: "Homologação" ou "Produção", padrão "Homologação"; mudar para Produção exige confirmação expressa digitando "PRODUÇÃO" e grava logs_auditoria)
@@ -2944,6 +2945,44 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Gráfico diário de faturamento dos últimos 30 dias com linha de tendência.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.75** — Emissão de NFC-e (Modelo 65) nas Vendas do PDV, Contingência Offline, Bobina 80mm, Cancelamento na SEFAZ e Emissão Manual:
+
+1. **Campo `emite_nfce` em `config_emissao_fiscal` (Migration 0048):**
+   - Criação do campo booleano `emite_nfce` (padrão false) na tabela `config_emissao_fiscal`.
+   - Somente estabelecimentos com `emite_nfce = true` emitem NFC-e no terminal de PDV e visualizam os avisos de CSC e o campo `emitir_nfce_automaticamente_no_pdv` na tela de Configuração de Emissão Fiscal (`/fiscal/configuracoes`).
+   - Filiais ou matrizes sem emissão de NFC-e mantêm `emite_nfce = false`, ocultando avisos desnecessários de CSC.
+
+2. **Serviço Backend Central de Emissão de NFC-e (`pocketbase/hooks/fiscal_nfce_operacoes.js`):**
+   - Endpoints transacionais e seguros:
+     - `POST /backend/v1/fiscal/emitir-nfce-venda`
+     - `POST /backend/v1/fiscal/cancelar-nfce-venda`
+   - **Regra de Filial e Token:** A NFC-e é transmitida obrigatoriamente pela `empresa_id` da venda (o estabelecimento físico onde está o terminal de caixa), utilizando o token, série e CSC cadastrados para aquela loja no Skip Cloud — nunca a matriz nem a empresa selecionada no navegador.
+   - **Validação Pré-emissão:** Verifica se a loja possui `emite_nfce = true` e `csc_configurado = true`. Se o CSC não estiver configurado, recusa a chamada com mensagem clara: `"CSC da NFC-e não configurado para esta loja"`.
+   - **Montagem do Payload Focus NFe:** Presença do comprador `1` (presencial), modalidade de frete `9` (sem frete), local de destino `1`, consumidor final `1`, formas de pagamento mapeadas via `formas_pagamento.codigo_tpag`, informações de cartão (bandeira e autorização) e troco informado no cabeçalho quando houver.
+   - **Autorização e Atualização Backend:** Quando autorizada pela SEFAZ, o backend preenche número, série, chave de 44 dígitos, protocolo, `qrcode_url`, `url_consulta`, `danfe_url`, baixa o XML autorizado e grava em `xml_arquivo` de `documentos_fiscais`, e atualiza a venda de forma atômica com `documento_fiscal_status = "Autorizada"` e `documento_fiscal_id` (preservando o bloqueio das API Rules para o navegador).
+   - **Rejeição Controlada:** Quando rejeitada, registra os motivos da SEFAZ em `documentos_fiscais`, atualiza a venda para `documento_fiscal_status = "Rejeitada"` e NÃO desfaz a venda no caixa (o operador pode continuar vendendo).
+
+3. **Contingência Offline Automática:**
+   - Em caso de falha de conexão com a SEFAZ ou indisponibilidade reportada pela Focus NFe (timeouts, HTTP 500/503/504 ou mensagens indicando SEFAZ fora do ar), o sistema reenvia automaticamente com parâmetro `forma_emissao=offline` e marca `contingencia = true`.
+   - A venda é autorizada em contingência e o DANFCe impresso com a indicação correspondente da Focus.
+
+4. **Impressão em Bobina Térmica 80mm:**
+   - No PDV, com NFC-e autorizada, é disparada a impressão do DANFCe oficial da Focus (`danfe_url`) no lugar do comprovante não fiscal.
+   - Caso a NFC-e seja rejeitada ou não configurada, é impresso o comprovante não fiscal habitual de 80mm com a observação `"NFC-e pendente"`.
+   - Botão **"Reimprimir DANFCe"** disponibilizado na tela de detalhe da venda finalizada (`/vendas/pedidos/:id`).
+
+5. **Cancelamento Fiscal na SEFAZ e Regras de Negócio:**
+   - Botão **"Cancelar NFC-e"** no detalhe da venda com NFC-e autorizada (exige permissão `excluir` no módulo `notas_saida` e justificativa obrigatória de 15 a 255 caracteres).
+   - Chamar `DELETE /nfce/{ref}` na Focus; autorizado o cancelamento pela SEFAZ, baixa o XML de evento de cancelamento (`xml_cancelamento`), marca o documento como `"Cancelada"` e atualiza a venda com `documento_fiscal_status = "Cancelada"`.
+   - Opção integrada **"Cancelar NFC-e e a venda"**: cancela a nota fiscal na SEFAZ e, em seguida, estorna a venda, estoque e financeiro no ERP.
+   - Se o prazo legal de cancelamento estipulado pelo estado expirou, exibe aviso amigável da SEFAZ com orientação para emissão de Devolução de Venda.
+   - Reforço no serviço central `cancelarVenda`: bloqueia cancelamento direto caso a venda tenha NFC-e/NF-e "Autorizada", exigindo o cancelamento prévio na SEFAZ.
+
+6. **Emissão Manual:**
+   - Para vendas de PDV finalizadas sem nota fiscal ou com status "Rejeitada", botão **"Emitir NFC-e"** disponibilizado no detalhe da venda (`VendaFormPage.tsx`).
+
+---
 
 **Versão 0.0.74** — Correção do Endpoint de Teste de Conexão com Focus NFe e Codificação Base64 no Backend:
 

@@ -15,6 +15,7 @@ export interface ConfigEmissaoFiscal {
   empresa_id: string
   provedor: string
   emite_documentos_fiscais: boolean
+  emite_nfce: boolean
   codigo_token: string
   presenca_comprador_padrao_nfe: PresencaCompradorNfe
   ambiente: AmbienteFiscal
@@ -75,6 +76,7 @@ export async function obterOuCriarConfigEmissaoFiscal(
     empresa_id: empresaId,
     provedor: 'Focus NFe',
     emite_documentos_fiscais: emitePadrao,
+    emite_nfce: false,
     codigo_token: '',
     presenca_comprador_padrao_nfe: '1 Presencial',
     ambiente: 'Homologação',
@@ -163,6 +165,7 @@ export async function salvarConfigEmissaoFiscal(
     provedor: 'Focus NFe',
     emite_documentos_fiscais:
       dados.emite_documentos_fiscais !== undefined ? Boolean(dados.emite_documentos_fiscais) : true,
+    emite_nfce: Boolean(dados.emite_nfce),
     codigo_token: codToken,
     presenca_comprador_padrao_nfe: dados.presenca_comprador_padrao_nfe || '1 Presencial',
     ambiente: dados.ambiente || 'Homologação',
@@ -239,6 +242,7 @@ export async function copiarConfigEmissaoDeOutraEmpresa(params: {
     ambiente: origem.ambiente,
     serie_nfe: origem.serie_nfe,
     serie_nfce: origem.serie_nfce,
+    emite_nfce: origem.emite_nfce,
     emitir_nfce_automaticamente_no_pdv: origem.emitir_nfce_automaticamente_no_pdv,
     natureza_operacao_venda: origem.natureza_operacao_venda,
     natureza_operacao_devolucao_compra: origem.natureza_operacao_devolucao_compra,
@@ -264,4 +268,17 @@ export async function listarTodasConfigsEmissao(): Promise<ConfigEmissaoFiscal[]
     filter: 'ativo = true',
   })
   return res
+}
+
+/**
+ * Atalho para obter a configuração fiscal de emissão da empresa
+ */
+export async function obterConfigFiscalEmpresa(
+  empresaId: string,
+): Promise<ConfigEmissaoFiscal | null> {
+  try {
+    return await obterOuCriarConfigEmissaoFiscal(empresaId)
+  } catch (_) {
+    return null
+  }
 }

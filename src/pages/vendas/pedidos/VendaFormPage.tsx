@@ -47,6 +47,9 @@ import {
   TipoVenda,
   StatusVenda,
 } from '@/services/vendas'
+import { emitirNFCeVenda, imprimirDanfeUrl } from '@/services/fiscalIntegracao'
+import { obterDocumentoFiscalPorId } from '@/services/documentosFiscais'
+import { obterConfigFiscalEmpresa, ConfigEmissaoFiscal } from '@/services/configEmissaoFiscal'
 import {
   imprimirOrcamentoOuPedido,
   imprimirComprovanteNaoFiscal,
@@ -86,6 +89,7 @@ export const VendaFormPage: React.FC = () => {
   const podeEditar = pode('vendas', 'editar') || pode('vendas', 'criar')
   const podeExcluir = pode('vendas', 'excluir')
   const podeVerMargem = pode('produtos', 'editar')
+  const podeEmitirFiscal = pode('notas_saida', 'criar') || pode('notas_saida', 'editar')
 
   const [carregando, setCarregando] = useState(false)
   const [salvando, setSalvando] = useState(false)
@@ -93,6 +97,9 @@ export const VendaFormPage: React.FC = () => {
 
   // Registro original da venda carregada (se edição)
   const [vendaAtual, setVendaAtual] = useState<Venda | null>(null)
+  const [configFiscal, setConfigFiscal] = useState<ConfigEmissaoFiscal | null>(null)
+  const [danfeUrlNota, setDanfeUrlNota] = useState<string>('')
+  const [emitindoNfceManual, setEmitindoNfceManual] = useState<boolean>(false)
 
   // Cabeçalho da Venda
   const [numero, setNumero] = useState<number>(0)
@@ -225,6 +232,17 @@ export const VendaFormPage: React.FC = () => {
             .then(setClienteSelecionado)
             .catch(() => {})
         }
+
+        // Buscar documento fiscal e danfe_url se já existir
+        if (venda.documento_fiscal_id) {
+          obterDocumentoFiscalPorId(venda.documento_fiscal_id)
+            .then((doc) => {
+              if (doc?.danfe_url) {
+                setDanfeUrlNota(doc.danfe_url)
+              }
+            })
+            .catch(() => {})
+        }
       })
       .catch((err) => {
         console.error('Erro ao carregar venda:', err)
@@ -234,6 +252,14 @@ export const VendaFormPage: React.FC = () => {
         setCarregando(false)
       })
   }, [ehEdicao, id])
+
+  // Carregar Config Fiscal da Empresa
+  useEffect(() => {
+    if (!empresaAtiva?.id) return
+    obterConfigFiscalEmpresa(empresaAtiva.id)
+      .then(setConfigFiscal)
+      .catch(() => {})
+  }, [empresaAtiva?.id])
 
   // Inicialização para Nova Venda (defaults da config de vendas)
   useEffect(() => {
@@ -631,6 +657,80 @@ export const VendaFormPage: React.FC = () => {
   const ehFinalizada = status === 'Finalizada'
   const ehCancelada = status === 'Cancelada'
   const formularioBloqueado = ehFinalizada || ehCancelada
+  const docFiscalStatus = vendaAtual?.documento_fiscal_status
+  const temNfceAutorizada = docFiscalStatus === 'Autorizada'
+  const podeEmitirNfceManual =
+    ehFinalizada &&
+    configFiscal?.emite_documentos_fiscais &&
+    configFiscal?.emite_nfce &&
+    (!docFiscalStatus ||
+      docFiscalStatus === 'Não emitido' ||
+      (docFiscalStatus as any) === 'Não emitida' ||
+      docFiscalStatus === 'Rejeitada') &&
+    podeEmitirFiscal
+
+  // Emissão Manual de NFC-e no Detalhe da Venda
+  const handleEmitirNfceManual = async () => {
+    if (!vendaAtual?.id) return
+    if (!configFiscal?.csc_configurado) {
+      toast({
+        title: 'CSC não configurado',
+        description: 'CSC da NFC-e não configurado para esta loja.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setEmitindoNfceManual(true)
+    try {
+      const resp = await emitirNFCeVenda({ vendaId: vendaAtual.id })
+      if (resp.sucesso && resp.status === 'Autorizada') {
+        toast({
+          title: resp.contingencia
+            ? 'NFC-e Emitida em Contingência!'
+            : 'NFC-e Autorizada com sucesso!',
+          description: `Nota nº ${resp.numero || ''} autorizada na SEFAZ.`,
+        })
+        if (resp.danfe_url) {
+          setDanfeUrlNota(resp.danfe_url)
+          imprimirDanfeUrl(resp.danfe_url)
+        }
+        // Recarrega venda completa
+        const atual = await obterVendaCompleta(vendaAtual.id)
+        setVendaAtual(atual.venda)
+      } else {
+        toast({
+          title: 'NFC-e Rejeitada pela SEFAZ',
+          description: resp.message || 'Verifique as informações fiscais e tente novamente.',
+          variant: 'destructive',
+        })
+        const atual = await obterVendaCompleta(vendaAtual.id)
+        setVendaAtual(atual.venda)
+      }
+    } catch (err: any) {
+      const msg = err?.data?.message || err?.message || 'Falha na emissão da NFC-e.'
+      toast({
+        title: 'Erro na emissão fiscal',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setEmitindoNfceManual(false)
+    }
+  }
+
+  // Reimpressão DANFCe
+  const handleReimprimirDanfce = () => {
+    if (danfeUrlNota) {
+      imprimirDanfeUrl(danfeUrlNota)
+    } else {
+      toast({
+        title: 'DANFCe indisponível',
+        description: 'URL de impressão da nota fiscal não encontrada.',
+        variant: 'destructive',
+      })
+    }
+  }
 
   // Ação de Pré-visualização da Nota Fiscal (Só leitura)
   const handlePrevisualizarNota = async () => {
@@ -680,18 +780,35 @@ export const VendaFormPage: React.FC = () => {
                 {ehEdicao ? `${tipo} #${numero}` : 'Novo Orçamento ou Pedido de Venda'}
               </h1>
               {ehEdicao && (
-                <Badge
-                  className={
-                    status === 'Finalizada'
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                      : status === 'Cancelada'
-                        ? 'bg-red-100 text-red-800 border-red-300'
-                        : 'bg-blue-100 text-blue-800 border-blue-300'
-                  }
-                >
-                  {status}
-                </Badge>
-              )}
+                <div className="flex items-center gap-1.5">
+                  <Badge
+                    className={
+                      status === 'Finalizada'
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : status === 'Cancelada'
+                          ? 'bg-red-100 text-red-800 border-red-300'
+                          : 'bg-blue-100 text-blue-800 border-blue-300'
+                    }
+                  >
+                    {status}
+                  </Badge>
+                  {docFiscalStatus &&
+                    docFiscalStatus !== 'Não emitido' &&
+                    (docFiscalStatus as any) !== 'Não emitida' && (
+                      <Badge
+                        className={
+                          docFiscalStatus === 'Autorizada'
+                            ? 'bg-purple-100 text-purple-800 border-purple-300'
+                            : docFiscalStatus === 'Cancelada'
+                              ? 'bg-slate-100 text-slate-800 border-slate-300'
+                              : 'bg-amber-100 text-amber-800 border-amber-300'
+                        }
+                      >
+                        NFC-e {docFiscalStatus}
+                      </Badge>
+                    )}{' '}
+                </div>
+              )}{' '}
             </div>
             <p className="text-xs text-slate-500">
               {ehEdicao
@@ -715,7 +832,6 @@ export const VendaFormPage: React.FC = () => {
                 <Printer size={14} />
                 <span>Imprimir/PDF</span>
               </Button>
-
               <Button
                 type="button"
                 variant="outline"
@@ -726,7 +842,6 @@ export const VendaFormPage: React.FC = () => {
                 <Send size={14} />
                 <span>WhatsApp</span>
               </Button>
-
               {podeEditar && (
                 <Button
                   type="button"
@@ -739,7 +854,6 @@ export const VendaFormPage: React.FC = () => {
                   <span>Duplicar</span>
                 </Button>
               )}
-
               {tipo === 'Orçamento' && !formularioBloqueado && podeEditar && (
                 <Button
                   type="button"
@@ -752,7 +866,6 @@ export const VendaFormPage: React.FC = () => {
                   <span>Converter em Pedido</span>
                 </Button>
               )}
-
               {status === 'Pedido em aberto' && podeEditar && (
                 <Button
                   type="button"
@@ -764,7 +877,39 @@ export const VendaFormPage: React.FC = () => {
                   <span>Finalizar Venda</span>
                 </Button>
               )}
-
+              {ehFinalizada && temNfceAutorizada && danfeUrlNota && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReimprimirDanfce}
+                  className="text-xs text-purple-700 border-purple-200 hover:bg-purple-50 gap-1.5"
+                >
+                  <Printer size={14} />
+                  <span>Reimprimir DANFCe</span>
+                </Button>
+              )}
+              {podeEmitirNfceManual && (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={emitindoNfceManual}
+                  onClick={handleEmitirNfceManual}
+                  className="text-xs bg-purple-600 hover:bg-purple-700 text-white gap-1.5"
+                >
+                  {emitindoNfceManual ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Transmitindo NFC-e...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileText size={14} />
+                      <span>Emitir NFC-e</span>
+                    </>
+                  )}
+                </Button>
+              )}
               {ehFinalizada && (
                 <Button
                   type="button"
@@ -777,7 +922,6 @@ export const VendaFormPage: React.FC = () => {
                   <span>Pré-visualizar nota fiscal</span>
                 </Button>
               )}
-
               {ehFinalizada && podeExcluir && (
                 <Button
                   type="button"
@@ -787,9 +931,9 @@ export const VendaFormPage: React.FC = () => {
                   className="text-xs text-red-600 border-red-200 hover:bg-red-50 gap-1.5"
                 >
                   <Ban size={14} />
-                  <span>Cancelar Venda</span>
+                  <span>{temNfceAutorizada ? 'Cancelar NFC-e' : 'Cancelar Venda'}</span>
                 </Button>
-              )}
+              )}{' '}
             </>
           )}
 

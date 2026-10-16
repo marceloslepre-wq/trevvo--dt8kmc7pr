@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T19:48:08.039Z",
+  "generatedAt": "2026-10-16T20:46:23.390Z",
   "collections": [
     {
       "name": "users",
@@ -9307,6 +9307,12 @@
         },
         {
           "name": "calcular_difal_consumidor_final",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "emite_nfce",
           "type": "bool",
           "required": false,
           "system": false

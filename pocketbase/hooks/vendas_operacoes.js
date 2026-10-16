@@ -1055,11 +1055,11 @@ routerAdd(
           throw new Error('Esta venda já está cancelada.')
         }
 
-        // Venda com documento fiscal autorizado não se cancela aqui (Etapa 6)
+        // Venda com documento fiscal autorizado não se cancela diretamente: primeiro cancele a nota na SEFAZ
         const docFiscalStatus = venda.getString('documento_fiscal_status') || ''
         if (docFiscalStatus === 'Autorizada') {
           throw new Error(
-            'Venda com documento fiscal emitido e autorizado pela SEFAZ não pode ser cancelada diretamente. Solicite o cancelamento fiscal na Etapa 6.',
+            'Venda com NFC-e/NF-e Autorizada pela SEFAZ não pode ser cancelada diretamente. Cancele primeiro a nota fiscal na SEFAZ (ou utilize "Cancelar NFC-e e a venda").',
           )
         }
 

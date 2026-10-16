@@ -171,3 +171,33 @@ export async function montarDocumentoFiscal(params: {
 
   return json as ResultadoPrevisualizacaoNota
 }
+
+export interface DocumentoFiscalRegistro {
+  id: string
+  empresa_id: string
+  modelo: ModeloDocumentoFiscal
+  status: StatusDocumentoFiscal
+  contingencia?: boolean
+  numero?: number
+  serie?: string
+  chave_acesso?: string
+  protocolo?: string
+  danfe_url?: string
+  qrcode_url?: string
+  url_consulta?: string
+  referencia?: string
+  mensagem_sefaz?: string
+}
+
+/**
+ * Busca documento fiscal por ID
+ */
+export async function obterDocumentoFiscalPorId(
+  id: string,
+): Promise<DocumentoFiscalRegistro | null> {
+  try {
+    return await pb.collection('documentos_fiscais').getOne<DocumentoFiscalRegistro>(id)
+  } catch (_) {
+    return null
+  }
+}

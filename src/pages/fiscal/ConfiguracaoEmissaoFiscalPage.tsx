@@ -68,6 +68,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
 
   // Campos do formulário
   const [emiteDocs, setEmiteDocs] = useState<boolean>(true)
+  const [emiteNfce, setEmiteNfce] = useState<boolean>(false)
   const [codigoToken, setCodigoToken] = useState<string>('')
   const [presencaComprador, setPresencaComprador] = useState<PresencaCompradorNfe>('1 Presencial')
   const [ambiente, setAmbiente] = useState<AmbienteFiscal>('Homologação')
@@ -125,6 +126,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
       const cfg = await obterOuCriarConfigEmissaoFiscal(empresaAtiva.id)
       setConfig(cfg)
       setEmiteDocs(cfg.emite_documentos_fiscais)
+      setEmiteNfce(Boolean(cfg.emite_nfce))
       setCodigoToken(cfg.codigo_token || '')
       setPresencaComprador(cfg.presenca_comprador_padrao_nfe || '1 Presencial')
       setAmbiente(cfg.ambiente || 'Homologação')
@@ -281,6 +283,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
         id: config?.id,
         empresa_id: empresaAtiva.id,
         emite_documentos_fiscais: emiteDocs,
+        emite_nfce: emiteNfce,
         codigo_token: codigoToken,
         presenca_comprador_padrao_nfe: presencaComprador,
         ambiente: ambiente,
@@ -367,6 +370,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
       setConfig(atualizada)
       setPresencaComprador(atualizada.presenca_comprador_padrao_nfe)
       setAmbiente(atualizada.ambiente)
+      setEmiteNfce(Boolean(atualizada.emite_nfce))
       setSerieNfe(atualizada.serie_nfe)
       setSerieNfce(atualizada.serie_nfce)
       setEmitirNfceAutoPdv(atualizada.emitir_nfce_automaticamente_no_pdv)
@@ -487,7 +491,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
             </div>
           )}
 
-          {!cscConfigurado && emiteDocs && !semIeValida && (
+          {!cscConfigurado && emiteDocs && emiteNfce && !semIeValida && (
             <div className="flex items-center gap-3 p-3.5 rounded-xl border border-amber-200 bg-amber-50/70 text-amber-900 text-sm">
               <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
               <div className="flex-1">
@@ -676,6 +680,24 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="flex items-center justify-between p-3.5 rounded-lg border bg-slate-50/70">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="emite_nfce" className="font-semibold text-slate-800">
+                      Emitir NFC-e (Modelo 65 - Varejo / PDV)
+                    </Label>
+                    <p className="text-xs text-slate-500">
+                      Habilita esta loja física para emitir NFC-e no terminal de PDV. Mantenha
+                      desligado para matriz ou lojas exclusivamente virtuais/NF-e.
+                    </p>
+                  </div>
+                  <Switch
+                    id="emite_nfce"
+                    checked={emiteNfce}
+                    onCheckedChange={setEmiteNfce}
+                    disabled={semIeValida || !administrador}
+                  />
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="presenca_comprador">Presença do Comprador Padrão (NF-e)</Label>
@@ -782,41 +804,50 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex flex-col justify-center space-y-2 p-3 rounded-lg border bg-slate-50/50">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="csc_cfg" className="text-xs font-semibold">
-                        CSC Configurado na Focus NFe
-                      </Label>
-                      <Switch
-                        id="csc_cfg"
-                        checked={cscConfigurado}
-                        onCheckedChange={setCscConfigurado}
-                        disabled={!administrador}
-                      />
+                  {emiteNfce ? (
+                    <div className="flex flex-col justify-center space-y-2 p-3 rounded-lg border bg-slate-50/50">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="csc_cfg" className="text-xs font-semibold">
+                          CSC Configurado na Focus NFe
+                        </Label>
+                        <Switch
+                          id="csc_cfg"
+                          checked={cscConfigurado}
+                          onCheckedChange={setCscConfigurado}
+                          disabled={!administrador}
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Marque após cadastrar o CSC e IdToken no painel da Focus.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      Marque após cadastrar o CSC e IdToken no painel da Focus.
-                    </p>
-                  </div>
+                  ) : (
+                    <div className="p-3 rounded-lg border bg-slate-50/30 text-xs text-muted-foreground flex items-center">
+                      NFC-e desativada para esta empresa. O aviso de CSC e emissão em PDV ficam
+                      ocultos.
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t">
-                  <div className="flex items-center justify-between p-3 rounded-lg border bg-slate-50/50">
-                    <div className="space-y-0.5 pr-2">
-                      <Label htmlFor="emitir_pdv_auto" className="text-xs font-semibold">
-                        Emitir NFC-e Automaticamente no PDV
-                      </Label>
-                      <p className="text-[11px] text-muted-foreground">
-                        Emite e imprime cupom fiscal imediatamente na finalização do caixa.
-                      </p>
+                  {emiteNfce && (
+                    <div className="flex items-center justify-between p-3 rounded-lg border bg-slate-50/50">
+                      <div className="space-y-0.5 pr-2">
+                        <Label htmlFor="emitir_pdv_auto" className="text-xs font-semibold">
+                          Emitir NFC-e Automaticamente no PDV
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground">
+                          Emite e imprime cupom fiscal imediatamente na finalização do caixa.
+                        </p>
+                      </div>
+                      <Switch
+                        id="emitir_pdv_auto"
+                        checked={emitirNfceAutoPdv}
+                        onCheckedChange={setEmitirNfceAutoPdv}
+                        disabled={!administrador}
+                      />
                     </div>
-                    <Switch
-                      id="emitir_pdv_auto"
-                      checked={emitirNfceAutoPdv}
-                      onCheckedChange={setEmitirNfceAutoPdv}
-                      disabled={!administrador}
-                    />
-                  </div>
+                  )}
 
                   <div className="flex items-center justify-between p-3 rounded-lg border bg-slate-50/50">
                     <div className="space-y-0.5 pr-2">

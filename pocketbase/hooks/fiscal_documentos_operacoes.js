@@ -871,10 +871,23 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
             } catch (_) {}
           }
           const tpag = formaRec ? formaRec.getString('codigo_tpag') || '01' : '01'
-          formasPagamentoFocus.push({
+          const itemPgFocus = {
             forma_pagamento: tpag,
             valor_pagamento: pg.getFloat('valor') || 0,
-          })
+          }
+
+          // Cartão com bandeira_operadora e numero_autorizacao se preenchidos
+          const bandeira = (pg.getString('bandeira') || '').trim()
+          const nsu = (pg.getString('nsu') || '').trim()
+          const codAut = (pg.getString('codigo_autorizacao') || '').trim()
+          if (bandeira) {
+            itemPgFocus.bandeira_operadora = bandeira
+          }
+          if (codAut || nsu) {
+            itemPgFocus.numero_autorizacao = codAut || nsu
+          }
+
+          formasPagamentoFocus.push(itemPgFocus)
         }
       } else {
         formasPagamentoFocus.push({
@@ -887,18 +900,25 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       const dataHojeIso = new Date().toISOString()
       const nomeDestinatarioFinal =
         ambiente === 'Homologação'
-          ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+          ? modelo === '65'
+            ? 'NF-C-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+            : 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
           : destinatarioNome
+
+      const presencaCompradorFinal = modelo === '65' ? '1' : presencaPadrao.charAt(0)
+      const modalidadeFreteFinal = modelo === '65' ? 9 : 9
+      const localDestinoFinal = modelo === '65' ? 1 : localDestino
+      const consumidorFinalFlag = modelo === '65' ? 1 : destinatarioConsumidorFinal ? 1 : 0
 
       const jsonFocus = {
         natureza_operacao: naturezaPadrao,
         data_emissao: dataHojeIso,
         tipo_documento: 1,
         finalidade_emissao: 1,
-        local_destino: localDestino,
-        consumidor_final: destinatarioConsumidorFinal ? 1 : 0,
-        presenca_comprador: presencaPadrao.charAt(0),
-        modalidade_frete: 9,
+        local_destino: localDestinoFinal,
+        consumidor_final: consumidorFinalFlag,
+        presenca_comprador: presencaCompradorFinal,
+        modalidade_frete: modalidadeFreteFinal,
         cnpj_emitente: cnpjEmitenteLimpo,
 
         nome_destinatario: nomeDestinatarioFinal,
@@ -915,6 +935,12 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         items: itensFocus,
         formas_pagamento: formasPagamentoFocus,
         informacoes_adicionais_contribuinte: infoComplPadrao || undefined,
+      }
+
+      // Troco informado conforme Focus NFe se houver
+      const valorTrocoVenda = venda ? venda.getFloat('valor_troco') || 0 : 0
+      if (valorTrocoVenda > 0) {
+        jsonFocus.valor_troco = round2(valorTrocoVenda)
       }
 
       if (destinatarioCpfCnpj.length === 11) {

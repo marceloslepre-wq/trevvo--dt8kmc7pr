@@ -70,7 +70,12 @@ import {
   RotateCcw,
   CheckCircle,
   Package,
+  Receipt,
+  Printer,
+  RefreshCw,
 } from 'lucide-react'
+import { obterConfigFiscalEmpresa, ConfigEmissaoFiscal } from '@/services/configEmissaoFiscal'
+import { emitirNFCeVenda, imprimirDanfeUrl } from '@/services/fiscalIntegracao'
 
 export const PdvPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
@@ -85,9 +90,19 @@ export const PdvPage: React.FC = () => {
   const [terminais, setTerminais] = useState<PdvTerminal[]>([])
   const [terminalAtivo, setTerminalAtivo] = useState<PdvTerminal | null>(null)
   const [configVendas, setConfigVendas] = useState<ConfigVendasEmpresa | null>(null)
+  const [configFiscal, setConfigFiscal] = useState<ConfigEmissaoFiscal | null>(null)
   const [formasPagamento, setFormasPagamento] = useState<FormaPagamento[]>([])
   const [contasFinanceiras, setContasFinanceiras] = useState<ContaFinanceira[]>([])
   const [condicoesPagamento, setCondicoesPagamento] = useState<CondicaoPagamento[]>([])
+
+  // Modal de Aviso de Rejeição de NFC-e no PDV
+  const [modalRejeicaoNfceAberto, setModalRejeicaoNfceAberto] = useState(false)
+  const [dadosRejeicaoNfce, setDadosRejeicaoNfce] = useState<{
+    vendaId: string
+    numeroVenda: number
+    motivo: string
+  } | null>(null)
+  const [reemitindoNfce, setReemitindoNfce] = useState(false)
 
   // Catálogo de produtos em memória
   const [produtosCatalogo, setProdutosCatalogo] = useState<Produto[]>([])
@@ -175,18 +190,20 @@ export const PdvPage: React.FC = () => {
     if (!empresaAtiva?.id || !usuario?.id) return
 
     try {
-      const [sessao, terms, cfg, formas, contas, conds] = await Promise.all([
+      const [sessao, terms, cfg, formas, contas, conds, cfgFiscal] = await Promise.all([
         obterSessaoAbertaOperador(empresaAtiva.id, usuario.id),
         listarTerminais(empresaAtiva.id),
         obterOuCriarConfigVendasEmpresa(empresaAtiva.id),
         listarFormasPagamento(empresaAtiva.id),
         listarContasFinanceiras(empresaAtiva.id),
         listarTodasCondicoesAtivas('Vendas'),
+        obterConfigFiscalEmpresa(empresaAtiva.id).catch(() => null),
       ])
 
       setSessaoCaixa(sessao)
       setTerminais(terms)
       setConfigVendas(cfg)
+      setConfigFiscal(cfgFiscal)
       setFormasPagamento(formas)
       setContasFinanceiras(contas)
       setCondicoesPagamento(conds)
@@ -750,93 +767,154 @@ export const PdvPage: React.FC = () => {
       })),
     })
 
-    // 3. Imprime Comprovante Não Fiscal no formato 80mm
-    try {
-      let vendaImpressao: Venda = vendaSalva
-      let itensImpressao: VendaItem[] = []
-      let pagamentosImpressao: VendaPagamento[] = []
+    // 3. Emissão Fiscal de NFC-e ou Comprovante Não Fiscal
+    const podeEmitirNfce =
+      configFiscal &&
+      configFiscal.emite_documentos_fiscais &&
+      configFiscal.emite_nfce &&
+      configFiscal.emitir_nfce_automaticamente_no_pdv
 
-      try {
-        const completa = await obterVendaCompleta(vendaSalva.id)
-        vendaImpressao = completa.venda
-        itensImpressao = completa.itens
-        pagamentosImpressao = completa.pagamentos
-      } catch {
-        vendaImpressao = {
-          ...vendaSalva,
-          status: 'Finalizada',
-          valor_troco: vendaFinalizada.valor_troco ?? troco,
-          valor_total: vendaFinalizada.valor_total ?? vendaSalva.valor_total,
+    let nfceAutorizada = false
+    let nfceDanfeUrl = ''
+
+    if (podeEmitirNfce) {
+      if (!configFiscal.csc_configurado) {
+        toast({
+          title: 'Aviso Fiscal',
+          description: 'CSC da NFC-e não configurado para esta loja.',
+          variant: 'destructive',
+        })
+      } else {
+        try {
+          const respNfce = await emitirNFCeVenda({
+            vendaId: vendaSalva.id,
+          })
+
+          if (respNfce.sucesso && respNfce.status === 'Autorizada') {
+            nfceAutorizada = true
+            nfceDanfeUrl = respNfce.danfe_url || ''
+            toast({
+              title: respNfce.contingencia ? 'NFC-e Emitida em Contingência!' : 'NFC-e Autorizada!',
+              description: `Nota nº ${respNfce.numero || ''} autorizada com sucesso na SEFAZ.`,
+            })
+          } else {
+            // Rejeição ou erro na Focus/SEFAZ
+            setDadosRejeicaoNfce({
+              vendaId: vendaSalva.id,
+              numeroVenda: vendaFinalizada.numero || 0,
+              motivo: respNfce.message || 'Rejeição na SEFAZ',
+            })
+            setModalRejeicaoNfceAberto(true)
+          }
+        } catch (errNfce: any) {
+          console.error('Erro ao emitir NFC-e no PDV:', errNfce)
+          const msg = errNfce?.data?.message || errNfce?.message || 'Falha na emissão da NFC-e.'
+          setDadosRejeicaoNfce({
+            vendaId: vendaSalva.id,
+            numeroVenda: vendaFinalizada.numero || 0,
+            motivo: msg,
+          })
+          setModalRejeicaoNfceAberto(true)
         }
-        itensImpressao = itens.map((it) => ({
-          id: it.tempId,
-          venda_id: vendaSalva.id,
-          item: it.item,
-          produto_id: it.produto_id,
-          descricao: it.descricao,
-          unidade: it.unidade,
-          quantidade: it.quantidade,
-          preco_unitario: it.preco_unitario,
-          preco_tabela: it.preco_tabela,
-          desconto_percentual: it.desconto_percentual,
-          desconto_valor: it.desconto_valor,
-          acrescimo_valor: it.acrescimo_valor,
-          valor_total: it.valor_total,
-          ativo: true,
-        }))
-        pagamentosImpressao = pagamentos.map((p, idx) => ({
-          id: String(idx),
-          venda_id: vendaSalva.id,
-          forma_pagamento_id: p.forma_pagamento_id,
-          valor: p.valor,
-          parcelas: p.parcelas,
-          bandeira: p.bandeira,
-          nsu: p.nsu,
-          codigo_autorizacao: p.codigo_autorizacao,
-          conta_financeira_id: p.conta_financeira_id,
-          ativo: true,
-          expand: {
-            forma_pagamento_id: formasPagamento.find((f) => f.id === p.forma_pagamento_id),
+      }
+    }
+
+    // 4. Impressão: Se NFC-e autorizada, imprime o DANFCe (danfe_url) em bobina 80mm;
+    // Se não autorizada, imprime o comprovante não fiscal com observação "NFC-e pendente".
+    try {
+      if (nfceAutorizada && nfceDanfeUrl) {
+        imprimirDanfeUrl(nfceDanfeUrl)
+      } else {
+        let vendaImpressao: Venda = vendaSalva
+        let itensImpressao: VendaItem[] = []
+        let pagamentosImpressao: VendaPagamento[] = []
+
+        try {
+          const completa = await obterVendaCompleta(vendaSalva.id)
+          vendaImpressao = completa.venda
+          itensImpressao = completa.itens
+          pagamentosImpressao = completa.pagamentos
+        } catch {
+          vendaImpressao = {
+            ...vendaSalva,
+            status: 'Finalizada',
+            valor_troco: vendaFinalizada.valor_troco ?? troco,
+            valor_total: vendaFinalizada.valor_total ?? vendaSalva.valor_total,
+          }
+          itensImpressao = itens.map((it) => ({
+            id: it.tempId,
+            venda_id: vendaSalva.id,
+            item: it.item,
+            produto_id: it.produto_id,
+            descricao: it.descricao,
+            unidade: it.unidade,
+            quantidade: it.quantidade,
+            preco_unitario: it.preco_unitario,
+            preco_tabela: it.preco_tabela,
+            desconto_percentual: it.desconto_percentual,
+            desconto_valor: it.desconto_valor,
+            acrescimo_valor: it.acrescimo_valor,
+            valor_total: it.valor_total,
+            ativo: true,
+          }))
+          pagamentosImpressao = pagamentos.map((p, idx) => ({
+            id: String(idx),
+            venda_id: vendaSalva.id,
+            forma_pagamento_id: p.forma_pagamento_id,
+            valor: p.valor,
+            parcelas: p.parcelas,
+            bandeira: p.bandeira,
+            nsu: p.nsu,
+            codigo_autorizacao: p.codigo_autorizacao,
+            conta_financeira_id: p.conta_financeira_id,
+            ativo: true,
+            expand: {
+              forma_pagamento_id: formasPagamento.find((f) => f.id === p.forma_pagamento_id),
+            },
+          }))
+        }
+
+        const msgRodape = configFiscal?.emite_nfce
+          ? `${configVendas?.mensagem_rodape_comprovante ? configVendas.mensagem_rodape_comprovante + ' | ' : ''}NFC-e pendente`
+          : configVendas?.mensagem_rodape_comprovante || undefined
+
+        const dadosImpressao: DadosImpressaoVenda = {
+          venda: vendaImpressao,
+          itens: itensImpressao,
+          pagamentos: pagamentosImpressao,
+          empresa: {
+            razao_social: empresaAtiva.razao_social,
+            nome_fantasia: empresaAtiva.nome_fantasia,
+            cnpj: empresaAtiva.cnpj,
+            telefone: empresaAtiva.telefone,
+            email: empresaAtiva.email,
+            logradouro: empresaAtiva.logradouro,
+            numero: empresaAtiva.numero,
+            bairro: empresaAtiva.bairro,
+            cidade: empresaAtiva.municipio,
+            uf: empresaAtiva.uf,
           },
-        }))
-      }
+          cliente: cliente
+            ? {
+                nome_razao_social: cliente.nome_razao_social,
+                nome: cliente.nome_fantasia || cliente.nome_razao_social,
+                cpf_cnpj: cliente.cpf_cnpj || cpfCnpjCupom,
+                telefone: cliente.telefone,
+                celular: cliente.celular,
+                email: cliente.email,
+                logradouro: cliente.logradouro,
+                numero: cliente.numero,
+                bairro: cliente.bairro,
+                cidade: cliente.municipio,
+                uf: cliente.uf,
+              }
+            : undefined,
+          vendedorNome: vendedor?.nome || undefined,
+          mensagemRodape: msgRodape,
+        }
 
-      const dadosImpressao: DadosImpressaoVenda = {
-        venda: vendaImpressao,
-        itens: itensImpressao,
-        pagamentos: pagamentosImpressao,
-        empresa: {
-          razao_social: empresaAtiva.razao_social,
-          nome_fantasia: empresaAtiva.nome_fantasia,
-          cnpj: empresaAtiva.cnpj,
-          telefone: empresaAtiva.telefone,
-          email: empresaAtiva.email,
-          logradouro: empresaAtiva.logradouro,
-          numero: empresaAtiva.numero,
-          bairro: empresaAtiva.bairro,
-          cidade: empresaAtiva.municipio,
-          uf: empresaAtiva.uf,
-        },
-        cliente: cliente
-          ? {
-              nome_razao_social: cliente.nome_razao_social,
-              nome: cliente.nome_fantasia || cliente.nome_razao_social,
-              cpf_cnpj: cliente.cpf_cnpj || cpfCnpjCupom,
-              telefone: cliente.telefone,
-              celular: cliente.celular,
-              email: cliente.email,
-              logradouro: cliente.logradouro,
-              numero: cliente.numero,
-              bairro: cliente.bairro,
-              cidade: cliente.municipio,
-              uf: cliente.uf,
-            }
-          : undefined,
-        vendedorNome: vendedor?.nome || undefined,
-        mensagemRodape: configVendas?.mensagem_rodape_comprovante || undefined,
+        imprimirComprovanteNaoFiscal(dadosImpressao)
       }
-
-      imprimirComprovanteNaoFiscal(dadosImpressao)
     } catch (errImp) {
       console.warn('Erro ao acionar impressão do cupom:', errImp)
     }
@@ -1545,6 +1623,101 @@ export const PdvPage: React.FC = () => {
             focarLeitor()
           }}
         />
+      )}
+
+      {/* MODAL AVISO DE REJEIÇÃO NFC-E (PDV) */}
+      {modalRejeicaoNfceAberto && dadosRejeicaoNfce && (
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-600/60 rounded-xl max-w-lg w-full p-6 text-white space-y-4 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30 shrink-0">
+                <AlertTriangle size={26} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-amber-300">NFC-e Rejeitada pela SEFAZ</h3>
+                <p className="text-xs text-slate-300 mt-1">
+                  A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com sucesso no caixa, mas a
+                  emissão da nota fiscal foi rejeitada.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-950/80 rounded-lg border border-slate-800 text-xs font-mono text-amber-200 break-words leading-relaxed max-h-36 overflow-y-auto">
+              <span className="text-slate-400 font-sans block mb-1 font-bold">
+                Motivo retornado:
+              </span>
+              {dadosRejeicaoNfce.motivo}
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Você pode tentar reenviar a mesma nota agora ou fechar este aviso para continuar
+              atendendo os clientes. A venda ficará com status "Rejeitada" no monitor fiscal.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalRejeicaoNfceAberto(false)
+                  setDadosRejeicaoNfce(null)
+                  focarLeitor()
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold"
+              >
+                Seguir Vendendo (Fechar)
+              </button>
+
+              <button
+                type="button"
+                disabled={reemitindoNfce}
+                onClick={async () => {
+                  if (!dadosRejeicaoNfce?.vendaId) return
+                  setReemitindoNfce(true)
+                  try {
+                    const resp = await emitirNFCeVenda({
+                      vendaId: dadosRejeicaoNfce.vendaId,
+                    })
+                    if (resp.sucesso && resp.status === 'Autorizada') {
+                      toast({
+                        title: 'NFC-e Autorizada!',
+                        description: `Nota autorizada com sucesso na SEFAZ.`,
+                      })
+                      if (resp.danfe_url) {
+                        imprimirDanfeUrl(resp.danfe_url)
+                      }
+                      setModalRejeicaoNfceAberto(false)
+                      setDadosRejeicaoNfce(null)
+                      focarLeitor()
+                    } else {
+                      setDadosRejeicaoNfce((prev) =>
+                        prev ? { ...prev, motivo: resp.message || 'Falha na reemissão' } : null,
+                      )
+                      toast({
+                        title: 'Tentativa Rejeitada',
+                        description: resp.message || 'Verifique o cadastro fiscal.',
+                        variant: 'destructive',
+                      })
+                    }
+                  } catch (errRetry: any) {
+                    const msg = errRetry?.data?.message || errRetry?.message || 'Falha na conexão.'
+                    setDadosRejeicaoNfce((prev) => (prev ? { ...prev, motivo: msg } : null))
+                    toast({
+                      title: 'Erro ao tentar de novo',
+                      description: msg,
+                      variant: 'destructive',
+                    })
+                  } finally {
+                    setReemitindoNfce(false)
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={reemitindoNfce ? 'animate-spin' : ''} />
+                <span>{reemitindoNfce ? 'Transmitindo...' : 'Tentar de novo'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
