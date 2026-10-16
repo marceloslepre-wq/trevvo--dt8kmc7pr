@@ -94,6 +94,10 @@ import { TrocasDevolucoesPage } from '@/pages/vendas/TrocasDevolucoesPage'
 import { ComissoesPage } from '@/pages/vendas/ComissoesPage'
 import { ConsultasVendasPage } from '@/pages/vendas/ConsultasVendasPage'
 
+// Páginas Fiscais (Etapa 6)
+import ConfiguracaoEmissaoFiscalPage from '@/pages/fiscal/ConfiguracaoEmissaoFiscalPage'
+import DocumentosFiscaisPlaceholderPage from '@/pages/fiscal/DocumentosFiscaisPlaceholderPage'
+
 const App = () => (
   <BrowserRouter>
     <AuthProvider>
@@ -777,6 +781,24 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="vendas" acao="ver">
                         <ConfigVendasPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  {/* Módulo Fiscal (Etapa 6) */}
+                  <Route path="/fiscal" element={<Navigate to="/fiscal/configuracoes" replace />} />
+                  <Route
+                    path="/fiscal/configuracoes"
+                    element={
+                      <PermissaoGuard modulo="notas_saida" acao="ver">
+                        <ConfiguracaoEmissaoFiscalPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/fiscal/documentos"
+                    element={
+                      <PermissaoGuard modulo="notas_saida" acao="ver">
+                        <DocumentosFiscaisPlaceholderPage />
                       </PermissaoGuard>
                     }
                   />

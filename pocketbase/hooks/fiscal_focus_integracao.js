@@ -1,0 +1,1219 @@
+// @ts-check
+/// <reference path="../types.d.ts" />
+
+/**
+ * SERVIÇO ÚNICO DE INTEGRAÇÃO FISCAL COM A FOCUS NFE
+ *
+ * É o ÚNICO código do sistema que se comunica com a API da Focus NFe.
+ * O token da Focus NFe NUNCA vai para o navegador.
+ *
+ * Em conformidade com o JSVM do PocketBase (Goja / isolate pool), todas as
+ * rotinas de negócio e chamadas $http são executadas internamente em cada callback.
+ *
+ * Endpoints:
+ * - POST /backend/v1/fiscal/testar-conexao
+ * - POST /backend/v1/fiscal/emitir-nfce
+ * - POST /backend/v1/fiscal/emitir-nfe
+ * - POST /backend/v1/fiscal/consultar
+ * - POST /backend/v1/fiscal/cancelar
+ * - POST /backend/v1/fiscal/carta-correcao
+ * - POST /backend/v1/fiscal/inutilizar
+ * - POST /backend/v1/fiscal/baixar-arquivo
+ * - GET  /backend/v1/fiscal/status-segredos
+ */
+
+/**
+ * POST /backend/v1/fiscal/testar-conexao
+ * Testa conexão GET /hooks no ambiente da empresa
+ * Body: { empresa_id: string }
+ */
+routerAdd(
+  'POST',
+  '/backend/v1/fiscal/testar-conexao',
+  (c) => {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+    }
+
+    const data = c.requestInfo().body || {}
+    const empresaId = data.empresa_id
+
+    if (!empresaId) {
+      return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
+    }
+
+    // Validação da empresa
+    const empresa = $app.findRecordById('empresas', empresaId)
+    if (!empresa || !empresa.getBool('ativo')) {
+      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
+    }
+
+    const nomeEmpresa =
+      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
+
+    // Carregar config fiscal
+    const configs = $app.findRecordsByFilter(
+      'config_emissao_fiscal',
+      `empresa_id = '${empresaId}' && ativo = true`,
+      '-created',
+      1,
+      0,
+    )
+
+    if (!configs || configs.length === 0) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
+      })
+    }
+
+    const config = configs[0]
+    if (!config.getBool('emite_documentos_fiscais')) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não emite NF-e/NFC-e.`,
+      })
+    }
+
+    const ie = (empresa.getString('inscricao_estadual') || '').trim().toUpperCase()
+    if (!ie || ie === 'ISENTO') {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) possui Inscrição Estadual ${ie || 'vazia'} e não pode emitir NF-e/NFC-e.`,
+      })
+    }
+
+    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
+    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+    const nomeSegredo = codigoToken
+      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+    let token = ''
+    try {
+      token = ($os.getenv(nomeSegredo) || '').trim()
+    } catch (_) {
+      token = ''
+    }
+
+    if (!token) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+      })
+    }
+
+    const baseUrl =
+      ambiente === 'Produção'
+        ? 'https://api.focusnfe.com.br/v2'
+        : 'https://homologacao.focusnfe.com.br/v2'
+
+    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+    let sucesso = false
+    let mensagemRetorno = ''
+    let statusCode = 0
+    let jsonResp = null
+
+    try {
+      const res = $http.send({
+        method: 'GET',
+        url: `${baseUrl}/hooks`,
+        headers: {
+          Authorization: basicAuthHeader,
+          Accept: 'application/json',
+        },
+        timeout: 60,
+      })
+
+      statusCode = res.statusCode || 200
+      const rawText = res.raw ? res.raw : ''
+      try {
+        jsonResp = JSON.parse(rawText)
+      } catch (_) {
+        jsonResp = null
+      }
+
+      if (statusCode === 200) {
+        sucesso = true
+        mensagemRetorno = 'Conexão com a Focus NFe funcionando'
+      } else if (statusCode === 401) {
+        sucesso = false
+        mensagemRetorno = 'Token inválido: confira o segredo do ambiente'
+      } else {
+        sucesso = false
+        if (jsonResp && (jsonResp.mensagem || jsonResp.message)) {
+          mensagemRetorno = jsonResp.mensagem || jsonResp.message
+        } else {
+          mensagemRetorno = `Focus NFe retornou status HTTP ${statusCode}`
+        }
+      }
+    } catch (err) {
+      sucesso = false
+      mensagemRetorno = 'Sem comunicação com a API emissora'
+    }
+
+    // Gravar resultado na config_emissao_fiscal
+    try {
+      config.set('ultimo_teste_conexao_data', new Date().toISOString())
+      config.set('ultimo_teste_conexao_sucesso', sucesso)
+      config.set('ultimo_teste_conexao_mensagem', mensagemRetorno)
+      config.set('updated_by', authRecord.id)
+      $app.save(config)
+    } catch (_) {}
+
+    return c.json(200, {
+      sucesso: sucesso,
+      message: mensagemRetorno,
+      ambiente: ambiente,
+      segredo_nome: nomeSegredo,
+      status_code: statusCode,
+      dados: jsonResp,
+    })
+  },
+  $apis.requireAuth(),
+)
+
+/**
+ * GET /backend/v1/fiscal/status-segredos
+ * Retorna se o segredo de cada empresa está configurado no Skip Cloud (sim/não, NUNCA o valor)
+ */
+routerAdd(
+  'GET',
+  '/backend/v1/fiscal/status-segredos',
+  (c) => {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+    }
+
+    const configs = $app.findRecordsByFilter('config_emissao_fiscal', 'ativo = true', 'empresa_id')
+    const statusPorEmpresa = {}
+
+    for (let i = 0; i < configs.length; i++) {
+      const cfg = configs[i]
+      const empId = cfg.getString('empresa_id')
+      const ambiente = cfg.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+      const codToken = (cfg.getString('codigo_token') || '').trim().toUpperCase()
+      const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+      const nomeSegredo = codToken
+        ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codToken}`
+        : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+      let tokenVal = ''
+      try {
+        tokenVal = ($os.getenv(nomeSegredo) || '').trim()
+      } catch (_) {
+        tokenVal = ''
+      }
+
+      statusPorEmpresa[empId] = {
+        segredo_nome: nomeSegredo,
+        segredo_configurado: Boolean(tokenVal && tokenVal.length > 5),
+        ambiente: ambiente,
+      }
+    }
+
+    return c.json(200, { sucesso: true, status: statusPorEmpresa })
+  },
+  $apis.requireAuth(),
+)
+
+/**
+ * POST /backend/v1/fiscal/emitir-nfce
+ * POST /nfce?ref={ref} (síncrona; status "autorizado" ou "erro_autorizacao").
+ * Body: { empresa_id: string, ref: string, dados: object, forma_emissao?: string }
+ */
+routerAdd(
+  'POST',
+  '/backend/v1/fiscal/emitir-nfce',
+  (c) => {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+    }
+
+    const data = c.requestInfo().body || {}
+    const empresaId = data.empresa_id
+    const ref = (data.ref || '').trim()
+    const dados = data.dados || {}
+    const formaEmissao = (data.forma_emissao || '').trim()
+
+    if (!empresaId || !ref) {
+      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
+    }
+
+    const empresa = $app.findRecordById('empresas', empresaId)
+    if (!empresa || !empresa.getBool('ativo')) {
+      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
+    }
+
+    const nomeEmpresa =
+      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
+
+    const configs = $app.findRecordsByFilter(
+      'config_emissao_fiscal',
+      `empresa_id = '${empresaId}' && ativo = true`,
+      '-created',
+      1,
+      0,
+    )
+
+    if (!configs || configs.length === 0) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
+      })
+    }
+
+    const config = configs[0]
+    if (!config.getBool('emite_documentos_fiscais')) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não emite NF-e/NFC-e.`,
+      })
+    }
+
+    const ie = (empresa.getString('inscricao_estadual') || '').trim().toUpperCase()
+    if (!ie || ie === 'ISENTO') {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) possui Inscrição Estadual ${ie || 'vazia'} e não pode emitir NF-e/NFC-e.`,
+      })
+    }
+
+    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
+    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+    const nomeSegredo = codigoToken
+      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+    let token = ''
+    try {
+      token = ($os.getenv(nomeSegredo) || '').trim()
+    } catch (_) {}
+
+    if (!token) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+      })
+    }
+
+    const baseUrl =
+      ambiente === 'Produção'
+        ? 'https://api.focusnfe.com.br/v2'
+        : 'https://homologacao.focusnfe.com.br/v2'
+
+    let url = `${baseUrl}/nfce?ref=${encodeURIComponent(ref)}`
+    if (formaEmissao) {
+      url += `&forma_emissao=${encodeURIComponent(formaEmissao)}`
+    }
+
+    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+
+    try {
+      const res = $http.send({
+        method: 'POST',
+        url: url,
+        headers: {
+          Authorization: basicAuthHeader,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dados),
+        timeout: 60,
+      })
+
+      const statusCode = res.statusCode || 200
+      const rawText = res.raw ? res.raw : ''
+      let jsonResp = null
+      try {
+        jsonResp = JSON.parse(rawText)
+      } catch (_) {}
+
+      if (statusCode >= 200 && statusCode < 300) {
+        return c.json(200, {
+          sucesso: true,
+          ambiente: ambiente,
+          dados: jsonResp,
+        })
+      }
+
+      let msg = ''
+      if (statusCode === 401) {
+        msg = 'Token inválido: confira o segredo do ambiente'
+      } else if (jsonResp && typeof jsonResp === 'object') {
+        const principal = jsonResp.mensagem || jsonResp.message || ''
+        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
+        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
+          const det = jsonResp.erros
+            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
+            .join('; ')
+          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
+        } else {
+          msg = `${cod}${principal || 'Erro na Focus NFe'}`
+        }
+      } else {
+        msg = `Focus NFe retornou status HTTP ${statusCode}`
+      }
+
+      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
+        sucesso: false,
+        message: msg,
+        detalhes: jsonResp || rawText,
+      })
+    } catch (err) {
+      return c.json(500, {
+        sucesso: false,
+        message: 'Sem comunicação com a API emissora',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+/**
+ * POST /backend/v1/fiscal/emitir-nfe
+ * POST /nfe?ref={ref} (assíncrona; volta "processando_autorizacao").
+ * Body: { empresa_id: string, ref: string, dados: object }
+ */
+routerAdd(
+  'POST',
+  '/backend/v1/fiscal/emitir-nfe',
+  (c) => {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+    }
+
+    const data = c.requestInfo().body || {}
+    const empresaId = data.empresa_id
+    const ref = (data.ref || '').trim()
+    const dados = data.dados || {}
+
+    if (!empresaId || !ref) {
+      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
+    }
+
+    const empresa = $app.findRecordById('empresas', empresaId)
+    if (!empresa || !empresa.getBool('ativo')) {
+      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
+    }
+
+    const nomeEmpresa =
+      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
+
+    const configs = $app.findRecordsByFilter(
+      'config_emissao_fiscal',
+      `empresa_id = '${empresaId}' && ativo = true`,
+      '-created',
+      1,
+      0,
+    )
+
+    if (!configs || configs.length === 0) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
+      })
+    }
+
+    const config = configs[0]
+    if (!config.getBool('emite_documentos_fiscais')) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não emite NF-e/NFC-e.`,
+      })
+    }
+
+    const ie = (empresa.getString('inscricao_estadual') || '').trim().toUpperCase()
+    if (!ie || ie === 'ISENTO') {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) possui Inscrição Estadual ${ie || 'vazia'} e não pode emitir NF-e/NFC-e.`,
+      })
+    }
+
+    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
+    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+    const nomeSegredo = codigoToken
+      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+    let token = ''
+    try {
+      token = ($os.getenv(nomeSegredo) || '').trim()
+    } catch (_) {}
+
+    if (!token) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+      })
+    }
+
+    const baseUrl =
+      ambiente === 'Produção'
+        ? 'https://api.focusnfe.com.br/v2'
+        : 'https://homologacao.focusnfe.com.br/v2'
+
+    const url = `${baseUrl}/nfe?ref=${encodeURIComponent(ref)}`
+    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+
+    try {
+      const res = $http.send({
+        method: 'POST',
+        url: url,
+        headers: {
+          Authorization: basicAuthHeader,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dados),
+        timeout: 60,
+      })
+
+      const statusCode = res.statusCode || 200
+      const rawText = res.raw ? res.raw : ''
+      let jsonResp = null
+      try {
+        jsonResp = JSON.parse(rawText)
+      } catch (_) {}
+
+      if (statusCode >= 200 && statusCode < 300) {
+        return c.json(200, {
+          sucesso: true,
+          ambiente: ambiente,
+          dados: jsonResp,
+        })
+      }
+
+      let msg = ''
+      if (statusCode === 401) {
+        msg = 'Token inválido: confira o segredo do ambiente'
+      } else if (jsonResp && typeof jsonResp === 'object') {
+        const principal = jsonResp.mensagem || jsonResp.message || ''
+        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
+        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
+          const det = jsonResp.erros
+            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
+            .join('; ')
+          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
+        } else {
+          msg = `${cod}${principal || 'Erro na Focus NFe'}`
+        }
+      } else {
+        msg = `Focus NFe retornou status HTTP ${statusCode}`
+      }
+
+      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
+        sucesso: false,
+        message: msg,
+        detalhes: jsonResp || rawText,
+      })
+    } catch (err) {
+      return c.json(500, {
+        sucesso: false,
+        message: 'Sem comunicação com a API emissora',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+/**
+ * POST /backend/v1/fiscal/consultar
+ * GET /nfe/{ref}?completa=1 ou GET /nfce/{ref}?completa=1
+ * Body: { empresa_id: string, modelo: '55' | '65', ref: string }
+ */
+routerAdd(
+  'POST',
+  '/backend/v1/fiscal/consultar',
+  (c) => {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+    }
+
+    const data = c.requestInfo().body || {}
+    const empresaId = data.empresa_id
+    const modelo = String(data.modelo || '55').trim()
+    const ref = (data.ref || '').trim()
+
+    if (!empresaId || !ref) {
+      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
+    }
+
+    const empresa = $app.findRecordById('empresas', empresaId)
+    if (!empresa || !empresa.getBool('ativo')) {
+      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
+    }
+
+    const nomeEmpresa =
+      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
+
+    const configs = $app.findRecordsByFilter(
+      'config_emissao_fiscal',
+      `empresa_id = '${empresaId}' && ativo = true`,
+      '-created',
+      1,
+      0,
+    )
+
+    if (!configs || configs.length === 0) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
+      })
+    }
+
+    const config = configs[0]
+    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
+    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+    const nomeSegredo = codigoToken
+      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+    let token = ''
+    try {
+      token = ($os.getenv(nomeSegredo) || '').trim()
+    } catch (_) {}
+
+    if (!token) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+      })
+    }
+
+    const baseUrl =
+      ambiente === 'Produção'
+        ? 'https://api.focusnfe.com.br/v2'
+        : 'https://homologacao.focusnfe.com.br/v2'
+
+    const endpoint = modelo === '65' ? 'nfce' : 'nfe'
+    const url = `${baseUrl}/${endpoint}/${encodeURIComponent(ref)}?completa=1`
+    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+
+    try {
+      const res = $http.send({
+        method: 'GET',
+        url: url,
+        headers: {
+          Authorization: basicAuthHeader,
+          Accept: 'application/json',
+        },
+        timeout: 60,
+      })
+
+      const statusCode = res.statusCode || 200
+      const rawText = res.raw ? res.raw : ''
+      let jsonResp = null
+      try {
+        jsonResp = JSON.parse(rawText)
+      } catch (_) {}
+
+      if (statusCode >= 200 && statusCode < 300) {
+        return c.json(200, {
+          sucesso: true,
+          ambiente: ambiente,
+          dados: jsonResp,
+        })
+      }
+
+      let msg = ''
+      if (statusCode === 401) {
+        msg = 'Token inválido: confira o segredo do ambiente'
+      } else if (jsonResp && (jsonResp.mensagem || jsonResp.message)) {
+        msg = jsonResp.mensagem || jsonResp.message
+      } else {
+        msg = `Focus NFe retornou status HTTP ${statusCode}`
+      }
+
+      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
+        sucesso: false,
+        message: msg,
+        detalhes: jsonResp || rawText,
+      })
+    } catch (err) {
+      return c.json(500, {
+        sucesso: false,
+        message: 'Sem comunicação com a API emissora',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+/**
+ * POST /backend/v1/fiscal/cancelar
+ * DELETE /nfe/{ref} ou /nfce/{ref} com {"justificativa": ...} (15 a 255 caracteres)
+ * Body: { empresa_id: string, modelo: '55' | '65', ref: string, justificativa: string }
+ */
+routerAdd(
+  'POST',
+  '/backend/v1/fiscal/cancelar',
+  (c) => {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+    }
+
+    const data = c.requestInfo().body || {}
+    const empresaId = data.empresa_id
+    const modelo = String(data.modelo || '55').trim()
+    const ref = (data.ref || '').trim()
+    const justificativa = (data.justificativa || '').trim()
+
+    if (!empresaId || !ref) {
+      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
+    }
+
+    if (!justificativa || justificativa.length < 15 || justificativa.length > 255) {
+      return c.json(400, {
+        sucesso: false,
+        message: 'A justificativa de cancelamento deve ter entre 15 e 255 caracteres.',
+      })
+    }
+
+    const empresa = $app.findRecordById('empresas', empresaId)
+    if (!empresa || !empresa.getBool('ativo')) {
+      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
+    }
+
+    const nomeEmpresa =
+      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
+
+    const configs = $app.findRecordsByFilter(
+      'config_emissao_fiscal',
+      `empresa_id = '${empresaId}' && ativo = true`,
+      '-created',
+      1,
+      0,
+    )
+
+    if (!configs || configs.length === 0) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
+      })
+    }
+
+    const config = configs[0]
+    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
+    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+    const nomeSegredo = codigoToken
+      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+    let token = ''
+    try {
+      token = ($os.getenv(nomeSegredo) || '').trim()
+    } catch (_) {}
+
+    if (!token) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+      })
+    }
+
+    const baseUrl =
+      ambiente === 'Produção'
+        ? 'https://api.focusnfe.com.br/v2'
+        : 'https://homologacao.focusnfe.com.br/v2'
+
+    const endpoint = modelo === '65' ? 'nfce' : 'nfe'
+    const url = `${baseUrl}/${endpoint}/${encodeURIComponent(ref)}`
+    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+
+    try {
+      const res = $http.send({
+        method: 'DELETE',
+        url: url,
+        headers: {
+          Authorization: basicAuthHeader,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ justificativa: justificativa }),
+        timeout: 60,
+      })
+
+      const statusCode = res.statusCode || 200
+      const rawText = res.raw ? res.raw : ''
+      let jsonResp = null
+      try {
+        jsonResp = JSON.parse(rawText)
+      } catch (_) {}
+
+      if (statusCode >= 200 && statusCode < 300) {
+        return c.json(200, {
+          sucesso: true,
+          ambiente: ambiente,
+          dados: jsonResp,
+        })
+      }
+
+      let msg = ''
+      if (statusCode === 401) {
+        msg = 'Token inválido: confira o segredo do ambiente'
+      } else if (jsonResp && typeof jsonResp === 'object') {
+        const principal = jsonResp.mensagem || jsonResp.message || ''
+        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
+        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
+          const det = jsonResp.erros
+            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
+            .join('; ')
+          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
+        } else {
+          msg = `${cod}${principal || 'Erro na Focus NFe'}`
+        }
+      } else {
+        msg = `Focus NFe retornou status HTTP ${statusCode}`
+      }
+
+      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
+        sucesso: false,
+        message: msg,
+        detalhes: jsonResp || rawText,
+      })
+    } catch (err) {
+      return c.json(500, {
+        sucesso: false,
+        message: 'Sem comunicação com a API emissora',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+/**
+ * POST /backend/v1/fiscal/carta-correcao
+ * POST /nfe/{ref}/carta_correcao com {"correcao": ...} (15 a 1000 caracteres)
+ * Body: { empresa_id: string, ref: string, correcao: string }
+ */
+routerAdd(
+  'POST',
+  '/backend/v1/fiscal/carta-correcao',
+  (c) => {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+    }
+
+    const data = c.requestInfo().body || {}
+    const empresaId = data.empresa_id
+    const ref = (data.ref || '').trim()
+    const correcao = (data.correcao || '').trim()
+
+    if (!empresaId || !ref) {
+      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
+    }
+
+    if (!correcao || correcao.length < 15 || correcao.length > 1000) {
+      return c.json(400, {
+        sucesso: false,
+        message: 'A carta de correção deve ter entre 15 e 1000 caracteres.',
+      })
+    }
+
+    const empresa = $app.findRecordById('empresas', empresaId)
+    if (!empresa || !empresa.getBool('ativo')) {
+      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
+    }
+
+    const nomeEmpresa =
+      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
+
+    const configs = $app.findRecordsByFilter(
+      'config_emissao_fiscal',
+      `empresa_id = '${empresaId}' && ativo = true`,
+      '-created',
+      1,
+      0,
+    )
+
+    if (!configs || configs.length === 0) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
+      })
+    }
+
+    const config = configs[0]
+    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
+    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+    const nomeSegredo = codigoToken
+      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+    let token = ''
+    try {
+      token = ($os.getenv(nomeSegredo) || '').trim()
+    } catch (_) {}
+
+    if (!token) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+      })
+    }
+
+    const baseUrl =
+      ambiente === 'Produção'
+        ? 'https://api.focusnfe.com.br/v2'
+        : 'https://homologacao.focusnfe.com.br/v2'
+
+    const url = `${baseUrl}/nfe/${encodeURIComponent(ref)}/carta_correcao`
+    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+
+    try {
+      const res = $http.send({
+        method: 'POST',
+        url: url,
+        headers: {
+          Authorization: basicAuthHeader,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ correcao: correcao }),
+        timeout: 60,
+      })
+
+      const statusCode = res.statusCode || 200
+      const rawText = res.raw ? res.raw : ''
+      let jsonResp = null
+      try {
+        jsonResp = JSON.parse(rawText)
+      } catch (_) {}
+
+      if (statusCode >= 200 && statusCode < 300) {
+        return c.json(200, {
+          sucesso: true,
+          ambiente: ambiente,
+          dados: jsonResp,
+        })
+      }
+
+      let msg = ''
+      if (statusCode === 401) {
+        msg = 'Token inválido: confira o segredo do ambiente'
+      } else if (jsonResp && typeof jsonResp === 'object') {
+        const principal = jsonResp.mensagem || jsonResp.message || ''
+        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
+        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
+          const det = jsonResp.erros
+            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
+            .join('; ')
+          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
+        } else {
+          msg = `${cod}${principal || 'Erro na Focus NFe'}`
+        }
+      } else {
+        msg = `Focus NFe retornou status HTTP ${statusCode}`
+      }
+
+      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
+        sucesso: false,
+        message: msg,
+        detalhes: jsonResp || rawText,
+      })
+    } catch (err) {
+      return c.json(500, {
+        sucesso: false,
+        message: 'Sem comunicação com a API emissora',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+/**
+ * POST /backend/v1/fiscal/inutilizar
+ * POST /nfe/inutilizacao ou /nfce/inutilizacao com cnpj, serie, numero_inicial, numero_final e justificativa (mínimo 15 caracteres)
+ * Body: { empresa_id: string, modelo: '55' | '65', serie: string, numero_inicial: number, numero_final: number, justificativa: string }
+ */
+routerAdd(
+  'POST',
+  '/backend/v1/fiscal/inutilizar',
+  (c) => {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+    }
+
+    const data = c.requestInfo().body || {}
+    const empresaId = data.empresa_id
+    const modelo = String(data.modelo || '55').trim()
+    const serie = String(data.serie || '1').trim()
+    const numeroInicial = Number(data.numero_inicial)
+    const numeroFinal = Number(data.numero_final)
+    const justificativa = (data.justificativa || '').trim()
+
+    if (!empresaId) {
+      return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
+    }
+
+    if (
+      !serie ||
+      isNaN(numeroInicial) ||
+      isNaN(numeroFinal) ||
+      numeroInicial <= 0 ||
+      numeroFinal < numeroInicial
+    ) {
+      return c.json(400, {
+        sucesso: false,
+        message: 'Parâmetros de numeração inválidos (série, número inicial e número final).',
+      })
+    }
+
+    if (!justificativa || justificativa.length < 15) {
+      return c.json(400, {
+        sucesso: false,
+        message: 'A justificativa de inutilização deve ter no mínimo 15 caracteres.',
+      })
+    }
+
+    const empresa = $app.findRecordById('empresas', empresaId)
+    if (!empresa || !empresa.getBool('ativo')) {
+      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
+    }
+
+    const nomeEmpresa =
+      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
+
+    const configs = $app.findRecordsByFilter(
+      'config_emissao_fiscal',
+      `empresa_id = '${empresaId}' && ativo = true`,
+      '-created',
+      1,
+      0,
+    )
+
+    if (!configs || configs.length === 0) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
+      })
+    }
+
+    const config = configs[0]
+    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
+    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+    const nomeSegredo = codigoToken
+      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+    let token = ''
+    try {
+      token = ($os.getenv(nomeSegredo) || '').trim()
+    } catch (_) {}
+
+    if (!token) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+      })
+    }
+
+    const baseUrl =
+      ambiente === 'Produção'
+        ? 'https://api.focusnfe.com.br/v2'
+        : 'https://homologacao.focusnfe.com.br/v2'
+
+    const cnpjLimpo = (empresa.getString('cnpj') || '').replace(/\D/g, '')
+    const endpoint = modelo === '65' ? 'nfce' : 'nfe'
+    const url = `${baseUrl}/${endpoint}/inutilizacao`
+    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+
+    const bodyInutilizacao = {
+      cnpj: cnpjLimpo,
+      serie: serie,
+      numero_inicial: numeroInicial,
+      numero_final: numeroFinal,
+      justificativa: justificativa,
+    }
+
+    try {
+      const res = $http.send({
+        method: 'POST',
+        url: url,
+        headers: {
+          Authorization: basicAuthHeader,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(bodyInutilizacao),
+        timeout: 60,
+      })
+
+      const statusCode = res.statusCode || 200
+      const rawText = res.raw ? res.raw : ''
+      let jsonResp = null
+      try {
+        jsonResp = JSON.parse(rawText)
+      } catch (_) {}
+
+      if (statusCode >= 200 && statusCode < 300) {
+        return c.json(200, {
+          sucesso: true,
+          ambiente: ambiente,
+          dados: jsonResp,
+        })
+      }
+
+      let msg = ''
+      if (statusCode === 401) {
+        msg = 'Token inválido: confira o segredo do ambiente'
+      } else if (jsonResp && typeof jsonResp === 'object') {
+        const principal = jsonResp.mensagem || jsonResp.message || ''
+        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
+        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
+          const det = jsonResp.erros
+            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
+            .join('; ')
+          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
+        } else {
+          msg = `${cod}${principal || 'Erro na Focus NFe'}`
+        }
+      } else {
+        msg = `Focus NFe retornou status HTTP ${statusCode}`
+      }
+
+      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
+        sucesso: false,
+        message: msg,
+        detalhes: jsonResp || rawText,
+      })
+    } catch (err) {
+      return c.json(500, {
+        sucesso: false,
+        message: 'Sem comunicação com a API emissora',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+/**
+ * POST /backend/v1/fiscal/baixar-arquivo
+ * Baixa o XML ou DANFE retornado pela Focus NFe
+ * Body: { empresa_id: string, caminho: string }
+ */
+routerAdd(
+  'POST',
+  '/backend/v1/fiscal/baixar-arquivo',
+  (c) => {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+    }
+
+    const data = c.requestInfo().body || {}
+    const empresaId = data.empresa_id
+    const caminho = (data.caminho || '').trim()
+
+    if (!empresaId || !caminho) {
+      return c.json(400, {
+        sucesso: false,
+        message: 'Campos empresa_id e caminho são obrigatórios.',
+      })
+    }
+
+    const empresa = $app.findRecordById('empresas', empresaId)
+    if (!empresa || !empresa.getBool('ativo')) {
+      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
+    }
+
+    const nomeEmpresa =
+      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
+
+    const configs = $app.findRecordsByFilter(
+      'config_emissao_fiscal',
+      `empresa_id = '${empresaId}' && ativo = true`,
+      '-created',
+      1,
+      0,
+    )
+
+    if (!configs || configs.length === 0) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
+      })
+    }
+
+    const config = configs[0]
+    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
+    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+    const nomeSegredo = codigoToken
+      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+    let token = ''
+    try {
+      token = ($os.getenv(nomeSegredo) || '').trim()
+    } catch (_) {}
+
+    if (!token) {
+      return c.json(400, {
+        sucesso: false,
+        message: `Token da empresa ${nomeEmpresa} não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+      })
+    }
+
+    let urlFinal = caminho
+    if (caminho.startsWith('/')) {
+      const serverOrigin =
+        ambiente === 'Produção'
+          ? 'https://api.focusnfe.com.br'
+          : 'https://homologacao.focusnfe.com.br'
+      urlFinal = `${serverOrigin}${caminho}`
+    }
+
+    const basicAuthHeader = 'Basic ' + $security.base64Encode(token + ':')
+
+    try {
+      const res = $http.send({
+        method: 'GET',
+        url: urlFinal,
+        headers: {
+          Authorization: basicAuthHeader,
+        },
+        timeout: 60,
+      })
+
+      const statusCode = res.statusCode || 200
+      const rawText = res.raw ? res.raw : ''
+
+      if (statusCode >= 200 && statusCode < 300) {
+        return c.json(200, {
+          sucesso: true,
+          ambiente: ambiente,
+          conteudo: rawText,
+        })
+      }
+
+      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
+        sucesso: false,
+        message: `Erro ao baixar arquivo (HTTP ${statusCode})`,
+      })
+    } catch (err) {
+      return c.json(500, {
+        sucesso: false,
+        message: 'Sem comunicação com a API emissora',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)

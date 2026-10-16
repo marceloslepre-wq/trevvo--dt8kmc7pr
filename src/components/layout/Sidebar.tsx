@@ -402,10 +402,24 @@ const navItems: NavGroupItem[] = [
   },
   {
     id: 'fiscal',
-    title: 'Fiscal: NF-e e NFC-e',
+    title: 'Fiscal',
     icon: Receipt,
-    status: 'soon',
+    status: 'active',
     modulo: 'notas_saida',
+    items: [
+      {
+        title: 'Configuração de emissão',
+        path: '/fiscal/configuracoes',
+        icon: Settings,
+        modulo: 'notas_saida',
+      },
+      {
+        title: 'Documentos fiscais',
+        path: '/fiscal/documentos',
+        icon: FileText,
+        modulo: 'notas_saida',
+      },
+    ],
   },
   {
     id: 'sped',
@@ -474,12 +488,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isComprasActive = location.pathname.startsWith('/compras')
   const isFinanceiroActive = location.pathname.startsWith('/financeiro')
   const isVendasActive = location.pathname.startsWith('/vendas')
+  const isFiscalActive = location.pathname.startsWith('/fiscal')
   const isConfiguracoesActive = location.pathname.startsWith('/configuracoes')
   const [cadastrosOpen, setCadastrosOpen] = useState(true)
   const [estoqueOpen, setEstoqueOpen] = useState(true)
   const [comprasOpen, setComprasOpen] = useState(true)
   const [financeiroOpen, setFinanceiroOpen] = useState(true)
   const [vendasOpen, setVendasOpen] = useState(true)
+  const [fiscalOpen, setFiscalOpen] = useState(true)
   const [configuracoesOpen, setConfiguracoesOpen] = useState(true)
 
   const { pode, administrador } = usePermissoes()
@@ -591,7 +607,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         ? isFinanceiroActive
                         : item.id === 'vendas'
                           ? isVendasActive
-                          : isConfiguracoesActive
+                          : item.id === 'fiscal'
+                            ? isFiscalActive
+                            : isConfiguracoesActive
               const isOpen =
                 item.id === 'cadastros'
                   ? cadastrosOpen
@@ -603,7 +621,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         ? financeiroOpen
                         : item.id === 'vendas'
                           ? vendasOpen
-                          : configuracoesOpen
+                          : item.id === 'fiscal'
+                            ? fiscalOpen
+                            : configuracoesOpen
               const setOpen =
                 item.id === 'cadastros'
                   ? setCadastrosOpen
@@ -615,7 +635,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         ? setFinanceiroOpen
                         : item.id === 'vendas'
                           ? setVendasOpen
-                          : setConfiguracoesOpen
+                          : item.id === 'fiscal'
+                            ? setFiscalOpen
+                            : setConfiguracoesOpen
 
               if (isCollapsed) {
                 return (

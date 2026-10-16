@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T19:59:30.585Z",
+  "generatedAt": "2026-10-16T14:23:35.180Z",
   "collections": [
     {
       "name": "users",
@@ -9129,6 +9129,186 @@
         "CREATE INDEX idx_vales_troca_status ON vales_troca (status)",
         "CREATE INDEX idx_vales_troca_venda_origem ON vales_troca (venda_origem_id)",
         "CREATE INDEX idx_vales_troca_ativo ON vales_troca (ativo)"
+      ]
+    },
+    {
+      "name": "config_emissao_fiscal",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "provedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "emite_documentos_fiscais",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_token",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "presenca_comprador_padrao_nfe",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "1 Presencial",
+            "2 Internet",
+            "3 Teleatendimento",
+            "4 Entrega em domicílio",
+            "9 Outros"
+          ]
+        },
+        {
+          "name": "ambiente",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Homologação", "Produção"]
+        },
+        {
+          "name": "serie_nfe",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "serie_nfce",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "emitir_nfce_automaticamente_no_pdv",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_operacao_venda",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_operacao_devolucao_compra",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_operacao_devolucao_venda",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "informacoes_complementares_padrao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "enviar_email_cliente",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "certificado_validade",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "csc_configurado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "informar_ibs_cbs",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_teste_conexao_data",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_teste_conexao_sucesso",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_teste_conexao_mensagem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_config_emissao_fiscal_empresa ON config_emissao_fiscal (empresa_id)",
+        "CREATE INDEX idx_config_emissao_fiscal_ativo ON config_emissao_fiscal (ativo)"
       ]
     }
   ]

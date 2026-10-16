@@ -284,6 +284,39 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### config_emissao_fiscal
+
+Configuração e parâmetros de emissão fiscal (NF-e modelo 55 e NFC-e modelo 65) integrada à Focus NFe por empresa emissora. Possui restrição de unicidade por `empresa_id` (cada filial ou matriz tem sua parametrização e seus próprios tokens). Leitura permitida a usuários com acesso ao módulo `notas_saida`; gravação restrita exclusivamente a Administradores do ERP (`perfis_acesso.administrador = true`).
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório, cascadeDelete, índice único)
+- provedor (text, padrão "Focus NFe")
+- emite_documentos_fiscais (bool, padrão true; bloqueado para ativação se a empresa tiver Inscrição Estadual vazia ou ISENTO)
+- codigo_token (text, letras maiúsculas, números e sublinhado; sufixo dos segredos de token; único entre as empresas emissoras; vazio = segredo padrão)
+- presenca_comprador_padrao_nfe (select: "1 Presencial", "2 Internet", "3 Teleatendimento", "4 Entrega em domicílio", "9 Outros", padrão "1 Presencial")
+- ambiente (select: "Homologação" ou "Produção", padrão "Homologação"; mudar para Produção exige confirmação expressa digitando "PRODUÇÃO" e grava logs_auditoria)
+- serie_nfe (text, série padrão para NF-e mod 55, padrão "1")
+- serie_nfce (text, série padrão para NFC-e mod 65, padrão "1")
+- emitir_nfce_automaticamente_no_pdv (bool, padrão true)
+- natureza_operacao_venda (text, padrão "Venda de mercadoria")
+- natureza_operacao_devolucao_compra (text, padrão "Devolução de compra")
+- natureza_operacao_devolucao_venda (text, padrão "Devolução de venda")
+- informacoes_complementares_padrao (text, texto padrão adicionado a todas as notas fiscais emitidas pela empresa)
+- enviar_email_cliente (bool, determina se a Focus NFe deve enviar automaticamente o XML e DANFE ao cliente)
+- certificado_validade (date, data de expiração informada para avisos de vencimento em 30 dias ou vencido)
+- csc_configurado (bool, flag marcada pelo usuário quando o CSC/IdToken for configurado no painel da Focus NFe)
+- informar_ibs_cbs (bool, padrão false; ativação para destaque das tags de tributação da Reforma Tributária)
+- ultimo_teste_conexao_data (date, data e hora da última chamada de teste de conexão com o provedor)
+- ultimo_teste_conexao_sucesso (bool, resultado do último teste de conexão)
+- ultimo_teste_conexao_mensagem (text, mensagem de retorno do último teste de conexão)
+- ativo (bool, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id` (único: `idx_config_emissao_fiscal_empresa`), `ativo` (`idx_config_emissao_fiscal_ativo`).
+
 ### config_fiscal_empresa
 
 Configuração de parâmetros tributários e regras automáticas de compras/produtos por empresa (estabelecimento). Possui restrição de unicidade por `empresa_id` (uma configuração fiscal por filial/matriz).
@@ -2326,6 +2359,30 @@ A Etapa 1 (Fundação, Cadastros Base, Motor Fiscal e Configurações Gerais) fo
 - `sugerirTributacao(params)` (`@/services/motorFiscal.ts`): Motor tributário central inteligente em 4 etapas (A: Regras fiscais NCM, B: Produto semelhante revisado, C: Dedução por XML, D: Classificação manual) com nível de confiança e justificativas por campo fiscal.
 - `aliquotaInterestadual(ufOrigem, ufDestino, origemMercadoria)` (`@/services/icmsMatriz.ts`): Função determinística para cálculo da alíquota de ICMS interna, interestadual ou importada (4% Res. Senado 13/2012).
 
+### Serviço Central Único de Integração Fiscal (`@/services/fiscalIntegracao.ts` e `pocketbase/hooks/fiscal_focus_integracao.js`)
+
+⚠ **REGRA DE ARQUITETURA MANDATÓRIA (EM DESTAQUE — MESMO RIGOR DE ESTOQUE, FINANCEIRO E VENDAS):**
+O backend do ERP (`pocketbase/hooks/fiscal_focus_integracao.js`) é o **ÚNICO CÓDIGO DO SISTEMA QUE SE COMUNICA COM A API DA FOCUS NFE**. O token da Focus NFe **NUNCA VAI PARA O NAVEGADOR**. Qualquer tentativa de disparo de requisições externas à SEFAZ ou à Focus NFe diretamente do frontend é terminantemente proibida.
+
+- **Empresa Emitente Sempre Dinâmica:** O grupo possui múltiplas empresas (matriz e filiais com CNPJ e Inscrição Estadual próprios). A empresa emitente de qualquer documento fiscal é SEMPRE a `empresa_id` do documento (a da venda, da nota de entrada ou da transferência), **NUNCA a empresa ativa da tela nem a matriz**. Nem toda empresa emite: filiais sem Inscrição Estadual ou com inscrição ISENTO são bloqueadas e não emitem NF-e/NFC-e.
+- **Tokens por Empresa no Skip Cloud:** Os tokens de cada empresa são lidos exclusivamente das variáveis de ambiente / segredos do Skip Cloud via `$os.getenv(nomeSegredo)`. O nome do segredo segue o padrão `FOCUS_NFE_TOKEN_HOMOLOGACAO_{codigo_token}` ou `FOCUS_NFE_TOKEN_PRODUCAO_{codigo_token}`. Se `codigo_token` estiver vazio, usa `FOCUS_NFE_TOKEN_HOMOLOGACAO` e `FOCUS_NFE_TOKEN_PRODUCAO`.
+- **Servidores Oficiais:**
+  - Homologação: `https://homologacao.focusnfe.com.br/v2`
+  - Produção: `https://api.focusnfe.com.br/v2`
+- **Autenticação:** HTTP Basic Auth com o token da empresa emitente como usuário e senha vazia (`Basic base64(token + ':')`).
+- **Endpoints de Backend Disponibilizados:**
+  1. `POST /backend/v1/fiscal/testar-conexao`: executa `GET /hooks` no ambiente configurado para verificar autenticação e validade do token (200 = OK; 401 = Token inválido).
+  2. `POST /backend/v1/fiscal/emitir-nfce`: `POST /nfce?ref={ref}` (síncrona; status `autorizado` ou `erro_autorizacao`, suporte a `forma_emissao=offline`).
+  3. `POST /backend/v1/fiscal/emitir-nfe`: `POST /nfe?ref={ref}` (assíncrona; status inicial `processando_autorizacao`).
+  4. `POST /backend/v1/fiscal/consultar`: `GET /nfe/{ref}?completa=1` ou `GET /nfce/{ref}?completa=1`.
+  5. `POST /backend/v1/fiscal/cancelar`: `DELETE /nfe/{ref}` ou `/nfce/{ref}` com `{"justificativa": ...}` (15 a 255 caracteres).
+  6. `POST /backend/v1/fiscal/carta-correcao`: `POST /nfe/{ref}/carta_correcao` com `{"correcao": ...}` (15 a 1000 caracteres).
+  7. `POST /backend/v1/fiscal/inutilizar`: `POST /nfe/inutilizacao` ou `/nfce/inutilizacao` com `cnpj`, `serie`, `numero_inicial`, `numero_final` e `justificativa` (mínimo 15 caracteres).
+  8. `POST /backend/v1/fiscal/baixar-arquivo`: baixa XML ou DANFE pelo caminho retornado pela Focus NFe.
+  9. `GET /backend/v1/fiscal/status-segredos`: retorna para o painel se os segredos das empresas estão presentes no Skip Cloud (sim/não, sem revelar o valor).
+
+---
+
 ### Serviços Centrais Financeiros (`@/services/financeiro.ts` e Endpoints de Backend)
 
 ⚠ **REGRA DE ARQUITETURA MANDATÓRIA (EM DESTAQUE):**
@@ -2742,6 +2799,36 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Gráfico diário de faturamento dos últimos 30 dias com linha de tendência.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.72** — Início da Emissão Fiscal (Etapa 6: Configuração de Emissão, Serviço Central de Integração Focus NFe e Validações por Empresa):
+
+1. **Ativação do Menu "Fiscal" no ERP:**
+   - Remoção do status "Em breve" no menu lateral (`Sidebar.tsx`), ativando o item raiz "Fiscal" com ícone de recibo e dois subitens:
+     - **Configuração de emissão** (`/fiscal/configuracoes`): parametrização completa e monitoramento por empresa emissora.
+     - **Documentos fiscais** (`/fiscal/documentos`): placeholder informativo da Etapa 6 anunciando os próximos passos de emissão e consulta de notas.
+   - Ambos os subitens são governados pelo módulo de permissão existente `notas_saida` (`pode('notas_saida', 'ver')`).
+
+2. **Tabela `config_emissao_fiscal` (Migration 0046):**
+   - Criação da tabela mestre de configurações fiscais com índice único por `empresa_id` (`idx_config_emissao_fiscal_empresa`).
+   - Parâmetros: `provedor` ("Focus NFe"), `emite_documentos_fiscais`, `codigo_token`, `presenca_comprador_padrao_nfe` (1 Presencial, 2 Internet, etc.), `ambiente` ("Homologação" ou "Produção"), `serie_nfe`, `serie_nfce`, `emitir_nfce_automaticamente_no_pdv`, naturezas de operação (venda, devolução compra/venda), `informacoes_complementares_padrao`, `enviar_email_cliente`, `certificado_validade`, `csc_configurado`, `informar_ibs_cbs`, `ultimo_teste_conexao_*`.
+   - Inicialização padrão com `obterOuCriarConfigEmissaoFiscal`. Regras de acesso: leitura para quem tem acesso ao módulo `notas_saida`; gravação permitida exclusivamente a Administradores do ERP.
+
+3. **Serviço Central Único de Integração Fiscal (`pocketbase/hooks/fiscal_focus_integracao.js`):**
+   - Backend isolado como **único ponto de comunicação com a Focus NFe**; token NUNCA vai para o navegador.
+   - Resolução dinâmica do token via `$os.getenv` por segredos nomeados: `FOCUS_NFE_TOKEN_HOMOLOGACAO_{codigo_token}` ou `FOCUS_NFE_TOKEN_PRODUCAO_{codigo_token}` (e nomes sem sufixo quando `codigo_token` for vazio).
+   - A empresa emitente é sempre a `empresa_id` informada (nunca a matriz ou a empresa da sessão).
+   - Bloqueio imediato sem chamada à Focus se a empresa não emitir ou possuir Inscrição Estadual vazia ou ISENTO.
+   - Endpoints: `/backend/v1/fiscal/testar-conexao`, `/backend/v1/fiscal/emitir-nfce`, `/backend/v1/fiscal/emitir-nfe`, `/backend/v1/fiscal/consultar`, `/backend/v1/fiscal/cancelar`, `/backend/v1/fiscal/carta-correcao`, `/backend/v1/fiscal/inutilizar`, `/backend/v1/fiscal/baixar-arquivo` e `/backend/v1/fiscal/status-segredos`.
+
+4. **Tela de Configuração de Emissão Fiscal (`/fiscal/configuracoes`):**
+   - **Botão "Testar Conexão":** executa `GET /hooks` na Focus NFe com o token da empresa ativa e grava o resultado no banco.
+   - **Avisos Proativos:** banner de alerta de Homologação ativo, aviso se CSC não estiver marcado, aviso preventivo de certificado digital vencendo em 30 dias ou já vencido.
+   - **Troca de Ambiente para Produção:** modal modal de segurança exigindo digitação expressa de "PRODUÇÃO" e gravação em `logs_auditoria`.
+   - **Quadro "Pronto para emitir?":** checklist automático dos dados obrigatórios da empresa ativa (CNPJ válido, IE não isenta, CRT, endereço completo com CEP, código de município IBGE de 7 dígitos, CNAE e e-mail fiscal), com atalho para correção cadastral.
+   - **Quadro "Empresas emissoras":** tabela consolidada para o Administrador com todas as empresas do grupo, tipo, CNPJ, código do token, presença do segredo no Skip Cloud (sim/não sem exibir o valor), ambiente e último teste. Clicar na linha troca a empresa ativa e carrega sua configuração.
+   - **Copiar Configuração:** botão para clonar parâmetros operacionais (séries, naturezas, opções e complementares) de outra empresa modelo, preservando isolados o código de token e as datas de certificado.
+
+---
 
 **Versão 0.0.70** — Fechamento Oficial da Etapa 5 do ERP (Trocas e Devoluções, Vales-Troca, Comissões de Vendas, Consultas Gerenciais com Curva ABC, DRE com CMV de Estoque e Dashboard de Vendas):
 
