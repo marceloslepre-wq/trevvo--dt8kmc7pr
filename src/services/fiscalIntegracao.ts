@@ -351,6 +351,7 @@ export async function consultarSituacaoNFe(params: {
   protocolo?: string
   danfe_url?: string
   message?: string
+  mensagem_sefaz?: string
   aviso?: string
   detalhes?: any
 }> {
