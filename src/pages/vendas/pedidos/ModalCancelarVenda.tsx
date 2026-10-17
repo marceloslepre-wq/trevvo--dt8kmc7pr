@@ -35,31 +35,74 @@ export const ModalCancelarVenda: React.FC<ModalCancelarVendaProps> = ({
   const [erro, setErro] = useState<string | null>(null)
   const [cancelarNfceJunto, setCancelarNfceJunto] = useState(true)
 
-  const temNfceAutorizada = venda.documento_fiscal_status === 'Autorizada'
+  // Se for Pedido ou PDV: verificar se a nota é NF-e ou NFC-e
+  const temNotaAutorizada = venda.documento_fiscal_status === 'Autorizada'
+  const ehNFe = venda.tipo === 'Pedido'
 
   const handleCancelar = async (e: React.FormEvent) => {
     e.preventDefault()
     setErro(null)
 
     const motivoLimpo = motivo.trim()
-    const minChar = temNfceAutorizada ? 15 : 5
+    const minChar = temNotaAutorizada ? 15 : 5
     if (!motivoLimpo || motivoLimpo.length < minChar) {
       setErro(
-        temNfceAutorizada
+        temNotaAutorizada
           ? 'Para cancelamento fiscal na SEFAZ, a justificativa deve ter entre 15 e 255 caracteres.'
           : 'Informe a justificativa do cancelamento (mínimo de 5 caracteres).',
       )
       return
     }
 
-    if (temNfceAutorizada && motivoLimpo.length > 255) {
+    if (temNotaAutorizada && motivoLimpo.length > 255) {
       setErro('A justificativa da SEFAZ pode ter no máximo 255 caracteres.')
       return
     }
 
     setSalvando(true)
     try {
-      if (temNfceAutorizada) {
+      if (temNotaAutorizada) {
+        if (ehNFe) {
+          // Cancelamento de NF-e
+          const { cancelarNFe } = await import('@/services/fiscalIntegracao')
+          const respCancNfe = await cancelarNFe({
+            venda_id: venda.id,
+            justificativa: motivoLimpo,
+          })
+
+          if (!respCancNfe.sucesso) {
+            throw new Error(respCancNfe.message || 'Falha ao cancelar NF-e na SEFAZ.')
+          }
+
+          if (cancelarNfceJunto) {
+            await cancelarVenda({
+              venda_id: venda.id,
+              motivo: motivoLimpo,
+            })
+          }
+
+          toast({
+            title: 'NF-e cancelada!',
+            description: cancelarNfceJunto
+              ? 'Nota fiscal e venda canceladas com sucesso.'
+              : 'NF-e cancelada na SEFAZ com sucesso.',
+          })
+
+          onSucesso({
+            sucesso: true,
+            venda_id: venda.id,
+            numero: venda.numero,
+            status: 'Cancelada',
+            motivo_cancelamento: motivoLimpo,
+            titulos_cancelados: 0,
+            movimentos_estornados: 0,
+            message: 'Venda e NF-e canceladas com sucesso.',
+          })
+          onOpenChange(false)
+          setMotivo('')
+          return
+        }
+
         // Cancele a NFC-e primeiro (ou NFC-e e a venda juntos)
         const respCancNfce = await cancelarNFCeVenda({
           vendaId: venda.id,
@@ -143,12 +186,14 @@ export const ModalCancelarVenda: React.FC<ModalCancelarVendaProps> = ({
             </div>
           )}
 
-          {temNfceAutorizada ? (
+          {temNotaAutorizada ? (
             <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-xs text-blue-900 space-y-2">
-              <p className="font-semibold text-blue-950">Venda com NFC-e Autorizada na SEFAZ:</p>
+              <p className="font-semibold text-blue-950">
+                Venda com {ehNFe ? 'NF-e' : 'NFC-e'} Autorizada na SEFAZ:
+              </p>
               <p>
                 A nota fiscal será cancelada na SEFAZ utilizando o certificado e token da loja.
-                Respeite o prazo limite estipulado pelo seu estado.
+                Respeite o prazo legal (até 24 horas para NF-e).
               </p>
               <div className="flex items-center space-x-2 pt-1 border-t border-blue-200">
                 <Checkbox
@@ -160,7 +205,7 @@ export const ModalCancelarVenda: React.FC<ModalCancelarVendaProps> = ({
                   htmlFor="cancelar_venda_junto"
                   className="text-xs font-medium cursor-pointer text-blue-950 leading-none"
                 >
-                  Cancelar NFC-e e a venda (estornar estoque e financeiro)
+                  Cancelar nota fiscal e a venda (estornar estoque e financeiro)
                 </label>
               </div>
             </div>
@@ -176,7 +221,7 @@ export const ModalCancelarVenda: React.FC<ModalCancelarVendaProps> = ({
 
           <div className="space-y-1.5">
             <Label htmlFor="motivo_cancelamento" className="text-xs font-semibold text-slate-700">
-              {temNfceAutorizada
+              {temNotaAutorizada
                 ? 'Justificativa do Cancelamento Fiscal na SEFAZ'
                 : 'Motivo do Cancelamento'}{' '}
               <span className="text-red-500">*</span>
@@ -187,7 +232,7 @@ export const ModalCancelarVenda: React.FC<ModalCancelarVendaProps> = ({
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
               placeholder={
-                temNfceAutorizada
+                temNotaAutorizada
                   ? 'Informe a justificativa exigida pela SEFAZ (mínimo de 15 caracteres)...'
                   : 'Descreva detalhadamente a razão do cancelamento desta venda...'
               }
@@ -196,7 +241,7 @@ export const ModalCancelarVenda: React.FC<ModalCancelarVendaProps> = ({
               autoFocus
             />
             <p className="text-[10px] text-slate-400">
-              {temNfceAutorizada
+              {temNotaAutorizada
                 ? 'Mínimo de 15 caracteres e máximo de 255 (exigência da SEFAZ).'
                 : 'Mínimo de 5 caracteres.'}
             </p>
@@ -216,7 +261,7 @@ export const ModalCancelarVenda: React.FC<ModalCancelarVendaProps> = ({
             <Button
               type="submit"
               size="sm"
-              disabled={salvando || motivo.trim().length < (temNfceAutorizada ? 15 : 5)}
+              disabled={salvando || motivo.trim().length < (temNotaAutorizada ? 15 : 5)}
               className="text-xs bg-red-600 hover:bg-red-700 text-white gap-1.5"
             >
               {salvando ? (
@@ -228,10 +273,10 @@ export const ModalCancelarVenda: React.FC<ModalCancelarVendaProps> = ({
                 <>
                   <Ban size={14} />
                   <span>
-                    {temNfceAutorizada
+                    {temNotaAutorizada
                       ? cancelarNfceJunto
-                        ? 'Cancelar NFC-e e a Venda'
-                        : 'Cancelar NFC-e'
+                        ? `Cancelar ${ehNFe ? 'NF-e' : 'NFC-e'} e a Venda`
+                        : `Cancelar ${ehNFe ? 'NF-e' : 'NFC-e'}`
                       : 'Confirmar Cancelamento'}
                   </span>
                 </>

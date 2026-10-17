@@ -187,6 +187,26 @@ export interface DocumentoFiscalRegistro {
   url_consulta?: string
   referencia?: string
   mensagem_sefaz?: string
+  xml_arquivo?: string
+  motivo_cancelamento?: string
+  data_cancelamento?: string
+  data_autorizacao?: string
+}
+
+export interface DocumentoFiscalCarta {
+  id: string
+  documento_id: string
+  sequencia: number
+  texto: string
+  data: string
+  status: string
+  protocolo?: string
+  mensagem_sefaz?: string
+  xml_arquivo?: string
+  pdf_arquivo?: string
+  pdf_url?: string
+  usuario_id?: string
+  created?: string
 }
 
 /**
@@ -199,5 +219,37 @@ export async function obterDocumentoFiscalPorId(
     return await pb.collection('documentos_fiscais').getOne<DocumentoFiscalRegistro>(id)
   } catch (_) {
     return null
+  }
+}
+
+/**
+ * Busca documento fiscal de uma venda
+ */
+export async function obterDocumentoFiscalDaVenda(
+  vendaId: string,
+  modelo: ModeloDocumentoFiscal = '55',
+): Promise<DocumentoFiscalRegistro | null> {
+  try {
+    const list = await pb.collection('documentos_fiscais').getList<DocumentoFiscalRegistro>(1, 1, {
+      filter: `venda_id = '${vendaId}' && modelo = '${modelo}'`,
+      sort: '-created',
+    })
+    return list.items[0] || null
+  } catch (_) {
+    return null
+  }
+}
+
+/**
+ * Lista as Cartas de Correção de um documento fiscal
+ */
+export async function listarCartasCorrecao(documentoId: string): Promise<DocumentoFiscalCarta[]> {
+  try {
+    return await pb.collection('documentos_fiscais_cartas').getFullList<DocumentoFiscalCarta>({
+      filter: `documento_id = '${documentoId}'`,
+      sort: 'sequencia',
+    })
+  } catch (_) {
+    return []
   }
 }

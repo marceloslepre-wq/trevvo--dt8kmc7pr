@@ -293,3 +293,129 @@ export async function baixarArquivoFiscal(params: {
     },
   })
 }
+
+export interface EmitirNFeVendaParams {
+  venda_id: string
+  natureza_operacao?: string
+  presenca_comprador?: string
+  modalidade_frete?: number
+  transportadora_id?: string
+  volumes_quantidade?: number
+  volumes_especie?: string
+  peso_bruto?: number
+  peso_liquido?: number
+  informacoes_complementares?: string
+  tipo_intermediador?: 'proprio' | 'terceiro'
+  intermediador_id?: string
+  identificador_intermediador?: string
+}
+
+export interface EmitirNFeVendaResponse {
+  sucesso: boolean
+  status?: 'Processando' | 'Autorizada' | 'Rejeitada' | 'Denegada'
+  documento_id?: string
+  referencia?: string
+  chave?: string
+  danfe_url?: string
+  message?: string
+  pendencias?: string[]
+  detalhes?: any
+  ja_autorizada?: boolean
+}
+
+/**
+ * Dispara a transmissão da NF-e (modelo 55) para a venda
+ */
+export async function emitirNFeVenda(
+  params: EmitirNFeVendaParams,
+): Promise<EmitirNFeVendaResponse> {
+  return await pb.send<EmitirNFeVendaResponse>('/backend/v1/fiscal/emitir-nfe-venda', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+/**
+ * Consulta a situação da NF-e na Focus NFe e atualiza no ERP
+ */
+export async function consultarSituacaoNFe(params: {
+  documento_id?: string
+  venda_id?: string
+}): Promise<{
+  sucesso: boolean
+  status: 'Autorizada' | 'Rejeitada' | 'Denegada' | 'Cancelada' | 'Processando' | 'NaoEncontrada'
+  documento_id?: string
+  numero?: number
+  serie?: string
+  chave?: string
+  protocolo?: string
+  danfe_url?: string
+  message?: string
+  aviso?: string
+  detalhes?: any
+}> {
+  return await pb.send('/backend/v1/fiscal/consultar-situacao-nfe', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+/**
+ * Cancela a NF-e autorizada
+ */
+export async function cancelarNFe(params: {
+  documento_id?: string
+  venda_id?: string
+  justificativa: string
+}): Promise<{
+  sucesso: boolean
+  message: string
+  documento_id?: string
+  prazo_expirado?: boolean
+  detalhes?: any
+}> {
+  return await pb.send('/backend/v1/fiscal/cancelar-nfe', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+/**
+ * Emite Carta de Correção (CC-e) para NF-e autorizada
+ */
+export async function emitirCartaCorrecaoNFe(params: {
+  documento_id?: string
+  venda_id?: string
+  texto: string
+}): Promise<{
+  sucesso: boolean
+  message: string
+  carta_id?: string
+  sequencia?: number
+  protocolo?: string
+  pdf_url?: string
+  detalhes?: any
+}> {
+  return await pb.send('/backend/v1/fiscal/carta-correcao-nfe', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+/**
+ * Envia DANFE e XML da NF-e por e-mail via Focus NFe
+ */
+export async function enviarEmailNFe(params: {
+  documento_id?: string
+  venda_id?: string
+  emails: string[]
+}): Promise<{
+  sucesso: boolean
+  message: string
+  emails?: string[]
+}> {
+  return await pb.send('/backend/v1/fiscal/enviar-email-nfe', {
+    method: 'POST',
+    body: params,
+  })
+}

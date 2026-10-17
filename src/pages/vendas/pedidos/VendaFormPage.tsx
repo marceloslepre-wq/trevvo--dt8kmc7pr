@@ -70,7 +70,17 @@ import { ModalAutorizacaoSupervisor } from '@/components/ModalAutorizacaoSupervi
 import { ModalFinalizarVenda } from './ModalFinalizarVenda'
 import { ModalCancelarVenda } from './ModalCancelarVenda'
 import { ModalPrevisualizarNota } from '@/components/fiscal/ModalPrevisualizarNota'
-import { montarDocumentoFiscal, ResultadoPrevisualizacaoNota } from '@/services/documentosFiscais'
+import { ModalEmitirNFe } from '@/components/fiscal/ModalEmitirNFe'
+import { ModalCancelarNFe } from '@/components/fiscal/ModalCancelarNFe'
+import { ModalCartaCorrecao } from '@/components/fiscal/ModalCartaCorrecao'
+import { ModalEnviarEmailNFe } from '@/components/fiscal/ModalEnviarEmailNFe'
+import { consultarSituacaoNFe } from '@/services/fiscalIntegracao'
+import {
+  montarDocumentoFiscal,
+  ResultadoPrevisualizacaoNota,
+  obterDocumentoFiscalDaVenda,
+} from '@/services/documentosFiscais'
+import { Mail, RefreshCw } from 'lucide-react'
 
 interface LinhaItemForm extends ItemVendaInput {
   tempId: string
@@ -139,6 +149,14 @@ export const VendaFormPage: React.FC = () => {
   const [dadosPrevisualizacao, setDadosPrevisualizacao] =
     useState<ResultadoPrevisualizacaoNota | null>(null)
   const [erroPrevisualizacao, setErroPrevisualizacao] = useState<string | null>(null)
+
+  // Modais de NF-e (Modelo 55)
+  const [modalEmitirNFeAberto, setModalEmitirNFeAberto] = useState(false)
+  const [modalCancelarNFeAberto, setModalCancelarNFeAberto] = useState(false)
+  const [modalCartaCorrecaoAberto, setModalCartaCorrecaoAberto] = useState(false)
+  const [modalEnviarEmailNFeAberto, setModalEnviarEmailNFeAberto] = useState(false)
+  const [docFiscalNFe, setDocFiscalNFe] = useState<any>(null)
+  const [consultandoSituacaoNFe, setConsultandoSituacaoNFe] = useState(false)
 
   // Modal Autorização de Supervisor para desconto
   const [modalSupervisorAberto, setModalSupervisorAberto] = useState(false)
@@ -658,7 +676,24 @@ export const VendaFormPage: React.FC = () => {
   const ehCancelada = status === 'Cancelada'
   const formularioBloqueado = ehFinalizada || ehCancelada
   const docFiscalStatus = vendaAtual?.documento_fiscal_status
-  const temNfceAutorizada = docFiscalStatus === 'Autorizada'
+  const temNfceAutorizada = docFiscalStatus === 'Autorizada' && docFiscalNFe?.modelo === '65'
+  const statusFiscalStr = String(docFiscalStatus || '')
+  const temNfeAutorizada =
+    statusFiscalStr === 'Autorizada' &&
+    (docFiscalNFe?.modelo === '55' || (!docFiscalNFe && vendaAtual?.tipo === 'Pedido'))
+  const nfeEmProcessamento = statusFiscalStr === 'Processando'
+
+  // Regra: pode emitir NF-e se a venda estiver Finalizada, tiver permissão criar/editar em notas_saida
+  // e não possuir NFC-e autorizada nem NF-e autorizada (salvo se cancelada)
+  const podeEmitirNFe =
+    ehFinalizada &&
+    podeEmitirFiscal &&
+    (!docFiscalStatus ||
+      statusFiscalStr === 'Não emitido' ||
+      statusFiscalStr === 'Não emitida' ||
+      statusFiscalStr === 'Rejeitada' ||
+      statusFiscalStr === 'Cancelada')
+
   const podeEmitirNfceManual =
     ehFinalizada &&
     configFiscal?.emite_documentos_fiscais &&
@@ -668,6 +703,92 @@ export const VendaFormPage: React.FC = () => {
       (docFiscalStatus as any) === 'Não emitida' ||
       docFiscalStatus === 'Rejeitada') &&
     podeEmitirFiscal
+
+  // Carregar documento fiscal NFe associado à venda
+  const recarregarDocumentoFiscal = async () => {
+    if (!vendaAtual?.id) return
+    try {
+      const doc = await obterDocumentoFiscalDaVenda(vendaAtual.id, '55')
+      setDocFiscalNFe(doc)
+      if (doc?.danfe_url) {
+        setDanfeUrlNota(doc.danfe_url)
+      }
+    } catch {
+      /* intentionally ignored */
+    }
+  }
+
+  useEffect(() => {
+    if (vendaAtual?.id) {
+      recarregarDocumentoFiscal()
+    }
+  }, [vendaAtual?.id, vendaAtual?.documento_fiscal_status])
+
+  const handleConsultarSituacaoNFe = async () => {
+    if (!vendaAtual?.id) return
+    try {
+      setConsultandoSituacaoNFe(true)
+      const res = await consultarSituacaoNFe({
+        venda_id: vendaAtual.id,
+        documento_id: docFiscalNFe?.id,
+      })
+      if (res.sucesso && res.status === 'Autorizada') {
+        toast({
+          title: 'NF-e Autorizada pela SEFAZ',
+          description: `Nota nº ${res.numero || ''} autorizada. Protocolo: ${res.protocolo || ''}`,
+        })
+      } else if (res.status === 'Processando') {
+        toast({
+          title: 'NF-e em Processamento',
+          description: 'A SEFAZ ainda está processando a nota. Tente novamente em alguns segundos.',
+        })
+      } else if (res.status === 'Rejeitada') {
+        toast({
+          title: 'NF-e Rejeitada',
+          description: res.message || 'Verifique as pendências da nota.',
+          variant: 'destructive',
+        })
+      }
+      const atual = await obterVendaCompleta(vendaAtual.id)
+      setVendaAtual(atual.venda)
+      recarregarDocumentoFiscal()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao consultar situação',
+        description: err?.data?.message || err?.message || 'Falha na comunicação com a Focus NFe.',
+        variant: 'destructive',
+      })
+    } finally {
+      setConsultandoSituacaoNFe(false)
+    }
+  }
+
+  const handleBaixarXmlNFe = () => {
+    if (docFiscalNFe?.id && docFiscalNFe?.xml_arquivo) {
+      const pbUrl = import.meta.env.VITE_POCKETBASE_URL || ''
+      const urlXml = `${pbUrl}/api/files/documentos_fiscais/${docFiscalNFe.id}/${docFiscalNFe.xml_arquivo}`
+      window.open(urlXml, '_blank')
+    } else {
+      toast({
+        title: 'XML não disponível',
+        description: 'O arquivo XML ainda não foi sincronizado pelo servidor.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleAbrirDanfe = () => {
+    const url = docFiscalNFe?.danfe_url || danfeUrlNota
+    if (url) {
+      window.open(url, '_blank')
+    } else {
+      toast({
+        title: 'DANFE indisponível',
+        description: 'URL do DANFE não encontrada para esta nota.',
+        variant: 'destructive',
+      })
+    }
+  }
 
   // Emissão Manual de NFC-e no Detalhe da Venda
   const handleEmitirNfceManual = async () => {
@@ -801,10 +922,13 @@ export const VendaFormPage: React.FC = () => {
                             ? 'bg-purple-100 text-purple-800 border-purple-300'
                             : docFiscalStatus === 'Cancelada'
                               ? 'bg-slate-100 text-slate-800 border-slate-300'
-                              : 'bg-amber-100 text-amber-800 border-amber-300'
+                              : docFiscalStatus === 'Denegada'
+                                ? 'bg-red-100 text-red-800 border-red-300'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
                         }
                       >
-                        NFC-e {docFiscalStatus}
+                        {docFiscalNFe?.modelo === '55' || tipo === 'Pedido' ? 'NF-e' : 'NFC-e'}{' '}
+                        {docFiscalStatus}
                       </Badge>
                     )}{' '}
                 </div>
@@ -877,6 +1001,96 @@ export const VendaFormPage: React.FC = () => {
                   <span>Finalizar Venda</span>
                 </Button>
               )}
+              {/* Botões de Acompanhamento e Ações da NF-e Autorizada */}
+              {ehFinalizada && temNfeAutorizada && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAbrirDanfe}
+                    className="text-xs text-blue-700 border-blue-200 hover:bg-blue-50 gap-1.5"
+                  >
+                    <Printer size={14} />
+                    <span>Abrir DANFE</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBaixarXmlNFe}
+                    className="text-xs text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5"
+                  >
+                    <FileText size={14} />
+                    <span>Baixar XML</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setModalEnviarEmailNFeAberto(true)}
+                    className="text-xs text-emerald-700 border-emerald-200 hover:bg-emerald-50 gap-1.5"
+                  >
+                    <Mail size={14} />
+                    <span>Enviar por e-mail</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setModalCartaCorrecaoAberto(true)}
+                    className="text-xs text-amber-700 border-amber-200 hover:bg-amber-50 gap-1.5"
+                  >
+                    <Copy size={14} />
+                    <span>Carta de correção (CC-e)</span>
+                  </Button>
+
+                  {podeExcluir && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setModalCancelarNFeAberto(true)}
+                      className="text-xs text-red-600 border-red-200 hover:bg-red-50 gap-1.5"
+                    >
+                      <Ban size={14} />
+                      <span>Cancelar NF-e</span>
+                    </Button>
+                  )}
+                </>
+              )}
+              {/* Botão de Consulta de Situação quando NF-e estiver Processando */}
+              {ehFinalizada && nfeEmProcessamento && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={consultandoSituacaoNFe}
+                  onClick={handleConsultarSituacaoNFe}
+                  className="text-xs text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 gap-1.5"
+                >
+                  <RefreshCw size={14} className={consultandoSituacaoNFe ? 'animate-spin' : ''} />
+                  <span>
+                    {consultandoSituacaoNFe ? 'Consultando...' : 'Consultar situação SEFAZ'}
+                  </span>
+                </Button>
+              )}
+              {/* Botão Emitir NF-e (Modelo 55) */}
+              {podeEmitirNFe && !temNfeAutorizada && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setModalEmitirNFeAberto(true)}
+                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+                >
+                  <FileText size={14} />
+                  <span>Emitir NF-e</span>
+                </Button>
+              )}
+              {/* NFC-e */}
               {ehFinalizada && temNfceAutorizada && danfeUrlNota && (
                 <Button
                   type="button"
@@ -889,7 +1103,7 @@ export const VendaFormPage: React.FC = () => {
                   <span>Reimprimir DANFCe</span>
                 </Button>
               )}
-              {podeEmitirNfceManual && (
+              {podeEmitirNfceManual && !temNfeAutorizada && (
                 <Button
                   type="button"
                   size="sm"
@@ -919,10 +1133,10 @@ export const VendaFormPage: React.FC = () => {
                   className="text-xs text-blue-700 border-blue-200 hover:bg-blue-50 gap-1.5"
                 >
                   <FileText size={14} />
-                  <span>Pré-visualizar nota fiscal</span>
+                  <span>Pré-visualizar impostos</span>
                 </Button>
               )}
-              {ehFinalizada && podeExcluir && (
+              {ehFinalizada && podeExcluir && !temNfeAutorizada && !temNfceAutorizada && (
                 <Button
                   type="button"
                   variant="outline"
@@ -931,7 +1145,7 @@ export const VendaFormPage: React.FC = () => {
                   className="text-xs text-red-600 border-red-200 hover:bg-red-50 gap-1.5"
                 >
                   <Ban size={14} />
-                  <span>{temNfceAutorizada ? 'Cancelar NFC-e' : 'Cancelar Venda'}</span>
+                  <span>Cancelar Venda</span>
                 </Button>
               )}{' '}
             </>
@@ -1600,6 +1814,62 @@ export const VendaFormPage: React.FC = () => {
           carregando={carregandoPrevisualizacao}
           erro={erroPrevisualizacao}
           onRecarregar={handlePrevisualizarNota}
+        />
+      )}
+
+      {/* Modal de Emissão e Conferência da NF-e (Modelo 55) */}
+      {vendaAtual && (
+        <ModalEmitirNFe
+          open={modalEmitirNFeAberto}
+          onOpenChange={setModalEmitirNFeAberto}
+          venda={vendaAtual}
+          onSucesso={async () => {
+            const atual = await obterVendaCompleta(vendaAtual.id)
+            setVendaAtual(atual.venda)
+            recarregarDocumentoFiscal()
+          }}
+        />
+      )}
+
+      {/* Modal de Cancelamento de NF-e */}
+      {vendaAtual && (
+        <ModalCancelarNFe
+          open={modalCancelarNFeAberto}
+          onOpenChange={setModalCancelarNFeAberto}
+          documentoId={docFiscalNFe?.id}
+          vendaId={vendaAtual.id}
+          numeroNFe={docFiscalNFe?.numero || vendaAtual.numero}
+          onSucesso={async () => {
+            const atual = await obterVendaCompleta(vendaAtual.id)
+            setVendaAtual(atual.venda)
+            recarregarDocumentoFiscal()
+          }}
+        />
+      )}
+
+      {/* Modal de Carta de Correção (CC-e) */}
+      {vendaAtual && (
+        <ModalCartaCorrecao
+          open={modalCartaCorrecaoAberto}
+          onOpenChange={setModalCartaCorrecaoAberto}
+          documentoId={docFiscalNFe?.id}
+          vendaId={vendaAtual.id}
+          numeroNFe={docFiscalNFe?.numero || vendaAtual.numero}
+          onSucesso={() => {
+            recarregarDocumentoFiscal()
+          }}
+        />
+      )}
+
+      {/* Modal de Enviar NF-e por E-mail */}
+      {vendaAtual && (
+        <ModalEnviarEmailNFe
+          open={modalEnviarEmailNFeAberto}
+          onOpenChange={setModalEnviarEmailNFeAberto}
+          documentoId={docFiscalNFe?.id}
+          vendaId={vendaAtual.id}
+          emailDestinatarioPadrao={clienteSelecionado?.email || ''}
+          numeroNFe={docFiscalNFe?.numero || vendaAtual.numero}
         />
       )}
     </div>

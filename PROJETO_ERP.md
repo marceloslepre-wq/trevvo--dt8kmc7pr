@@ -284,6 +284,42 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### intermediadores
+
+Tabela de intermediadores de operação e marketplaces (Mercado Livre, Shopee, Amazon, Magalu, etc.), cadastrados para atender à exigência fiscal da SEFAZ nos grupos `indIntermed` e `infIntermed` da NF-e (modelo 55) em operações não presenciais (Internet, Televendas ou Outros). Controlada por permissão `notas_saida` no frontend e gravada com vínculo ao usuário logado.
+
+- id (text, PK)
+- nome (text, razão social ou nome fantasia do marketplace/intermediador, obrigatório)
+- cnpj (text, CNPJ de 14 dígitos numéricos da plataforma intermediadora, obrigatório)
+- ativo (bool, padrão true)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `nome` (`idx_intermediadores_nome`), `cnpj` (`idx_intermediadores_cnpj`), `ativo` (`idx_intermediadores_ativo`).
+
+### documentos_fiscais_cartas
+
+Tabela de registro e controle de Cartas de Correção Eletrônicas (CC-e) vinculadas a NF-e (modelo 55) autorizadas. Permissões estritas: somente leitura pelo navegador (`listRule` e `viewRule` com `@request.auth.id != ''`); inserção e alteração 100% restritas ao backend (`createRule: null`, `updateRule: null`, `deleteRule: null`), gravadas exclusivamente pelos serviços do PocketBase após homologação do evento na SEFAZ.
+
+- id (text, PK)
+- documento_id (relation -> documentos_fiscais, obrigatório, cascadeDelete)
+- sequencia (number, número sequencial do evento de CC-e da nota, 1 a N)
+- texto (text, texto da retificação entre 15 e 1000 caracteres, obrigatório)
+- data (text, ISO string da data do evento)
+- status (text, padrão "Autorizada")
+- protocolo (text, número de protocolo de registro do evento retornado pela SEFAZ)
+- mensagem_sefaz (text, mensagem descritiva da SEFAZ)
+- xml_arquivo (file, XML autorizado do evento de Carta de Correção)
+- pdf_arquivo (file, PDF oficial de comprovante da Carta de Correção)
+- pdf_url (text, URL pública do PDF da CC-e na Focus NFe)
+- usuario_id (relation -> users, operador responsável pelo envio da CC-e)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `documento_id` (`idx_doc_cartas_documento`), `data` (`idx_doc_cartas_data`).
+
 ### config_emissao_fiscal
 
 Configuração e parâmetros de emissão fiscal (NF-e modelo 55 e NFC-e modelo 65) integrada à Focus NFe por empresa emissora. Possui restrição de unicidade por `empresa_id` (cada filial ou matriz tem sua parametrização e seus próprios tokens). Leitura permitida a usuários com acesso ao módulo `notas_saida`; gravação restrita exclusivamente a Administradores do ERP (`perfis_acesso.administrador = true`).
@@ -2945,6 +2981,49 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Gráfico diário de faturamento dos últimos 30 dias com linha de tendência.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.76** — Emissão de NF-e (Modelo 55), Intermediadores de Marketplace, Acompanhamento SEFAZ, DANFE/XML, E-mail, Cancelamento 24h e Carta de Correção (CC-e):
+
+1. **Emissão de NF-e (Modelo 55) no Detalhe da Venda (`VendaFormPage.tsx` e `ModalEmitirNFe.tsx`):**
+   - Disponibilização do botão **"Emitir NF-e"** no detalhe de vendas Finalizadas (tipo Pedido ou PDV sem NFC-e), condicionado à permissão de criação/edição em `notas_saida`.
+   - **Regra da Empresa Emitente:** A NF-e sai SEMPRE pela empresa da venda (`venda.empresa_id`), utilizando o token Focus NFe do Skip Cloud, ambiente (Produção/Homologação) e série cadastrados para aquela filial — nunca a matriz nem a empresa ativa no navegador.
+   - **Janela de Conferência e Parâmetros:**
+     - Natureza da operação configurável com sugestão da config da empresa.
+     - Presença do comprador (`presenca_comprador`): 1 presencial, 2 internet, 3 teleatendimento, 4 entrega em domicílio, 9 outros (herda de `config_emissao_fiscal.presenca_comprador_padrao_nfe`).
+     - Local de destino automático: 1 interna (mesma UF), 2 interestadual (outra UF), 3 exterior. Consumidor final automático para PF ou não contribuinte (indicador IE 9).
+     - Informações complementares padrão somadas às observações da venda.
+     - Transporte completo: modalidade de frete CIF/FOB/próprio/sem frete; escolha de transportadora vinculada a fornecedores do tipo Transportadora; quantidade, espécie, peso bruto e líquido dos volumes.
+     - Fatura e duplicatas integradas a partir dos títulos de `contas_receber` gerados para a venda.
+     - Exibição de apuração de tributos em tempo real com destaque para **DIFAL** calculado (ou aviso de Simples Nacional/DIFAL desligado).
+
+2. **Intermediadores de Vendas e Marketplaces (Migration 0049):**
+   - Criação da tabela `intermediadores` (`nome`, `cnpj`, `ativo`) com carga inicial (Mercado Livre, Shopee, Amazon, Magazine Luiza).
+   - Tela de gestão em **Fiscal > Intermediadores** (`/fiscal/intermediadores`) com CRUD e validação de CNPJ, integrada ao menu lateral (`Sidebar.tsx`) e módulo `notas_saida`.
+   - Na janela de conferência da NF-e, quando a presença for não presencial (2, 3 ou 9), seleção obrigatória entre "Site ou app próprio (sem intermediador, indIntermed = 0)" ou "Marketplace / plataforma de terceiros (indIntermed = 1)".
+   - Vinculação de `intermediador_id`, identificador do pedido no marketplace (`idCadIntTran`), gravação em `documentos_fiscais` e persistência no `localStorage` por empresa para agilizar as próximas notas da filial e-commerce.
+
+3. **Acompanhamento Atômico da Emissão com a SEFAZ:**
+   - Serviço backend transacional em `pocketbase/hooks/fiscal_nfe_operacoes.js` (`POST /backend/v1/fiscal/emitir-nfe-venda` e `POST /backend/v1/fiscal/consultar-situacao-nfe`).
+   - Acompanhamento síncrono logo após o envio: consulta automática a cada 3 segundos por até 30 segundos com contador visual na tela.
+   - Ao mudar para "autorizado": grava número, chave de 44 dígitos, protocolo, `danfe_url`, baixa o XML autorizado (`xml_arquivo`) e atualiza a venda para `documento_fiscal_status = "Autorizada"`.
+   - Rejeição: marca `status = "Rejeitada"` e exibe os motivos da SEFAZ sem travar a venda.
+   - Denegação: marca `status = "Denegada"` com aviso claro de impedimento legal (nota denegada não pode ser reutilizada; orienta consulta da situação cadastral do destinatário).
+   - Passados os 30 segundos sem retorno final, a nota permanece como "Processando" e pode ser sincronizada a qualquer momento pelo botão **"Consultar situação SEFAZ"**.
+   - Bloqueio mútuo: vendas com NFC-e autorizada não podem emitir NF-e (e vice-versa), salvo se a nota anterior estiver cancelada.
+
+4. **DANFE, XML e Envio por E-mail:**
+   - Botões na venda autorizada: **"Abrir DANFE"** (abre PDF oficial da Focus NFe), **"Baixar XML"** (download direto do XML autorizado) e **"Enviar por e-mail"** (`ModalEnviarEmailNFe`).
+   - Modal com sugestão do e-mail do cliente, suporte a múltiplas cópias e envio agendado via endpoint `/backend/v1/fiscal/enviar-email-nfe`.
+
+5. **Cancelamento da NF-e:**
+   - Botão **"Cancelar NF-e"** (`ModalCancelarNFe`) com justificativa obrigatória de 15 a 255 caracteres, verificação de permissão `excluir` em `notas_saida`, envio para a SEFAZ e download do XML de cancelamento (`xml_cancelamento`).
+   - Verificação do prazo legal de 24 horas da SEFAZ: se expirado, exibe aviso e instrução para emissão de nota de devolução.
+
+6. **Carta de Correção Eletrônica (CC-e) (Migration 0049 e `ModalCartaCorrecao.tsx`):**
+   - Criação da tabela `documentos_fiscais_cartas` para histórico cronológico das retificações de cada nota com download do XML e PDF da CC-e.
+   - Botão **"Carta de correção (CC-e)"** no detalhe da NF-e autorizada com validação de 15 a 1000 caracteres e alerta explícito da legislação (vedada correção de valores, tributos, remetente/destinatário ou datas de emissão/saída).
+
+---
 
 **Versão 0.0.75** — Emissão de NFC-e (Modelo 65) nas Vendas do PDV, Contingência Offline, Bobina 80mm, Cancelamento na SEFAZ e Emissão Manual:
 

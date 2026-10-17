@@ -97,6 +97,7 @@ import { ConsultasVendasPage } from '@/pages/vendas/ConsultasVendasPage'
 // Páginas Fiscais (Etapa 6)
 import ConfiguracaoEmissaoFiscalPage from '@/pages/fiscal/ConfiguracaoEmissaoFiscalPage'
 import DocumentosFiscaisPlaceholderPage from '@/pages/fiscal/DocumentosFiscaisPlaceholderPage'
+import IntermediadoresPage from '@/pages/fiscal/IntermediadoresPage'
 
 const App = () => (
   <BrowserRouter>
@@ -799,6 +800,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="notas_saida" acao="ver">
                         <DocumentosFiscaisPlaceholderPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/fiscal/intermediadores"
+                    element={
+                      <PermissaoGuard modulo="notas_saida" acao="ver">
+                        <IntermediadoresPage />
                       </PermissaoGuard>
                     }
                   />

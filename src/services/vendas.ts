@@ -12,7 +12,13 @@ export type StatusVenda =
   | 'Cancelada'
   | 'Orçamento expirado'
 
-export type DocumentoFiscalStatus = 'Não emitido' | 'Autorizada' | 'Cancelada' | 'Rejeitada'
+export type DocumentoFiscalStatus =
+  | 'Não emitido'
+  | 'Processando'
+  | 'Autorizada'
+  | 'Cancelada'
+  | 'Rejeitada'
+  | 'Denegada'
 
 export interface Venda {
   id: string

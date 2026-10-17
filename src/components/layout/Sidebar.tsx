@@ -36,6 +36,7 @@ import {
   AlertTriangle,
   RotateCcw,
   Award,
+  Store,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -417,6 +418,12 @@ const navItems: NavGroupItem[] = [
         title: 'Documentos fiscais',
         path: '/fiscal/documentos',
         icon: FileText,
+        modulo: 'notas_saida',
+      },
+      {
+        title: 'Intermediadores',
+        path: '/fiscal/intermediadores',
+        icon: Store,
         modulo: 'notas_saida',
       },
     ],

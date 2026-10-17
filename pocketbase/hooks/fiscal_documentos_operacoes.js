@@ -905,13 +905,32 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
             : 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
           : destinatarioNome
 
-      const presencaCompradorFinal = modelo === '65' ? '1' : presencaPadrao.charAt(0)
-      const modalidadeFreteFinal = modelo === '65' ? 9 : 9
+      // Parâmetros recebidos no body para customização na janela de conferência da NF-e
+      const presencaInput =
+        data.presenca_comprador !== undefined
+          ? String(data.presenca_comprador).charAt(0)
+          : undefined
+      const naturezaOperacaoInput = (data.natureza_operacao || '').trim() || naturezaPadrao
+      const modalidadeFreteInput =
+        data.modalidade_frete !== undefined
+          ? Number(data.modalidade_frete)
+          : modelo === '65'
+            ? 9
+            : 9
+      const infoComplInput =
+        data.informacoes_complementares !== undefined
+          ? String(data.informacoes_complementares)
+          : infoComplPadrao || ''
+
+      const presencaCompradorFinal =
+        modelo === '65' ? '1' : presencaInput || presencaPadrao.charAt(0)
+      const modalidadeFreteFinal = modelo === '65' ? 9 : modalidadeFreteInput
       const localDestinoFinal = modelo === '65' ? 1 : localDestino
-      const consumidorFinalFlag = modelo === '65' ? 1 : destinatarioConsumidorFinal ? 1 : 0
+      const consumidorFinalFlag =
+        modelo === '65' ? 1 : indicadorIe === '9' || destinatarioConsumidorFinal ? 1 : 0
 
       const jsonFocus = {
-        natureza_operacao: naturezaPadrao,
+        natureza_operacao: naturezaOperacaoInput,
         data_emissao: dataHojeIso,
         tipo_documento: 1,
         finalidade_emissao: 1,
@@ -934,7 +953,125 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
 
         items: itensFocus,
         formas_pagamento: formasPagamentoFocus,
-        informacoes_adicionais_contribuinte: infoComplPadrao || undefined,
+        informacoes_adicionais_contribuinte: infoComplInput || undefined,
+      }
+
+      // Intermediador (indIntermed e infIntermed) quando presenca_comprador for 2, 3 ou 9
+      const presencaExigeIntermediador = ['2', '3', '9'].includes(presencaCompradorFinal)
+      let intermediadorIdGravado = ''
+      let identificadorIntermediadorGravado = ''
+
+      if (presencaExigeIntermediador) {
+        const tipoIntermediadorInput = data.tipo_intermediador || 'proprio' // 'proprio' ou 'terceiro'
+        if (tipoIntermediadorInput === 'terceiro') {
+          jsonFocus.indicador_intermediador = 1
+          const interId = data.intermediador_id || ''
+          const idCadIntTran = (data.identificador_intermediador || '').trim()
+          if (!interId) {
+            pendencias.push(
+              'Operação com marketplace de terceiros exige selecionar o intermediador.',
+            )
+          } else {
+            try {
+              const interRec = txApp.findRecordById('intermediadores', interId)
+              if (interRec) {
+                const cnpjInter = (interRec.getString('cnpj') || '').replace(/\D/g, '')
+                if (!cnpjInter || cnpjInter.length !== 14) {
+                  pendencias.push(
+                    `CNPJ do intermediador "${interRec.getString('nome')}" é inválido.`,
+                  )
+                } else {
+                  jsonFocus.cnpj_intermediador = cnpjInter
+                }
+                intermediadorIdGravado = interRec.id
+              }
+            } catch (_) {
+              pendencias.push('Intermediador selecionado não foi encontrado.')
+            }
+          }
+          if (idCadIntTran) {
+            jsonFocus.identificador_intermediador = idCadIntTran
+            identificadorIntermediadorGravado = idCadIntTran
+          }
+        } else {
+          // Sem intermediador (site próprio / app próprio / telefone direto)
+          jsonFocus.indicador_intermediador = 0
+        }
+      }
+
+      // Transporte: transportadora e volumes (se fornecidos)
+      if (data.transportadora_id) {
+        try {
+          const transpRec = txApp.findRecordById('fornecedores', data.transportadora_id)
+          if (transpRec) {
+            const transpCnpjCpf = (transpRec.getString('cpf_cnpj') || '').replace(/\D/g, '')
+            if (transpCnpjCpf.length === 14) {
+              jsonFocus.cnpj_transportador = transpCnpjCpf
+            } else if (transpCnpjCpf.length === 11) {
+              jsonFocus.cpf_transportador = transpCnpjCpf
+            }
+            jsonFocus.nome_transportador =
+              transpRec.getString('razao_social') ||
+              transpRec.getString('nome_fantasia') ||
+              transpRec.getString('nome')
+            const transpIe = (transpRec.getString('inscricao_estadual') || '').trim()
+            if (transpIe && transpIe.toUpperCase() !== 'ISENTO') {
+              jsonFocus.inscricao_estadual_transportador = transpIe.replace(/\D/g, '')
+            }
+            jsonFocus.endereco_transportador = transpRec.getString('logradouro') || undefined
+            jsonFocus.municipio_transportador = transpRec.getString('municipio') || undefined
+            jsonFocus.uf_transportador = transpRec.getString('uf') || undefined
+          }
+        } catch (_) {}
+      }
+
+      // Volumes
+      if (
+        data.volumes_quantidade !== undefined &&
+        data.volumes_quantidade !== null &&
+        Number(data.volumes_quantidade) > 0
+      ) {
+        jsonFocus.quantidade_volumes = Number(data.volumes_quantidade)
+        if (data.volumes_especie) jsonFocus.especie_volumes = String(data.volumes_especie).trim()
+        if (data.peso_bruto !== undefined && Number(data.peso_bruto) > 0)
+          jsonFocus.peso_bruto = Number(data.peso_bruto)
+        if (data.peso_liquido !== undefined && Number(data.peso_liquido) > 0)
+          jsonFocus.peso_liquido = Number(data.peso_liquido)
+      }
+
+      // Fatura e duplicatas a partir de contas_receber vinculados à venda
+      if (venda) {
+        try {
+          const titulosVenda = txApp.findRecordsByFilter(
+            'contas_receber',
+            `origem_id = '${idOrigem}' && ativo = true`,
+            'parcela_numero,data_vencimento',
+          )
+          if (titulosVenda && titulosVenda.length > 0) {
+            const duplicatasFocus = []
+            for (let d = 0; d < titulosVenda.length; d++) {
+              const tit = titulosVenda[d]
+              const numDoc =
+                tit.getString('numero_documento') ||
+                `${venda.getString('numero') || idOrigem.slice(0, 6)}-${d + 1}`
+              const vcto = (tit.getString('data_vencimento') || '').slice(0, 10)
+              const vlr = tit.getFloat('valor_original') || 0
+              if (vcto && vlr > 0) {
+                duplicatasFocus.push({
+                  numero: numDoc,
+                  data_vencimento: vcto,
+                  valor: round2(vlr),
+                })
+              }
+            }
+            if (duplicatasFocus.length > 0) {
+              jsonFocus.duplicatas = duplicatasFocus
+              jsonFocus.numero_fatura = venda.getString('numero') || idOrigem.slice(0, 8)
+              jsonFocus.valor_original_fatura = round2(totValorTotal)
+              jsonFocus.valor_liquido_fatura = round2(totValorTotal)
+            }
+          }
+        } catch (_) {}
       }
 
       // Troco informado conforme Focus NFe se houver
@@ -987,12 +1124,18 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       docRec.set('status', 'Rascunho')
       docRec.set('serie', seriePadrao)
       docRec.set('data_emissao', dataHojeIso)
-      docRec.set('natureza_operacao', naturezaPadrao)
+      docRec.set('natureza_operacao', naturezaOperacaoInput)
       docRec.set('cfop_principal', cfopPrimeiroItem || '5102')
       docRec.set('destinatario_nome', destinatarioNome)
       docRec.set('destinatario_cpf_cnpj', destinatarioCpfCnpj)
       docRec.set('destinatario_uf', destinatarioUf)
-      docRec.set('presenca_comprador', presencaPadrao)
+      docRec.set('presenca_comprador', presencaCompradorFinal)
+      if (intermediadorIdGravado) {
+        docRec.set('intermediador_id', intermediadorIdGravado)
+      }
+      if (identificadorIntermediadorGravado) {
+        docRec.set('identificador_intermediador', identificadorIntermediadorGravado)
+      }
 
       // Totais
       docRec.set('valor_produtos', round2(totValorProdutos))
