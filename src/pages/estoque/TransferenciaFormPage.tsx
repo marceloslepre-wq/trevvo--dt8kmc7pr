@@ -57,6 +57,15 @@ import {
   NovoItemTransferenciaInput,
   ItemConferenciaRecebimento,
 } from '@/services/transferencias'
+import { ModalEmitirNFeTransferencia } from '@/components/fiscal/ModalEmitirNFeTransferencia'
+import {
+  obterOuCriarConfigEmissaoFiscal,
+  ConfigEmissaoFiscal,
+} from '@/services/configEmissaoFiscal'
+import {
+  obterDocumentoFiscalDaTransferencia,
+  DocumentoFiscalRegistro,
+} from '@/services/documentosFiscais'
 
 interface ItemLinhaGrade {
   tempId: string
@@ -102,6 +111,12 @@ export const TransferenciaFormPage: React.FC = () => {
   const [modalCancelarAberto, setModalCancelarAberto] = useState(false)
   const [motivoCancelamento, setMotivoCancelamento] = useState('')
   const [modalRomaneioAberto, setModalRomaneioAberto] = useState(false)
+  const [modalEmitirNFeAberto, setModalEmitirNFeAberto] = useState(false)
+  const [iniciarEmitindoDireto, setIniciarEmitindoDireto] = useState(false)
+
+  // Configuração fiscal da empresa de ORIGEM
+  const [configFiscalOrigem, setConfigFiscalOrigem] = useState<ConfigEmissaoFiscal | null>(null)
+  const [docFiscalTrf, setDocFiscalTrf] = useState<DocumentoFiscalRegistro | null>(null)
 
   // Grade de conferência no recebimento (item_id -> quantidade_recebida)
   const [quantidadesRecebimento, setQuantidadesRecebimento] = useState<Record<string, number>>({})
@@ -187,6 +202,21 @@ export const TransferenciaFormPage: React.FC = () => {
           it.quantidade_recebida > 0 ? it.quantidade_recebida : it.quantidade
       })
       setQuantidadesRecebimento(inicialConferencia)
+
+      // Carrega config fiscal da empresa de origem e doc fiscal se existir
+      try {
+        const cfg = await obterOuCriarConfigEmissaoFiscal(transf.empresa_origem_id)
+        setConfigFiscalOrigem(cfg)
+      } catch (_) {
+        setConfigFiscalOrigem(null)
+      }
+
+      try {
+        const docF = await obterDocumentoFiscalDaTransferencia(transf.id, '55')
+        setDocFiscalTrf(docF)
+      } catch (_) {
+        setDocFiscalTrf(null)
+      }
     } catch (err: any) {
       console.error('Erro ao carregar transferência:', err)
       toast({
@@ -216,6 +246,13 @@ export const TransferenciaFormPage: React.FC = () => {
   const podeCancelar =
     (statusAtual === 'Rascunho' && pode('estoque', 'excluir')) ||
     (statusAtual === 'Enviada' && isOrigem && pode('estoque', 'excluir'))
+
+  const podeEmitirFiscal = administrador || pode('notas_saida', 'criar')
+  const origemEmiteNFe = Boolean(configFiscalOrigem?.emite_documentos_fiscais)
+  const temNfeAutorizada =
+    Boolean(transferencia?.nota_fiscal_chave) || Boolean(docFiscalTrf?.status === 'Autorizada')
+  const podeEmitirNFeTransferencia =
+    statusAtual === 'Enviada' && !temNfeAutorizada && podeEmitirFiscal
 
   // Adicionar produto bipado ou selecionado
   const handleAdicionarProduto = async (produto: Produto, quantidade = 1) => {
@@ -414,6 +451,17 @@ export const TransferenciaFormPage: React.FC = () => {
         description: `TR-${transferencia.numero} enviada. Estoque baixado na origem.`,
       })
       setModalEnviarAberto(false)
+
+      // Se a config fiscal da empresa de origem tiver emitir_nfe_ao_enviar_transferencia = true
+      if (
+        origemEmiteNFe &&
+        configFiscalOrigem?.emitir_nfe_ao_enviar_transferencia &&
+        podeEmitirFiscal
+      ) {
+        setIniciarEmitindoDireto(true)
+        setModalEmitirNFeAberto(true)
+      }
+
       carregarTransferencia()
     } catch (err: any) {
       console.error('Erro ao enviar:', err)
@@ -493,6 +541,15 @@ export const TransferenciaFormPage: React.FC = () => {
       return
     }
 
+    if (docFiscalTrf?.status === 'Autorizada') {
+      toast({
+        title: 'Nota fiscal autorizada',
+        description: 'Cancele a nota fiscal antes de cancelar a transferência.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setSalvando(true)
     try {
       await cancelarTransferencia(
@@ -517,6 +574,34 @@ export const TransferenciaFormPage: React.FC = () => {
       })
     } finally {
       setSalvando(false)
+    }
+  }
+
+  // Ações de DANFE e XML da transferência
+  const handleAbrirDanfe = () => {
+    const url = docFiscalTrf?.danfe_url
+    if (url) {
+      window.open(url, '_blank')
+    } else {
+      toast({
+        title: 'DANFE indisponível',
+        description: 'URL do DANFE não encontrada para esta transferência.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleBaixarXml = () => {
+    if (docFiscalTrf?.id && docFiscalTrf?.xml_arquivo) {
+      const pbUrl = import.meta.env.VITE_POCKETBASE_URL || ''
+      const urlXml = `${pbUrl}/api/files/documentos_fiscais/${docFiscalTrf.id}/${docFiscalTrf.xml_arquivo}`
+      window.open(urlXml, '_blank')
+    } else {
+      toast({
+        title: 'XML indisponível',
+        description: 'Arquivo XML ainda não disponível no servidor.',
+        variant: 'destructive',
+      })
     }
   }
 
@@ -592,6 +677,55 @@ export const TransferenciaFormPage: React.FC = () => {
             </Button>
           )}
 
+          {/* Botões DANFE e XML da transferência quando autorizada */}
+          {temNfeAutorizada && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAbrirDanfe}
+                className="text-xs text-blue-700 border-blue-200 hover:bg-blue-50 gap-1.5"
+              >
+                <Printer size={14} />
+                <span>Abrir DANFE</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleBaixarXml}
+                className="text-xs text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5"
+              >
+                <FileText size={14} />
+                <span>Baixar XML</span>
+              </Button>
+            </>
+          )}
+
+          {/* Botão Emitir NF-e de transferência */}
+          {podeEmitirNFeTransferencia && origemEmiteNFe && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setIniciarEmitindoDireto(false)
+                setModalEmitirNFeAberto(true)
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-sm"
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              Emitir NF-e de transferência
+            </Button>
+          )}
+
+          {/* Aviso inline quando empresa de origem não emite */}
+          {statusAtual === 'Enviada' && !temNfeAutorizada && !origemEmiteNFe && (
+            <span className="text-xs text-amber-700 font-medium px-2 py-1 bg-amber-50 border border-amber-200 rounded">
+              Esta empresa não emite NF-e
+            </span>
+          )}
+
           {podeEditarRascunho && (
             <Button
               type="button"
@@ -647,18 +781,34 @@ export const TransferenciaFormPage: React.FC = () => {
 
       {/* Alerta de Status */}
       {statusAtual === 'Enviada' && isDestino && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
-          <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-900">
-            <p className="font-semibold text-sm">
-              Transferência pronta para recebimento nesta filial
-            </p>
-            <p className="mt-0.5">
-              Esta remessa foi despachada pela filial de origem. Clique no botão verde{' '}
-              <strong>"Receber e Conferir"</strong> para registrar as quantidades físicas recebidas
-              e dar entrada no estoque desta filial.
-            </p>
+        <div className="space-y-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+            <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-900">
+              <p className="font-semibold text-sm">
+                Transferência pronta para recebimento nesta filial
+              </p>
+              <p className="mt-0.5">
+                Esta remessa foi despachada pela filial de origem. Clique no botão verde{' '}
+                <strong>"Receber e Conferir"</strong> para registrar as quantidades físicas
+                recebidas e dar entrada no estoque desta filial.
+              </p>
+            </div>
           </div>
+
+          {/* Aviso não bloqueante quando a transferência não tiver NF-e autorizada */}
+          {!temNfeAutorizada && (
+            <Alert className="border-amber-300 bg-amber-50/70 text-amber-900">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-xs font-semibold">
+                Transferência sem nota fiscal
+              </AlertTitle>
+              <AlertDescription className="text-xs">
+                Esta transferência foi enviada sem NF-e autorizada. A mercadoria pode ser recebida
+                normalmente.
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
       )}
 
@@ -1126,6 +1276,24 @@ export const TransferenciaFormPage: React.FC = () => {
         <RomaneioTransferenciaModal
           transferencia={transferencia}
           onClose={() => setModalRomaneioAberto(false)}
+        />
+      )}
+
+      {/* Modal Emitir NF-e de Transferência */}
+      {modalEmitirNFeAberto && transferencia && (
+        <ModalEmitirNFeTransferencia
+          open={modalEmitirNFeAberto}
+          onOpenChange={(aberto) => {
+            setModalEmitirNFeAberto(aberto)
+            if (!aberto) setIniciarEmitindoDireto(false)
+          }}
+          transferencia={transferencia}
+          empresaOrigem={empresas.find((e) => e.id === transferencia.empresa_origem_id)}
+          empresaDestino={empresas.find((e) => e.id === transferencia.empresa_destino_id)}
+          iniciarEmitindoDireto={iniciarEmitindoDireto}
+          onSucesso={() => {
+            carregarTransferencia()
+          }}
         />
       )}
     </div>

@@ -93,12 +93,53 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
 
       // 1. Carregar registro de origem (nesta etapa: Venda)
       let venda = null
+      let transferencia = null
       let empresaId = ''
       let clienteId = ''
       let itensOrigem = []
       let pagamentosOrigem = []
 
-      if (origem === 'Venda' || origem === 'Devolução de venda') {
+      if (origem === 'Transferência' || origem === 'Transferencia') {
+        try {
+          transferencia = txApp.findRecordById('transferencias', idOrigem)
+        } catch (_) {
+          throw new Error(`Transferência com id '${idOrigem}' não encontrada.`)
+        }
+
+        if (!transferencia || !transferencia.getBool('ativo')) {
+          throw new Error('Transferência não encontrada ou inativa.')
+        }
+
+        empresaId = transferencia.getString('empresa_origem_id')
+        const empresaDestinoId = transferencia.getString('empresa_destino_id')
+
+        const itensTrf = txApp.findRecordsByFilter(
+          'transferencias_itens',
+          `transferencia_id = '${idOrigem}' && ativo = true`,
+          'created',
+        )
+        if (!itensTrf || itensTrf.length === 0) {
+          throw new Error('A transferência não possui itens cadastrados.')
+        }
+
+        itensOrigem = itensTrf.map((it) => {
+          const qtd = it.getFloat('quantidade') || 0
+          const custoUnit = it.getFloat('custo_unitario') || 0
+          return {
+            getString: (f) => {
+              if (f === 'produto_id') return it.getString('produto_id')
+              if (f === 'lote_id') return it.getString('lote_id')
+              return ''
+            },
+            getFloat: (f) => {
+              if (f === 'quantidade') return qtd
+              if (f === 'preco_unitario') return custoUnit
+              if (f === 'desconto_valor') return 0
+              return 0
+            },
+          }
+        })
+      } else if (origem === 'Venda' || origem === 'Devolução de venda') {
         try {
           venda = txApp.findRecordById('vendas', idOrigem)
         } catch (_) {
@@ -190,9 +231,15 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       const presencaPadrao = cfgFiscal
         ? cfgFiscal.getString('presenca_comprador_padrao_nfe') || '1 Presencial'
         : '1 Presencial'
-      const naturezaPadrao = cfgFiscal
-        ? cfgFiscal.getString('natureza_operacao_venda') || 'Venda de mercadoria'
-        : 'Venda de mercadoria'
+      const naturezaPadrao =
+        origem === 'Transferência' || origem === 'Transferencia'
+          ? cfgFiscal
+            ? cfgFiscal.getString('natureza_operacao_transferencia') ||
+              'Transferência de mercadoria'
+            : 'Transferência de mercadoria'
+          : cfgFiscal
+            ? cfgFiscal.getString('natureza_operacao_venda') || 'Venda de mercadoria'
+            : 'Venda de mercadoria'
       const infoComplPadrao = cfgFiscal
         ? cfgFiscal.getString('informacoes_complementares_padrao') || ''
         : ''
@@ -225,7 +272,31 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       let destinatarioConsumidorFinal = true
       let destinatarioIdEstrangeiro = ''
 
-      if (clienteRec) {
+      if (transferencia) {
+        const empDestId = transferencia.getString('empresa_destino_id')
+        let empDest = null
+        try {
+          empDest = txApp.findRecordById('empresas', empDestId)
+        } catch (_) {}
+
+        if (empDest) {
+          destinatarioNome =
+            empDest.getString('razao_social') || empDest.getString('nome_fantasia') || ''
+          destinatarioCpfCnpj = (empDest.getString('cnpj') || '').replace(/\D/g, '')
+          destinatarioUf = (empDest.getString('uf') || '').trim().toUpperCase() || ufEmitente
+          destinatarioIbge = (empDest.getString('codigo_municipio_ibge') || '').trim()
+          destinatarioLogradouro = empDest.getString('logradouro') || ''
+          destinatarioNumero = empDest.getString('numero') || 'S/N'
+          destinatarioBairro = empDest.getString('bairro') || ''
+          destinatarioCep = (empDest.getString('cep') || '').replace(/\D/g, '')
+          destinatarioComplemento = empDest.getString('complemento') || ''
+          destinatarioMunicipio = empDest.getString('municipio') || ''
+          destinatarioIe = (empDest.getString('inscricao_estadual') || '').trim()
+          const temIe = Boolean(destinatarioIe && destinatarioIe.toUpperCase() !== 'ISENTO')
+          indicadorIe = temIe ? '1' : '9'
+          destinatarioConsumidorFinal = !temIe
+        }
+      } else if (clienteRec) {
         destinatarioNome =
           clienteRec.getString('nome_razao_social') || clienteRec.getString('nome') || ''
         destinatarioCpfCnpj = (clienteRec.getString('cpf_cnpj') || '').replace(/\D/g, '')
@@ -426,6 +497,9 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
           )
         }
 
+        const ehTransferenciaOrigem = origem === 'Transferência' || origem === 'Transferencia'
+        const cenarioParaRegra = ehTransferenciaOrigem ? 'TRANSFERENCIA' : cenarioRegra
+
         const perfilId =
           itRec.getString('perfil_tributario_id') ||
           (prodRec ? prodRec.getString('perfil_tributario_id') : '')
@@ -435,7 +509,7 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
           try {
             const regras = txApp.findRecordsByFilter(
               'perfis_tributarios_regras',
-              `perfil_id = '${perfilId}' && cenario = '${cenarioRegra}' && ativo = true`,
+              `perfil_id = '${perfilId}' && cenario = '${cenarioParaRegra}' && ativo = true`,
               '',
               1,
               0,
@@ -447,10 +521,12 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         }
 
         if (!perfilId) {
-          pendencias.push(
-            `Item ${numItem} (${descricao}): Produto sem Perfil Tributário vinculado.`,
-          )
-        } else if (!regraRec) {
+          if (!ehTransferenciaOrigem) {
+            pendencias.push(
+              `Item ${numItem} (${descricao}): Produto sem Perfil Tributário vinculado.`,
+            )
+          }
+        } else if (!regraRec && !ehTransferenciaOrigem) {
           pendencias.push(
             `Item ${numItem} (${descricao}): Perfil Tributário não possui regra para o cenário "${cenarioRegra}".`,
           )
@@ -500,10 +576,19 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
 
         // CFOP padrão
         if (!cfop) {
-          if (ehOperacaoInterna) {
-            cfop = '5102'
+          if (ehTransferenciaOrigem) {
+            const temStTrf = Boolean(cest)
+            if (temStTrf) {
+              cfop = ehOperacaoInterna ? '5409' : '6409'
+            } else {
+              cfop = ehOperacaoInterna ? '5152' : '6152'
+            }
           } else {
-            cfop = indicadorIe === '9' ? '6108' : '6102'
+            if (ehOperacaoInterna) {
+              cfop = '5102'
+            } else {
+              cfop = indicadorIe === '9' ? '6108' : '6102'
+            }
           }
         }
 
@@ -518,7 +603,13 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
             `Item ${numItem}: CFOP ${cfop} incoerente com operação interestadual (${ufEmitente} -> ${destinatarioUf}). Deveria iniciar com 6.`,
           )
         }
-        if (!ehOperacaoInterna && indicadorIe === '9' && cfop !== '6107' && cfop !== '6108') {
+        if (
+          !ehTransferenciaOrigem &&
+          !ehOperacaoInterna &&
+          indicadorIe === '9' &&
+          cfop !== '6107' &&
+          cfop !== '6108'
+        ) {
           avisos.push(
             `Item ${numItem}: CFOP ${cfop} em venda interestadual a não contribuinte (recomenda-se 6107 ou 6108).`,
           )
@@ -1107,9 +1198,11 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
 
       let docExistente = null
       try {
+        const campoIdFiltro =
+          origem === 'Transferência' || origem === 'Transferencia' ? 'transferencia_id' : 'venda_id'
         const docs = txApp.findRecordsByFilter(
           'documentos_fiscais',
-          `venda_id = '${idOrigem}' && status = 'Rascunho' && modelo = '${modelo}'`,
+          `${campoIdFiltro} = '${idOrigem}' && status = 'Rascunho' && modelo = '${modelo}'`,
           '-created',
           1,
           0,
@@ -1128,7 +1221,11 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       docRec.set('finalidade', 1)
       docRec.set('ambiente', ambiente)
       docRec.set('origem', origem)
-      docRec.set('venda_id', idOrigem)
+      if (origem === 'Transferência' || origem === 'Transferencia') {
+        docRec.set('transferencia_id', idOrigem)
+      } else {
+        docRec.set('venda_id', idOrigem)
+      }
       docRec.set('referencia', referenciaUnica)
       docRec.set('status', 'Rascunho')
       docRec.set('serie', seriePadrao)

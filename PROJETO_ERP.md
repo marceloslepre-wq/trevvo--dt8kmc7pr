@@ -3009,6 +3009,35 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.84** — Emissão de NF-e de Transferência entre Filiais (Modelo 55), Modal de Conferência, Polling SEFAZ, DANFE/XML e Bloqueios Fiscais:
+
+1. **Modal de Conferência e Emissão de NF-e de Transferência (`ModalEmitirNFeTransferencia.tsx`):**
+   - Criação de `src/components/fiscal/ModalEmitirNFeTransferencia.tsx` seguindo o padrão de emissão e polling da NF-e de venda (Modelo 55).
+   - **Regra Fixa do Emitente:** A NF-e é emitida rigorosamente pela empresa de ORIGEM da transferência (`empresa_origem_id`), utilizando o token, série e ambiente daquela filial cadastrados em `config_emissao_fiscal` (nunca a matriz nem a empresa ativa no navegador).
+   - **Aba 1 (Empresas & Operação):** Conferência dos dados do emitente (Razão Social, CNPJ, UF da origem), destinatário (Razão Social, CNPJ, IE da empresa de destino), ambiente SEFAZ, natureza da operação (lida de `config_emissao_fiscal.natureza_operacao_transferencia` com fallback para "Transferência de mercadoria") e informações complementares.
+   - **Aba 2 (Itens da Transferência):** Grade com código, descrição, quantidade, custo unitário e subtotal dos produtos transferidos, totalizando o custo da remessa.
+   - **Aba 3 (Transporte & Impostos):** Modalidade do frete (CIF/FOB/próprio/sem frete), seletor de transportadora cadastrada, volumes transportados (quantidade, espécie, peso bruto e líquido) e pré-visualização da apuração de impostos (ICMS próprio, ICMS ST, IPI, PIS, COFINS, FCP) calculada via rascunho.
+   - **Transmissão e Polling Automático:** Ao confirmar, dispara `emitirNFeTransferencia` e executa polling com `consultarSituacaoNFe` a cada 3s por até 30s com contagem regressiva visual. Autorizada: exibe número, série e chave de 44 dígitos. Rejeitada: exibe mensagem da SEFAZ. Passados 30s sem retorno final: exibe aviso de "Processando" com botão manual "Consultar situação".
+
+2. **Ajuste no Backend para Pré-visualização de Rascunho de Transferência (`pocketbase/hooks`):**
+   - Em `fiscal_documentos_operacoes.js`, adicionado suporte no endpoint `/backend/v1/fiscal/montar-rascunho` para a origem `'Transferência'` / `'Transferencia'` vinculada a `transferencia_id`:
+     - Leitura dos dados da empresa remetente (`empresa_origem_id`) e destinatária (`empresa_destino_id`).
+     - Mapeamento dos itens de `transferencias_itens` com quantidade e `custo_unitario`.
+     - CFOP automático de transferência (5152/6152 para normal e 5409/6409 para mercadorias com ST/CEST).
+     - Cenário tributário `TRANSFERENCIA` sem exigência impeditiva de perfil de venda.
+     - Gravação e atualização do documento com vínculo a `transferencia_id`.
+   - Em `fiscal_nfe_operacoes.js`, adicionado suporte a `transferencia_id` nos endpoints `/backend/v1/fiscal/consultar-situacao-nfe` e `/backend/v1/fiscal/cancelar-nfe`.
+
+3. **Integração nas Telas de Transferência (`TransferenciaFormPage.tsx` e `TransferenciasListaPage.tsx`):**
+   - **Botão "Emitir NF-e de transferência":** Disponível quando a transferência estiver no status "Enviada" e sem nota autorizada (`nota_fiscal_chave`), condicionado à permissão de criação em `notas_saida` (`pode('notas_saida', 'criar')` ou administrador).
+   - **Empresa de Origem sem Emissão:** Se `config_emissao_fiscal.emite_documentos_fiscais` for `false` ou inexistente para a empresa de origem, o botão fica oculto e exibe o aviso inline `"Esta empresa não emite NF-e"`.
+   - **Emissão Automática ao Enviar:** Se `emitir_nfe_ao_enviar_transferencia = true` na configuração fiscal da empresa de origem, ao clicar em "Enviar" e despachar o estoque, o sistema abre imediatamente o modal já disparando a transmissão da NF-e para a SEFAZ.
+   - **Ações da NF-e Autorizada:** Na transferência com NF-e autorizada, exibe número e chave de 44 dígitos com botões **"Abrir DANFE"** e **"Baixar XML"** (acessando `danfe_url` e `xml_arquivo` do registro em `documentos_fiscais`).
+   - **Aviso no Recebimento:** Na tela da filial de destino, se a transferência enviada não possuir NF-e autorizada, exibe alerta explicativo não bloqueante: `"Transferência sem nota fiscal - Esta transferência foi enviada sem NF-e autorizada. A mercadoria pode ser recebida normalmente."`
+   - **Bloqueio de Cancelamento:** Se o documento fiscal da transferência estiver com status `"Autorizada"`, o cancelamento da transferência é bloqueado com a mensagem `"Cancele a nota fiscal antes de cancelar a transferência."` tanto no formulário quanto no serviço central `cancelarTransferencia`.
+
+---
+
 **Versão 0.0.83** — Inutilização de Numeração Fiscal (NF-e 55 e NFC-e 65), Endpoints do Prompt 6.4 e Validação de Grafia Fiscal:
 
 1. **Correção de Grafia e Parâmetros em `config_emissao_fiscal`:**

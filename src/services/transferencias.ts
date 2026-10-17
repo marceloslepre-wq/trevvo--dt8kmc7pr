@@ -619,6 +619,20 @@ export async function cancelarTransferencia(
     throw new Error('Transferências com status "Recebida" não podem ser canceladas.')
   }
 
+  // Verifica se o documento fiscal vinculado à transferência está Autorizado
+  try {
+    const docsFiscais = await pb.collection('documentos_fiscais').getList(1, 1, {
+      filter: `transferencia_id = '${transf.id}' && status = 'Autorizada' && ativo = true`,
+    })
+    if (docsFiscais.totalItems > 0) {
+      throw new Error('Cancele a nota fiscal antes de cancelar a transferência.')
+    }
+  } catch (err: any) {
+    if (err?.message?.includes('Cancele a nota fiscal')) {
+      throw err
+    }
+  }
+
   if (transf.status === 'Cancelada') {
     throw new Error('Esta transferência já está cancelada.')
   }

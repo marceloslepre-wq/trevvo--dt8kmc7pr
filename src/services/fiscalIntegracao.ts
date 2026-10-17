@@ -317,6 +317,7 @@ export async function emitirNFeVenda(
 export async function consultarSituacaoNFe(params: {
   documento_id?: string
   venda_id?: string
+  transferencia_id?: string
 }): Promise<{
   sucesso: boolean
   status: 'Autorizada' | 'Rejeitada' | 'Denegada' | 'Cancelada' | 'Processando' | 'NaoEncontrada'
@@ -344,6 +345,7 @@ export async function consultarSituacaoNFe(params: {
 export async function cancelarNFe(params: {
   documento_id?: string
   venda_id?: string
+  transferencia_id?: string
   justificativa: string
 }): Promise<{
   sucesso: boolean

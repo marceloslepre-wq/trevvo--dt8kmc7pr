@@ -39,6 +39,10 @@ import {
 } from '@/services/transferencias'
 import { listarEmpresasAtivas, Empresa } from '@/services/empresas'
 import { RomaneioTransferenciaModal } from '@/components/RomaneioTransferenciaModal'
+import { ModalEmitirNFeTransferencia } from '@/components/fiscal/ModalEmitirNFeTransferencia'
+import { listarTodasConfigsEmissao, ConfigEmissaoFiscal } from '@/services/configEmissaoFiscal'
+import { DocumentoFiscalRegistro } from '@/services/documentosFiscais'
+import pb from '@/lib/pocketbase/client'
 
 export const TransferenciasListaPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
@@ -46,6 +50,7 @@ export const TransferenciasListaPage: React.FC = () => {
   const { toast } = useToast()
   const navigate = useNavigate()
   const podeCriar = administrador || pode('estoque', 'criar')
+  const podeEmitirFiscal = administrador || pode('notas_saida', 'criar')
 
   const [transferencias, setTransferencias] = useState<Transferencia[]>([])
   const [empresas, setEmpresas] = useState<Empresa[]>([])
@@ -64,10 +69,28 @@ export const TransferenciasListaPage: React.FC = () => {
   const [transfRomaneio, setTransfRomaneio] = useState<TransferenciaCompleta | null>(null)
   const [carregandoRomaneio, setCarregandoRomaneio] = useState(false)
 
-  // Carrega empresas do grupo para filtros
+  // Emissão de NF-e na lista
+  const [transfParaEmitir, setTransfParaEmitir] = useState<TransferenciaCompleta | null>(null)
+  const [modalEmitirAberto, setModalEmitirAberto] = useState(false)
+  const [configsEmissaoMap, setConfigsEmissaoMap] = useState<Record<string, ConfigEmissaoFiscal>>(
+    {},
+  )
+  const [docsFiscaisMap, setDocsFiscaisMap] = useState<Record<string, DocumentoFiscalRegistro>>({})
+
+  // Carrega empresas do grupo para filtros e configs de emissão
   useEffect(() => {
     listarEmpresasAtivas()
       .then((res) => setEmpresas(res))
+      .catch(() => {})
+
+    listarTodasConfigsEmissao()
+      .then((cfgs) => {
+        const mapa: Record<string, ConfigEmissaoFiscal> = {}
+        cfgs.forEach((c) => {
+          mapa[c.empresa_id] = c
+        })
+        setConfigsEmissaoMap(mapa)
+      })
       .catch(() => {})
   }, [])
 
@@ -89,6 +112,28 @@ export const TransferenciasListaPage: React.FC = () => {
       setTransferencias(res.items)
       setTotalPaginas(res.totalPages)
       setTotalRegistros(res.totalItems)
+
+      // Carregar documentos fiscais das transferências listadas
+      if (res.items.length > 0) {
+        try {
+          const ids = res.items.map((t) => t.id)
+          const filterDocs = ids.map((id) => `transferencia_id = '${id}'`).join(' || ')
+          const docs = await pb
+            .collection('documentos_fiscais')
+            .getFullList<DocumentoFiscalRegistro>({
+              filter: `(${filterDocs}) && modelo = '55'`,
+            })
+          const docMap: Record<string, DocumentoFiscalRegistro> = {}
+          docs.forEach((d) => {
+            if (d.transferencia_id && (!docMap[d.transferencia_id] || d.status === 'Autorizada')) {
+              docMap[d.transferencia_id] = d
+            }
+          })
+          setDocsFiscaisMap(docMap)
+        } catch {
+          /* intentionally ignored */
+        }
+      }
     } catch (err: any) {
       console.error('Erro ao carregar transferências:', err)
       toast({
@@ -129,6 +174,51 @@ export const TransferenciasListaPage: React.FC = () => {
       })
     } finally {
       setCarregandoRomaneio(false)
+    }
+  }
+
+  const abrirModalEmitirNFe = async (transfId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      const completa = await obterTransferenciaPorId(transfId)
+      setTransfParaEmitir(completa)
+      setModalEmitirAberto(true)
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao abrir emissor',
+        description: err?.message || 'Falha ao carregar dados da transferência.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleAbrirDanfe = (transfId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const doc = docsFiscaisMap[transfId]
+    if (doc?.danfe_url) {
+      window.open(doc.danfe_url, '_blank')
+    } else {
+      toast({
+        title: 'DANFE indisponível',
+        description: 'URL do DANFE não encontrada.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleBaixarXml = (transfId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const doc = docsFiscaisMap[transfId]
+    if (doc?.id && doc?.xml_arquivo) {
+      const pbUrl = import.meta.env.VITE_POCKETBASE_URL || ''
+      const urlXml = `${pbUrl}/api/files/documentos_fiscais/${doc.id}/${doc.xml_arquivo}`
+      window.open(urlXml, '_blank')
+    } else {
+      toast({
+        title: 'XML indisponível',
+        description: 'Arquivo XML não encontrado.',
+        variant: 'destructive',
+      })
     }
   }
 
@@ -411,6 +501,16 @@ export const TransferenciasListaPage: React.FC = () => {
                     const isOrigem = transf.empresa_origem_id === empresaAtiva?.id
                     const isAguardandoRecebimento = transf.status === 'Enviada' && isDestino
 
+                    const docFisc = docsFiscaisMap[transf.id]
+                    const temNfeAutorizada =
+                      Boolean(transf.nota_fiscal_chave) || docFisc?.status === 'Autorizada'
+                    const cfgOrigem = configsEmissaoMap[transf.empresa_origem_id]
+                    const origemEmiteNfe = cfgOrigem
+                      ? Boolean(cfgOrigem.emite_documentos_fiscais)
+                      : false
+                    const podeEmitirNfeTrf =
+                      transf.status === 'Enviada' && !temNfeAutorizada && podeEmitirFiscal
+
                     return (
                       <tr
                         key={transf.id}
@@ -466,10 +566,57 @@ export const TransferenciasListaPage: React.FC = () => {
                             : '-'}
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-600">
-                          {transf.nota_fiscal_numero ? `NF ${transf.nota_fiscal_numero}` : '-'}
+                          {transf.nota_fiscal_numero ? (
+                            <span className="text-emerald-700 font-semibold">
+                              NF {transf.nota_fiscal_numero}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {/* Ações NF-e */}
+                            {temNfeAutorizada && docFisc?.danfe_url && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                title="Abrir DANFE"
+                                onClick={(e) => handleAbrirDanfe(transf.id, e)}
+                              >
+                                DANFE
+                              </Button>
+                            )}
+                            {temNfeAutorizada && docFisc?.xml_arquivo && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                                title="Baixar XML"
+                                onClick={(e) => handleBaixarXml(transf.id, e)}
+                              >
+                                XML
+                              </Button>
+                            )}
+
+                            {/* Botão Emitir NF-e de transferência */}
+                            {podeEmitirNfeTrf && origemEmiteNfe && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+                                title="Emitir NF-e de transferência"
+                                onClick={(e) => abrirModalEmitirNFe(transf.id, e)}
+                              >
+                                Emitir NF-e
+                              </Button>
+                            )}
+
+                            {/* Romaneio e Visualizar */}
                             <Button
                               type="button"
                               size="sm"
@@ -539,6 +686,23 @@ export const TransferenciasListaPage: React.FC = () => {
         <RomaneioTransferenciaModal
           transferencia={transfRomaneio}
           onClose={() => setTransfRomaneio(null)}
+        />
+      )}
+
+      {/* Modal de Emissão de NF-e da Transferência */}
+      {modalEmitirAberto && transfParaEmitir && (
+        <ModalEmitirNFeTransferencia
+          open={modalEmitirAberto}
+          onOpenChange={(aberto) => {
+            setModalEmitirAberto(aberto)
+            if (!aberto) setTransfParaEmitir(null)
+          }}
+          transferencia={transfParaEmitir}
+          empresaOrigem={empresas.find((e) => e.id === transfParaEmitir.empresa_origem_id)}
+          empresaDestino={empresas.find((e) => e.id === transfParaEmitir.empresa_destino_id)}
+          onSucesso={() => {
+            carregarDados()
+          }}
         />
       )}
     </div>

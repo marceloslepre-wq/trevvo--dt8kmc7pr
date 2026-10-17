@@ -241,6 +241,24 @@ export async function obterDocumentoFiscalDaVenda(
 }
 
 /**
+ * Busca documento fiscal de uma transferência
+ */
+export async function obterDocumentoFiscalDaTransferencia(
+  transferenciaId: string,
+  modelo: ModeloDocumentoFiscal = '55',
+): Promise<DocumentoFiscalRegistro | null> {
+  try {
+    const list = await pb.collection('documentos_fiscais').getList<DocumentoFiscalRegistro>(1, 1, {
+      filter: `transferencia_id = '${transferenciaId}' && modelo = '${modelo}'`,
+      sort: '-created',
+    })
+    return list.items[0] || null
+  } catch (_) {
+    return null
+  }
+}
+
+/**
  * Lista as Cartas de Correção de um documento fiscal
  */
 export async function listarCartasCorrecao(documentoId: string): Promise<DocumentoFiscalCarta[]> {

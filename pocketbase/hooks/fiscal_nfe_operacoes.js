@@ -450,6 +450,7 @@ routerAdd(
     const data = c.requestInfo().body || {}
     let documentoId = data.documento_id
     const vendaId = data.venda_id
+    const transferenciaId = data.transferencia_id
 
     let docRec = null
     if (documentoId) {
@@ -460,6 +461,15 @@ routerAdd(
       const docs = $app.findRecordsByFilter(
         'documentos_fiscais',
         `venda_id = '${vendaId}' && modelo = '55'`,
+        '-created',
+        1,
+        0,
+      )
+      if (docs && docs.length > 0) docRec = docs[0]
+    } else if (transferenciaId) {
+      const docs = $app.findRecordsByFilter(
+        'documentos_fiscais',
+        `transferencia_id = '${transferenciaId}' && modelo = '55'`,
         '-created',
         1,
         0,
@@ -810,6 +820,7 @@ routerAdd(
     const data = c.requestInfo().body || {}
     let documentoId = data.documento_id
     const vendaId = data.venda_id
+    const transferenciaId = data.transferencia_id
     const justificativa = (data.justificativa || '').trim()
 
     if (!justificativa || justificativa.length < 15 || justificativa.length > 255) {
@@ -867,6 +878,15 @@ routerAdd(
       const docs = $app.findRecordsByFilter(
         'documentos_fiscais',
         `venda_id = '${vendaId}' && status = 'Autorizada' && modelo = '55'`,
+        '-created',
+        1,
+        0,
+      )
+      if (docs && docs.length > 0) docRec = docs[0]
+    } else if (transferenciaId) {
+      const docs = $app.findRecordsByFilter(
+        'documentos_fiscais',
+        `transferencia_id = '${transferenciaId}' && status = 'Autorizada' && modelo = '55'`,
         '-created',
         1,
         0,
@@ -1041,6 +1061,17 @@ routerAdd(
         const vRec = $app.findRecordById('vendas', vIdDoc)
         vRec.set('documento_fiscal_status', 'Cancelada')
         $app.save(vRec)
+      } catch (_) {}
+    }
+
+    // Atualizar transferência se vinculada
+    const tIdDoc = docRec.getString('transferencia_id')
+    if (tIdDoc) {
+      try {
+        const tRec = $app.findRecordById('transferencias', tIdDoc)
+        tRec.set('nota_fiscal_numero', '')
+        tRec.set('nota_fiscal_chave', '')
+        $app.save(tRec)
       } catch (_) {}
     }
 
