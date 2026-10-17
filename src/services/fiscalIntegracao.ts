@@ -351,6 +351,7 @@ export async function consultarSituacaoNFe(params: {
   protocolo?: string
   danfe_url?: string
   message?: string
+  status_sefaz?: string
   mensagem_sefaz?: string
   aviso?: string
   detalhes?: any
@@ -416,6 +417,50 @@ export async function enviarEmailNFe(params: {
   emails?: string[]
 }> {
   return await pb.send('/backend/v1/fiscal/enviar-email-nfe', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+/**
+ * Dispara a transmissão da NF-e de transferência entre empresas
+ */
+export async function emitirNfeTransferencia(params: {
+  transferencia_id: string
+  modalidade_frete?: number
+}): Promise<{
+  sucesso: boolean
+  status: 'Processando' | 'Autorizada' | 'Rejeitada'
+  documento_id?: string
+  referencia?: string
+  numero?: string | number
+  chave?: string
+  message: string
+  ja_autorizada?: boolean
+}> {
+  return await pb.send('/backend/v1/fiscal/emitir-nfe-transferencia', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+/**
+ * Solicita a inutilização de numeração de NF-e ou NFC-e na SEFAZ
+ */
+export async function inutilizarNumeracaoFiscal(params: {
+  empresa_id: string
+  modelo: '55' | '65'
+  serie: string
+  numero_inicial: number
+  numero_final: number
+  justificativa: string
+}): Promise<{
+  sucesso: boolean
+  ambiente?: string
+  message?: string
+  dados?: any
+}> {
+  return await pb.send('/backend/v1/fiscal/inutilizar', {
     method: 'POST',
     body: params,
   })
