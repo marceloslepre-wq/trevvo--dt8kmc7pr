@@ -592,6 +592,21 @@ routerAdd(
       docRec.set('mensagem_sefaz', motivoSefaz || 'Autorizado o uso da NF-e')
       docRec.set('json_retorno', respJson)
 
+      // Se for de transferência, vincular número e chave na transferência
+      const transfIdDoc = docRec.getString('transferencia_id')
+      if (transfIdDoc) {
+        try {
+          const transfRec = $app.findRecordById('transferencias', transfIdDoc)
+          if (transfRec) {
+            if (numeroNota) transfRec.set('nota_fiscal_numero', String(numeroNota))
+            if (chaveNota) transfRec.set('nota_fiscal_chave', chaveNota)
+            $app.save(transfRec)
+          }
+        } catch (errTrf) {
+          console.warn('Erro ao atualizar transferência vinculada à NF-e:', errTrf)
+        }
+      }
+
       // Baixar XML autorizado e anexar
       const caminhoXml = respJson?.caminho_xml_nota_fiscal || respJson?.xml_url || ''
       if (caminhoXml) {

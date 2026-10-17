@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T17:04:04.882Z",
+  "generatedAt": "2026-10-17T18:03:52.046Z",
   "collections": [
     {
       "name": "users",
@@ -5730,6 +5730,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "quantidade_devolvida",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -9316,6 +9322,18 @@
           "type": "bool",
           "required": false,
           "system": false
+        },
+        {
+          "name": "emitir_nfe_ao_enviar_transferencia",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_operacao_transferencia",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -9715,6 +9733,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "transferencia_id",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -10309,6 +10333,119 @@
       "indexes": [
         "CREATE INDEX idx_doc_cartas_documento ON documentos_fiscais_cartas (documento_id)",
         "CREATE INDEX idx_doc_cartas_data ON documentos_fiscais_cartas (data)"
+      ]
+    },
+    {
+      "name": "inutilizacoes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "modelo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["55", "65"]
+        },
+        {
+          "name": "serie",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "numero_inicial",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "numero_final",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "justificativa",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "protocolo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mensagem_sefaz",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "xml_arquivo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "data_inutilizacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_inutilizacoes_empresa ON inutilizacoes (empresa_id)",
+        "CREATE INDEX idx_inutilizacoes_modelo_serie ON inutilizacoes (modelo, serie)",
+        "CREATE INDEX idx_inutilizacoes_data ON inutilizacoes (data_inutilizacao)"
       ]
     }
   ]

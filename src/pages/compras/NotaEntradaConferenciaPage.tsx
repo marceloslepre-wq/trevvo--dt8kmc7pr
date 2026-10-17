@@ -72,6 +72,7 @@ import { aliquotaInterestadual } from '@/services/icmsMatriz'
 import { obterConfigFiscalEmpresa } from '@/services/configFiscal'
 import { ModalProdutosNaoCadastrados } from '@/components/compras/ModalProdutosNaoCadastrados'
 import { ModalConferenciaFiscalItem } from '@/components/compras/ModalConferenciaFiscalItem'
+import { ModalDevolucaoFornecedor } from '@/components/compras/ModalDevolucaoFornecedor'
 import { SelectCfop } from '@/components/SelectCfop'
 import { SelectProduto } from '@/components/SelectProduto'
 import { ProdutoCadastroRapido } from '@/components/ProdutoCadastroRapido'
@@ -107,6 +108,8 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
 
   const podeEditar = pode('notas_entrada', 'editar')
   const podeCancelar = pode('notas_entrada', 'excluir')
+  const podeDevolver = pode('notas_saida', 'criar')
+  const [modalDevolucaoAberto, setModalDevolucaoAberto] = useState(false)
 
   const [nota, setNota] = useState<NotaEntrada | null>(null)
   const [itens, setItens] = useState<NotaEntradaItem[]>([])
@@ -1260,19 +1263,34 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
 
         <div className="flex items-center gap-2">
           {/* Se a nota estiver Lançada, o botão Cancelar Lançamento fica visível para quem tem permissão excluir */}
-          {nota.status === 'Lançada' && podeCancelar && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setMotivoCancelamento('')
-                setCancelarModalAberto(true)
-              }}
-              className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5 font-medium"
-            >
-              <Ban size={14} />
-              Cancelar Lançamento
-            </Button>
+          {nota.status === 'Lançada' && (
+            <>
+              {podeDevolver && (
+                <Button
+                  size="sm"
+                  onClick={() => setModalDevolucaoAberto(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 font-medium shadow-sm"
+                >
+                  <ArrowLeftRight size={14} />
+                  Devolver ao fornecedor
+                </Button>
+              )}
+
+              {podeCancelar && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setMotivoCancelamento('')
+                    setCancelarModalAberto(true)
+                  }}
+                  className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5 font-medium"
+                >
+                  <Ban size={14} />
+                  Cancelar Lançamento
+                </Button>
+              )}
+            </>
           )}
 
           {/* Se a nota estiver Em conferência, o botão de cancelar nota também pode ser usado */}
@@ -2925,6 +2943,20 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
         ufFornecedor={nota.expand?.fornecedor_id?.uf}
         onConcluido={() => carregarDados()}
       />
+
+      {/* Modal Devolução ao Fornecedor */}
+      {nota && (
+        <ModalDevolucaoFornecedor
+          aberto={modalDevolucaoAberto}
+          aoFechar={() => setModalDevolucaoAberto(false)}
+          nota={nota}
+          itens={itens}
+          aoSucesso={() => {
+            setModalDevolucaoAberto(false)
+            carregarDados()
+          }}
+        />
+      )}
 
       {/* Modal Detalhes e Edição Fiscal do Item */}
       {itemFiscalSelecionado && (

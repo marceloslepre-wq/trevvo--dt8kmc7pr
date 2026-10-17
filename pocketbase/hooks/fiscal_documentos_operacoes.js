@@ -98,15 +98,15 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       let itensOrigem = []
       let pagamentosOrigem = []
 
-      if (origem === 'Venda') {
+      if (origem === 'Venda' || origem === 'Devolução de venda') {
         try {
           venda = txApp.findRecordById('vendas', idOrigem)
         } catch (_) {
-          throw new Error(`Venda com id '${idOrigem}' não encontrada.`)
+          throw new Error(`Venda/Devolução com id '${idOrigem}' não encontrada.`)
         }
 
         if (!venda || !venda.getBool('ativo')) {
-          throw new Error('Venda não encontrada ou inativa.')
+          throw new Error('Venda/Devolução não encontrada ou inativa.')
         }
 
         empresaId = venda.getString('empresa_id')
@@ -118,7 +118,7 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
           'sequencial,created',
         )
         if (!itensOrigem || itensOrigem.length === 0) {
-          throw new Error('A venda não possui itens cadastrados.')
+          throw new Error('O registro não possui itens cadastrados.')
         }
 
         try {
@@ -929,11 +929,20 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       const consumidorFinalFlag =
         modelo === '65' ? 1 : indicadorIe === '9' || destinatarioConsumidorFinal ? 1 : 0
 
+      const ehDevolucaoVenda =
+        origem === 'Devolução de venda' || (venda && venda.getString('tipo') === 'Devolução')
+      const tipoDocumentoCalculado = ehDevolucaoVenda ? 0 : 1 // 0 Entrada para devolução de venda, 1 Saída
+      const finalidadeEmissaoCalculada = ehDevolucaoVenda ? 4 : 1 // 4 Devolução
+
       const jsonFocus = {
-        natureza_operacao: naturezaOperacaoInput,
+        natureza_operacao: ehDevolucaoVenda
+          ? cfgFiscal
+            ? cfgFiscal.getString('natureza_operacao_devolucao_venda') || 'Devolução de venda'
+            : 'Devolução de venda'
+          : naturezaOperacaoInput,
         data_emissao: dataHojeIso,
-        tipo_documento: 1,
-        finalidade_emissao: 1,
+        tipo_documento: tipoDocumentoCalculado,
+        finalidade_emissao: finalidadeEmissaoCalculada,
         local_destino: localDestinoFinal,
         consumidor_final: consumidorFinalFlag,
         presenca_comprador: presencaCompradorFinal,

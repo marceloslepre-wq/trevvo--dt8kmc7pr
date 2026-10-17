@@ -78,6 +78,11 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
   const [naturezaVenda, setNaturezaVenda] = useState<string>('Venda de mercadoria')
   const [naturezaDevCompra, setNaturezaDevCompra] = useState<string>('Devolução de compra')
   const [naturezaDevVenda, setNaturezaDevVenda] = useState<string>('Devolução de venda')
+  const [naturezaTransferencia, setNaturezaTransferencia] = useState<string>(
+    'Transferência de mercadoria',
+  )
+  const [emitirNfeAoEnviarTransferencia, setEmitirNfeAoEnviarTransferencia] =
+    useState<boolean>(false)
   const [infoComplementares, setInfoComplementares] = useState<string>('')
   const [enviarEmailCliente, setEnviarEmailCliente] = useState<boolean>(false)
   const [certificadoValidade, setCertificadoValidade] = useState<string>('')
@@ -136,6 +141,8 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
       setNaturezaVenda(cfg.natureza_operacao_venda || 'Venda de mercadoria')
       setNaturezaDevCompra(cfg.natureza_operacao_devolucao_compra || 'Devolução de compra')
       setNaturezaDevVenda(cfg.natureza_operacao_devolucao_venda || 'Devolução de venda')
+      setNaturezaTransferencia(cfg.natureza_operacao_transferencia || 'Transferência de mercadoria')
+      setEmitirNfeAoEnviarTransferencia(Boolean(cfg.emitir_nfe_ao_enviar_transferencia))
       setInfoComplementares(cfg.informacoes_complementares_padrao || '')
       setEnviarEmailCliente(Boolean(cfg.enviar_email_cliente))
       setCertificadoValidade(cfg.certificado_validade ? cfg.certificado_validade.slice(0, 10) : '')
@@ -293,6 +300,8 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
         natureza_operacao_venda: naturezaVenda,
         natureza_operacao_devolucao_compra: naturezaDevCompra,
         natureza_operacao_devolucao_venda: naturezaDevVenda,
+        natureza_operacao_transferencia: naturezaTransferencia,
+        emitir_nfe_ao_enviar_transferencia: emitirNfeAoEnviarTransferencia,
         informacoes_complementares_padrao: infoComplementares,
         enviar_email_cliente: enviarEmailCliente,
         certificado_validade: certificadoValidade || null,
@@ -377,6 +386,10 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
       setNaturezaVenda(atualizada.natureza_operacao_venda)
       setNaturezaDevCompra(atualizada.natureza_operacao_devolucao_compra)
       setNaturezaDevVenda(atualizada.natureza_operacao_devolucao_venda)
+      setNaturezaTransferencia(
+        atualizada.natureza_operacao_transferencia || 'Transferência de mercadoria',
+      )
+      setEmitirNfeAoEnviarTransferencia(Boolean(atualizada.emitir_nfe_ao_enviar_transferencia))
       setInfoComplementares(atualizada.informacoes_complementares_padrao)
       setEnviarEmailCliente(atualizada.enviar_email_cliente)
       setCscConfigurado(atualizada.csc_configurado)
@@ -754,6 +767,38 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
                       value={naturezaDevVenda}
                       onChange={(e) => setNaturezaDevVenda(e.target.value)}
                       placeholder="Devolução de venda"
+                      disabled={!administrador}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="nat_transferencia">
+                      Natureza (Transferência de Mercadoria)
+                    </Label>
+                    <Input
+                      id="nat_transferencia"
+                      value={naturezaTransferencia}
+                      onChange={(e) => setNaturezaTransferencia(e.target.value)}
+                      placeholder="Transferência de mercadoria"
+                      disabled={!administrador}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 rounded-lg border bg-slate-50/50 mt-1">
+                    <div className="space-y-0.5 pr-2">
+                      <Label htmlFor="emitir_transf_auto" className="text-xs font-semibold">
+                        Emitir NF-e ao Enviar Transferência
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Dispara a emissão de NF-e automaticamente ao mudar status para Enviada.
+                      </p>
+                    </div>
+                    <Switch
+                      id="emitir_transf_auto"
+                      checked={emitirNfeAoEnviarTransferencia}
+                      onCheckedChange={setEmitirNfeAoEnviarTransferencia}
                       disabled={!administrador}
                     />
                   </div>

@@ -1369,6 +1369,31 @@ routerAdd(
         jsonResp = JSON.parse(rawText)
       } catch (_) {}
 
+      // Gravar na tabela inutilizacoes
+      const statusRet = statusCode >= 200 && statusCode < 300 ? 'Autorizada' : 'Rejeitada'
+      const protocoloRet = jsonResp?.protocolo || jsonResp?.dados?.protocolo || ''
+      const msgSefazRet = jsonResp?.mensagem_sefaz || jsonResp?.mensagem || ''
+
+      try {
+        const inutCol = $app.findCollectionByNameOrId('inutilizacoes')
+        const inutRec = new Record(inutCol)
+        inutRec.set('empresa_id', empresaId)
+        inutRec.set('modelo', modelo)
+        inutRec.set('serie', serie)
+        inutRec.set('numero_inicial', numeroInicial)
+        inutRec.set('numero_final', numeroFinal)
+        inutRec.set('justificativa', justificativa)
+        inutRec.set('status', statusRet)
+        inutRec.set('protocolo', protocoloRet)
+        inutRec.set('mensagem_sefaz', msgSefazRet)
+        inutRec.set('usuario_id', authRecord.id)
+        inutRec.set('data_inutilizacao', new Date().toISOString())
+        inutRec.set('ativo', true)
+        $app.save(inutRec)
+      } catch (errInut) {
+        console.warn('Erro ao salvar registro de inutilizacao:', errInut)
+      }
+
       if (statusCode >= 200 && statusCode < 300) {
         return c.json(200, {
           sucesso: true,

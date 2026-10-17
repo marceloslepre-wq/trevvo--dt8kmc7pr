@@ -134,6 +134,7 @@ export interface NotaEntradaItem {
   produto_id?: string
   fator_conversao?: number
   quantidade_estoque?: number
+  quantidade_devolvida?: number
   lote_numero?: string
   lote_fabricacao?: string
   lote_validade?: string
@@ -814,6 +815,61 @@ export async function cancelarNotaEntrada(
       motivo,
     },
   })
+  return res
+}
+
+export interface ItemDevolucaoCompra {
+  item_id: string
+  quantidade: number
+}
+
+export interface EmitirNfeDevolucaoCompraParams {
+  nota_entrada_id: string
+  motivo: string
+  destino_financeiro: 'abater_titulos' | 'gerar_receber'
+  itens: ItemDevolucaoCompra[]
+}
+
+export interface RespostaDevolucaoCompra {
+  sucesso: boolean
+  status: string
+  documento_id?: string
+  referencia?: string
+  total_devolvido?: number
+  message: string
+}
+
+/**
+ * Emite NF-e de devolução ao fornecedor (nota de saída)
+ */
+export async function emitirNfeDevolucaoCompra(
+  params: EmitirNfeDevolucaoCompraParams,
+): Promise<RespostaDevolucaoCompra> {
+  const res = await pb.send<RespostaDevolucaoCompra>(
+    '/backend/v1/fiscal/emitir-nfe-devolucao-compra',
+    {
+      method: 'POST',
+      body: params,
+    },
+  )
+  return res
+}
+
+/**
+ * Confirma estoque e financeiro após autorização da devolução de compra
+ */
+export async function confirmarAutorizacaoDevolucaoCompra(params: {
+  documento_id: string
+  nota_entrada_id: string
+  destino_financeiro: 'abater_titulos' | 'gerar_receber'
+}): Promise<{ sucesso: boolean; message: string }> {
+  const res = await pb.send<{ sucesso: boolean; message: string }>(
+    '/backend/v1/fiscal/confirmar-autorizacao-devolucao-compra',
+    {
+      method: 'POST',
+      body: params,
+    },
+  )
   return res
 }
 

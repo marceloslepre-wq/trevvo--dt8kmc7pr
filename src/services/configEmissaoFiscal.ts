@@ -25,6 +25,8 @@ export interface ConfigEmissaoFiscal {
   natureza_operacao_venda: string
   natureza_operacao_devolucao_compra: string
   natureza_operacao_devolucao_venda: string
+  natureza_operacao_transferencia?: string
+  emitir_nfe_ao_enviar_transferencia?: boolean
   informacoes_complementares_padrao: string
   enviar_email_cliente: boolean
   certificado_validade?: string | null
@@ -86,6 +88,8 @@ export async function obterOuCriarConfigEmissaoFiscal(
     natureza_operacao_venda: 'Venda de mercadoria',
     natureza_operacao_devolucao_compra: 'Devolução de compra',
     natureza_operacao_devolucao_venda: 'Devolução de venda',
+    natureza_operacao_transferencia: 'Transferência de mercadoria',
+    emitir_nfe_ao_enviar_transferencia: false,
     informacoes_complementares_padrao: '',
     enviar_email_cliente: false,
     certificado_validade: null,
@@ -182,6 +186,10 @@ export async function salvarConfigEmissaoFiscal(
     natureza_operacao_devolucao_venda: (
       dados.natureza_operacao_devolucao_venda || 'Devolução de venda'
     ).trim(),
+    natureza_operacao_transferencia: (
+      dados.natureza_operacao_transferencia || 'Transferência de mercadoria'
+    ).trim(),
+    emitir_nfe_ao_enviar_transferencia: Boolean(dados.emitir_nfe_ao_enviar_transferencia),
     informacoes_complementares_padrao: dados.informacoes_complementares_padrao || '',
     enviar_email_cliente: Boolean(dados.enviar_email_cliente),
     certificado_validade: dados.certificado_validade || null,
@@ -247,6 +255,9 @@ export async function copiarConfigEmissaoDeOutraEmpresa(params: {
     natureza_operacao_venda: origem.natureza_operacao_venda,
     natureza_operacao_devolucao_compra: origem.natureza_operacao_devolucao_compra,
     natureza_operacao_devolucao_venda: origem.natureza_operacao_devolucao_venda,
+    natureza_operacao_transferencia:
+      origem.natureza_operacao_transferencia || 'Transferência de mercadoria',
+    emitir_nfe_ao_enviar_transferencia: Boolean(origem.emitir_nfe_ao_enviar_transferencia),
     informacoes_complementares_padrao: origem.informacoes_complementares_padrao,
     enviar_email_cliente: origem.enviar_email_cliente,
     informar_ibs_cbs: origem.informar_ibs_cbs,
