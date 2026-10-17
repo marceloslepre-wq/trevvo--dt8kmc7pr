@@ -177,6 +177,8 @@ export interface DocumentoFiscalRegistro {
   empresa_id: string
   modelo: ModeloDocumentoFiscal
   status: StatusDocumentoFiscal
+  venda_id?: string
+  transferencia_id?: string
   contingencia?: boolean
   numero?: number
   serie?: string

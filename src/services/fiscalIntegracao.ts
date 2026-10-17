@@ -400,27 +400,85 @@ export async function enviarEmailNFe(params: {
   })
 }
 
-/**
- * Dispara a transmissão da NF-e de transferência entre empresas
- */
-export async function emitirNfeTransferencia(params: {
-  transferencia_id: string
-  modalidade_frete?: number
-}): Promise<{
+export interface RascunhoFiscalResponse {
   sucesso: boolean
-  status: 'Processando' | 'Autorizada' | 'Rejeitada'
+  documento_id?: string
+  documento?: any
+  itens?: any[]
+  json_focus?: any
+  pendencias?: string[]
+  avisos?: string[]
+  message?: string
+}
+
+export interface EmitirNFeTransferenciaParams {
+  transferencia_id: string
+  natureza_operacao?: string
+  modalidade_frete?: number
+  transportadora_id?: string
+  volumes_quantidade?: number
+  volumes_especie?: string
+  peso_bruto?: number
+  peso_liquido?: number
+  informacoes_complementares?: string
+}
+
+export interface EmitirNFeTransferenciaResponse {
+  sucesso: boolean
+  status?: 'Processando' | 'Autorizada' | 'Rejeitada' | 'Denegada'
   documento_id?: string
   referencia?: string
   numero?: string | number
   chave?: string
   message: string
   ja_autorizada?: boolean
-}> {
-  return await pb.send('/backend/v1/fiscal/emitir-nfe-transferencia', {
+  detalhes?: any
+}
+
+/**
+ * Monta e pré-calcula os impostos do rascunho de um documento fiscal
+ * Usado pelo modal de emissão de NF-e de transferência e vendas
+ */
+export async function montarRascunhoDocumentoFiscal(params: {
+  origem: string
+  origem_id?: string
+  id?: string
+  modelo?: string
+  parametros?: Record<string, any>
+}): Promise<RascunhoFiscalResponse> {
+  const body: Record<string, any> = {
+    origem: params.origem,
+    id: params.origem_id || params.id,
+    modelo: params.modelo || '55',
+  }
+
+  if (params.parametros) {
+    Object.assign(body, params.parametros)
+  }
+
+  return await pb.send<RascunhoFiscalResponse>('/backend/v1/fiscal/montar-rascunho', {
     method: 'POST',
-    body: params,
+    body,
   })
 }
+
+/**
+ * Dispara a transmissão da NF-e de transferência entre empresas
+ */
+export async function emitirNFeTransferencia(
+  params: EmitirNFeTransferenciaParams,
+): Promise<EmitirNFeTransferenciaResponse> {
+  return await pb.send<EmitirNFeTransferenciaResponse>(
+    '/backend/v1/fiscal/emitir-nfe-transferencia',
+    {
+      method: 'POST',
+      body: params,
+    },
+  )
+}
+
+// Alias retrocompatível com minúscula
+export const emitirNfeTransferencia = emitirNFeTransferencia
 
 /**
  * Solicita a inutilização de numeração de NF-e ou NFC-e na SEFAZ

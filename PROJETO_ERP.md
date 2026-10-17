@@ -3009,6 +3009,16 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.85** — Correção do Build do Projeto e Alinhamento dos Contratos de Emissão de NF-e de Transferência:
+
+- Correção das exportações em `src/services/fiscalIntegracao.ts`: exportadas as funções `emitirNFeTransferencia` (com alias para `emitirNfeTransferencia`), `montarRascunhoDocumentoFiscal` e as interfaces `RascunhoFiscalResponse`, `EmitirNFeTransferenciaParams` e `EmitirNFeTransferenciaResponse`.
+- Adição dos campos `venda_id` e `transferencia_id` na interface `DocumentoFiscalRegistro` em `src/services/documentosFiscais.ts`.
+- Inclusão dos imports dos componentes `Alert`, `AlertTitle` e `AlertDescription` em `src/pages/estoque/TransferenciaFormPage.tsx`.
+- Ajuste das chamadas de status e conversão de número de NF-e em `src/components/fiscal/ModalEmitirNFeTransferencia.tsx`.
+- QA 100% verde (oxlint, TypeScript typecheck e Vite build).
+
+---
+
 **Versão 0.0.84** — Emissão de NF-e de Transferência entre Filiais (Modelo 55), Modal de Conferência, Polling SEFAZ, DANFE/XML e Bloqueios Fiscais:
 
 1. **Modal de Conferência e Emissão de NF-e de Transferência (`ModalEmitirNFeTransferencia.tsx`):**

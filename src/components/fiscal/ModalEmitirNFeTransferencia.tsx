@@ -252,7 +252,9 @@ export const ModalEmitirNFeTransferencia: React.FC<ModalEmitirNFeTransferenciaPr
             finalizado = true
             setEmitindo(false)
             setProgressoEnvio(null)
-            setUltimoNumero(sit.numero || null)
+            setUltimoNumero(
+              sit.numero !== undefined && sit.numero !== null ? String(sit.numero) : null,
+            )
             setUltimaChave(sit.chave || null)
             toast({
               title: 'NF-e de Transferência Autorizada!',
@@ -377,7 +379,7 @@ export const ModalEmitirNFeTransferencia: React.FC<ModalEmitirNFeTransferenciaPr
 
       if (sit.status === 'Autorizada') {
         setTimeoutProcessando(false)
-        setUltimoNumero(sit.numero || null)
+        setUltimoNumero(sit.numero !== undefined && sit.numero !== null ? String(sit.numero) : null)
         setUltimaChave(sit.chave || null)
         toast({
           title: 'NF-e Autorizada com sucesso!',
@@ -395,7 +397,7 @@ export const ModalEmitirNFeTransferencia: React.FC<ModalEmitirNFeTransferenciaPr
       } else {
         toast({
           title: 'Situação da NF-e',
-          description: `Status atual na SEFAZ: ${sit.status}. Motivo: ${sit.motivo_status || 'Ainda em processamento'}`,
+          description: `Status atual na SEFAZ: ${sit.status}. Motivo: ${sit.mensagem_sefaz || sit.message || 'Ainda em processamento'}`,
         })
       }
     } catch (err: any) {
