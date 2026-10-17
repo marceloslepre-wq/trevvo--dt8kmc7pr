@@ -37,6 +37,7 @@ import {
   RotateCcw,
   Award,
   Store,
+  FileX2,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -425,6 +426,12 @@ const navItems: NavGroupItem[] = [
         path: '/fiscal/intermediadores',
         icon: Store,
         modulo: 'notas_saida',
+      },
+      {
+        title: 'Inutilização',
+        path: '/fiscal/inutilizacao',
+        icon: FileX2,
+        adminOnly: true,
       },
     ],
   },

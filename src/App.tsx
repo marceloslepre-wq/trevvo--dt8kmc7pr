@@ -98,6 +98,7 @@ import { ConsultasVendasPage } from '@/pages/vendas/ConsultasVendasPage'
 import ConfiguracaoEmissaoFiscalPage from '@/pages/fiscal/ConfiguracaoEmissaoFiscalPage'
 import DocumentosFiscaisPlaceholderPage from '@/pages/fiscal/DocumentosFiscaisPlaceholderPage'
 import IntermediadoresPage from '@/pages/fiscal/IntermediadoresPage'
+import InutilizacaoPage from '@/pages/fiscal/InutilizacaoPage'
 
 const App = () => (
   <BrowserRouter>
@@ -811,6 +812,7 @@ const App = () => (
                       </PermissaoGuard>
                     }
                   />
+                  <Route path="/fiscal/inutilizacao" element={<InutilizacaoPage />} />
                   {/* Configurações */}
                   <Route
                     path="/configuracoes"

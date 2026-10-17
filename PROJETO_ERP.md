@@ -284,6 +284,29 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### inutilizacoes
+
+Tabela de registro e controle de pedidos de Inutilização de Numeração Fiscal de NF-e (modelo 55) e NFC-e (modelo 65) homologados ou rejeitados pela SEFAZ. Utilizada para justificar quebras de sequência numérica perante o Fisco. Permissões estritas: somente leitura pelo navegador autenticado (`listRule` e `viewRule` com `@request.auth.id != ''`); criação e alteração restritas ao backend (`createRule: null`, `updateRule: null`, `deleteRule: null`), gravadas pelo endpoint central de inutilização com vínculo à empresa emissora e ao usuário autenticado.
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório, filial emissora da numeração)
+- modelo (select: "55" NF-e ou "65" NFC-e, obrigatório)
+- serie (text, série da nota fiscal, obrigatório)
+- numero_inicial (number, número sequencial inicial da faixa, obrigatório)
+- numero_final (number, número sequencial final da faixa, obrigatório)
+- justificativa (text, justificativa formal mínima de 15 caracteres para a SEFAZ, obrigatório)
+- status (text, "Autorizada" ou "Rejeitada", padrão "Autorizada")
+- protocolo (text, número do protocolo de homologação retornado pela SEFAZ)
+- mensagem_sefaz (text, mensagem ou motivo retornado pela SEFAZ)
+- xml_arquivo (file, arquivo XML do evento de inutilização retornado pela SEFAZ/Focus NFe)
+- usuario_id (relation -> users, usuário administrador responsável pelo envio)
+- data_inutilizacao (text, ISO string da homologação)
+- ativo (bool, padrão true)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id` (`idx_inutilizacoes_empresa`), `modelo + serie` (`idx_inutilizacoes_mod_serie`), `data_inutilizacao` (`idx_inutilizacoes_data`).
+
 ### intermediadores
 
 Tabela de intermediadores de operação e marketplaces (Mercado Livre, Shopee, Amazon, Magalu, etc.), cadastrados para atender à exigência fiscal da SEFAZ nos grupos `indIntermed` e `infIntermed` da NF-e (modelo 55) em operações não presenciais (Internet, Televendas ou Outros). Controlada por permissão `notas_saida` no frontend e gravada com vínculo ao usuário logado.
@@ -329,6 +352,8 @@ Configuração e parâmetros de emissão fiscal (NF-e modelo 55 e NFC-e modelo 6
 - provedor (text, padrão "Focus NFe")
 - emite_documentos_fiscais (bool, padrão true; bloqueado para ativação se a empresa tiver Inscrição Estadual vazia ou ISENTO)
 - emite_nfce (bool, padrão false; habilita a filial para emitir NFC-e Modelo 65 no PDV; filiais/matriz que só emitem NF-e mantêm false, ocultando campos e avisos de CSC)
+- emitir_nfe_ao_enviar_transferencia (bool, padrão false; emite NF-e de transferência automaticamente ao enviar transferência de mercadoria entre filiais)
+- emitir_nfe_ao_devolver_venda (bool, padrão false; emite NF-e de devolução de venda de entrada própria automaticamente ao autorizar devolução)
 - codigo_token (text, letras maiúsculas, números e sublinhado; sufixo dos segredos de token; único entre as empresas emissoras; vazio = segredo padrão)
 - presenca_comprador_padrao_nfe (select: "1 Presencial", "2 Internet", "3 Teleatendimento", "4 Entrega em domicílio", "9 Outros", padrão "1 Presencial")
 - ambiente (select: "Homologação" ou "Produção", padrão "Homologação"; mudar para Produção exige confirmação expressa digitando "PRODUÇÃO" e grava logs_auditoria)
@@ -365,9 +390,10 @@ Tabela mestre de documentos fiscais emitidos/processados (NF-e modelo 55 e NFC-e
 - tipo_documento (number, obrigatório: 0 entrada, 1 saída)
 - finalidade (number, obrigatório: 1 normal, 4 devolução)
 - ambiente (select: "Homologação" ou "Produção", obrigatório)
-- origem (select: "Venda", "Devolução de venda", "Devolução de compra", obrigatório)
+- origem (select: "Venda", "Devolução de venda", "Devolução de compra", "Transferência", obrigatório)
 - venda_id (text, opcional)
 - nota_entrada_id (text, opcional)
+- transferencia_id (text, opcional; vínculo com o ID da transferência entre filiais quando origem for "Transferência")
 - documento_referenciado_chave (text, opcional, chave da nota referenciada em devoluções)
 - referencia (text, obrigatório, identificador único enviado à Focus NFe)
 - status (select: "Rascunho", "Processando", "Autorizada", "Rejeitada", "Cancelada", "Denegada", obrigatório)
@@ -767,6 +793,7 @@ Itens de produtos da nota fiscal de entrada (registro C170 do SPED Fiscal) com e
 - valor_credito_cofins (number com 2 casas)
 - aproveita_credito_ipi (boolean)
 - valor_credito_ipi (number com 2 casas)
+- quantidade_devolvida (number com 4 casas decimais, padrão 0 — controle acumulado de devoluções efetuadas ao fornecedor)
 - custo_total_item (number com 2 casas)
 - custo_unitario_estoque (number com 4 casas decimais)
 - ativo (boolean, padrão true)
@@ -2981,6 +3008,37 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Gráfico diário de faturamento dos últimos 30 dias com linha de tendência.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.83** — Inutilização de Numeração Fiscal (NF-e 55 e NFC-e 65), Endpoints do Prompt 6.4 e Validação de Grafia Fiscal:
+
+1. **Correção de Grafia e Parâmetros em `config_emissao_fiscal`:**
+   - Confirmada a integridade e grafia correta do campo `emitir_nfe_ao_enviar_transferencia` (Migration 0050), garantindo ausência de grafias incorretas ("envizar") em todo o banco e no código do sistema.
+   - Parâmetros `emitir_nfe_ao_enviar_transferencia` e `emitir_nfe_ao_devolver_venda` em conformidade na configuração fiscal por empresa.
+
+2. **Tela Fiscal > Inutilização (`/fiscal/inutilizacao` - `InutilizacaoPage.tsx`):**
+   - **Controle de Acesso Estrito:** Acesso condicionado exclusivamente a Administrador do ERP (`perfis_acesso.administrador = true` via usuário logado — nunca por e-mail fixo). Usuários não administradores recebem tela amigável de Acesso Negado.
+   - **Item no Menu Lateral:** Adicionado item "Inutilização" com ícone `FileX2` no grupo "Fiscal" do menu lateral (`Sidebar.tsx`), visível somente para administradores (`adminOnly: true`).
+   - **Formulário de Homologação:**
+     - Seleção do modelo fiscal: `55` (NF-e) ou `65` (NFC-e).
+     - Série da nota (pré-preenchida automaticamente com a série padrão da empresa ativa cadastrada em `config_emissao_fiscal`).
+     - Faixa numérica: número inicial e número final (com suporte a número único repetindo o valor).
+     - Justificativa legal com validação de no mínimo 15 caracteres (exigência mandatória da SEFAZ) e contador dinâmico de caracteres.
+     - Empresa ativa em contexto: numeração e séries independentes por CNPJ de cada filial/estabelecimento.
+     - Acionamento do serviço backend `/backend/v1/fiscal/inutilizar` (`inutilizarNumeracaoFiscal`).
+   - **Histórico e Baixa de XML:**
+     - Tabela detalhada de inutilizações da empresa ativa consumindo a tabela `inutilizacoes` (ordenada por data decrescente).
+     - Colunas: Data, Modelo (NF-e / NFC-e), Série, Faixa de Números, Justificativa, Situação com badge, Protocolo da SEFAZ, Usuário solicitante e botão para download do XML do evento homologado.
+     - Gravação persistente e download do XML de homologação diretamente pelo serviço de arquivos do PocketBase (`pb.files.getURL`).
+   - **Orientações Didáticas e Legais:**
+     - Alerta explicativo em destaque na tela: _"Inutilizar serve para números que foram pulados e nunca chegaram a ser autorizados. Nota rejeitada pode ser reenviada com a mesma referência e não precisa ser inutilizada."_
+
+3. **Endpoints Fiscais do Prompt 6.4 Documentados:**
+   - `POST /backend/v1/fiscal/emitir-nfe-devolucao-compra`: montagem, validação, amarração de chave referenciada e transmissão de NF-e (modelo 55, finalidade 4 Devolução) a partir de notas de entrada lançadas, atualizando `quantidade_devolvida` em `notas_entrada_itens` e movimentando o estoque na origem `DEVOLUCAO_COMPRA`.
+   - `POST /backend/v1/fiscal/confirmar-autorizacao-devolucao-compra`: confirmação de autorização síncrona/assíncrona da NF-e de devolução com persistência de número, série, chave de 44 dígitos, protocolo e download do XML autorizado.
+   - `POST /backend/v1/fiscal/emitir-nfe-transferencia`: emissão de NF-e de transferência interestadual ou interna entre filiais a partir do envio da remessa, com amarração de `transferencia_id` e origem "Transferência" em `documentos_fiscais`.
+   - `POST /backend/v1/fiscal/inutilizar`: endpoint central que recebe a solicitação de inutilização, autentica a empresa ativa, chama a API v2 da Focus NFe (`POST /v2/nfe/inutilizacao` ou `/v2/nfce/inutilizacao`), registra na tabela `inutilizacoes`, baixa o XML do evento homologado e retorna protocolo e status.
+
+---
 
 **Versão 0.0.76** — Emissão de NF-e (Modelo 55), Intermediadores de Marketplace, Acompanhamento SEFAZ, DANFE/XML, E-mail, Cancelamento 24h e Carta de Correção (CC-e):
 

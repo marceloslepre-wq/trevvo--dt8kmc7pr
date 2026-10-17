@@ -1371,8 +1371,46 @@ routerAdd(
 
       // Gravar na tabela inutilizacoes
       const statusRet = statusCode >= 200 && statusCode < 300 ? 'Autorizada' : 'Rejeitada'
-      const protocoloRet = jsonResp?.protocolo || jsonResp?.dados?.protocolo || ''
+      const protocoloRet =
+        jsonResp?.protocolo_sefaz ||
+        jsonResp?.protocolo ||
+        jsonResp?.dados?.protocolo_sefaz ||
+        jsonResp?.dados?.protocolo ||
+        ''
       const msgSefazRet = jsonResp?.mensagem_sefaz || jsonResp?.mensagem || ''
+      const caminhoXmlRet = jsonResp?.caminho_xml || jsonResp?.dados?.caminho_xml || ''
+
+      // Se retornou caminho_xml e status foi autorizado, podemos baixar o XML e persistir no registro
+      let xmlArquivoFile = null
+      if (caminhoXmlRet && statusRet === 'Autorizada') {
+        try {
+          let urlXml = caminhoXmlRet
+          if (caminhoXmlRet.startsWith('/')) {
+            const serverOrigin =
+              ambiente === 'Produção'
+                ? 'https://api.focusnfe.com.br'
+                : 'https://homologacao.focusnfe.com.br'
+            urlXml = `${serverOrigin}${caminhoXmlRet}`
+          }
+          const resXml = $http.send({
+            method: 'GET',
+            url: urlXml,
+            headers: {
+              Authorization: basicAuthHeader,
+            },
+            timeout: 30,
+          })
+          if (resXml.statusCode >= 200 && resXml.statusCode < 300 && resXml.raw) {
+            const nomeArquivo = `inutilizacao_${modelo}_serie${serie}_${numeroInicial}_${numeroFinal}.xml`
+            xmlArquivoFile = $filesystem.fileFromBytes(
+              typeof resXml.raw === 'string' ? $security.stringToBytes(resXml.raw) : resXml.raw,
+              nomeArquivo,
+            )
+          }
+        } catch (errXml) {
+          console.warn('Não foi possível pré-baixar XML da inutilização:', errXml)
+        }
+      }
 
       try {
         const inutCol = $app.findCollectionByNameOrId('inutilizacoes')
@@ -1389,6 +1427,9 @@ routerAdd(
         inutRec.set('usuario_id', authRecord.id)
         inutRec.set('data_inutilizacao', new Date().toISOString())
         inutRec.set('ativo', true)
+        if (xmlArquivoFile) {
+          inutRec.set('xml_arquivo', xmlArquivoFile)
+        }
         $app.save(inutRec)
       } catch (errInut) {
         console.warn('Erro ao salvar registro de inutilizacao:', errInut)
