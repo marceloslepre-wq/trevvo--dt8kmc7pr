@@ -179,6 +179,7 @@ export interface DocumentoFiscalRegistro {
   status: StatusDocumentoFiscal
   venda_id?: string
   transferencia_id?: string
+  devolucao_venda_id?: string
   contingencia?: boolean
   numero?: number
   serie?: string
@@ -193,6 +194,9 @@ export interface DocumentoFiscalRegistro {
   motivo_cancelamento?: string
   data_cancelamento?: string
   data_autorizacao?: string
+  destinatario_nome?: string
+  destinatario_cpf_cnpj?: string
+  destinatario_uf?: string
 }
 
 export interface DocumentoFiscalCarta {

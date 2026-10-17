@@ -3009,6 +3009,33 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.88** — Devolução de Venda com NF-e de Entrada Própria (Modelo 55), Modal de Conferência, Polling SEFAZ e Rastreio Fiscal:
+
+1. **Tela de Trocas e Devoluções (`src/pages/vendas/TrocasDevolucoesPage.tsx`):**
+   - **Modal de Conferência Pré-emissão:** Ao confirmar a devolução de uma venda cujo `documento_fiscal_status` seja "Autorizada" (NF-e ou NFC-e), o sistema abre modal de conferência detalhado exibindo:
+     - Emitente (empresa/filial da venda original com Razão Social, CNPJ e UF).
+     - Remetente (cliente cadastrado da venda original ou campos Nome + CPF com validação obrigatória quando a venda foi para consumidor avulso/não cadastrado).
+     - Chave da nota referenciada (44 dígitos da NF-e ou NFC-e original).
+     - Itens devolvidos com indicação do CFOP previsto (`1202`/`2202` normal, ou `1411`/`2411` com Substituição Tributária) e bases/alíquotas proporcionais calculadas na transmissão.
+   - **Desacoplamento Transacional:** O botão "Confirmar e emitir NF-e" aciona `emitirNfeDevolucaoVenda` criando a venda de devolução com status `"Pendente de nota"` e **NÃO** movimenta estoque nem financeiro de imediato (a reintegração física e contábil é realizada estritamente após a autorização da SEFAZ).
+   - **Acompanhamento e Polling SEFAZ:** Polling automático através de `consultarSituacaoNFe` a cada 3 segundos por até 30 segundos:
+     - **Autorizado:** invoca `confirmarAutorizacaoDevolucaoVenda` movimentando o estoque (origem `DEVOLUCAO_VENDA`), processando o destino financeiro (vale-troca, estorno em dinheiro ou desconto no crediário), atualizando `quantidade_devolvida` e finalizando a devolução.
+     - **Erro de autorização (Rejeitada):** devolução permanece com selo `"Pendente de nota"` registrando e exibindo o motivo da rejeição da SEFAZ (`motivo_cancelamento`).
+     - **Denegado:** exibe aviso de que a nota denegada não pode ser reutilizada nem cancelada devido a irregularidade fiscal cadastral.
+     - **Timeout (mais de 30s):** aviso amigável de processamento em andamento na SEFAZ e orientação para acompanhamento na listagem.
+   - **Histórico e Reenvio:** Nova aba "Histórico de Devoluções" com selo visual `"Pendente de nota"`, motivo da rejeição e botão **"Tentar de novo"** reenviando a emissão para o mesmo `devolucao_id` (mesma referência fiscal).
+   - **Detalhes e Documento Fiscal Vinculado:** Modal de detalhes da devolução apresentando número, série, chave de 44 dígitos, protocolo da SEFAZ e botões **"Abrir DANFE"** (em nova aba) e **"Baixar XML"** (`baixarArquivoFiscal`).
+   - **Vendas sem Nota Fiscal Autorizada:** O fluxo de devolução sem nota permanece 100% inalterado e direto.
+   - **Permissões:** Exige permissão de criação em `notas_saida` (`pode('notas_saida', 'criar')`) para emitir e reenviar notas fiscais de devolução.
+
+2. **Endpoints Backend e Modelo de Dados:**
+   - `POST /backend/v1/fiscal/emitir-nfe-devolucao-venda`: validação e transmissão da NF-e modelo 55 de entrada própria com finalidade 4 (Devolução), vínculo à chave original e criação de registro em `documentos_fiscais`.
+   - `POST /backend/v1/fiscal/confirmar-autorizacao-devolucao-venda`: operação transacional atômica que valida o status "Autorizada", movimenta o estoque via Kardex, gera vales-troca / movimentações financeiras / baixas no crediário e finaliza a devolução.
+   - Atualização da tipagem `StatusVenda` em `src/services/vendas.ts` e interfaces em `src/services/devolucoes.ts` (`DevolucaoVendaRegistro`).
+   - Campo `devolucao_venda_id` em `documentos_fiscais` e status `Pendente de nota` em `vendas` (Migration 0051).
+
+---
+
 **Versão 0.0.85** — Correção do Build do Projeto e Alinhamento dos Contratos de Emissão de NF-e de Transferência:
 
 - Correção das exportações em `src/services/fiscalIntegracao.ts`: exportadas as funções `emitirNFeTransferencia` (com alias para `emitirNfeTransferencia`), `montarRascunhoDocumentoFiscal` e as interfaces `RascunhoFiscalResponse`, `EmitirNFeTransferenciaParams` e `EmitirNFeTransferenciaResponse`.

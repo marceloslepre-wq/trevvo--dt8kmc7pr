@@ -11,6 +11,7 @@ export type StatusVenda =
   | 'Finalizada'
   | 'Cancelada'
   | 'Orçamento expirado'
+  | 'Pendente de nota'
 
 export type DocumentoFiscalStatus =
   | 'Não emitido'

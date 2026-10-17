@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   RotateCcw,
   Search,
@@ -13,6 +13,13 @@ import {
   Building2,
   Clock,
   ArrowRight,
+  Send,
+  Loader2,
+  Download,
+  ExternalLink,
+  RefreshCw,
+  Eye,
+  Info,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,7 +54,15 @@ import {
   ResultadoDevolucao,
   listarValesTroca,
   ValeTroca,
+  DevolucaoVendaRegistro,
 } from '@/services/devolucoes'
+import {
+  emitirNfeDevolucaoVenda,
+  confirmarAutorizacaoDevolucaoVenda,
+  consultarSituacaoNFe,
+  baixarArquivoFiscal,
+} from '@/services/fiscalIntegracao'
+import { obterDocumentoFiscalDaVenda, DocumentoFiscalRegistro } from '@/services/documentosFiscais'
 import { ModalAutorizacaoSupervisor } from '@/components/ModalAutorizacaoSupervisor'
 import pb from '@/lib/pocketbase/client'
 
@@ -57,9 +72,10 @@ export const TrocasDevolucoesPage: React.FC = () => {
   const { toast } = useToast()
 
   const podeCriarVendas = pode('vendas', 'criar')
+  const podeEmitirNotas = pode('notas_saida', 'criar')
 
-  // Aba ativa: "Nova Troca/Devolução" ou "Histórico de Vales-Troca"
-  const [abaAtiva, setAbaAtiva] = useState<'nova' | 'vales'>('nova')
+  // Aba ativa: "Nova Troca/Devolução", "Histórico de Devoluções" ou "Histórico de Vales-Troca"
+  const [abaAtiva, setAbaAtiva] = useState<'nova' | 'historico' | 'vales'>('nova')
 
   // Configuração da empresa (dias_para_troca)
   const [diasParaTroca, setDiasParaTroca] = useState<number>(30)
@@ -103,6 +119,31 @@ export const TrocasDevolucoesPage: React.FC = () => {
   const [carregandoVales, setCarregandoVales] = useState(false)
   const [filtroValeStatus, setFiltroValeStatus] = useState('todos')
   const [filtroValeCodigo, setFiltroValeCodigo] = useState('')
+
+  // 4. Fluxo de NF-e de entrada própria de devolução
+  const [docFiscalVendaOrig, setDocFiscalVendaOrig] = useState<DocumentoFiscalRegistro | null>(null)
+  const [modalConferenciaNFeAberto, setModalConferenciaNFeAberto] = useState(false)
+  const [clienteAvulsoNome, setClienteAvulsoNome] = useState('')
+  const [clienteAvulsoCpf, setClienteAvulsoCpf] = useState('')
+  const [erroValidacaoClienteAvulso, setErroValidacaoClienteAvulso] = useState('')
+
+  // Polling e estado de transmissão
+  const [faseTransmissao, setFaseTransmissao] = useState<
+    'idle' | 'enviando' | 'polling' | 'sucesso' | 'erro' | 'timeout' | 'denegado'
+  >('idle')
+  const [tempoPolling, setTempoPolling] = useState(0)
+  const [mensagemTransmissao, setMensagemTransmissao] = useState('')
+  const [modalTransmissaoAberto, setModalTransmissaoAberto] = useState(false)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Histórico de Devoluções
+  const [devolucoesLista, setDevolucoesLista] = useState<DevolucaoVendaRegistro[]>([])
+  const [carregandoDevolucoes, setCarregandoDevolucoes] = useState(false)
+  const [devolucaoDetalhe, setDevolucaoDetalhe] = useState<DevolucaoVendaRegistro | null>(null)
+  const [docFiscalDetalhe, setDocFiscalDetalhe] = useState<DocumentoFiscalRegistro | null>(null)
+  const [modalDetalheAberto, setModalDetalheAberto] = useState(false)
+  const [reemitindoId, setReemitindoId] = useState<string | null>(null)
+  const [baixandoXml, setBaixandoXml] = useState(false)
 
   // Carrega configurações da empresa e contas financeiras
   useEffect(() => {
@@ -173,6 +214,43 @@ export const TrocasDevolucoesPage: React.FC = () => {
     try {
       const comp = await obterVendaCompleta(venda.id)
       setItensVendaOriginal(comp.itens)
+
+      // Se a venda tem status fiscal Autorizada, carregar documento fiscal para conferência
+      if (venda.documento_fiscal_status === 'Autorizada') {
+        let doc = null
+        if (venda.documento_fiscal_id) {
+          try {
+            doc = await pb
+              .collection('documentos_fiscais')
+              .getOne<DocumentoFiscalRegistro>(venda.documento_fiscal_id)
+          } catch {
+            /* intentionally ignored */
+          }
+        }
+        if (!doc) {
+          doc = await obterDocumentoFiscalDaVenda(venda.id, '55')
+          if (!doc) {
+            doc = await obterDocumentoFiscalDaVenda(venda.id, '65')
+          }
+        }
+        setDocFiscalVendaOrig(doc)
+
+        // Se venda não tem cliente vinculado, pré-popular ou limpar campos avulsos
+        const nomeCli =
+          (venda.expand as any)?.cliente_id?.nome_razao_social ||
+          (venda.expand as any)?.cliente_id?.nome ||
+          doc?.destinatario_nome ||
+          ''
+        const cpfCli =
+          venda.cpf_cnpj_consumidor ||
+          (venda.expand as any)?.cliente_id?.cpf_cnpj ||
+          doc?.destinatario_cpf_cnpj ||
+          ''
+        setClienteAvulsoNome(nomeCli)
+        setClienteAvulsoCpf(cpfCli)
+      } else {
+        setDocFiscalVendaOrig(null)
+      }
     } catch {
       toast({
         title: 'Erro ao carregar itens',
@@ -238,6 +316,119 @@ export const TrocasDevolucoesPage: React.FC = () => {
     }
   }, [itensVendaOriginal, itensParaDevolver])
 
+  // Executa polling da situação da NF-e na SEFAZ (a cada 3s por até 30s)
+  const iniciarPollingNfe = useCallback(
+    (documentoId: string, devolucaoId: string) => {
+      setFaseTransmissao('polling')
+      setTempoPolling(0)
+      setMensagemTransmissao('Consultando autorização na SEFAZ...')
+
+      let tentativas = 0
+      const maxTentativas = 10 // 10 * 3s = 30s
+
+      if (pollingRef.current) clearInterval(pollingRef.current)
+
+      pollingRef.current = setInterval(async () => {
+        tentativas++
+        setTempoPolling(tentativas * 3)
+
+        try {
+          const resConsulta = await consultarSituacaoNFe({ documento_id: documentoId })
+
+          if (resConsulta.status === 'Autorizada') {
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('sucesso')
+            setMensagemTransmissao(
+              `NF-e autorizada pela SEFAZ! Chave: ${resConsulta.chave || '-'}. Confirmando movimentações...`,
+            )
+
+            // Chamar confirmação de autorização para movimentar estoque e financeiro
+            try {
+              const resConf = await confirmarAutorizacaoDevolucaoVenda({
+                devolucao_id: devolucaoId,
+                documento_id: documentoId,
+                destino,
+                dias_validade_vale: destino === 'vale_troca' ? diasValidadeVale : undefined,
+                conta_financeira_id: destino === 'dinheiro_volta' ? contaFinanceiraId : undefined,
+              })
+
+              setMensagemTransmissao(
+                `Devolução concluída com sucesso! ${
+                  resConf.vale_troca_codigo ? `Vale gerado: ${resConf.vale_troca_codigo}` : ''
+                }`,
+              )
+              toast({
+                title: 'NF-e Autorizada e Devolução Concluída!',
+                description: `Estoque e financeiro movimentados. NF-e nº ${resConsulta.numero || ''}.`,
+              })
+
+              // Limpar seleção
+              setVendaSelecionada(null)
+              setItensVendaOriginal([])
+              setItensParaDevolver({})
+              setModalConferenciaNFeAberto(false)
+            } catch (errConf: any) {
+              setMensagemTransmissao(
+                `Nota autorizada, mas ocorreu erro na finalização: ${errConf?.message || 'Falha'}`,
+              )
+            }
+          } else if (resConsulta.status === 'Rejeitada') {
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('erro')
+            const motivo =
+              resConsulta.mensagem_sefaz || resConsulta.message || 'Nota rejeitada pela SEFAZ'
+            setMensagemTransmissao(
+              `Rejeição da SEFAZ: ${motivo}. Devolução mantida como "Pendente de nota".`,
+            )
+            toast({
+              title: 'NF-e Rejeitada pela SEFAZ',
+              description: motivo,
+              variant: 'destructive',
+            })
+          } else if (resConsulta.status === 'Denegada') {
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('denegado')
+            const motivo =
+              resConsulta.mensagem_sefaz || resConsulta.message || 'Uso denegado pela SEFAZ'
+            setMensagemTransmissao(
+              `Aviso: Nota DENEGADA pela SEFAZ. ${motivo}. Nota fiscal denegada não pode ser reutilizada nem cancelada.`,
+            )
+            toast({
+              title: 'NF-e Denegada pela SEFAZ',
+              description: 'Nota fiscal denegada não pode ser reutilizada.',
+              variant: 'destructive',
+            })
+          } else if (tentativas >= maxTentativas) {
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('timeout')
+            setMensagemTransmissao(
+              'A SEFAZ ainda está processando a nota fiscal. A devolução permanece como "Pendente de nota" e será atualizada automaticamente na próxima consulta.',
+            )
+            toast({
+              title: 'Processamento em andamento',
+              description:
+                'O retorno da SEFAZ demorou mais de 30s. Acompanhe a devolução na lista para reconsultar.',
+            })
+          }
+        } catch (errQuery: any) {
+          if (tentativas >= maxTentativas) {
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('timeout')
+            setMensagemTransmissao('Tempo limite atingido. A devolução segue pendente de nota.')
+          }
+        }
+      }, 3000)
+    },
+    [destino, diasValidadeVale, contaFinanceiraId, toast],
+  )
+
+  // Ao fechar ou desmontar, limpar polling
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
+  }, [])
+
   // Submissão do processamento da devolução
   const handleConfirmarDevolucao = async () => {
     if (!empresaAtiva?.id || !vendaSelecionada) return
@@ -256,6 +447,17 @@ export const TrocasDevolucoesPage: React.FC = () => {
       return
     }
 
+    // Venda original tem nota fiscal autorizada (NF-e ou NFC-e)?
+    const temNotaAutorizada = vendaSelecionada.documento_fiscal_status === 'Autorizada'
+
+    if (temNotaAutorizada) {
+      // Abre modal de conferência da NF-e de entrada própria antes de processar
+      setErroValidacaoClienteAvulso('')
+      setModalConferenciaNFeAberto(true)
+      return
+    }
+
+    // Venda original SEM nota autorizada: fluxo atual inalterado, sem nota
     setProcessando(true)
     try {
       const res = await processarDevolucao({
@@ -289,6 +491,246 @@ export const TrocasDevolucoesPage: React.FC = () => {
       })
     } finally {
       setProcessando(false)
+    }
+  }
+
+  // Confirma e emite a NF-e de devolução de venda
+  const handleConfirmarEEmitirNFe = async () => {
+    if (!empresaAtiva?.id || !vendaSelecionada) return
+
+    // Validação de cliente quando a venda não tem cliente vinculado
+    const clienteId = vendaSelecionada.cliente_id
+    let nomeFinal = clienteAvulsoNome.trim()
+    let cpfFinal = clienteAvulsoCpf.replace(/\D/g, '')
+
+    if (!clienteId && (!nomeFinal || !cpfFinal)) {
+      setErroValidacaoClienteAvulso('Nome e CPF do cliente são obrigatórios para emissão da NF-e.')
+      return
+    }
+    if (cpfFinal && cpfFinal.length !== 11 && cpfFinal.length !== 14) {
+      setErroValidacaoClienteAvulso('CPF ou CNPJ inválido (deve conter 11 ou 14 dígitos).')
+      return
+    }
+
+    setProcessando(true)
+    setFaseTransmissao('enviando')
+    setMensagemTransmissao('Criando registro de devolução pendente de nota...')
+    setModalTransmissaoAberto(true)
+
+    try {
+      // 1. Criar devolução com status 'Pendente de nota' (sem tocar estoque nem financeiro)
+      const resDev = await processarDevolucao({
+        empresa_id: empresaAtiva.id,
+        venda_origem_id: vendaSelecionada.id,
+        itens: resumoDevolucao.itensInput,
+        destino,
+        observacao,
+        conta_financeira_id: destino === 'dinheiro_volta' ? contaFinanceiraId : undefined,
+        dias_validade_vale: destino === 'vale_troca' ? diasValidadeVale : undefined,
+        com_emissao_nfe: true,
+      })
+
+      const devolucaoId = resDev.venda_devolucao_id
+
+      setMensagemTransmissao('Transmitindo NF-e de devolução para a SEFAZ...')
+
+      // 2. Transmitir NF-e para a Focus NFe
+      const resEnvio = await emitirNfeDevolucaoVenda({
+        devolucao_id: devolucaoId,
+        cliente_nome: nomeFinal || undefined,
+        cliente_cpf: cpfFinal || undefined,
+      })
+
+      if (!resEnvio.sucesso && resEnvio.status === 'Rejeitada') {
+        setFaseTransmissao('erro')
+        setMensagemTransmissao(`Rejeição: ${resEnvio.message || 'Erro na transmissão'}`)
+        return
+      }
+
+      if (resEnvio.ja_autorizada) {
+        setFaseTransmissao('sucesso')
+        setMensagemTransmissao('NF-e já estava autorizada. Confirmando devolução...')
+        await confirmarAutorizacaoDevolucaoVenda({
+          devolucao_id: devolucaoId,
+          documento_id: resEnvio.documento_id || '',
+          destino,
+          dias_validade_vale: destino === 'vale_troca' ? diasValidadeVale : undefined,
+          conta_financeira_id: destino === 'dinheiro_volta' ? contaFinanceiraId : undefined,
+        })
+        setMensagemTransmissao('Devolução autorizada e finalizada com sucesso!')
+        return
+      }
+
+      const docId = resEnvio.documento_id
+      if (docId) {
+        // 3. Polling de consultarSituacaoNFe a cada 3s por até 30s
+        iniciarPollingNfe(docId, devolucaoId)
+      } else {
+        setFaseTransmissao('timeout')
+        setMensagemTransmissao('Nota transmitida. Acompanhe a autorização na lista de devoluções.')
+      }
+    } catch (err: any) {
+      setFaseTransmissao('erro')
+      setMensagemTransmissao(`Erro: ${err?.message || 'Falha ao emitir NF-e de devolução.'}`)
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // Reenviar emissão de devolução que ficou "Pendente de nota"
+  const handleTentarDeNovo = async (dev: DevolucaoVendaRegistro) => {
+    setReemitindoId(dev.id)
+    setFaseTransmissao('enviando')
+    setMensagemTransmissao(`Reenviando NF-e da Devolução #${dev.numero}...`)
+    setModalTransmissaoAberto(true)
+
+    try {
+      const resEnvio = await emitirNfeDevolucaoVenda({
+        devolucao_id: dev.id,
+      })
+
+      if (!resEnvio.sucesso && resEnvio.status === 'Rejeitada') {
+        setFaseTransmissao('erro')
+        setMensagemTransmissao(`Rejeição da SEFAZ: ${resEnvio.message || 'Falha no envio'}`)
+        carregarDevolucoes()
+        return
+      }
+
+      if (resEnvio.ja_autorizada) {
+        setFaseTransmissao('sucesso')
+        setMensagemTransmissao('NF-e já está autorizada na SEFAZ. Finalizando devolução...')
+        await confirmarAutorizacaoDevolucaoVenda({
+          devolucao_id: dev.id,
+          documento_id: resEnvio.documento_id || dev.documento_fiscal_id || '',
+        })
+        carregarDevolucoes()
+        return
+      }
+
+      const docId = resEnvio.documento_id || dev.documento_fiscal_id
+      if (docId) {
+        iniciarPollingNfe(docId, dev.id)
+      } else {
+        setFaseTransmissao('timeout')
+        setMensagemTransmissao('NF-e transmitida. Consulte a situação em instantes.')
+      }
+    } catch (err: any) {
+      setFaseTransmissao('erro')
+      setMensagemTransmissao(`Erro ao reenviar: ${err?.message || 'Falha na comunicação.'}`)
+    } finally {
+      setReemitindoId(null)
+      carregarDevolucoes()
+    }
+  }
+
+  // Carregar histórico de devoluções
+  const carregarDevolucoes = useCallback(async () => {
+    if (!empresaAtiva?.id) return
+    setCarregandoDevolucoes(true)
+    try {
+      const res = await pb.collection('vendas').getList<DevolucaoVendaRegistro>(1, 50, {
+        filter: `empresa_id = '${empresaAtiva.id}' && tipo = 'Devolução' && ativo = true`,
+        sort: '-created',
+        expand: 'venda_origem_id,cliente_id,documento_fiscal_id',
+      })
+      setDevolucoesLista(res.items)
+    } catch {
+      //
+    } finally {
+      setCarregandoDevolucoes(false)
+    }
+  }, [empresaAtiva?.id])
+
+  useEffect(() => {
+    if (abaAtiva === 'historico') {
+      carregarDevolucoes()
+    }
+  }, [abaAtiva, carregarDevolucoes])
+
+  // Abrir detalhe da devolução
+  const handleAbrirDetalheDevolucao = async (dev: DevolucaoVendaRegistro) => {
+    setDevolucaoDetalhe(dev)
+    setDocFiscalDetalhe(null)
+    setModalDetalheAberto(true)
+
+    // Se possui documento fiscal vinculado, carregar registro detalhado
+    if (dev.documento_fiscal_id) {
+      try {
+        const doc = await pb
+          .collection('documentos_fiscais')
+          .getOne<DocumentoFiscalRegistro>(dev.documento_fiscal_id)
+        setDocFiscalDetalhe(doc)
+      } catch {
+        //
+      }
+    } else {
+      // Tentar buscar por devolucao_venda_id
+      try {
+        const docs = await pb
+          .collection('documentos_fiscais')
+          .getList<DocumentoFiscalRegistro>(1, 1, {
+            filter: `devolucao_venda_id = '${dev.id}'`,
+            sort: '-created',
+          })
+        if (docs.items.length > 0) {
+          setDocFiscalDetalhe(docs.items[0])
+        }
+      } catch {
+        //
+      }
+    }
+  }
+
+  // Baixar XML da nota fiscal
+  const handleBaixarXml = async (docId?: string) => {
+    if (!docId && !docFiscalDetalhe?.id) return
+    const idFinal = docId || docFiscalDetalhe?.id || ''
+    if (!empresaAtiva?.id || !idFinal) return
+
+    setBaixandoXml(true)
+    try {
+      const res = await baixarArquivoFiscal({
+        empresaId: empresaAtiva.id,
+        caminho: `documentos_fiscais/${idFinal}/xml`,
+      })
+
+      if (res.sucesso && res.conteudo) {
+        const blob = new Blob([res.conteudo], { type: 'application/xml;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `nfe_devolucao_${docFiscalDetalhe?.numero || idFinal}.xml`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        toast({ title: 'Download concluído', description: 'Arquivo XML baixado com sucesso.' })
+      } else {
+        // Fallback para arquivo anexado no PocketBase se existir
+        if (docFiscalDetalhe?.xml_arquivo) {
+          const urlPb = pb.files.getURL(docFiscalDetalhe, docFiscalDetalhe.xml_arquivo)
+          window.open(urlPb, '_blank')
+        } else {
+          toast({
+            title: 'XML não disponível',
+            description: res.message || 'Arquivo XML ainda não disponível na SEFAZ.',
+            variant: 'destructive',
+          })
+        }
+      }
+    } catch (err: any) {
+      if (docFiscalDetalhe?.xml_arquivo) {
+        const urlPb = pb.files.getURL(docFiscalDetalhe, docFiscalDetalhe.xml_arquivo)
+        window.open(urlPb, '_blank')
+      } else {
+        toast({
+          title: 'Erro no download',
+          description: err?.message || 'Falha ao baixar XML da NF-e.',
+          variant: 'destructive',
+        })
+      }
+    } finally {
+      setBaixandoXml(false)
     }
   }
 
@@ -374,7 +816,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant={abaAtiva === 'nova' ? 'default' : 'outline'}
             size="sm"
@@ -383,6 +825,16 @@ export const TrocasDevolucoesPage: React.FC = () => {
           >
             <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
             Nova Devolução
+          </Button>
+
+          <Button
+            variant={abaAtiva === 'historico' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setAbaAtiva('historico')}
+            className="text-xs h-9"
+          >
+            <FileText className="h-3.5 w-3.5 mr-1.5" />
+            Histórico de Devoluções
           </Button>
 
           <Button
@@ -768,20 +1220,198 @@ export const TrocasDevolucoesPage: React.FC = () => {
                   <Button
                     type="button"
                     size="sm"
-                    disabled={processando || !podeCriarVendas}
+                    disabled={
+                      processando ||
+                      !podeCriarVendas ||
+                      (vendaSelecionada?.documento_fiscal_status === 'Autorizada' &&
+                        !podeEmitirNotas)
+                    }
                     onClick={handleConfirmarDevolucao}
-                    className="text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                    className={`text-xs h-9 text-white gap-2 ${
+                      vendaSelecionada?.documento_fiscal_status === 'Autorizada'
+                        ? 'bg-blue-600 hover:bg-blue-700'
+                        : 'bg-emerald-600 hover:bg-emerald-700'
+                    }`}
                   >
-                    <RotateCcw className="h-4 w-4" />
-                    <span>{processando ? 'Processando...' : 'Finalizar Devolução'}</span>
+                    {vendaSelecionada?.documento_fiscal_status === 'Autorizada' ? (
+                      <>
+                        <Send className="h-4 w-4" />
+                        <span>{processando ? 'Processando...' : 'Conferir e Emitir NF-e'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="h-4 w-4" />
+                        <span>{processando ? 'Processando...' : 'Finalizar Devolução'}</span>
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardContent>
             </Card>
           )}
         </div>
+      ) : abaAtiva === 'historico' ? (
+        /* ABA 2: Histórico de Devoluções de Vendas */
+        <Card className="border-slate-200">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  Histórico de Devoluções de Venda
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Consulte devoluções finalizadas e com status &quot;Pendente de nota&quot; com
+                  opção de reenvio fiscal.
+                </CardDescription>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={carregarDevolucoes}
+                disabled={carregandoDevolucoes}
+                className="text-xs h-8 gap-1.5"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${carregandoDevolucoes ? 'animate-spin' : ''}`}
+                />
+                Atualizar
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {carregandoDevolucoes ? (
+              <p className="text-xs text-slate-400 py-6 text-center">Carregando devoluções...</p>
+            ) : devolucoesLista.length === 0 ? (
+              <p className="text-xs text-slate-400 py-6 text-center">
+                Nenhuma devolução de venda registrada nesta empresa.
+              </p>
+            ) : (
+              <div className="border border-slate-200 rounded-md overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className="text-xs">Devolução #</TableHead>
+                      <TableHead className="text-xs">Data</TableHead>
+                      <TableHead className="text-xs">Venda Origem</TableHead>
+                      <TableHead className="text-xs">Cliente</TableHead>
+                      <TableHead className="text-xs text-right">Total (R$)</TableHead>
+                      <TableHead className="text-xs text-center">Situação</TableHead>
+                      <TableHead className="text-xs">Nota Fiscal</TableHead>
+                      <TableHead className="text-xs text-center w-36">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {devolucoesLista.map((dev) => {
+                      const clienteNome =
+                        (dev.expand as any)?.cliente_id?.nome_razao_social ||
+                        (dev.expand as any)?.cliente_id?.nome ||
+                        dev.cpf_cnpj_consumidor ||
+                        'Consumidor'
+                      const numOrig = (dev.expand as any)?.venda_origem_id?.numero
+                      const doc = (dev.expand as any)?.documento_fiscal_id
+                      const ehPendente = dev.status === 'Pendente de nota'
+
+                      return (
+                        <TableRow
+                          key={dev.id}
+                          className={ehPendente ? 'bg-amber-50/40' : undefined}
+                        >
+                          <TableCell className="text-xs font-mono font-bold text-slate-900">
+                            #{dev.numero}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {dev.created ? new Date(dev.created).toLocaleDateString('pt-BR') : '-'}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono">
+                            {numOrig ? `#${numOrig}` : '-'}
+                          </TableCell>
+                          <TableCell className="text-xs">{clienteNome}</TableCell>
+                          <TableCell className="text-xs text-right font-mono font-bold">
+                            R$ {Number(dev.valor_total).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {ehPendente ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-amber-100 text-amber-800 border-amber-300"
+                              >
+                                Pendente de nota
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-emerald-100 text-emerald-800 border-emerald-300"
+                              >
+                                {dev.status}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {doc?.numero ? (
+                              <div className="font-mono text-[11px]">
+                                NF-e nº {doc.numero} (Série {doc.serie || '1'})
+                              </div>
+                            ) : dev.documento_fiscal_status ? (
+                              <Badge variant="outline" className="text-[10px]">
+                                {dev.documento_fiscal_status}
+                              </Badge>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">-</span>
+                            )}
+                            {ehPendente && dev.motivo_cancelamento && (
+                              <div
+                                className="text-[10px] text-red-600 line-clamp-1 mt-0.5"
+                                title={dev.motivo_cancelamento}
+                              >
+                                Motivo: {dev.motivo_cancelamento}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {ehPendente && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={reemitindoId === dev.id || !podeEmitirNotas}
+                                  onClick={() => handleTentarDeNovo(dev)}
+                                  title="Tentar de novo a emissão da NF-e"
+                                  className="text-xs h-7 px-2 text-amber-700 border-amber-300 hover:bg-amber-100 bg-amber-50"
+                                >
+                                  <RefreshCw
+                                    className={`h-3 w-3 mr-1 ${
+                                      reemitindoId === dev.id ? 'animate-spin' : ''
+                                    }`}
+                                  />
+                                  Tentar de novo
+                                </Button>
+                              )}
+
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleAbrirDetalheDevolucao(dev)}
+                                title="Ver Detalhes"
+                                className="text-xs h-7 px-2 text-slate-700"
+                              >
+                                <Eye className="h-3.5 w-3.5 mr-1" />
+                                Detalhe
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       ) : (
-        /* ABA 2: Vales-Troca Emitidos */
+        /* ABA 3: Vales-Troca Emitidos */
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -973,6 +1603,483 @@ export const TrocasDevolucoesPage: React.FC = () => {
               size="sm"
               onClick={() => setModalComprovanteAberto(false)}
               className="text-xs bg-slate-900 text-white"
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 1: Conferência Pré-emissão da NF-e de Entrada Própria */}
+      <Dialog open={modalConferenciaNFeAberto} onOpenChange={setModalConferenciaNFeAberto}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Conferência da NF-e de Entrada Própria (Devolução de Venda)
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Revise os dados fiscais da nota fiscal de entrada própria antes da transmissão para a
+              SEFAZ.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            {/* Emitente & Remetente */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <div>
+                <span className="font-semibold text-slate-700 block mb-0.5">
+                  Emitente (Nossa Empresa):
+                </span>
+                <p className="text-slate-900 font-medium">
+                  {empresaAtiva?.razao_social || empresaAtiva?.nome_fantasia}
+                </p>
+                <p className="text-slate-500 text-[11px] font-mono">
+                  CNPJ: {empresaAtiva?.cnpj || '-'} | UF: {empresaAtiva?.uf || '-'}
+                </p>
+              </div>
+
+              <div>
+                <span className="font-semibold text-slate-700 block mb-0.5">
+                  Remetente (Cliente da Venda Original):
+                </span>
+                {vendaSelecionada?.cliente_id ? (
+                  <>
+                    <p className="text-slate-900 font-medium">
+                      {(vendaSelecionada.expand as any)?.cliente_id?.nome_razao_social ||
+                        (vendaSelecionada.expand as any)?.cliente_id?.nome ||
+                        'Cliente cadastrado'}
+                    </p>
+                    <p className="text-slate-500 text-[11px] font-mono">
+                      CPF/CNPJ:{' '}
+                      {(vendaSelecionada.expand as any)?.cliente_id?.cpf_cnpj ||
+                        vendaSelecionada.cpf_cnpj_consumidor ||
+                        '-'}
+                    </p>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-amber-800 text-[11px] font-medium flex items-center gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      Venda sem cliente cadastrado. Informe Nome e CPF para a NF-e:
+                    </p>
+                    <div className="grid grid-cols-1 gap-2">
+                      <div>
+                        <Label className="text-[11px]">Nome / Razão Social</Label>
+                        <Input
+                          value={clienteAvulsoNome}
+                          onChange={(e) => setClienteAvulsoNome(e.target.value)}
+                          placeholder="Nome completo do consumidor..."
+                          className="h-8 text-xs bg-white"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">CPF / CNPJ</Label>
+                        <Input
+                          value={clienteAvulsoCpf}
+                          onChange={(e) => setClienteAvulsoCpf(e.target.value)}
+                          placeholder="Apenas números..."
+                          className="h-8 text-xs bg-white font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {erroValidacaoClienteAvulso && (
+              <div className="p-2.5 bg-red-50 border border-red-200 rounded text-red-700 text-xs flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {erroValidacaoClienteAvulso}
+              </div>
+            )}
+
+            {/* Chave de Acesso Referenciada */}
+            <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg space-y-1">
+              <span className="font-semibold text-blue-900 flex items-center gap-1.5">
+                <Info className="h-4 w-4 text-blue-600" />
+                Chave da Nota Referenciada (44 dígitos):
+              </span>
+              <p className="font-mono text-xs text-blue-950 font-semibold break-all">
+                {docFiscalVendaOrig?.chave_acesso ||
+                  (vendaSelecionada as any)?.documento_referenciado_chave ||
+                  'Chave da nota original vinculada no documento fiscal'}
+              </p>
+              <p className="text-[11px] text-blue-700">
+                Modelo: {docFiscalVendaOrig?.modelo === '65' ? 'NFC-e (65)' : 'NF-e (55)'} |
+                Finalidade de emissão: <strong>4 - Devolução de mercadoria</strong> (Entrada
+                própria).
+              </p>
+            </div>
+
+            {/* Itens Devolvidos com CFOP Previsto e Impostos Proporcionais */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-800">
+                  Itens Devolvidos &amp; CFOP Previsto:
+                </span>
+                <span className="text-slate-500 text-[11px]">
+                  Total: <strong>R$ {resumoDevolucao.valorTotal.toFixed(2)}</strong>
+                </span>
+              </div>
+
+              <div className="border border-slate-200 rounded-md overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className="text-[11px]">Item / Descrição</TableHead>
+                      <TableHead className="text-[11px] text-right">Qtd</TableHead>
+                      <TableHead className="text-[11px] text-right">Valor Unit.</TableHead>
+                      <TableHead className="text-[11px] text-center">CFOP Previsto</TableHead>
+                      <TableHead className="text-[11px] text-right">Total (R$)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {resumoDevolucao.itensInput.map((it, idx) => {
+                      // Determinar se tem ST aproximado ou CFOP
+                      const cfopPrevisto =
+                        empresaAtiva?.uf &&
+                        docFiscalVendaOrig?.destinatario_uf &&
+                        empresaAtiva.uf !== docFiscalVendaOrig.destinatario_uf
+                          ? '2202'
+                          : '1202'
+
+                      return (
+                        <TableRow key={idx}>
+                          <TableCell className="text-xs font-medium">
+                            {it.descricao}
+                            <span className="text-[10px] text-slate-400 block font-mono">
+                              Custo Unit: R$ {Number(it.custo_unitario).toFixed(2)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono">
+                            {it.quantidade} {it.unidade}
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono">
+                            R$ {Number(it.preco_unitario).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-xs text-center font-mono font-bold text-blue-700">
+                            {cfopPrevisto}{' '}
+                            <span className="text-[10px] font-normal text-slate-500">
+                              (ou 1411/2411 c/ ST)
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono font-bold">
+                            R$ {Number(it.quantidade * it.preco_unitario).toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <p className="text-[11px] text-slate-500 italic">
+                * As bases de cálculo e alíquotas de ICMS, PIS e COFINS são calculadas
+                proporcionalmente aos valores da nota fiscal de origem no momento da transmissão
+                para a SEFAZ.
+              </p>
+            </div>
+
+            {/* Aviso de Movimentação Condicionada à Autorização */}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs space-y-1">
+              <span className="font-semibold flex items-center gap-1">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                Atenção ao fluxo fiscal de devolução:
+              </span>
+              <p className="text-[11px] text-amber-800">
+                O estoque e o financeiro (vale-troca, estorno em dinheiro ou crediário){' '}
+                <strong>NÃO serão movimentados de imediato</strong>. O sistema manterá a devolução
+                com status <strong>&quot;Pendente de nota&quot;</strong> e só confirmará a
+                reintegração após a SEFAZ autorizar a NF-e.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalConferenciaNFeAberto(false)}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              disabled={processando || !podeEmitirNotas}
+              onClick={handleConfirmarEEmitirNFe}
+              className="text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+            >
+              <Send className="h-3.5 w-3.5" />
+              <span>{processando ? 'Transmitindo...' : 'Confirmar e emitir NF-e'}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 2: Acompanhamento de Transmissão / Polling da NF-e */}
+      <Dialog
+        open={modalTransmissaoAberto}
+        onOpenChange={(aberto) => {
+          if (!aberto && (faseTransmissao === 'polling' || faseTransmissao === 'enviando')) {
+            // Não fecha durante envio
+            return
+          }
+          setModalTransmissaoAberto(aberto)
+          if (!aberto) {
+            if (
+              faseTransmissao === 'sucesso' ||
+              faseTransmissao === 'erro' ||
+              faseTransmissao === 'timeout'
+            ) {
+              setAbaAtiva('historico')
+              carregarDevolucoes()
+            }
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              {faseTransmissao === 'polling' || faseTransmissao === 'enviando' ? (
+                <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
+              ) : faseTransmissao === 'sucesso' ? (
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              ) : faseTransmissao === 'denegado' ? (
+                <AlertTriangle className="h-5 w-5 text-purple-600" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              )}
+              {faseTransmissao === 'polling'
+                ? 'Aguardando Retorno da SEFAZ...'
+                : faseTransmissao === 'enviando'
+                  ? 'Transmitindo NF-e...'
+                  : faseTransmissao === 'sucesso'
+                    ? 'Devolução Autorizada!'
+                    : faseTransmissao === 'denegado'
+                      ? 'NF-e Denegada pela SEFAZ'
+                      : faseTransmissao === 'timeout'
+                        ? 'Processamento em Andamento'
+                        : 'Rejeição na Emissão Fiscal'}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              {faseTransmissao === 'polling'
+                ? `Consultando situação a cada 3s (${tempoPolling}s decorridos de até 30s)...`
+                : 'Status da operação fiscal.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-3 text-xs">
+            <div
+              className={`p-3.5 rounded-lg border ${
+                faseTransmissao === 'sucesso'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : faseTransmissao === 'denegado'
+                    ? 'bg-purple-50 border-purple-200 text-purple-900'
+                    : faseTransmissao === 'erro'
+                      ? 'bg-red-50 border-red-200 text-red-900'
+                      : faseTransmissao === 'timeout'
+                        ? 'bg-amber-50 border-amber-200 text-amber-900'
+                        : 'bg-blue-50 border-blue-200 text-blue-900'
+              }`}
+            >
+              <p className="leading-relaxed font-medium">{mensagemTransmissao}</p>
+            </div>
+
+            {faseTransmissao === 'denegado' && (
+              <p className="text-[11px] text-purple-800">
+                Uma nota fiscal denegada decorre de irregularidade fiscal do emitente ou
+                destinatário. Ela não pode ser corrigida nem reutilizada.
+              </p>
+            )}
+
+            {faseTransmissao === 'timeout' && (
+              <p className="text-[11px] text-slate-500">
+                A nota segue pendente na fila da SEFAZ. Você pode acompanhar e reconsultar na aba{' '}
+                <strong>Histórico de Devoluções</strong>.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              size="sm"
+              disabled={faseTransmissao === 'enviando' || faseTransmissao === 'polling'}
+              onClick={() => {
+                setModalTransmissaoAberto(false)
+                setAbaAtiva('historico')
+                carregarDevolucoes()
+              }}
+              className="text-xs bg-slate-900 text-white"
+            >
+              Entendido / Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 3: Detalhes da Devolução e Documento Fiscal Vinculado */}
+      <Dialog open={modalDetalheAberto} onOpenChange={setModalDetalheAberto}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Detalhes da Devolução #{devolucaoDetalhe?.numero}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Informações gerais da devolução e dados da nota fiscal vinculada.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            {/* Cabeçalho */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg font-mono">
+              <div>
+                <span className="text-slate-500 text-[10px] block font-sans">Situação:</span>
+                <span className="font-bold text-slate-900">
+                  {devolucaoDetalhe?.status === 'Pendente de nota' ? (
+                    <Badge
+                      variant="outline"
+                      className="bg-amber-100 text-amber-800 border-amber-300"
+                    >
+                      Pendente de nota
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="bg-emerald-100 text-emerald-800 border-emerald-300"
+                    >
+                      {devolucaoDetalhe?.status}
+                    </Badge>
+                  )}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] block font-sans">Valor Total:</span>
+                <span className="font-bold text-slate-900">
+                  R$ {Number(devolucaoDetalhe?.valor_total).toFixed(2)}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] block font-sans">Data:</span>
+                <span>
+                  {devolucaoDetalhe?.created
+                    ? new Date(devolucaoDetalhe.created).toLocaleDateString('pt-BR')
+                    : '-'}
+                </span>
+              </div>
+            </div>
+
+            {/* Motivo se pendente */}
+            {devolucaoDetalhe?.motivo_cancelamento && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 space-y-1">
+                <span className="font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  Motivo da Rejeição / Pendência Fiscal:
+                </span>
+                <p className="text-[11px] leading-relaxed">
+                  {devolucaoDetalhe.motivo_cancelamento}
+                </p>
+              </div>
+            )}
+
+            {/* Dados do Documento Fiscal Vinculado */}
+            {docFiscalDetalhe ? (
+              <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-lg space-y-2">
+                <span className="font-semibold text-blue-900 flex items-center gap-1.5">
+                  <Info className="h-4 w-4 text-blue-600" />
+                  Documento Fiscal Vinculado (NF-e Modelo 55):
+                </span>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+                  <div>
+                    <span className="text-slate-500 block font-sans text-[10px]">Número:</span>
+                    <span className="font-bold">{docFiscalDetalhe.numero || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block font-sans text-[10px]">Série:</span>
+                    <span>{docFiscalDetalhe.serie || '1'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block font-sans text-[10px]">Status:</span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {docFiscalDetalhe.status}
+                    </Badge>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block font-sans text-[10px]">Protocolo:</span>
+                    <span>{docFiscalDetalhe.protocolo || '-'}</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-blue-100">
+                  <span className="text-slate-500 block text-[10px]">
+                    Chave de Acesso (44 dígitos):
+                  </span>
+                  <span className="font-mono text-[11px] font-semibold break-all text-blue-950">
+                    {docFiscalDetalhe.chave_acesso || '-'}
+                  </span>
+                </div>
+
+                {/* Botões Abrir DANFE e Baixar XML */}
+                <div className="pt-2 flex items-center gap-2 flex-wrap">
+                  {docFiscalDetalhe.danfe_url && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.open(docFiscalDetalhe.danfe_url, '_blank')}
+                      className="text-xs h-8 gap-1.5 bg-white text-blue-700 border-blue-300 hover:bg-blue-50"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Abrir DANFE
+                    </Button>
+                  )}
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={baixandoXml}
+                    onClick={() => handleBaixarXml(docFiscalDetalhe.id)}
+                    className="text-xs h-8 gap-1.5 bg-white text-slate-700 hover:bg-slate-50"
+                  >
+                    <Download className={`h-3.5 w-3.5 ${baixandoXml ? 'animate-spin' : ''}`} />
+                    Baixar XML
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 py-2">
+                Nenhum documento fiscal autorizado vinculado a esta devolução.
+              </p>
+            )}
+
+            {/* Ação de tentar de novo se estiver Pendente de nota */}
+            {devolucaoDetalhe?.status === 'Pendente de nota' && (
+              <div className="pt-2 border-t border-slate-200 flex justify-end">
+                <Button
+                  size="sm"
+                  disabled={reemitindoId === devolucaoDetalhe.id || !podeEmitirNotas}
+                  onClick={() => {
+                    setModalDetalheAberto(false)
+                    handleTentarDeNovo(devolucaoDetalhe)
+                  }}
+                  className="text-xs bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Tentar de novo
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setModalDetalheAberto(false)}
+              className="text-xs"
             >
               Fechar
             </Button>

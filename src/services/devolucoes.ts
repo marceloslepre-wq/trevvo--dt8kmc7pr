@@ -24,6 +24,42 @@ export interface ValeTroca {
   }
 }
 
+export interface DevolucaoVendaRegistro {
+  id: string
+  numero: number
+  tipo: string
+  status: string
+  empresa_id: string
+  venda_origem_id?: string
+  cliente_id?: string
+  cpf_cnpj_consumidor?: string
+  valor_total: number
+  documento_fiscal_status?: string
+  documento_fiscal_id?: string
+  motivo_cancelamento?: string
+  observacao?: string
+  created?: string
+  updated?: string
+  expand?: {
+    venda_origem_id?: {
+      id: string
+      numero: number
+      valor_total: number
+      documento_fiscal_status?: string
+    }
+    cliente_id?: { id: string; nome_razao_social?: string; nome?: string; cpf_cnpj?: string }
+    documento_fiscal_id?: {
+      id: string
+      numero?: number
+      serie?: string
+      chave_acesso?: string
+      status?: string
+      danfe_url?: string
+      xml_arquivo?: string
+    }
+  }
+}
+
 export interface ItemDevolucaoInput {
   venda_item_id: string
   produto_id: string
