@@ -28,6 +28,7 @@ import { emitirNFeVenda, consultarSituacaoNFe } from '@/services/fiscalIntegraca
 import { listarIntermediadores, Intermediador } from '@/services/intermediadores'
 import { listarTodosFornecedoresAtivos, Fornecedor } from '@/services/fornecedores'
 import { obterConfigFiscalEmpresa } from '@/services/configEmissaoFiscal'
+import { obterEmpresaPorId } from '@/services/empresas'
 import pb from '@/lib/pocketbase/client'
 import {
   FileText,
@@ -115,7 +116,7 @@ export function ModalEmitirNFe({ open, onOpenChange, venda, onSucesso }: ModalEm
         setPresencaComprador(presencaPadrao)
 
         // Natureza padrão da config ou fallback
-        const natPadrao = cfg?.natureza_operacao_padrao_nfe || 'Venda de mercadorias'
+        const natPadrao = cfg?.natureza_operacao_venda || 'Venda de mercadoria'
         setNaturezaOperacao(natPadrao)
 
         // Informações complementares padrão + obs da venda
@@ -143,13 +144,20 @@ export function ModalEmitirNFe({ open, onOpenChange, venda, onSucesso }: ModalEm
         setIntermediadores(listInter)
 
         // 3. Carregar fornecedores do tipo Transportadora
-        const listForn = await listarTodosFornecedoresAtivos(empresaVendaId)
+        const transps = await listarTodosFornecedoresAtivos('Transportadora')
         if (!ativo) return
-        const transps = listForn.filter((f) => f.tipo === 'Transportadora' || f.tipo === 'Ambos')
         setTransportadoras(transps)
 
+        // Obter UF da empresa emissora
+        let ufEmitente = 'SP'
+        try {
+          const emp = await obterEmpresaPorId(empresaVendaId)
+          if (emp?.uf) ufEmitente = emp.uf
+        } catch {
+          /* fallback para SP */
+        }
+
         // Calcular destino e consumidor
-        const ufEmitente = cfg?.uf || 'SP'
         const clienteUf = venda?.cliente_uf || venda?.endereco_entrega_uf || ''
         if (!clienteUf || clienteUf.toUpperCase() === ufEmitente.toUpperCase()) {
           setLocalDestinoTexto('1 - Operação Interna (mesma UF)')

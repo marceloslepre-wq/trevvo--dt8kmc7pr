@@ -2987,41 +2987,46 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 1. **Emissão de NF-e (Modelo 55) no Detalhe da Venda (`VendaFormPage.tsx` e `ModalEmitirNFe.tsx`):**
    - Disponibilização do botão **"Emitir NF-e"** no detalhe de vendas Finalizadas (tipo Pedido ou PDV sem NFC-e), condicionado à permissão de criação/edição em `notas_saida`.
    - **Regra da Empresa Emitente:** A NF-e sai SEMPRE pela empresa da venda (`venda.empresa_id`), utilizando o token Focus NFe do Skip Cloud, ambiente (Produção/Homologação) e série cadastrados para aquela filial — nunca a matriz nem a empresa ativa no navegador.
-   - **Janela de Conferência e Parâmetros:**
-     - Natureza da operação configurável com sugestão da config da empresa.
-     - Presença do comprador (`presenca_comprador`): 1 presencial, 2 internet, 3 teleatendimento, 4 entrega em domicílio, 9 outros (herda de `config_emissao_fiscal.presenca_comprador_padrao_nfe`).
-     - Local de destino automático: 1 interna (mesma UF), 2 interestadual (outra UF), 3 exterior. Consumidor final automático para PF ou não contribuinte (indicador IE 9).
-     - Informações complementares padrão somadas às observações da venda.
-     - Transporte completo: modalidade de frete CIF/FOB/próprio/sem frete; escolha de transportadora vinculada a fornecedores do tipo Transportadora; quantidade, espécie, peso bruto e líquido dos volumes.
-     - Fatura e duplicatas integradas a partir dos títulos de `contas_receber` gerados para a venda.
-     - Exibição de apuração de tributos em tempo real com destaque para **DIFAL** calculado (ou aviso de Simples Nacional/DIFAL desligado).
+   - **Janela de Conferência e Parâmetros (`ModalEmitirNFe.tsx` com 4 abas):**
+     - Aba 1 ("Operação & Destino"): Natureza da operação configurável com leitura e sugestão padrão a partir de `config_emissao_fiscal.natureza_operacao_venda` ("Venda de mercadoria"); Presença do comprador (`presenca_comprador`: 1 presencial, 2 internet, 3 teleatendimento, 4 entrega em domicílio, 9 outros, herdada de `config_emissao_fiscal.presenca_comprador_padrao_nfe`); Local de destino automático (1 operação interna, 2 interestadual com UF emitente da empresa, 3 exterior); Consumidor final automático (1 consumidor final para PF ou não contribuinte com IE Isento/9, ou 0 contribuinte); Informações complementares padrão concatenadas com as observações da venda; Fatura e duplicatas integradas a partir de `contas_receber`.
+     - Aba 2 ("Transporte"): Modalidade de frete CIF/FOB/próprio/sem frete (0, 1, 2, 3, 4, 9); escolha de transportadora vinculada a fornecedores ativos do tipo Transportadora (`listarTodosFornecedoresAtivos('Transportadora')`); quantidade, espécie, peso bruto e líquido dos volumes.
+     - Aba 3 ("Intermediador"): Seleção obrigatória em vendas não presenciais (2, 3 ou 9) entre "Site ou app próprio (sem intermediador, indIntermed = 0)" ou "Marketplace / plataforma de terceiros (indIntermed = 1)". Vinculação de `intermediador_id`, identificador do pedido na plataforma (`idCadIntTran`), gravação em `documentos_fiscais` e persistência de preferência no `localStorage` por filial.
+     - Aba 4 ("Totais & Impostos"): Apuração tributária em tempo real (`/backend/v1/fiscal/montar-rascunho`), totais da NF-e, resumo dos tributos destacados (ICMS próprio, ICMS ST, IPI, PIS, COFINS, FCP) e destaque visual para **DIFAL** interestadual (ou aviso de DIFAL opcional desligado).
 
-2. **Intermediadores de Vendas e Marketplaces (Migration 0049):**
-   - Criação da tabela `intermediadores` (`nome`, `cnpj`, `ativo`) com carga inicial (Mercado Livre, Shopee, Amazon, Magazine Luiza).
-   - Tela de gestão em **Fiscal > Intermediadores** (`/fiscal/intermediadores`) com CRUD e validação de CNPJ, integrada ao menu lateral (`Sidebar.tsx`) e módulo `notas_saida`.
-   - Na janela de conferência da NF-e, quando a presença for não presencial (2, 3 ou 9), seleção obrigatória entre "Site ou app próprio (sem intermediador, indIntermed = 0)" ou "Marketplace / plataforma de terceiros (indIntermed = 1)".
-   - Vinculação de `intermediador_id`, identificador do pedido no marketplace (`idCadIntTran`), gravação em `documentos_fiscais` e persistência no `localStorage` por empresa para agilizar as próximas notas da filial e-commerce.
+2. **Intermediadores de Vendas e Marketplaces (Tabela `intermediadores` e Migration 0049):**
+   - Criação da tabela `intermediadores` (`nome`, `cnpj`, `ativo`) com carga inicial de grandes marketplaces brasileiros (Mercado Livre, Shopee, Amazon Marketplace e Magalu / Magazine Luiza).
+   - Tela de gestão em **Fiscal > Intermediadores** (`/fiscal/intermediadores` - `IntermediadoresPage.tsx`) com listagem, busca, validação de CNPJ com máscara, alternância de situação ativo/inativo e modal de cadastro, integrada ao menu lateral (`Sidebar.tsx`) protegida pelo módulo `notas_saida`.
+   - Seleção encadeada e persistente no modal de emissão de NF-e para atendimento das notas fiscais de e-commerce e vendas digitais.
 
-3. **Acompanhamento Atômico da Emissão com a SEFAZ:**
-   - Serviço backend transacional em `pocketbase/hooks/fiscal_nfe_operacoes.js` (`POST /backend/v1/fiscal/emitir-nfe-venda` e `POST /backend/v1/fiscal/consultar-situacao-nfe`).
-   - Acompanhamento síncrono logo após o envio: consulta automática a cada 3 segundos por até 30 segundos com contador visual na tela.
-   - Ao mudar para "autorizado": grava número, chave de 44 dígitos, protocolo, `danfe_url`, baixa o XML autorizado (`xml_arquivo`) e atualiza a venda para `documento_fiscal_status = "Autorizada"`.
+3. **Acompanhamento Atômico da Emissão com a SEFAZ e Endpoints Backend:**
+   - Endpoints transacionais e seguros no PocketBase:
+     - `POST /backend/v1/fiscal/emitir-nfe-venda`: validação e transmissão da NF-e para a Focus NFe / SEFAZ com número, série e parâmetros da empresa da venda.
+     - `POST /backend/v1/fiscal/consultar-situacao-nfe`: consulta de lote e sincronização do status na SEFAZ.
+     - `POST /backend/v1/fiscal/cancelar-nfe`: cancelamento da NF-e na SEFAZ dentro do prazo de 24 horas.
+     - `POST /backend/v1/fiscal/carta-correcao-nfe`: transmissão e homologação da Carta de Correção Eletrônica (CC-e).
+     - `POST /backend/v1/fiscal/enviar-email-nfe`: agendamento de envio de DANFE e XML por e-mail ao cliente.
+   - Acompanhamento síncrono logo após o envio: consulta automática a cada 3 segundos por até 30 segundos (10 tentativas) com contador visual regressivo na tela.
+   - Ao mudar para "Autorizada": grava número, chave de 44 dígitos, protocolo, `danfe_url`, baixa o XML autorizado (`xml_arquivo`) e atualiza a venda para `documento_fiscal_status = "Autorizada"` de forma atômica no backend.
    - Rejeição: marca `status = "Rejeitada"` e exibe os motivos da SEFAZ sem travar a venda.
-   - Denegação: marca `status = "Denegada"` com aviso claro de impedimento legal (nota denegada não pode ser reutilizada; orienta consulta da situação cadastral do destinatário).
-   - Passados os 30 segundos sem retorno final, a nota permanece como "Processando" e pode ser sincronizada a qualquer momento pelo botão **"Consultar situação SEFAZ"**.
-   - Bloqueio mútuo: vendas com NFC-e autorizada não podem emitir NF-e (e vice-versa), salvo se a nota anterior estiver cancelada.
+   - Denegação: marca `status = "Denegada"` com aviso claro de impedimento legal (nota denegada não pode ser reutilizada; orienta consulta cadastral do destinatário).
+   - Passados os 30 segundos sem retorno final, a nota permanece como "Processando" e pode ser consultada a qualquer momento no botão **"Consultar situação"**.
+   - Bloqueio mútuo e integridade fiscal: venda com NFC-e autorizada não pode emitir NF-e e venda com NF-e autorizada não pode emitir NFC-e (salvo cancelamento prévio da nota anterior).
 
 4. **DANFE, XML e Envio por E-mail:**
-   - Botões na venda autorizada: **"Abrir DANFE"** (abre PDF oficial da Focus NFe), **"Baixar XML"** (download direto do XML autorizado) e **"Enviar por e-mail"** (`ModalEnviarEmailNFe`).
-   - Modal com sugestão do e-mail do cliente, suporte a múltiplas cópias e envio agendado via endpoint `/backend/v1/fiscal/enviar-email-nfe`.
+   - Botões integrados no detalhe da venda autorizada (`VendaFormPage.tsx`):
+     - **"Abrir DANFE"**: abre o PDF oficial gerado pela Focus NFe em nova aba.
+     - **"Baixar XML"**: download direto do arquivo XML autorizado na SEFAZ (`xml_arquivo` ou via Focus).
+     - **"Enviar por e-mail"** (`ModalEnviarEmailNFe.tsx`): modal com pré-preenchimento do e-mail do cliente, suporte a destinatários adicionais e envio agendado na Focus.
+     - **"Consultar situação"**: reconsulta e ressincroniza o status da nota na SEFAZ a qualquer instante.
 
-5. **Cancelamento da NF-e:**
-   - Botão **"Cancelar NF-e"** (`ModalCancelarNFe`) com justificativa obrigatória de 15 a 255 caracteres, verificação de permissão `excluir` em `notas_saida`, envio para a SEFAZ e download do XML de cancelamento (`xml_cancelamento`).
-   - Verificação do prazo legal de 24 horas da SEFAZ: se expirado, exibe aviso e instrução para emissão de nota de devolução.
+5. **Cancelamento da NF-e (24 Horas):**
+   - Botão **"Cancelar NF-e"** (`ModalCancelarNFe.tsx`) com justificativa obrigatória de 15 a 255 caracteres e verificação de permissão `excluir` em `notas_saida`.
+   - Transmissão do cancelamento para a SEFAZ, download e armazenamento do XML do evento (`xml_cancelamento`) e atualização de status para "Cancelada".
+   - Verificação do prazo legal de 24 horas: aviso amigável orientando emissão de NF-e de Devolução caso o prazo da SEFAZ tenha expirado.
 
-6. **Carta de Correção Eletrônica (CC-e) (Migration 0049 e `ModalCartaCorrecao.tsx`):**
-   - Criação da tabela `documentos_fiscais_cartas` para histórico cronológico das retificações de cada nota com download do XML e PDF da CC-e.
-   - Botão **"Carta de correção (CC-e)"** no detalhe da NF-e autorizada com validação de 15 a 1000 caracteres e alerta explícito da legislação (vedada correção de valores, tributos, remetente/destinatário ou datas de emissão/saída).
+6. **Carta de Correção Eletrônica (CC-e) (Tabela `documentos_fiscais_cartas` e `ModalCartaCorrecao.tsx`):**
+   - Criação da tabela `documentos_fiscais_cartas` para histórico cronológico das cartas de correção de cada NF-e autorizada (`sequencia`, `texto`, `data`, `status`, `protocolo`, `xml_arquivo`, `pdf_arquivo`, `pdf_url`).
+   - Botão **"Carta de correção (CC-e)"** no detalhe da NF-e autorizada: modal com validação de 15 a 1000 caracteres, alerta explícito das restrições legais (vedado alterar valores, impostos, dados de destinatário/remetente ou datas), histórico visual de cartas anteriores e botões para download do XML e PDF da CC-e.
 
 ---
 
