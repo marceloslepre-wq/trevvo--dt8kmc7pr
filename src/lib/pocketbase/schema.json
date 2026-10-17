@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T20:03:26.388Z",
+  "generatedAt": "2026-10-17T20:16:22.248Z",
   "collections": [
     {
       "name": "users",
@@ -9736,6 +9736,12 @@
         },
         {
           "name": "transferencia_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "devolucao_venda_id",
           "type": "text",
           "required": false,
           "system": false

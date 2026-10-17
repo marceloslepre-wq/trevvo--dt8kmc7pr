@@ -531,7 +531,8 @@ routerAdd(
         : 'https://homologacao.focusnfe.com.br'
 
     const endpoint = modelo === '65' ? 'nfce' : 'nfe'
-    const url = `${baseUrl}/${endpoint}/${encodeURIComponent(refFocus)}?completa=1`
+    const queryParam = modelo === '65' ? '' : '?completa=1'
+    const url = `${baseUrl}/${endpoint}/${encodeURIComponent(refFocus)}${queryParam}`
     const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
 
     let res = null
@@ -617,6 +618,21 @@ routerAdd(
         }
       }
 
+      // Se for de devolução de venda, vincular na devolução
+      const devVendaIdDoc = docRec.getString('devolucao_venda_id')
+      if (devVendaIdDoc) {
+        try {
+          const devVendaRec = $app.findRecordById('vendas', devVendaIdDoc)
+          if (devVendaRec) {
+            devVendaRec.set('documento_fiscal_status', 'Autorizada')
+            devVendaRec.set('documento_fiscal_id', docRec.id)
+            $app.save(devVendaRec)
+          }
+        } catch (errDevV) {
+          console.warn('Erro ao atualizar devolução de venda vinculada à NF-e:', errDevV)
+        }
+      }
+
       // Baixar XML autorizado e anexar
       const caminhoXml = respJson?.caminho_xml_nota_fiscal || respJson?.xml_url || ''
       if (caminhoXml) {
@@ -681,6 +697,22 @@ routerAdd(
         vendaRec.set('documento_fiscal_status', 'Rejeitada')
         vendaRec.set('documento_fiscal_id', docRec.id)
         $app.save(vendaRec)
+      }
+
+      const devVendaIdDoc = docRec.getString('devolucao_venda_id')
+      if (devVendaIdDoc) {
+        try {
+          const devVendaRec = $app.findRecordById('vendas', devVendaIdDoc)
+          if (devVendaRec) {
+            devVendaRec.set('status', 'Pendente de nota')
+            devVendaRec.set('documento_fiscal_status', 'Rejeitada')
+            devVendaRec.set('documento_fiscal_id', docRec.id)
+            devVendaRec.set('motivo_cancelamento', motivoRejeicao)
+            $app.save(devVendaRec)
+          }
+        } catch (errDevV) {
+          console.warn('Erro ao atualizar devolução de venda rejeitada:', errDevV)
+        }
       }
 
       return c.json(200, {
