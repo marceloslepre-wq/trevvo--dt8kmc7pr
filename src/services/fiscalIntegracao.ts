@@ -255,30 +255,6 @@ export async function emitirCartaCorrecao(params: {
 }
 
 /**
- * Inutiliza numeração fiscal (NF-e ou NFC-e)
- */
-export async function inutilizarNumeracaoFiscal(params: {
-  empresaId: string
-  modelo: '55' | '65'
-  serie: string
-  numeroInicial: number
-  numeroFinal: number
-  justificativa: string
-}): Promise<EmissaoFiscalResponse> {
-  return await pb.send<EmissaoFiscalResponse>('/backend/v1/fiscal/inutilizar', {
-    method: 'POST',
-    body: {
-      empresa_id: params.empresaId,
-      modelo: params.modelo,
-      serie: params.serie,
-      numero_inicial: params.numeroInicial,
-      numero_final: params.numeroFinal,
-      justificativa: params.justificativa,
-    },
-  })
-}
-
-/**
  * Baixa arquivo fiscal retornado pela Focus NFe (XML ou DANFE)
  */
 export async function baixarArquivoFiscal(params: {
