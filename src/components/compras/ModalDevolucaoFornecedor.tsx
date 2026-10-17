@@ -179,7 +179,7 @@ export function ModalDevolucaoFornecedor({
 
         try {
           if (resp.documento_id) {
-            const sit = await consultarSituacaoNFe(resp.documento_id)
+            const sit = await consultarSituacaoNFe({ documento_id: resp.documento_id })
             if (sit.status === 'Autorizada') {
               clearInterval(intervalo)
               setStatusSefaz('NF-e de devolução Autorizada! Atualizando estoque e financeiro...')
