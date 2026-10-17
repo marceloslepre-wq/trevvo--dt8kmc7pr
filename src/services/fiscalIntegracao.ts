@@ -435,6 +435,73 @@ export interface EmitirNFeTransferenciaResponse {
   detalhes?: any
 }
 
+export interface EmitirNFeDevolucaoVendaParams {
+  devolucao_id: string
+  cliente_nome?: string
+  cliente_cpf?: string
+  cliente_cpf_cnpj?: string
+}
+
+export interface EmitirNFeDevolucaoVendaResponse {
+  sucesso: boolean
+  status?: 'Processando' | 'Autorizada' | 'Rejeitada' | 'Denegada'
+  documento_id?: string
+  referencia?: string
+  total_devolvido?: number
+  chave?: string
+  numero?: number
+  message?: string
+  ja_autorizada?: boolean
+  detalhes?: any
+}
+
+export interface ConfirmarAutorizacaoDevolucaoVendaParams {
+  devolucao_id: string
+  documento_id: string
+  destino?: 'vale_troca' | 'dinheiro_volta' | 'abater_crediario'
+  dias_validade_vale?: number
+  conta_financeira_id?: string
+}
+
+export interface ConfirmarAutorizacaoDevolucaoVendaResponse {
+  sucesso: boolean
+  vale_troca_codigo?: string
+  message: string
+}
+
+/**
+ * Dispara a transmissão da NF-e de entrada própria de devolução de venda
+ */
+export async function emitirNFeDevolucaoVenda(
+  params: EmitirNFeDevolucaoVendaParams,
+): Promise<EmitirNFeDevolucaoVendaResponse> {
+  return await pb.send<EmitirNFeDevolucaoVendaResponse>(
+    '/backend/v1/fiscal/emitir-nfe-devolucao-venda',
+    {
+      method: 'POST',
+      body: params,
+    },
+  )
+}
+
+// Alias retrocompatível
+export const emitirNfeDevolucaoVenda = emitirNFeDevolucaoVenda
+
+/**
+ * Confirma a autorização da NF-e de devolução de venda e movimenta estoque e financeiro
+ */
+export async function confirmarAutorizacaoDevolucaoVenda(
+  params: ConfirmarAutorizacaoDevolucaoVendaParams,
+): Promise<ConfirmarAutorizacaoDevolucaoVendaResponse> {
+  return await pb.send<ConfirmarAutorizacaoDevolucaoVendaResponse>(
+    '/backend/v1/fiscal/confirmar-autorizacao-devolucao-venda',
+    {
+      method: 'POST',
+      body: params,
+    },
+  )
+}
+
 /**
  * Monta e pré-calcula os impostos do rascunho de um documento fiscal
  * Usado pelo modal de emissão de NF-e de transferência e vendas

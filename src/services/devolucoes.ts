@@ -51,6 +51,10 @@ export interface ProcessarDevolucaoInput {
   dias_validade_vale?: number
   // Se destino for abater_crediario:
   titulos_crediario_ids?: string[]
+  /**
+   * Se true, cria a devolução com status 'Pendente de nota' e não toca em estoque nem financeiro agora
+   */
+  com_emissao_nfe?: boolean
 }
 
 export interface ResultadoDevolucao {
@@ -61,6 +65,7 @@ export interface ResultadoDevolucao {
   vale_troca?: ValeTroca
   movimento_financeiro_id?: string
   titulos_abatidos_count?: number
+  status?: string
 }
 
 /**
@@ -216,19 +221,23 @@ export async function processarDevolucao(
   const proximoNumero = await obterProximoNumeroVenda(empresa_id)
   const dataHojeIso = new Date().toISOString().slice(0, 10)
 
-  // 4. Criar registro de Venda do tipo "Devolução" com status "Finalizada" e valores positivos
+  // 4. Criar registro de Venda do tipo "Devolução"
+  // Quando com_emissao_nfe for true, o status inicial é "Pendente de nota" e NÃO movimenta
+  // estoque nem financeiro agora (espera a autorização da NF-e no backend).
   const authUserId = pb.authStore.record?.id || undefined
+  const statusInicial = input.com_emissao_nfe ? 'Pendente de nota' : 'Finalizada'
+
   const novaVendaDevolucao = await pb.collection('vendas').create({
     empresa_id,
     numero: proximoNumero,
     tipo: 'Devolução',
-    status: 'Finalizada',
+    status: statusInicial,
     cliente_id: vendaOrig.cliente_id,
     cpf_cnpj_consumidor: vendaOrig.cpf_cnpj_consumidor,
     vendedor_id: vendaOrig.vendedor_id,
     operador_id: authUserId,
     data_emissao: dataHojeIso,
-    data_finalizacao: new Date().toISOString(),
+    data_finalizacao: input.com_emissao_nfe ? undefined : new Date().toISOString(),
     valor_produtos: valorTotalDevolucao,
     valor_desconto_itens: 0,
     valor_desconto_total: 0,
@@ -244,7 +253,7 @@ export async function processarDevolucao(
           : destino === 'dinheiro_volta'
             ? 'Dinheiro de volta'
             : 'Abatimento de crediário'
-      }.`,
+      }.${input.com_emissao_nfe ? ' Aguardando autorização de NF-e.' : ''}`,
     venda_origem_id: vendaOrig.id,
     ativo: true,
   })
@@ -268,7 +277,20 @@ export async function processarDevolucao(
     })
   }
 
-  // 6. Atualizar quantidade_devolvida nos itens da venda original
+  // Se a devolução for com NF-e, encerra aqui sem tocar estoque nem financeiro.
+  // O endpoint /backend/v1/fiscal/confirmar-autorizacao-devolucao-venda atualizará
+  // estoque, financeiro e quantidade_devolvida assim que a SEFAZ autorizar.
+  if (input.com_emissao_nfe) {
+    return {
+      sucesso: true,
+      venda_devolucao_id: novaVendaDevolucao.id,
+      numero_devolucao: proximoNumero,
+      valor_total: valorTotalDevolucao,
+      status: 'Pendente de nota',
+    }
+  }
+
+  // 6. Atualizar quantidade_devolvida nos itens da venda original (fluxo sem nota)
   for (const upd of itensParaAtualizar) {
     await pb.collection('vendas_itens').update(upd.id, {
       quantidade_devolvida: upd.novaQtdDevolvida,
@@ -293,7 +315,7 @@ export async function processarDevolucao(
 
   await movimentarEstoque(itensEstoque)
 
-  // 8. Processar Destino do Valor
+  // 8. Processar Destino do Valor (fluxo sem nota)
   let valeCriado: ValeTroca | undefined
   let movFinanceiroId: string | undefined
   let titulosAbatidosCount = 0
