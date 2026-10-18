@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useTransition } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Package,
   Plus,
@@ -100,6 +100,8 @@ export const ProdutosLista: React.FC = () => {
   const [carregando, setCarregando] = useState(true)
 
   // Filtros
+  const [searchParams] = useSearchParams()
+
   const [busca, setBusca] = useState('')
   const [buscaInput, setBuscaInput] = useState('')
   const [filtroTipo, setFiltroTipo] = useState<TipoProduto | 'todos'>('todos')
@@ -108,8 +110,10 @@ export const ProdutosLista: React.FC = () => {
   const [filtroMarca, setFiltroMarca] = useState('todos')
   const [filtroFornecedor, setFiltroFornecedor] = useState('todos')
   const [filtroSituacao, setFiltroSituacao] = useState<'todos' | 'ativos' | 'inativos'>('ativos')
-  const [filtroSemNcm, setFiltroSemNcm] = useState(false)
-  const [filtroFiscalNaoRevisado, setFiltroFiscalNaoRevisado] = useState(false)
+  const [filtroSemNcm, setFiltroSemNcm] = useState(() => searchParams.get('sem_ncm') === 'true')
+  const [filtroFiscalNaoRevisado, setFiltroFiscalNaoRevisado] = useState(
+    () => searchParams.get('fiscal_nao_revisado') === 'true',
+  )
   const [ordenarPor, setOrdenarPor] = useState('descricao')
   const [ordem, setOrdem] = useState<'asc' | 'desc'>('asc')
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-18T00:30:37.398Z",
+  "generatedAt": "2026-10-18T11:13:01.273Z",
   "collections": [
     {
       "name": "users",
@@ -10452,6 +10452,232 @@
         "CREATE INDEX idx_inutilizacoes_empresa ON inutilizacoes (empresa_id)",
         "CREATE INDEX idx_inutilizacoes_modelo_serie ON inutilizacoes (modelo, serie)",
         "CREATE INDEX idx_inutilizacoes_data ON inutilizacoes (data_inutilizacao)"
+      ]
+    },
+    {
+      "name": "config_sped_empresa",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "versao_leiaute",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_receita_icms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dia_vencimento_icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "periodo_saldo_inicial",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "saldo_credor_inicial",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mes_bloco_h",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta_contabil_estoque",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gerar_bloco_k",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "incluir_homologacao_em_teste",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_config_sped_empresa_uid ON config_sped_empresa (empresa_id)"
+      ]
+    },
+    {
+      "name": "sped_arquivos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "periodo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "finalidade",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["0", "1"]
+        },
+        {
+          "name": "modo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Oficial", "Teste"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Gerando",
+            "Gerado",
+            "Gerado com erros",
+            "Erro",
+            "Substituído",
+            "Entregue"
+          ]
+        },
+        {
+          "name": "arquivo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_arquivo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quantidade_linhas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contagem_registros",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resumo_apuracao",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "validacoes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gerado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "entregue_em",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recibo_entrega",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_sped_arquivos_empresa ON sped_arquivos (empresa_id)",
+        "CREATE INDEX idx_sped_arquivos_periodo ON sped_arquivos (periodo)",
+        "CREATE INDEX idx_sped_arquivos_status ON sped_arquivos (status)",
+        "CREATE INDEX idx_sped_arquivos_modo ON sped_arquivos (modo)"
       ]
     }
   ]

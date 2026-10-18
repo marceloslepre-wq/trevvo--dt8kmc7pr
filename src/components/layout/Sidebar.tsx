@@ -440,6 +440,12 @@ const navItems: NavGroupItem[] = [
         icon: FileArchive,
         modulo: 'notas_saida',
       },
+      {
+        title: 'Configuração do SPED',
+        path: '/fiscal/sped/configuracoes',
+        icon: FileSpreadsheet,
+        modulo: 'notas_saida',
+      },
     ],
   },
   {

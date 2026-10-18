@@ -100,6 +100,7 @@ import DocumentosFiscaisPage from '@/pages/fiscal/DocumentosFiscaisPage'
 import IntermediadoresPage from '@/pages/fiscal/IntermediadoresPage'
 import InutilizacaoPage from '@/pages/fiscal/InutilizacaoPage'
 import ExportarXmlsPage from '@/pages/fiscal/ExportarXmlsPage'
+import ConfiguracaoSpedPage from '@/pages/fiscal/ConfiguracaoSpedPage'
 
 const App = () => (
   <BrowserRouter>
@@ -815,6 +816,14 @@ const App = () => (
                   />
                   <Route path="/fiscal/inutilizacao" element={<InutilizacaoPage />} />
                   <Route path="/fiscal/exportar-xmls" element={<ExportarXmlsPage />} />
+                  <Route
+                    path="/fiscal/sped/configuracoes"
+                    element={
+                      <PermissaoGuard modulo="notas_saida" acao="ver">
+                        <ConfiguracaoSpedPage />
+                      </PermissaoGuard>
+                    }
+                  />
                   {/* Configurações */}
                   <Route
                     path="/configuracoes"

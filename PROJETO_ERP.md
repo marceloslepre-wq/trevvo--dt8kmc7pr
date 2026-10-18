@@ -284,6 +284,51 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### sped_arquivos
+
+Tabela de registro e controle de arquivos da EFD ICMS/IPI (SPED Fiscal) gerados para a empresa ativa. Armazena períodos de apuração, finalidade (original ou retificadora), modo (Oficial ou Teste), status do arquivo, arquivo .txt persistido no PocketBase, contagem de registros por tipo/bloco, resumo da apuração do ICMS (débitos, créditos, saldo apurado, a recolher ou a transportar), validações de consistência do Guia Prático e dados de homologação e recibo de entrega à SEFAZ/Receita Federal. Regras de acesso estritas: somente leitura pelo navegador autenticado (`listRule` e `viewRule` com `@request.auth.id != ''`); criação e alteração 100% bloqueadas no navegador (`createRule: null`, `updateRule: null`, `deleteRule: null`), gravadas exclusivamente pelo backend, exceto a marcação como Entregue realizada pelo Administrador através do endpoint `/backend/v1/sped/marcar-entregue`.
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório)
+- periodo (text, formato AAAA-MM, obrigatório)
+- finalidade (select: "0" original, "1" retificadora, obrigatório)
+- modo (select: "Oficial", "Teste", obrigatório)
+- status (select: "Gerando", "Gerado", "Gerado com erros", "Erro", "Substituído", "Entregue", obrigatório)
+- arquivo (file, arquivo .txt do SPED Fiscal gerado)
+- nome_arquivo (text, nome padronizado do arquivo)
+- quantidade_linhas (number, total de linhas do arquivo SPED)
+- contagem_registros (json: quantidade por tipo de registro, ex: 0000, C100, C170, C190, E110, H010, 9999)
+- resumo_apuracao (json: débitos, créditos, saldo credor anterior, saldo apurado, ICMS a recolher, saldo credor a transportar)
+- validacoes (json: lista de { nivel: "erro" | "aviso", registro, mensagem, referencia })
+- gerado_por (relation -> usuarios, usuário responsável pela geração)
+- entregue_em (date, data da transmissão à Receita Federal)
+- recibo_entrega (text, número do recibo oficial da entrega)
+- observacoes (text, observações adicionais)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id` (`idx_sped_arquivos_empresa`), `periodo` (`idx_sped_arquivos_periodo`), `status` (`idx_sped_arquivos_status`), `modo` (`idx_sped_arquivos_modo`).
+
+### config_sped_empresa
+
+Tabela de parametrização do SPED Fiscal (EFD ICMS/IPI) por estabelecimento comercial (empresa). Possui restrição de unicidade por `empresa_id` (uma configuração fiscal do SPED por empresa/filial). Define a versão do leiaute no Guia Prático da EFD (COD_VER no registro 0000), código de receita estadual no ES e dia de vencimento para geração das obrigações no registro E116, saldo credor inicial trazido de sistema anterior no primeiro mês gerado, mês de entrega do inventário Bloco H de 31/12, conta contábil analítica de estoque (COD_CTA no H010), ativação do Bloco K de produção e inclusão opcional de notas de homologação em arquivos de teste. Regras de acesso: leitura permitida a usuários com acesso ao módulo Fiscal (`@request.auth.id != ''`); criação e edição exclusivas para Administradores do ERP (`perfis_acesso.administrador = true`).
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório, cascadeDelete, índice único)
+- versao_leiaute (text, padrão "020", COD_VER do registro 0000)
+- codigo_receita_icms (text, código de receita do ICMS próprio no ES usado no E116, ex: "101-5")
+- dia_vencimento_icms (number, 1 a 31, dia de vencimento no registro E116)
+- periodo_saldo_inicial (text, formato AAAA-MM, mês em que o saldo inicial do sistema anterior é aproveitado)
+- saldo_credor_inicial (number, saldo credor vindo do sistema anterior usado só no primeiro mês gerado)
+- mes_bloco_h (number, 1 a 12, padrão 2, mês em que o inventário de 31/12 entra no arquivo SPED)
+- conta_contabil_estoque (text, opcional, COD_CTA do registro H010)
+- gerar_bloco_k (bool, padrão false, controle da produção e do estoque)
+- incluir_homologacao_em_teste (bool, padrão true, inclui notas de homologação em arquivos com modo Teste)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id` (único: `idx_config_sped_empresa_uid`).
+
 ### inutilizacoes
 
 Tabela de registro e controle de pedidos de Inutilização de Numeração Fiscal de NF-e (modelo 55) e NFC-e (modelo 65) homologados ou rejeitados pela SEFAZ. Utilizada para justificar quebras de sequência numérica perante o Fisco. Permissões estritas: somente leitura pelo navegador autenticado (`listRule` e `viewRule` com `@request.auth.id != ''`); criação e alteração restritas ao backend (`createRule: null`, `updateRule: null`, `deleteRule: null`), gravadas pelo endpoint central de inutilização com vínculo à empresa emissora e ao usuário autenticado.
@@ -3007,7 +3052,76 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
   - Cartões de vendas de hoje (valor e quantidade), ticket médio do dia, caixas abertos em operação, orçamentos a vencer em 2 dias e comparativo mês atual x mês anterior.
   - Gráfico diário de faturamento dos últimos 30 dias com linha de tendência.
 
+## Etapa 6 concluída
+
+- **Tabelas e Estrutura de Banco:**
+  - `config_emissao_fiscal` (Migration 0046, 0048, 0050): parametrização por empresa/filial com `provedor`, `emite_documentos_fiscais`, `emite_nfce`, `codigo_token`, ambiente (Homologação/Produção), séries, naturezas de operação, validade de certificado, CSC configurado, `calcular_difal_consumidor_final`, `emitir_nfe_ao_enviar_transferencia`, `emitir_nfe_ao_devolver_venda`.
+  - `documentos_fiscais` e `documentos_fiscais_itens` (Migration 0047): tabelas mestres e de itens das emissões NF-e (modelo 55) e NFC-e (modelo 65), com impostos detalhados (ICMS, FCP, ST, IPI, PIS, COFINS, IBS/CBS e DIFAL), status da SEFAZ, chave de acesso de 44 dígitos, protocolos, payloads JSON e arquivos XML autorizados.
+  - `documentos_fiscais_cartas` (Migration 0049): histórico cronológico de Cartas de Correção Eletrônicas (CC-e) vinculadas à NF-e modelo 55.
+  - `intermediadores` (Migration 0049): intermediadores e plataformas de marketplace para os grupos `indIntermed` e `infIntermed` da NF-e em vendas não presenciais.
+  - `inutilizacoes` (Migration 0050, 0052): histórico e pedidos de inutilização de faixas de numeração fiscal homologados pela SEFAZ.
+  - **Blindagem no Navegador (Migration 0052):** tabelas fiscais `documentos_fiscais`, `documentos_fiscais_itens`, `documentos_fiscais_cartas` e `inutilizacoes` blindadas em modo somente leitura no navegador (`createRule: null`, `updateRule: null`, `deleteRule: null`), operadas exclusivamente via backend.
+- **Serviço Central e Integração com Focus NFe:**
+  - Serviço único backend no PocketBase (`pocketbase/hooks/fiscal_focus_integracao.js`), onde o token da Focus NFe NUNCA vai ao navegador do usuário e é resolvido dinamicamente via segredos por empresa.
+  - Endpoints seguros sob `/backend/v1/fiscal/*`: `/testar-conexao`, `/status-segredos`, `/montar-rascunho`, `/emitir-nfce-venda`, `/cancelar-nfce-venda`, `/emitir-nfe-venda`, `/consultar-situacao-nfe`, `/cancelar-nfe`, `/carta-correcao-nfe`, `/enviar-email-nfe`, `/emitir-nfe-transferencia`, `/emitir-nfe-devolucao-venda`, `/confirmar-autorizacao-devolucao-venda`, `/emitir-nfe-devolucao-compra`, `/confirmar-autorizacao-devolucao-compra`, `/inutilizar`, `/reenviar-documento`, `/consultar-lote`, `/baixar-arquivo`.
+  - Webhook oficial assíncrono `/backend/v1/fiscal/webhook-focus` protegido pelo segredo `FOCUS_NFE_WEBHOOK_SECRET` com atualização atômica de status SEFAZ e download do XML.
+  - Exportação de XMLs em arquivo compactado ZIP com resumo analítico em planilha CSV (`/fiscal/exportar-xmls`).
+
+## Etapa 7 SPED Fiscal
+
+- **Prompt 7.0 (Configuração e Estrutura):**
+  - **Tabela `config_sped_empresa` (Migration 0053):** parametrização por empresa/filial do SPED Fiscal (EFD ICMS/IPI) com índice único por `empresa_id`. Campos: `versao_leiaute` (padrão "020", COD_VER do registro 0000), `codigo_receita_icms` (código de receita no ES para o E116, padrão "101-5"), `dia_vencimento_icms` (1 a 31, vencimento da guia no E116), `periodo_saldo_inicial` (AAAA-MM) e `saldo_credor_inicial` (saldo credor do sistema anterior), `mes_bloco_h` (padrão 2, mês do inventário de 31/12), `conta_contabil_estoque` (COD_CTA no H010), `gerar_bloco_k` (controle da produção) e `incluir_homologacao_em_teste` (inclusão de notas em homologação no modo Teste).
+  - **Tabela `sped_arquivos` (Migration 0054):** histórico de arquivos SPED gerados com `empresa_id`, `periodo` (AAAA-MM), `finalidade` ("0" original, "1" retificadora), `modo` ("Oficial" ou "Teste"), `status` ("Gerando", "Gerado", "Gerado com erros", "Erro", "Substituído", "Entregue"), arquivo .txt (`arquivo`), `nome_arquivo`, `quantidade_linhas`, `contagem_registros` (JSON por registro), `resumo_apuracao` (JSON com débitos, créditos e saldos de ICMS), `validacoes` (JSON de inconsistências), `gerado_por`, `entregue_em`, `recibo_entrega` e `observacoes`.
+  - **Regras de Acesso e Blindagem:** `sped_arquivos` com leitura liberada para usuários da empresa e gravação 100% restrita ao backend (`createRule: null`, `updateRule: null`, `deleteRule: null`), exceto marcação de entrega efetuada por Administrador via endpoint `/backend/v1/sped/marcar-entregue` (`pocketbase/hooks/fiscal_sped_operacoes.js`).
+  - **Serviço Central `src/services/configSped.ts`:** `obterOuCriarConfigSpedEmpresa`, `salvarConfigSpedEmpresa`, `listarArquivosSped`, `marcarSpedEntregue`.
+  - **Tela Fiscal > Configuração do SPED (`/fiscal/sped/configuracoes` - `src/pages/fiscal/ConfiguracaoSpedPage.tsx`):**
+    - Formulário completo dos parâmetros da EFD ICMS/IPI da empresa ativa (edição exclusiva para Administrador do ERP).
+    - Quadro dinâmico em tempo real **"Pronto para gerar o SPED?"** com semáforo (verde, amarelo e vermelho) avaliando:
+      - Empresa marcada como `obrigado_efd_icms_ipi` (amarelo se falso);
+      - CRT 1 ou 4 do Simples Nacional (amarelo com aviso do contador);
+      - Inscrição estadual numérica (vermelho se vazia, "ISENTO" ou não numérica);
+      - Endereço completo com logradouro, número, bairro, CEP de 8 dígitos e código IBGE do município de 7 dígitos (vermelho se faltar);
+      - Perfil SPED (A, B ou C) e indicador de atividade preenchidos (vermelho se faltar);
+      - Dados do contador completos: nome, CPF de 11 dígitos, CRC, CEP de 8 dígitos, código IBGE de 7 dígitos e e-mail com arroba (vermelho se faltar);
+      - Versão do leiaute preenchida, e código de receita + dia de vencimento preenchidos para empresas de CRT 3 (vermelho se faltar);
+      - Produtos ativos sem NCM, sem tipo de item SPED ou com revisão fiscal pendente (amarelo com link direto para a listagem filtrada);
+      - A partir de janeiro: inventário do tipo "Anual (Bloco H)" com referência 31/12 do ano anterior finalizado (amarelo se não existir).
+  - **Menu Lateral e Rotas:** item "Configuração do SPED" com ícone de planilha adicionado ao menu Fiscal em `Sidebar.tsx` e rota `/fiscal/sped/configuracoes` protegida por `PermissaoGuard` em `App.tsx`.
+
 ## Versão Atual do Projeto
+
+**Versão 0.0.92** — Etapa 7 SPED Fiscal (Prompt 7.0: Configuração da EFD ICMS/IPI, Tabelas config_sped_empresa e sped_arquivos, Endpoint marcar-entregue e Checklist de Prontidão):
+
+1. **Tabelas SPED Fiscal (Migrations 0053 e 0054):**
+   - Criação da tabela `config_sped_empresa` com parametrização completa e índice único por empresa.
+   - Criação da tabela `sped_arquivos` com leitura no frontend e gravação blindada exclusiva pelo backend.
+2. **Endpoint Seguro no PocketBase (`pocketbase/hooks/fiscal_sped_operacoes.js`):**
+   - `POST /backend/v1/sped/marcar-entregue`: permite exclusivamente ao Administrador registrar entrega e recibo da EFD com auditoria.
+3. **Tela de Configuração e Diagnóstico Tributário (`/fiscal/sped/configuracoes`):**
+   - Formulário de parametrização da EFD para a empresa ativa (`useEmpresaAtiva`).
+   - Checklist interativo "Pronto para gerar o SPED?" com diagnóstico em tempo real dos 9 itens cadastrais e fiscais da empresa ativa.
+
+---
+
+**Versão 0.0.91** — Fechamento Oficial da Etapa 6 (Fiscal) — Exportação de XMLs em Lote (ZIP + CSV), Cartões no Painel Geral e Revisão de Segurança:
+
+1. **Exportação de XMLs em Lote (`/fiscal/exportar-xmls`):**
+   - Seleção por período, modelo (NF-e 55 ou NFC-e 65) e empresa ativa/todas.
+   - Geração de arquivo compactado (.zip) contendo todos os arquivos XMLs autorizados do período.
+   - Inclusão automática de planilha CSV de resumo analítico da escrituração fiscal.
+2. **Cartões Fiscais no Painel Geral (`src/pages/Index.tsx`):**
+   - Métricas de notas emitidas no mês, total faturado com nota e monitor de notas rejeitadas/pendentes.
+3. **Blindagem de Permissões (Migration 0052):**
+   - Travamento de gravação via navegador nas tabelas `inutilizacoes`, `documentos_fiscais`, `documentos_fiscais_itens` e `documentos_fiscais_cartas`.
+
+---
+
+**Versão 0.0.90** — Painel de Monitoramento Fiscal, Inutilizações e Finalização das Operações de Devolução e Transferência:
+
+1. Integração completa das emissões e inutilizações homologadas pela SEFAZ com gravação de XML e histórico.
+2. Polling assíncrono e resiliência de conexão com a API da Focus NFe.
+
+---
 
 **Versão 0.0.89** — Monitor de Documentos Fiscais (Fiscal > Documentos fiscais), Gestão e Reenvio de Notas, e Avisos da Focus (Webhooks em Tempo Real):
 
