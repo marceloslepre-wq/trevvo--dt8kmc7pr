@@ -72,7 +72,14 @@ export function DocumentosFiscaisPage() {
   const [dataInicio, setDataInicio] = useState<string>('')
   const [dataFim, setDataFim] = useState<string>('')
   const [modeloFiltro, setModeloFiltro] = useState<string>('todos')
-  const [statusFiltro, setStatusFiltro] = useState<string>('todos')
+  const [statusFiltro, setStatusFiltro] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const st = params.get('status')
+      if (st) return st
+    }
+    return 'todos'
+  })
   const [origemFiltro, setOrigemFiltro] = useState<string>('todos')
   const [destinatarioFiltro, setDestinatarioFiltro] = useState<string>('')
   const [numeroChaveFiltro, setNumeroChaveFiltro] = useState<string>('')

@@ -38,6 +38,7 @@ import {
   Award,
   Store,
   FileX2,
+  FileArchive,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -432,6 +433,12 @@ const navItems: NavGroupItem[] = [
         path: '/fiscal/inutilizacao',
         icon: FileX2,
         adminOnly: true,
+      },
+      {
+        title: 'Exportar XMLs',
+        path: '/fiscal/exportar-xmls',
+        icon: FileArchive,
+        modulo: 'notas_saida',
       },
     ],
   },

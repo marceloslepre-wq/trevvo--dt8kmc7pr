@@ -20,6 +20,11 @@ import {
   FileText,
   ShoppingBag,
   CreditCard,
+  FileX2,
+  FileCheck2,
+  FileClock,
+  Award,
+  ShieldAlert,
 } from 'lucide-react'
 import { contarTransferenciasAguardandoRecebimento } from '@/services/transferencias'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -143,7 +148,18 @@ export default function Index() {
   // Pendências de configuração
   const [pendencias, setPendencias] = useState<PendenciaConfiguracao[]>([])
 
+  // Indicadores Fiscais (Etapa 6)
+  const [notasRejeitadasCount, setNotasRejeitadasCount] = useState<number>(0)
+  const [notasProcessandoCount, setNotasProcessandoCount] = useState<number>(0)
+  const [notasEmitidasHojeCount, setNotasEmitidasHojeCount] = useState<number>(0)
+  const [diasVencimentoCertificado, setDiasVencimentoCertificado] = useState<number | null>(null)
+  const [dataVencimentoCertificadoStr, setDataVencimentoCertificadoStr] = useState<string | null>(
+    null,
+  )
+  const [ambienteHomologacaoAtivo, setAmbienteHomologacaoAtivo] = useState<boolean>(false)
+
   // Permissões de cada módulo relevante
+  const podeVerFiscal = pode('notas_saida', 'ver') || pode('tabelas_fiscais', 'ver')
   const podeVerClientes = pode('clientes', 'ver')
   const podeVerFornecedores = pode('fornecedores', 'ver')
   const podeVerProdutos = pode('produtos', 'ver')
@@ -531,6 +547,68 @@ export default function Index() {
           )
         }
 
+        // Indicadores Fiscais (Etapa 6)
+        if (podeVerFiscal) {
+          promisesContagens.push(
+            (async () => {
+              try {
+                // 1. Notas Rejeitadas da empresa ativa
+                const rejRes = await pb.collection('documentos_fiscais').getList(1, 1, {
+                  filter: `empresa_id = '${empresaAtiva.id}' && status = 'Rejeitada'`,
+                })
+                setNotasRejeitadasCount(rejRes.totalItems)
+
+                // 2. Notas Processando da empresa ativa
+                const procRes = await pb.collection('documentos_fiscais').getList(1, 1, {
+                  filter: `empresa_id = '${empresaAtiva.id}' && status = 'Processando'`,
+                })
+                setNotasProcessandoCount(procRes.totalItems)
+
+                // 3. Notas Emitidas Hoje (Autorizadas criadas hoje na empresa ativa)
+                const emitHojeRes = await pb.collection('documentos_fiscais').getList(1, 1, {
+                  filter: `empresa_id = '${empresaAtiva.id}' && (status = 'Autorizada' || status = 'Cancelada') && (created >= '${hojeIso} 00:00:00' || created >= '${hojeIso}T00:00:00.000Z')`,
+                })
+                setNotasEmitidasHojeCount(emitHojeRes.totalItems)
+
+                // 4. Configuração de emissão fiscal (Certificado e Ambiente)
+                const cfgList = await pb.collection('config_emissao_fiscal').getList(1, 1, {
+                  filter: `empresa_id = '${empresaAtiva.id}'`,
+                })
+                if (cfgList.items.length > 0) {
+                  const cfgFiscal = cfgList.items[0]
+                  const amb = cfgFiscal.ambiente || 'Homologação'
+                  setAmbienteHomologacaoAtivo(amb === 'Homologação')
+
+                  const dtVenc = cfgFiscal.data_vencimento_certificado
+                  if (dtVenc) {
+                    setDataVencimentoCertificadoStr(dtVenc)
+                    const dataVenc = new Date(dtVenc)
+                    const agora = new Date()
+                    const diffTime = dataVenc.getTime() - agora.getTime()
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+                    setDiasVencimentoCertificado(diffDays)
+                  } else {
+                    setDiasVencimentoCertificado(null)
+                    setDataVencimentoCertificadoStr(null)
+                  }
+                } else {
+                  setAmbienteHomologacaoAtivo(false)
+                  setDiasVencimentoCertificado(null)
+                  setDataVencimentoCertificadoStr(null)
+                }
+              } catch (errFiscal) {
+                console.warn('Erro ao carregar indicadores fiscais:', errFiscal)
+                setNotasRejeitadasCount(0)
+                setNotasProcessandoCount(0)
+                setNotasEmitidasHojeCount(0)
+                setDiasVencimentoCertificado(null)
+                setDataVencimentoCertificadoStr(null)
+                setAmbienteHomologacaoAtivo(false)
+              }
+            })(),
+          )
+        }
+
         // Indicadores de Vendas e PDV (Etapa 5)
         if (podeVerVendas) {
           promisesContagens.push(
@@ -844,6 +922,7 @@ export default function Index() {
     podeVerFinanceiroReceber,
     podeVerFinanceiroBancos,
     podeVerVendas,
+    podeVerFiscal,
     empresaAtiva,
   ])
 
@@ -1578,6 +1657,269 @@ export default function Index() {
               )}
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* SEÇÃO FISCAL (Etapa 6) — Respeita permissão fiscal (notas_saida ou tabelas_fiscais) */}
+      {podeVerFiscal && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-t border-slate-200 pt-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <FileCheck2 className="h-5 w-5 text-indigo-600" />
+                <h2 className="text-lg font-bold tracking-tight text-slate-900">
+                  Visão Geral Fiscal
+                </h2>
+                {empresaAtiva && (
+                  <Badge variant="secondary" className="text-[11px] font-normal">
+                    {empresaAtiva.nome_fantasia || empresaAtiva.razao_social}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Monitoramento de emissões, notas em processamento, rejeições e validade do
+                certificado digital.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                <Link to="/fiscal/documentos">
+                  Monitor de Documentos
+                  <ArrowRight size={13} />
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                <Link to="/fiscal/exportar-xmls">
+                  Exportar XMLs
+                  <ArrowRight size={13} />
+                </Link>
+              </Button>
+            </div>
+          </div>
+
+          {/* Aviso vermelho quando ambiente de homologação estiver ativo */}
+          {ambienteHomologacaoAtivo && (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-3.5 flex items-center justify-between gap-3 text-red-950 shadow-xs animate-in fade-in-50">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 text-red-700">
+                  <ShieldAlert className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-red-900 uppercase tracking-wide flex items-center gap-2">
+                    Ambiente de Homologação Ativo
+                    <Badge
+                      variant="destructive"
+                      className="text-[10px] uppercase font-bold py-0 h-4"
+                    >
+                      Sem Valor Fiscal
+                    </Badge>
+                  </h4>
+                  <p className="text-xs text-red-700 leading-relaxed mt-0.5">
+                    As notas fiscais (NF-e e NFC-e) estão sendo transmitidas para o ambiente de
+                    testes da SEFAZ. Nenhuma nota emitida neste modo tem validade jurídica ou fiscal
+                    real.
+                  </p>
+                </div>
+              </div>
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs bg-white text-red-800 border-red-300 hover:bg-red-100 hover:text-red-900 flex-shrink-0"
+              >
+                <Link to="/fiscal/configuracao-emissao">Alterar para Produção</Link>
+              </Button>
+            </div>
+          )}
+
+          {/* Cartões Fiscais */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Notas Rejeitadas (Clicável, leva ao monitor filtrado por Rejeitadas) */}
+            <Link
+              to="/fiscal/documentos?status=Rejeitada"
+              className="group block focus:outline-none"
+              title="Abrir monitor de documentos fiscais filtrado em notas Rejeitadas"
+            >
+              <Card
+                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                  notasRejeitadasCount > 0
+                    ? 'border-rose-300 bg-rose-50/25 ring-1 ring-rose-200'
+                    : 'hover:border-slate-300'
+                }`}
+              >
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-rose-800">Notas Rejeitadas</span>
+                    <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
+                      <FileX2 size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-bold tracking-tight text-rose-700 group-hover:text-rose-900 transition-colors flex items-center gap-2">
+                      {carregando ? '—' : notasRejeitadasCount}
+                      {notasRejeitadasCount > 0 && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-rose-200 text-rose-900">
+                          Atenção
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-rose-700/80 underline decoration-rose-300">
+                      {notasRejeitadasCount > 0
+                        ? 'Ver notas rejeitadas na SEFAZ →'
+                        : 'Nenhuma nota rejeitada'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* 2. Notas Processando (Clicável, leva ao monitor filtrado por Processando) */}
+            <Link
+              to="/fiscal/documentos?status=Processando"
+              className="group block focus:outline-none"
+              title="Abrir monitor de documentos fiscais filtrado em notas em Processamento"
+            >
+              <Card
+                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                  notasProcessandoCount > 0
+                    ? 'border-amber-300 bg-amber-50/20 ring-1 ring-amber-200'
+                    : 'hover:border-slate-300'
+                }`}
+              >
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-amber-800">Notas Processando</span>
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                      <FileClock size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-bold tracking-tight text-amber-700 group-hover:text-amber-900 transition-colors flex items-center gap-2">
+                      {carregando ? '—' : notasProcessandoCount}
+                      {notasProcessandoCount > 0 && (
+                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 animate-pulse">
+                          Aguardando
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-amber-700/80">
+                      {notasProcessandoCount > 0
+                        ? 'Aguardando retorno da SEFAZ →'
+                        : 'Nenhuma nota na fila'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* 3. Notas Emitidas Hoje */}
+            <Link
+              to="/fiscal/documentos"
+              className="group block focus:outline-none"
+              title="Ver documentos fiscais autorizados hoje"
+            >
+              <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500">Notas Emitidas Hoje</span>
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <FileCheck2 size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2">
+                      {carregando ? '—' : notasEmitidasHojeCount}
+                    </div>
+                    <span className="text-[11px] text-slate-400">autorizadas no dia atual →</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* 4. Certificado Digital */}
+            <Link
+              to="/fiscal/configuracao-emissao"
+              className="group block focus:outline-none"
+              title="Ver validade do Certificado Digital na Configuração de Emissão"
+            >
+              <Card
+                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                  diasVencimentoCertificado !== null && diasVencimentoCertificado <= 30
+                    ? diasVencimentoCertificado <= 0
+                      ? 'border-red-300 bg-red-50/25 ring-1 ring-red-200'
+                      : 'border-amber-300 bg-amber-50/25 ring-1 ring-amber-200'
+                    : 'hover:border-slate-300'
+                }`}
+              >
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-700">Certificado Digital</span>
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        diasVencimentoCertificado !== null && diasVencimentoCertificado <= 30
+                          ? diasVencimentoCertificado <= 0
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-amber-100 text-amber-700'
+                          : 'bg-blue-50 text-blue-600'
+                      }`}
+                    >
+                      <Award size={18} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    {diasVencimentoCertificado === null ? (
+                      <div>
+                        <div className="text-base font-bold text-slate-600">Não configurado</div>
+                        <span className="text-[11px] text-slate-400">configurar A1 na Focus →</span>
+                      </div>
+                    ) : diasVencimentoCertificado <= 0 ? (
+                      <div>
+                        <div className="text-xl font-bold text-red-700 flex items-center gap-1.5">
+                          Vencido
+                          <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-red-200 text-red-900">
+                            Expirado
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-red-700/80">
+                          venceu em{' '}
+                          {dataVencimentoCertificadoStr
+                            ?.substring(0, 10)
+                            .split('-')
+                            .reverse()
+                            .join('/')}{' '}
+                          →
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <div
+                          className={`text-2xl font-bold tracking-tight flex items-center gap-2 ${
+                            diasVencimentoCertificado <= 30
+                              ? 'text-amber-700'
+                              : 'text-slate-900 group-hover:text-primary'
+                          }`}
+                        >
+                          {diasVencimentoCertificado}{' '}
+                          {diasVencimentoCertificado === 1 ? 'dia' : 'dias'}
+                          {diasVencimentoCertificado <= 30 && (
+                            <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
+                              Vencendo
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-slate-500">
+                          {diasVencimentoCertificado <= 30
+                            ? 'renovar com urgência →'
+                            : `válido até ${dataVencimentoCertificadoStr?.substring(0, 10).split('-').reverse().join('/')}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
         </div>
       )}
 

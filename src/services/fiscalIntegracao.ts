@@ -602,6 +602,41 @@ export async function consultarDocumentosEmLote(documentoIds: string[]): Promise
   })
 }
 
+export interface ExportarXmlsParams {
+  empresa_id: string
+  mes: number
+  ano: number
+}
+
+export interface ExportarXmlsResponse {
+  sucesso: boolean
+  message?: string
+  nome_arquivo?: string
+  zip_base64?: string
+  totais?: {
+    nfe_autorizadas: number
+    nfce_autorizadas: number
+    nfe_canceladas: number
+    nfce_canceladas: number
+    cartas_correcao: number
+    inutilizacoes: number
+    entradas: number
+    total_arquivos: number
+  }
+}
+
+/**
+ * Solicita a geração e download do arquivo ZIP de XMLs fiscais do mês
+ */
+export async function exportarXmlsFiscais(
+  params: ExportarXmlsParams,
+): Promise<ExportarXmlsResponse> {
+  return await pb.send<ExportarXmlsResponse>('/backend/v1/fiscal/exportar-xmls', {
+    method: 'POST',
+    body: params,
+  })
+}
+
 export interface FocusHookItem {
   id?: string | number
   event?: string
