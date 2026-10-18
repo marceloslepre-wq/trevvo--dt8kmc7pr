@@ -3132,7 +3132,69 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
     - Painel lateral de detalhes do arquivo selecionado com resumo analítico dos registros do Bloco 9 (9900), lista resumida de erros/avisos e modal completo com todas as inconsistências identificadas.
     - Adição ao menu lateral `Sidebar.tsx` e rotas do `App.tsx`.
 
+- **Prompt 7.5 (Blocos H, K e 1 do SPED Fiscal e Destaque no Inventário):**
+  - **Bloco H (Inventário Físico — `pocketbase/hooks/sped/gerador.js`):**
+    - Gerado exclusivamente no mês parametrizado em `config_sped_empresa.mes_bloco_h` (padrão mês 2, fevereiro); nos demais meses, gera apenas `H001` com `IND_MOV = 1` e totalizador `H990`.
+    - No mês de inventário, pesquisa na coleção `inventarios` o inventário da empresa com tipo `"Anual (Bloco H)"`, status `"Finalizado"`, ativo = true e `data_referencia` com data de 31/12 do ano anterior (`AAAA-12-31`). Não existindo ou faltando, gera erro impeditivo nas validações: `"falta o inventário de 31/12"`, emitindo `H001` com `IND_MOV = 1`.
+    - Com o inventário localizado: emite `H001` com `IND_MOV = 0`.
+    - Registro `H005`: `DT_INV` (31/12/AAAA em DDMMAAAA), `VL_INV` (soma exata dos valores dos itens `VL_ITEM`), `MOT_INV` (`motivo_bloco_h` do inventário, padrão "01" — no final do período).
+    - Registro `H010`: agrupado por produto somando lotes com quantidade contada maior que zero:
+      - `COD_ITEM`: código cadastral do produto com registro automático no coletor do Bloco 0 (0200).
+      - `UNID`: unidade de medida do produto (registrada no 0190).
+      - `QTD`: quantidade em estoque com até 3 casas decimais.
+      - `VL_UNIT`: custo unitário com até 6 casas decimais.
+      - `VL_ITEM`: apurado por `QTD x VL_UNIT` com 2 casas decimais.
+      - `IND_PROP`: fixo "0" (item de propriedade do informante e em seu poder).
+      - `COD_PART`: vazio; `TXT_COMPL`: vazio.
+      - `COD_CTA`: preenchido com a `conta_contabil_estoque` da `config_sped_empresa`. Se não preenchida na configuração da empresa, gera aviso não impeditivo nas validações: `"o COD_CTA do H010 é exigido de quem tem escrituração contábil; confirme com o contador"`.
+      - `VL_ITEM_IR`: idêntico a `VL_ITEM`.
+    - Batimento contábil: a soma de todos os `VL_ITEM` fecha e bate perfeitamente com o `VL_INV` do registro `H005`.
+    - Estoque zerado em 31/12: emite registro `H005` com `VL_INV = 0,00` e suprime os registros `H010`.
+    - Totalizador `H990` com a contagem total de linhas do Bloco H.
+  - **Bloco K (Controle da Produção e do Estoque — `pocketbase/hooks/sped/gerador.js`):**
+    - Condicionado à configuração: ativado somente quando `config_sped_empresa.gerar_bloco_k` estiver ligado (`true`). Quando desligado (`false`), mantém geração de `K001` com `IND_MOV = 1` e `K990`.
+    - Quando ativado:
+      - `K001`: `IND_MOV = 0`.
+      - `K010`: `IND_TP_LEIAUTE = 2` (leiaute restrito aos saldos de estoque, utilizado pelo comércio atacadista/distribuidores).
+      - Aviso fixo nas validações do SPED: `"Bloco K ligado: o contador confirma se a empresa é obrigada e se o leiaute restrito vale para ela"`.
+      - `K100`: período de apuração (`DT_INI` e `DT_FIN` em DDMMAAAA).
+      - `K200`: gerado para cada produto com saldo de estoque diferente de zero na data final do período de apuração (`dataLimiteIso`), calculando os saldos a partir das movimentações de estoque registradas na Etapa 2 (`estoque_movimentos` com soma de Entradas menos Saídas, ativos e não estornados). Campos: `DT_EST` (último dia do período), `COD_ITEM` (código do produto com inclusão no coletor do 0200), `QTD` (saldo com até 3 casas decimais), `IND_EST = "0"` (propriedade do informante e em seu poder) e `COD_PART` vazio.
+      - Totalizador `K990` com o somatório de linhas do Bloco K.
+  - **Bloco 1 (Outras Informações — `pocketbase/hooks/sped/gerador.js`):**
+    - Registro `1001` com `IND_MOV = 0`.
+    - Registro `1010` com os 13 indicadores fiscais preenchidos com "N" (`IND_EXP`, `IND_CCRF`, `IND_COMB`, `IND_USINA`, `IND_VA`, `IND_EE`, `IND_CART`, `IND_FORM`, `IND_AER`, `IND_GIAF1`, `IND_GIAF3`, `IND_GIAF4`, `IND_REST_RESSARC_COMPL_ICMS`).
+    - Verificação de pagamentos eletrônicos: varredura no período por vendas ou contas a receber liquidados através de cartão de crédito, cartão de débito, PIX ou intermediadores de pagamento/marketplaces (códigos tPag 03, 04, 17 e tipos correspondentes). Constatado recebimento eletrônico no período, adiciona aviso fixo nas validações: `"confira com o contador se o registro 1601 (pagamentos eletrônicos) é exigido; o ERP não gera o 1601 nesta versão"`.
+    - Totalizador `1990` com as linhas do Bloco 1.
+  - **Bloco 9 (Controle e Encerramento — `pocketbase/hooks/sped/gerador.js`):**
+    - Contabilização automática e dinâmica de todos os registros gerados nos blocos H, K e 1 nos totalizadores `9900`: `H001`, `H005`, `H010`, `H990`, `K001`, `K010`, `K100`, `K200`, `K990`, `1001`, `1010` e `1990`.
+    - Totalizadores `9990` (linhas do Bloco 9) e `9999` (total de linhas do arquivo SPED) recalculados com precisão.
+  - **Tela de Detalhe do Inventário (`src/pages/estoque/InventarioDetalhePage.tsx`):**
+    - No inventário do tipo `"Anual (Bloco H)"` com status `"Finalizado"`, exibição de badge de destaque: `"Entra no SPED de [mês] de AAAA"` (nome do mês em português por extenso conforme `mes_bloco_h` da configuração da empresa e ano seguinte ao de referência da contagem).
+    - Exibição em destaque do valor total apurado para o registro `H005` (`Total Registro H005: R$ ...`), facilitando a conferência prévia e a conciliação física com o contador.
+
 ## Versão Atual do Projeto
+
+**Versão 0.0.98** — Etapa 7 SPED Fiscal (Prompt 7.5: Blocos H, K e 1 do SPED Fiscal e Destaque no Inventário Anual):
+
+1. **Bloco H da EFD ICMS/IPI (Inventário Físico Anual):**
+   - Gerado automaticamente no arquivo SPED do mês definido em `config_sped_empresa.mes_bloco_h` (padrão 2, fevereiro); nos outros meses gera `H001` com `IND_MOV = 1` e `H990`.
+   - Busca na empresa ativa o inventário do tipo "Anual (Bloco H)", status "Finalizado" e data de referência 31/12 do ano anterior. Caso inexistente, emite o erro impeditivo `"falta o inventário de 31/12"`.
+   - Gera registro `H005` com a data do inventário, valor total (`VL_INV` = somatório de `VL_ITEM`) e motivo do inventário (`MOT_INV` lido de `motivo_bloco_h`, padrão "01").
+   - Gera registros `H010` agrupados por produto somando lotes com quantidade > 0 (`COD_ITEM` registrado no 0200, `UNID` no 0190, `QTD`, `VL_UNIT` com até 6 casas decimais, `VL_ITEM`, `IND_PROP = 0`, `COD_PART` e `TXT_COMPL` vazios, `COD_CTA` com a `conta_contabil_estoque` e `VL_ITEM_IR` igual a `VL_ITEM`).
+   - Batimento obrigatório do somatório dos `VL_ITEM` com `VL_INV`. Emite aviso de validação caso `conta_contabil_estoque` não esteja preenchida. Em caso de estoque zerado em 31/12, emite `H005` com `VL_INV = 0,00` e suprime registros `H010`.
+2. **Bloco K da EFD ICMS/IPI (Controle da Produção e Estoque):**
+   - Ativado sob demanda através do parâmetro `config_sped_empresa.gerar_bloco_k`. Desligado, gera `K001` com `IND_MOV = 1` e `K990`.
+   - Ligado, gera `K001` com `IND_MOV = 0`, `K010` com `IND_TP_LEIAUTE = 2` (leiaute restrito aos saldos de estoque do comércio atacadista), `K100` com período e `K200` para cada produto com saldo diferente de zero no último dia do período apurado a partir das movimentações de estoque (`estoque_movimentos`).
+   - Aviso fixo nas inconsistências: `"Bloco K ligado: o contador confirma se a empresa é obrigada e se o leiaute restrito vale para ela"`.
+3. **Bloco 1 da EFD ICMS/IPI (Outras Informações):**
+   - Registros `1001` (`IND_MOV = 0`) e `1010` com os 13 indicadores todos como "N".
+   - Alerta preventivo emitido nas validações quando houver vendas ou contas a receber do período quitados via cartão, PIX ou marketplace: `"confira com o contador se o registro 1601 (pagamentos eletrônicos) é exigido; o ERP não gera o 1601 nesta versão"`.
+4. **Bloco 9 (Controle e Totalizadores):**
+   - Contabilização dinâmica e automática de todos os registros gerados nos blocos H, K e 1 (`H001`, `H005`, `H010`, `H990`, `K001`, `K010`, `K100`, `K200`, `K990`, `1001`, `1010`, `1990`) no registro `9900` e nos totalizadores `9990` e `9999`.
+5. **Destaque na Tela de Inventário (`InventarioDetalhePage.tsx`):**
+   - No inventário Anual finalizado, apresentação em destaque de badge estilizado `"Entra no SPED de [mês] de AAAA"` com o nome do mês em português conforme `mes_bloco_h` e ano de competência do arquivo, junto à indicação do total apurado para o registro `H005`.
+
+---
 
 **Versão 0.0.96** — Etapa 7 SPED Fiscal (Prompt 7.4: Bloco E da EFD com Apuração do ICMS Próprio E100/E110/E111/E116, DIFAL E300/E310/E316, Ajustes de Apuração e Painel Tributário):
 
