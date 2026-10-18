@@ -17,6 +17,7 @@ import {
   ChevronRight,
   ShieldAlert,
   TrendingUp,
+  FileCheck2,
 } from 'lucide-react'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
@@ -685,6 +686,70 @@ export const SpedFiscalPage: React.FC = () => {
                               currency: 'BRL',
                             },
                           )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Entradas do período (Bloco C - Prompt 7.3) */}
+                {arquivoSelecionado.resumo_entrada ? (
+                  <div className="space-y-2 p-3 bg-emerald-50/70 rounded-lg border border-emerald-200">
+                    <div className="text-xs font-semibold text-emerald-950 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <FileCheck2 size={14} className="text-emerald-700" />
+                        Entradas do período
+                      </span>
+                      <span className="text-[11px] text-emerald-700 font-normal">
+                        Bloco C (Compras e Transferências)
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-0.5">
+                      <div className="bg-white p-2 rounded border border-emerald-100 shadow-2xs">
+                        <span className="text-[10px] text-slate-500 block uppercase font-medium">
+                          Notas de Compra
+                        </span>
+                        <span className="text-base font-bold text-slate-800">
+                          {arquivoSelecionado.resumo_entrada.total_compras || 0}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-emerald-100 shadow-2xs">
+                        <span className="text-[10px] text-slate-500 block uppercase font-medium">
+                          Transferências Recebidas
+                        </span>
+                        <span className="text-base font-bold text-slate-800">
+                          {arquivoSelecionado.resumo_entrada.total_transferencias || 0}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div className="bg-white p-2.5 rounded border border-emerald-100 shadow-2xs flex flex-col justify-between">
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          Total do VL_DOC
+                        </span>
+                        <span className="text-base font-bold text-slate-900">
+                          {(arquivoSelecionado.resumo_entrada.total_vl_doc || 0).toLocaleString(
+                            'pt-BR',
+                            {
+                              style: 'currency',
+                              currency: 'BRL',
+                            },
+                          )}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded border border-emerald-100 shadow-2xs flex flex-col justify-between">
+                        <span className="text-[11px] text-emerald-700 font-medium">
+                          Crédito de ICMS
+                        </span>
+                        <span className="text-base font-bold text-emerald-900">
+                          {(
+                            arquivoSelecionado.resumo_entrada.total_credito_icms || 0
+                          ).toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                          })}
                         </span>
                       </div>
                     </div>

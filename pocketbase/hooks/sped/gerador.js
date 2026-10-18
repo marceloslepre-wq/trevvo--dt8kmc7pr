@@ -296,6 +296,18 @@ var SpedGerador = (function () {
       console.warn('Erro ao carregar inutilizacoes:', errInut)
     }
 
+    // Set de chaves de acesso emitidas e processadas para evitar duplicidades
+    var chavesProcessadasBlocoC = {}
+
+    // Contadores para o resumo de entradas
+    var totalCompras = 0
+    var totalTransferenciasRecebidas = 0
+    var totalVlDocEntrada = 0
+    var totalVlCreditoIcms = 0
+
+    // Verifica se a empresa é contribuinte do IPI
+    var ehContribuinteIpi = ctx.empresa.getBool('contribuinte_ipi') === true
+
     // Linhas do Bloco C
     var c100Linhas = []
 
@@ -308,6 +320,9 @@ var SpedGerador = (function () {
       var serie = rec.getString('serie') || '1'
       var numero = rec.getInt('numero') || 0
       var chaveAcesso = SpedFormato.formatarDigitos(rec.getString('chave_acesso'))
+      if (chaveAcesso) {
+        chavesProcessadasBlocoC[chaveAcesso] = true
+      }
       var tipoDocumento = rec.getInt('tipo_documento') // 1 saída, 0 entrada própria
       var indOper = tipoDocumento === 0 ? '0' : '1'
       var indEmit = '0' // Emissão própria
@@ -742,6 +757,956 @@ var SpedGerador = (function () {
       }
     }
 
+    // --- ENTRADAS 1: NOTAS DE ENTRADA (COMPRAS E OUTRAS ENTRADAS) ---
+    var notasEntradaBrutas = []
+    try {
+      notasEntradaBrutas = $app.findRecordsByFilter(
+        'notas_entrada',
+        "empresa_id = '" + empresaId + "' && status = 'Lançada' && ativo = true",
+        'data_entrada,numero',
+        10000,
+        0,
+      )
+    } catch (errNe) {
+      ctx.adicionarValidacao(
+        'erro',
+        'Falha ao carregar notas de entrada: ' + (errNe.message || errNe),
+        'C100',
+      )
+    }
+
+    for (var neIdx = 0; neIdx < notasEntradaBrutas.length; neIdx++) {
+      var ne = notasEntradaBrutas[neIdx]
+      var dtEntradaStr = ne.getString('data_entrada') || ne.getString('created')
+      var dtEntBsb = extrairDataBrasilia(dtEntradaStr)
+      if (!dtEntBsb) continue
+      if (dtEntBsb.ano !== ctx.ano || dtEntBsb.mes !== ctx.mes) continue
+
+      var modeloNe = ne.getString('modelo') || '55'
+      var sitDocNe = ne.getString('situacao_documento') || '00'
+      var numNe = ne.getInt('numero') || 0
+      var serNe = ne.getString('serie') || '1'
+      var chvNe = SpedFormato.formatarDigitos(ne.getString('chave_acesso'))
+
+      // Checa modelos aceitos: 55, 01, 1B e 04
+      if (modeloNe !== '55' && modeloNe !== '01' && modeloNe !== '1B' && modeloNe !== '04') {
+        ctx.adicionarValidacao(
+          'aviso',
+          'Nota de entrada nº ' +
+            numNe +
+            ' possui modelo "' +
+            modeloNe +
+            '" não suportado na escrituração do SPED Fiscal e não foi incluída.',
+          'C100',
+          String(numNe),
+        )
+        continue
+      }
+
+      // Regra 1: situacao_documento "02" (cancelada pelo fornecedor) NÃO entra
+      if (sitDocNe === '02') {
+        continue
+      }
+
+      var codSitNe = '00'
+      if (sitDocNe === '08') {
+        codSitNe = '08'
+      }
+
+      // Registra chave de acesso para evitar duplicação em transferências recebidas
+      if (chvNe) {
+        chavesProcessadasBlocoC[chvNe] = true
+      }
+
+      // COD_PART: fornecedor da nota (F + id)
+      var fornIdNe = ne.getString('fornecedor_id')
+      var codPartNe = ''
+      if (fornIdNe) {
+        codPartNe = 'F' + fornIdNe
+        ctx.registrarParticipante('F', fornIdNe)
+      } else {
+        ctx.adicionarValidacao(
+          'erro',
+          'Nota de entrada nº ' + numNe + ' não possui fornecedor informado.',
+          'C100',
+          String(numNe),
+        )
+      }
+
+      // CHV_NFE vazia nos modelos de papel 01, 1B, 04
+      var chvNeFinal = modeloNe === '55' ? chvNe : ''
+
+      var dtDocNeSped = SpedFormato.formatarData(
+        ne.getString('data_emissao') || ne.getString('data_entrada'),
+      )
+      var dtEntNeSped = SpedFormato.formatarData(dtEntradaStr)
+
+      var indPgtoNe = String(ne.getInt('indicador_pagamento') || 0)
+      if (indPgtoNe !== '0' && indPgtoNe !== '1' && indPgtoNe !== '2') indPgtoNe = '0'
+
+      var indFrtNe = String(ne.getInt('modalidade_frete') || 9)
+      if (['0', '1', '2', '3', '4', '9'].indexOf(indFrtNe) === -1) indFrtNe = '9'
+
+      var vlDocNe = round2(ne.getFloat('valor_total') || 0)
+      var vlDescNe = round2(ne.getFloat('valor_desconto') || 0)
+      var vlMercNe = round2(ne.getFloat('valor_produtos') || 0)
+      var vlFrtNe = round2(ne.getFloat('valor_frete') || 0)
+      var vlSegNe = round2(ne.getFloat('valor_seguro') || 0)
+      var vlOutDaNe = round2(ne.getFloat('valor_outras_despesas') || 0)
+
+      var vlBcIcmsStNe = round2(ne.getFloat('base_icms_st') || 0)
+      var vlIcmsStNe = round2(ne.getFloat('valor_icms_st') || 0)
+
+      // Itens de notas_entrada_itens
+      var itensNe = []
+      try {
+        itensNe = $app.findRecordsByFilter(
+          'notas_entrada_itens',
+          "nota_id = '" + ne.id + "' && ativo = true",
+          'numero_item',
+          1000,
+          0,
+        )
+      } catch (errItNe) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Falha ao carregar itens da nota de entrada nº ' +
+            numNe +
+            ': ' +
+            (errItNe.message || errItNe),
+          'C170',
+          String(numNe),
+        )
+      }
+
+      // Soma de créditos aproveitados nos itens
+      var somaCreditoBcIcmsNe = 0
+      var somaCreditoIcmsNe = 0
+      var somaCreditoIpiNe = 0
+      var somaCreditoPisNe = 0
+      var somaCreditoCofinsNe = 0
+      var somaValorProdutoItensNe = 0
+
+      for (var itC = 0; itC < itensNe.length; itC++) {
+        var itChecagem = itensNe[itC]
+        somaValorProdutoItensNe = round2(
+          somaValorProdutoItensNe + (itChecagem.getFloat('valor_produto') || 0),
+        )
+        if (itChecagem.getBool('aproveita_credito_icms')) {
+          somaCreditoBcIcmsNe = round2(
+            somaCreditoBcIcmsNe + (itChecagem.getFloat('base_icms') || 0),
+          )
+          somaCreditoIcmsNe = round2(
+            somaCreditoIcmsNe + (itChecagem.getFloat('valor_credito_icms') || 0),
+          )
+        }
+        if (ehContribuinteIpi && itChecagem.getBool('aproveita_credito_ipi')) {
+          somaCreditoIpiNe = round2(
+            somaCreditoIpiNe + (itChecagem.getFloat('valor_credito_ipi') || 0),
+          )
+        }
+        var cPis = round2(itChecagem.getFloat('valor_credito_pis') || 0)
+        var cCof = round2(itChecagem.getFloat('valor_credito_cofins') || 0)
+        if (cPis > 0) somaCreditoPisNe = round2(somaCreditoPisNe + cPis)
+        if (cCof > 0) somaCreditoCofinsNe = round2(somaCreditoCofinsNe + cCof)
+      }
+
+      // Contabiliza resumo de entradas
+      totalCompras++
+      totalVlDocEntrada = round2(totalVlDocEntrada + vlDocNe)
+      totalVlCreditoIcms = round2(totalVlCreditoIcms + somaCreditoIcmsNe)
+
+      // C100 da Nota de Entrada
+      c100Linhas.push(
+        SpedFormato.montarLinha([
+          'C100',
+          '0', // IND_OPER 0 (entrada)
+          '1', // IND_EMIT 1 (terceiros)
+          codPartNe,
+          modeloNe,
+          codSitNe,
+          serNe,
+          String(numNe),
+          chvNeFinal,
+          dtDocNeSped,
+          dtEntNeSped,
+          SpedFormato.formatarValor(vlDocNe),
+          indPgtoNe,
+          SpedFormato.formatarValor(vlDescNe),
+          '0,00', // VL_ABAT_NT
+          SpedFormato.formatarValor(vlMercNe),
+          indFrtNe,
+          SpedFormato.formatarValor(vlFrtNe),
+          SpedFormato.formatarValor(vlSegNe),
+          SpedFormato.formatarValor(vlOutDaNe),
+          SpedFormato.formatarValor(somaCreditoBcIcmsNe),
+          SpedFormato.formatarValor(somaCreditoIcmsNe),
+          SpedFormato.formatarValor(vlBcIcmsStNe),
+          SpedFormato.formatarValor(vlIcmsStNe),
+          SpedFormato.formatarValor(somaCreditoIpiNe),
+          somaCreditoPisNe > 0 ? SpedFormato.formatarValor(somaCreditoPisNe) : '',
+          somaCreditoCofinsNe > 0 ? SpedFormato.formatarValor(somaCreditoCofinsNe) : '',
+          '', // VL_PIS_ST
+          '', // VL_COFINS_ST
+        ]),
+      )
+
+      // Rateio proporcional dos totais da nota entre os itens para apuração do VL_OPR no C190
+      var totFrtNe = round2(ne.getFloat('valor_frete') || 0)
+      var totSegNe = round2(ne.getFloat('valor_seguro') || 0)
+      var totOutNe = round2(ne.getFloat('valor_outras_despesas') || 0)
+      var totStNe = round2(ne.getFloat('valor_icms_st') || 0)
+      var totFcpStNe = round2(ne.getFloat('valor_fcp_st') || 0)
+      var totIpiNe = round2(ne.getFloat('valor_ipi') || 0)
+      var totDescNe = round2(ne.getFloat('valor_desconto') || 0)
+
+      var itensCalculadosNe = []
+      var acumFrtNe = 0
+      var acumSegNe = 0
+      var acumOutNe = 0
+      var acumStNe = 0
+      var acumFcpStNe = 0
+      var acumIpiNe = 0
+      var acumDescNe = 0
+
+      for (var itIdx = 0; itIdx < itensNe.length; itIdx++) {
+        var itRec = itensNe[itIdx]
+        var numItem = itRec.getInt('numero_item') || itIdx + 1
+        var prodIdVinculado = itRec.getString('produto_id')
+
+        if (!prodIdVinculado) {
+          ctx.adicionarValidacao(
+            'erro',
+            'Item ' +
+              numItem +
+              ' da nota de entrada nº ' +
+              numNe +
+              ' não possui produto vinculado no catálogo.',
+            'C170',
+            String(numNe),
+          )
+        } else {
+          ctx.registrarItem(prodIdVinculado)
+        }
+
+        var codItemP = ''
+        var unidItemP = 'UN'
+        if (prodIdVinculado) {
+          try {
+            var pRec = $app.findRecordById('produtos', prodIdVinculado)
+            codItemP = String(pRec.getInt('codigo') || pRec.id)
+            var uId = pRec.getString('unidade_id')
+            if (uId) {
+              try {
+                var unP2 = $app.findRecordById('unidades_medida', uId)
+                unidItemP = unP2.getString('sigla')
+              } catch (_) {
+                unidItemP = uId
+              }
+            }
+            ctx.registrarUnidade(unidItemP)
+          } catch (_) {
+            codItemP = prodIdVinculado
+          }
+        }
+
+        var qtdEstoque =
+          itRec.getFloat('quantidade_estoque') || itRec.getFloat('quantidade_fornecedor') || 0
+        var vlProdItem = round2(itRec.getFloat('valor_produto') || 0)
+        var vlDescItem = round2(itRec.getFloat('valor_desconto') || 0)
+
+        // Rateio proporcional se os campos do item estiverem zerados mas a nota tiver o total
+        var proporcao =
+          somaValorProdutoItensNe > 0 ? vlProdItem / somaValorProdutoItensNe : 1 / itensNe.length
+        var frtItem = round2(itRec.getFloat('valor_frete') || 0)
+        var segItem = round2(itRec.getFloat('valor_seguro') || 0)
+        var outItem = round2(itRec.getFloat('valor_outras') || 0)
+        var stItem = round2(itRec.getFloat('valor_icms_st') || 0)
+        var fcpStItem = round2(itRec.getFloat('valor_fcp_st') || 0)
+        var ipiItem = round2(itRec.getFloat('valor_ipi') || 0)
+
+        var ehUltimoItem = itIdx === itensNe.length - 1
+
+        if (totFrtNe > 0 && frtItem === 0) {
+          frtItem = ehUltimoItem ? round2(totFrtNe - acumFrtNe) : round2(totFrtNe * proporcao)
+        }
+        acumFrtNe = round2(acumFrtNe + frtItem)
+
+        if (totSegNe > 0 && segItem === 0) {
+          segItem = ehUltimoItem ? round2(totSegNe - acumSegNe) : round2(totSegNe * proporcao)
+        }
+        acumSegNe = round2(acumSegNe + segItem)
+
+        if (totOutNe > 0 && outItem === 0) {
+          outItem = ehUltimoItem ? round2(totOutNe - acumOutNe) : round2(totOutNe * proporcao)
+        }
+        acumOutNe = round2(acumOutNe + outItem)
+
+        if (totStNe > 0 && stItem === 0) {
+          stItem = ehUltimoItem ? round2(totStNe - acumStNe) : round2(totStNe * proporcao)
+        }
+        acumStNe = round2(acumStNe + stItem)
+
+        if (totFcpStNe > 0 && fcpStItem === 0) {
+          fcpStItem = ehUltimoItem
+            ? round2(totFcpStNe - acumFcpStNe)
+            : round2(totFcpStNe * proporcao)
+        }
+        acumFcpStNe = round2(acumFcpStNe + fcpStItem)
+
+        if (totIpiNe > 0 && ipiItem === 0) {
+          ipiItem = ehUltimoItem ? round2(totIpiNe - acumIpiNe) : round2(totIpiNe * proporcao)
+        }
+        acumIpiNe = round2(acumIpiNe + ipiItem)
+
+        if (totDescNe > 0 && vlDescItem === 0) {
+          vlDescItem = ehUltimoItem ? round2(totDescNe - acumDescNe) : round2(totDescNe * proporcao)
+        }
+        acumDescNe = round2(acumDescNe + vlDescItem)
+
+        var vlOprItemNe = round2(
+          vlProdItem + frtItem + segItem + outItem + stItem + fcpStItem + ipiItem - vlDescItem,
+        )
+
+        // CST_ICMS e CFOP de entrada
+        var origItemNe = SpedFormato.formatarDigitos(itRec.getString('origem')) || '0'
+        var cstEntradaRaw = SpedFormato.formatarDigitos(itRec.getString('cst_icms_entrada'))
+        var cstIcmsNe = ''
+        if (cstEntradaRaw.length === 3) {
+          cstIcmsNe = cstEntradaRaw
+        } else if (cstEntradaRaw.length === 2) {
+          cstIcmsNe = origItemNe.substring(0, 1) + cstEntradaRaw
+        } else {
+          var cstFornRaw = SpedFormato.formatarDigitos(itRec.getString('cst_icms_fornecedor'))
+          if (cstFornRaw.length >= 2) {
+            cstIcmsNe = origItemNe.substring(0, 1) + cstFornRaw.slice(-2)
+          } else {
+            cstIcmsNe = origItemNe.substring(0, 1) + '00'
+          }
+        }
+
+        var cfopEntradaNe = SpedFormato.formatarDigitos(itRec.getString('cfop_entrada')) || '1102'
+
+        // Crédito ICMS do item
+        var aproveitaCredIcms = itRec.getBool('aproveita_credito_icms')
+        var bcIcmsCredItem = aproveitaCredIcms ? round2(itRec.getFloat('base_icms') || 0) : 0
+        var aliqIcmsItem = round2(itRec.getFloat('aliquota_icms') || 0)
+        var vlIcmsCredItem = aproveitaCredIcms
+          ? round2(itRec.getFloat('valor_credito_icms') || 0)
+          : 0
+
+        // ST do item
+        var bcStItemNe = round2(itRec.getFloat('base_icms_st') || 0)
+        var aliqStItemNe = round2(itRec.getFloat('aliquota_icms_st') || 0)
+        var vlStItemNe = round2(itRec.getFloat('valor_icms_st') || 0)
+
+        // IPI do item: SÓ se a empresa for contribuinte_ipi
+        var sCstIpiNe = ''
+        var sCodEnqNe = ''
+        var sBcIpiNe = ''
+        var sAliqIpiNe = ''
+        var sVlIpiNe = ''
+        var vlIpiCredItem = 0
+
+        if (ehContribuinteIpi) {
+          sCstIpiNe = SpedFormato.formatarDigitos(itRec.getString('cst_ipi')) || '00'
+          sCodEnqNe = SpedFormato.formatarTexto(itRec.getString('codigo_enquadramento') || '999', 3)
+          var bcIpiNe = round2(itRec.getFloat('base_ipi') || 0)
+          var aliqIpiNe = round2(itRec.getFloat('aliquota_ipi') || 0)
+          var vIpiCred = itRec.getBool('aproveita_credito_ipi')
+            ? round2(itRec.getFloat('valor_credito_ipi') || 0)
+            : 0
+          vlIpiCredItem = vIpiCred
+          sBcIpiNe = bcIpiNe > 0 ? SpedFormato.formatarValor(bcIpiNe) : ''
+          sAliqIpiNe = aliqIpiNe > 0 ? SpedFormato.formatarValor(aliqIpiNe) : ''
+          sVlIpiNe = vIpiCred > 0 ? SpedFormato.formatarValor(vIpiCred) : ''
+        }
+
+        // PIS/COFINS de entrada
+        var cstPisNe = SpedFormato.formatarDigitos(itRec.getString('cst_pis_entrada'))
+        var cstCofinsNe = SpedFormato.formatarDigitos(itRec.getString('cst_cofins_entrada'))
+        var vCredPis = round2(itRec.getFloat('valor_credito_pis') || 0)
+        var vCredCofins = round2(itRec.getFloat('valor_credito_cofins') || 0)
+
+        var sBcPisNe = ''
+        var sAliqPisNe = ''
+        var sVlPisNe = ''
+        if (vCredPis > 0) {
+          var bcPisNe = round2(itRec.getFloat('base_pis') || vlProdItem)
+          var aliqPisNe = round2(itRec.getFloat('aliquota_pis') || 0)
+          sBcPisNe = SpedFormato.formatarValor(bcPisNe)
+          sAliqPisNe = aliqPisNe > 0 ? SpedFormato.formatarValor(aliqPisNe) : ''
+          sVlPisNe = SpedFormato.formatarValor(vCredPis)
+        }
+
+        var sBcCofinsNe = ''
+        var sAliqCofinsNe = ''
+        var sVlCofinsNe = ''
+        if (vCredCofins > 0) {
+          var bcCofinsNe = round2(itRec.getFloat('base_cofins') || vlProdItem)
+          var aliqCofinsNe = round2(itRec.getFloat('aliquota_cofins') || 0)
+          sBcCofinsNe = SpedFormato.formatarValor(bcCofinsNe)
+          sAliqCofinsNe = aliqCofinsNe > 0 ? SpedFormato.formatarValor(aliqCofinsNe) : ''
+          sVlCofinsNe = SpedFormato.formatarValor(vCredCofins)
+        }
+
+        // C170 do item da nota de entrada
+        c100Linhas.push(
+          SpedFormato.montarLinha([
+            'C170',
+            String(numItem),
+            codItemP,
+            '', // DESCR_COMPL
+            SpedFormato.formatarQuantidade(qtdEstoque, 5),
+            SpedFormato.formatarTexto(unidItemP, 6),
+            SpedFormato.formatarValor(vlProdItem),
+            vlDescItem > 0 ? SpedFormato.formatarValor(vlDescItem) : '',
+            '0', // IND_MOV 0 (movimentação física do item)
+            cstIcmsNe,
+            cfopEntradaNe,
+            '', // COD_NAT
+            bcIcmsCredItem > 0 ? SpedFormato.formatarValor(bcIcmsCredItem) : '',
+            aliqIcmsItem > 0 ? SpedFormato.formatarValor(aliqIcmsItem) : '',
+            vlIcmsCredItem > 0 ? SpedFormato.formatarValor(vlIcmsCredItem) : '',
+            bcStItemNe > 0 ? SpedFormato.formatarValor(bcStItemNe) : '',
+            aliqStItemNe > 0 ? SpedFormato.formatarValor(aliqStItemNe) : '',
+            vlStItemNe > 0 ? SpedFormato.formatarValor(vlStItemNe) : '',
+            '0', // IND_APUR 0
+            sCstIpiNe,
+            sCodEnqNe,
+            sBcIpiNe,
+            sAliqIpiNe,
+            sVlIpiNe,
+            cstPisNe,
+            sBcPisNe,
+            sAliqPisNe,
+            '', // QUANT_BC_PIS
+            '', // ALIQ_PIS_QUANT
+            sVlPisNe,
+            cstCofinsNe,
+            sBcCofinsNe,
+            sAliqCofinsNe,
+            '', // QUANT_BC_COFINS
+            '', // ALIQ_COFINS_QUANT
+            sVlCofinsNe,
+            '', // COD_CTA
+            '0,00', // VL_ABAT_NT
+          ]),
+        )
+
+        itensCalculadosNe.push({
+          cst: cstIcmsNe,
+          cfop: cfopEntradaNe,
+          aliqIcms: aliqIcmsItem,
+          vlOpr: vlOprItemNe,
+          vlBcIcms: bcIcmsCredItem,
+          vlIcms: vlIcmsCredItem,
+          vlBcSt: bcStItemNe,
+          vlSt: vlStItemNe,
+          vlIpi: vlIpiCredItem,
+        })
+      }
+
+      // Agrupamento C190 para a Nota de Entrada
+      var gruposC190Ne = {}
+      var somaVlOprNe = 0
+
+      for (var ig = 0; ig < itensCalculadosNe.length; ig++) {
+        var itc = itensCalculadosNe[ig]
+        var chvG = itc.cst + '|' + itc.cfop + '|' + itc.aliqIcms.toFixed(2)
+        if (!gruposC190Ne[chvG]) {
+          gruposC190Ne[chvG] = {
+            cst: itc.cst,
+            cfop: itc.cfop,
+            aliqIcms: itc.aliqIcms,
+            vlOpr: 0,
+            vlBcIcms: 0,
+            vlIcms: 0,
+            vlBcSt: 0,
+            vlSt: 0,
+            vlRedBc: 0,
+            vlIpi: 0,
+          }
+        }
+        var gNe = gruposC190Ne[chvG]
+        gNe.vlOpr = round2(gNe.vlOpr + itc.vlOpr)
+        gNe.vlBcIcms = round2(gNe.vlBcIcms + itc.vlBcIcms)
+        gNe.vlIcms = round2(gNe.vlIcms + itc.vlIcms)
+        gNe.vlBcSt = round2(gNe.vlBcSt + itc.vlBcSt)
+        gNe.vlSt = round2(gNe.vlSt + itc.vlSt)
+        gNe.vlIpi = round2(gNe.vlIpi + itc.vlIpi)
+      }
+
+      // Ajuste de centavos no último grupo do documento para bater exatamente o crédito do C100
+      var listaChavesGNe = Object.keys(gruposC190Ne).sort()
+      var somaVlIcmsGruposNe = 0
+      for (var kg = 0; kg < listaChavesGNe.length; kg++) {
+        somaVlIcmsGruposNe = round2(somaVlIcmsGruposNe + gruposC190Ne[listaChavesGNe[kg]].vlIcms)
+      }
+      var difIcmsNe = round2(somaCreditoIcmsNe - somaVlIcmsGruposNe)
+      if (listaChavesGNe.length > 0 && Math.abs(difIcmsNe) > 0 && Math.abs(difIcmsNe) <= 0.05) {
+        var ultG = gruposC190Ne[listaChavesGNe[listaChavesGNe.length - 1]]
+        ultG.vlIcms = round2(ultG.vlIcms + difIcmsNe)
+      }
+
+      // Emite linhas C190
+      for (var cgNe = 0; cgNe < listaChavesGNe.length; cgNe++) {
+        var grpNe = gruposC190Ne[listaChavesGNe[cgNe]]
+        somaVlOprNe = round2(somaVlOprNe + grpNe.vlOpr)
+
+        c100Linhas.push(
+          SpedFormato.montarLinha([
+            'C190',
+            grpNe.cst,
+            grpNe.cfop,
+            grpNe.aliqIcms > 0 ? SpedFormato.formatarValor(grpNe.aliqIcms) : '',
+            SpedFormato.formatarValor(grpNe.vlOpr),
+            SpedFormato.formatarValor(grpNe.vlBcIcms),
+            SpedFormato.formatarValor(grpNe.vlIcms),
+            SpedFormato.formatarValor(grpNe.vlBcSt),
+            SpedFormato.formatarValor(grpNe.vlSt),
+            SpedFormato.formatarValor(grpNe.vlRedBc),
+            SpedFormato.formatarValor(grpNe.vlIpi),
+            '', // COD_OBS
+          ]),
+        )
+      }
+
+      // Batimento: soma VL_OPR vs VL_DOC (diferença > 0,01: aviso)
+      var difVlOprNe = Math.abs(round2(somaVlOprNe - vlDocNe))
+      if (itensNe.length > 0 && difVlOprNe > 0.01) {
+        ctx.adicionarValidacao(
+          'aviso',
+          'Soma do valor das operações dos registros analíticos C190 (R$ ' +
+            somaVlOprNe.toFixed(2) +
+            ') diverge do VL_DOC da nota de entrada nº ' +
+            numNe +
+            ' (R$ ' +
+            vlDocNe.toFixed(2) +
+            ').',
+          'C190',
+          String(numNe),
+        )
+      }
+    }
+
+    // --- ENTRADAS 2: TRANSFERÊNCIAS RECEBIDAS ---
+    // documentos_fiscais com origem "Transferência" (ou "Transferencia"), status "Autorizada" ou "Cancelada",
+    // cuja transferência vinculada (transferencia_id) tenha como destino a empresa do arquivo
+    var docsTrfBrutos = []
+    try {
+      docsTrfBrutos = $app.findRecordsByFilter(
+        'documentos_fiscais',
+        "(origem = 'Transferência' || origem = 'Transferencia') && transferencia_id != '' && (status = 'Autorizada' || status = 'Cancelada') && ativo = true",
+        'data_emissao,numero',
+        5000,
+        0,
+      )
+    } catch (errTrfDocs) {
+      ctx.adicionarValidacao(
+        'aviso',
+        'Falha ao carregar documentos fiscais de transferência: ' +
+          (errTrfDocs.message || errTrfDocs),
+        'C100',
+      )
+    }
+
+    for (var trfIdx = 0; trfIdx < docsTrfBrutos.length; trfIdx++) {
+      var docTrf = docsTrfBrutos[trfIdx]
+      var trfId = docTrf.getString('transferencia_id')
+      if (!trfId) continue
+
+      var trfRec = null
+      try {
+        trfRec = $app.findRecordById('transferencias', trfId)
+      } catch (_) {
+        continue
+      }
+      if (!trfRec) continue
+
+      // Destino deve ser a empresa do arquivo
+      var empDestId = trfRec.getString('empresa_destino_id')
+      if (empDestId !== empresaId) {
+        continue
+      }
+
+      // Data de emissão no horário de Brasília dentro do período
+      var dtEmissaoTrfStr = docTrf.getString('data_emissao') || docTrf.getString('created')
+      var dtTrfBsb = extrairDataBrasilia(dtEmissaoTrfStr)
+      if (!dtTrfBsb) continue
+      if (dtTrfBsb.ano !== ctx.ano || dtTrfBsb.mes !== ctx.mes) continue
+
+      // Ambiente: modo Oficial só Produção; modo Teste inclui Homologação se incluir_homologacao_em_teste
+      var ambTrf = docTrf.getString('ambiente') || 'Homologação'
+      if (ctx.modo === 'Oficial') {
+        if (ambTrf !== 'Produção') continue
+      } else {
+        if (ambTrf !== 'Produção' && !incluirHomologacaoEmTeste) continue
+      }
+
+      // Se a MESMA chave de acesso já estiver processada (ex: em notas_entrada ou emissão anterior), NÃO repetir
+      var chvTrf = SpedFormato.formatarDigitos(docTrf.getString('chave_acesso'))
+      if (chvTrf && chavesProcessadasBlocoC[chvTrf]) {
+        continue
+      }
+      if (chvTrf) {
+        chavesProcessadasBlocoC[chvTrf] = true
+      }
+
+      var stTrf = docTrf.getString('status')
+      var modTrf = docTrf.getString('modelo') || '55'
+      var serTrf = docTrf.getString('serie') || '1'
+      var numTrf = docTrf.getInt('numero') || 0
+
+      // COD_PART = empresa de ORIGEM (E + id)
+      var empOrigId = trfRec.getString('empresa_origem_id') || docTrf.getString('empresa_id')
+      var codPartTrf = ''
+      if (empOrigId) {
+        codPartTrf = 'E' + empOrigId
+        ctx.registrarParticipante('E', empOrigId)
+      }
+
+      // Se cancelada: COD_SIT 02 e só os campos de identificação
+      if (stTrf === 'Cancelada') {
+        c100Linhas.push(
+          SpedFormato.montarLinha([
+            'C100',
+            '0', // IND_OPER 0
+            '1', // IND_EMIT 1
+            codPartTrf,
+            modTrf,
+            '02', // COD_SIT 02
+            serTrf,
+            String(numTrf),
+            chvTrf,
+            '', // DT_DOC
+            '', // DT_E_S
+            '', // VL_DOC
+            '', // IND_PGTO
+            '', // VL_DESC
+            '', // VL_ABAT_NT
+            '', // VL_MERC
+            '', // IND_FRT
+            '', // VL_FRT
+            '', // VL_SEG
+            '', // VL_OUT_DA
+            '', // VL_BC_ICMS
+            '', // VL_ICMS
+            '', // VL_BC_ICMS_ST
+            '', // VL_ICMS_ST
+            '', // VL_IPI
+            '', // VL_PIS
+            '', // VL_COFINS
+            '', // VL_PIS_ST
+            '', // VL_COFINS_ST
+          ]),
+        )
+        continue
+      }
+
+      // Transferência Autorizada
+      var dtEmissaoTrfSped = SpedFormato.formatarData(dtEmissaoTrfStr)
+      var dtEntradaTrfStr = trfRec.getString('data_recebimento') || dtEmissaoTrfStr
+      var dtEntradaTrfSped = SpedFormato.formatarData(dtEntradaTrfStr)
+
+      var vlDocTrf = round2(docTrf.getFloat('valor_total') || 0)
+      var vlDescTrf = round2(docTrf.getFloat('valor_desconto') || 0)
+      var vlMercTrf = round2(docTrf.getFloat('valor_produtos') || 0)
+      var vlFrtTrf = round2(docTrf.getFloat('valor_frete') || 0)
+      var vlSegTrf = round2(docTrf.getFloat('valor_seguro') || 0)
+      var vlOutDaTrf = round2(docTrf.getFloat('valor_outras_despesas') || 0)
+
+      var vlBcIcmsTrf = round2(docTrf.getFloat('base_icms') || 0)
+      var vlIcmsTrf = round2(docTrf.getFloat('valor_icms') || 0)
+      var vlBcIcmsStTrf = round2(docTrf.getFloat('base_icms_st') || 0)
+      var vlIcmsStTrf = round2(docTrf.getFloat('valor_icms_st') || 0)
+      var vlIpiTrf = round2(docTrf.getFloat('valor_ipi') || 0)
+      var vlPisTrf = round2(docTrf.getFloat('valor_pis') || 0)
+      var vlCofinsTrf = round2(docTrf.getFloat('valor_cofins') || 0)
+
+      // Contabiliza resumo de entradas
+      totalTransferenciasRecebidas++
+      totalVlDocEntrada = round2(totalVlDocEntrada + vlDocTrf)
+      totalVlCreditoIcms = round2(totalVlCreditoIcms + vlIcmsTrf)
+
+      // C100 da Transferência Recebida
+      c100Linhas.push(
+        SpedFormato.montarLinha([
+          'C100',
+          '0', // IND_OPER 0
+          '1', // IND_EMIT 1
+          codPartTrf,
+          modTrf,
+          '00', // COD_SIT 00
+          serTrf,
+          String(numTrf),
+          chvTrf,
+          dtEmissaoTrfSped,
+          dtEntradaTrfSped,
+          SpedFormato.formatarValor(vlDocTrf),
+          '2', // IND_PGTO 2 (outros/sem pagamento mercantil)
+          SpedFormato.formatarValor(vlDescTrf),
+          '0,00', // VL_ABAT_NT
+          SpedFormato.formatarValor(vlMercTrf),
+          '9', // IND_FRT
+          SpedFormato.formatarValor(vlFrtTrf),
+          SpedFormato.formatarValor(vlSegTrf),
+          SpedFormato.formatarValor(vlOutDaTrf),
+          SpedFormato.formatarValor(vlBcIcmsTrf),
+          SpedFormato.formatarValor(vlIcmsTrf),
+          SpedFormato.formatarValor(vlBcIcmsStTrf),
+          SpedFormato.formatarValor(vlIcmsStTrf),
+          SpedFormato.formatarValor(vlIpiTrf),
+          vlPisTrf > 0 ? SpedFormato.formatarValor(vlPisTrf) : '',
+          vlCofinsTrf > 0 ? SpedFormato.formatarValor(vlCofinsTrf) : '',
+          '', // VL_PIS_ST
+          '', // VL_COFINS_ST
+        ]),
+      )
+
+      // Itens de documentos_fiscais_itens da transferência
+      var itensDocTrf = []
+      try {
+        itensDocTrf = $app.findRecordsByFilter(
+          'documentos_fiscais_itens',
+          "documento_id = '" + docTrf.id + "'",
+          'item',
+          500,
+          0,
+        )
+      } catch (errItTrf) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Falha ao carregar itens da transferência nº ' +
+            numTrf +
+            ': ' +
+            (errItTrf.message || errItTrf),
+          'C170',
+          String(numTrf),
+        )
+      }
+
+      var gruposC190Trf = {}
+      var somaVlOprTrf = 0
+
+      for (var itTrfIdx = 0; itTrfIdx < itensDocTrf.length; itTrfIdx++) {
+        var itTrf = itensDocTrf[itTrfIdx]
+        var numItemTrf = itTrf.getInt('item') || itTrfIdx + 1
+        var prodIdTrf = itTrf.getString('produto_id')
+
+        if (prodIdTrf) {
+          ctx.registrarItem(prodIdTrf)
+        }
+
+        var codItemTrf = ''
+        var unidItemTrf = 'UN'
+        if (prodIdTrf) {
+          try {
+            var pTrf = $app.findRecordById('produtos', prodIdTrf)
+            codItemTrf = String(pTrf.getInt('codigo') || pTrf.id)
+            var uTrfId = pTrf.getString('unidade_id')
+            if (uTrfId) {
+              try {
+                var unTrfRec = $app.findRecordById('unidades_medida', uTrfId)
+                unidItemTrf = unTrfRec.getString('sigla')
+              } catch (_) {
+                unidItemTrf = uTrfId
+              }
+            }
+            ctx.registrarUnidade(unidItemTrf)
+          } catch (_) {
+            codItemTrf = prodIdTrf
+          }
+        } else {
+          codItemTrf = itTrf.getString('codigo') || String(numItemTrf)
+        }
+
+        var qtdTrf = itTrf.getFloat('quantidade') || 0
+        var vlBrutoTrf = round2(itTrf.getFloat('valor_bruto') || itTrf.getFloat('valor_total') || 0)
+        var vlDescItTrf = round2(itTrf.getFloat('valor_desconto') || 0)
+
+        // CST_ICMS de entrada: mesmo CST do item (origem + cst_icms)
+        var origTrf = SpedFormato.formatarDigitos(itTrf.getString('origem')) || '0'
+        var cstSaidaTrf = SpedFormato.formatarDigitos(itTrf.getString('cst_icms'))
+        if (!cstSaidaTrf) {
+          var csosnTrf = SpedFormato.formatarDigitos(itTrf.getString('csosn'))
+          cstSaidaTrf = csosnTrf.length >= 2 ? csosnTrf.slice(-2) : '00'
+        }
+        if (cstSaidaTrf.length === 1) cstSaidaTrf = '0' + cstSaidaTrf
+        var cstEntradaTrf = origTrf.substring(0, 1) + cstSaidaTrf
+
+        // CFOP de entrada: 5152->1152, 5409->1409, 6152->2152 (5->1 e 6->2, mantendo os três últimos)
+        var cfopSaidaTrf = SpedFormato.formatarDigitos(itTrf.getString('cfop')) || '5152'
+        var cfopEntradaTrf = cfopSaidaTrf
+        if (cfopSaidaTrf.length === 4) {
+          var primeiroDigito = cfopSaidaTrf.charAt(0)
+          if (primeiroDigito === '5') {
+            cfopEntradaTrf = '1' + cfopSaidaTrf.substring(1)
+          } else if (primeiroDigito === '6') {
+            cfopEntradaTrf = '2' + cfopSaidaTrf.substring(1)
+          }
+        }
+
+        // Crédito de ICMS = ICMS destacado na nota de transferência
+        var bcIcmsItTrf = round2(itTrf.getFloat('base_icms') || 0)
+        var aliqIcmsItTrf = round2(itTrf.getFloat('aliquota_icms') || 0)
+        var vlIcmsItTrf = round2(itTrf.getFloat('valor_icms') || 0)
+
+        var bcStItTrf = round2(itTrf.getFloat('base_icms_st') || 0)
+        var aliqStItTrf = round2(itTrf.getFloat('aliquota_icms_st') || 0)
+        var vlStItTrf = round2(itTrf.getFloat('valor_icms_st') || 0)
+        var fcpStItTrf = round2(itTrf.getFloat('valor_fcp_st') || 0)
+
+        // IPI da transferência
+        var vlIpiItTrf = round2(itTrf.getFloat('valor_ipi') || 0)
+        var sCstIpiTrf = ''
+        var sCodEnqTrf = ''
+        var sBcIpiTrf = ''
+        var sAliqIpiTrf = ''
+        var sVlIpiTrf = ''
+        if (ehContribuinteIpi && vlIpiItTrf > 0) {
+          sCstIpiTrf = SpedFormato.formatarDigitos(itTrf.getString('cst_ipi')) || '00'
+          sCodEnqTrf = SpedFormato.formatarTexto(
+            itTrf.getString('codigo_enquadramento_ipi') || '999',
+            3,
+          )
+          var bcIpiTrf = round2(itTrf.getFloat('base_ipi') || 0)
+          var aliqIpiTrf = round2(itTrf.getFloat('aliquota_ipi') || 0)
+          sBcIpiTrf = bcIpiTrf > 0 ? SpedFormato.formatarValor(bcIpiTrf) : ''
+          sAliqIpiTrf = aliqIpiTrf > 0 ? SpedFormato.formatarValor(aliqIpiTrf) : ''
+          sVlIpiTrf = SpedFormato.formatarValor(vlIpiItTrf)
+        }
+
+        // VL_OPR do item: valor do item + frete, seguro, outras despesas, ST, FCP ST e IPI menos desconto
+        var frtItTrf = round2(itTrf.getFloat('valor_frete') || 0)
+        var outItTrf = round2(itTrf.getFloat('valor_outras') || 0)
+        var vlOprItTrf = round2(
+          vlBrutoTrf + frtItTrf + outItTrf + vlStItTrf + fcpStItTrf + vlIpiItTrf - vlDescItTrf,
+        )
+
+        // C170 da transferência recebida
+        c100Linhas.push(
+          SpedFormato.montarLinha([
+            'C170',
+            String(numItemTrf),
+            codItemTrf,
+            '', // DESCR_COMPL
+            SpedFormato.formatarQuantidade(qtdTrf, 5),
+            SpedFormato.formatarTexto(unidItemTrf, 6),
+            SpedFormato.formatarValor(vlBrutoTrf),
+            vlDescItTrf > 0 ? SpedFormato.formatarValor(vlDescItTrf) : '',
+            '0', // IND_MOV 0
+            cstEntradaTrf,
+            cfopEntradaTrf,
+            '', // COD_NAT
+            bcIcmsItTrf > 0 ? SpedFormato.formatarValor(bcIcmsItTrf) : '',
+            aliqIcmsItTrf > 0 ? SpedFormato.formatarValor(aliqIcmsItTrf) : '',
+            vlIcmsItTrf > 0 ? SpedFormato.formatarValor(vlIcmsItTrf) : '',
+            bcStItTrf > 0 ? SpedFormato.formatarValor(bcStItTrf) : '',
+            aliqStItTrf > 0 ? SpedFormato.formatarValor(aliqStItTrf) : '',
+            vlStItTrf > 0 ? SpedFormato.formatarValor(vlStItTrf) : '',
+            '0', // IND_APUR 0
+            sCstIpiTrf,
+            sCodEnqTrf,
+            sBcIpiTrf,
+            sAliqIpiTrf,
+            sVlIpiTrf,
+            '', // CST_PIS
+            '', // VL_BC_PIS
+            '', // ALIQ_PIS
+            '', // QUANT_BC_PIS
+            '', // ALIQ_PIS_QUANT
+            '', // VL_PIS
+            '', // CST_COFINS
+            '', // VL_BC_COFINS
+            '', // ALIQ_COFINS
+            '', // QUANT_BC_COFINS
+            '', // ALIQ_COFINS_QUANT
+            '', // VL_COFINS
+            '', // COD_CTA
+            '0,00', // VL_ABAT_NT
+          ]),
+        )
+
+        // Agrupamento C190 da transferência
+        var chvGTrf = cstEntradaTrf + '|' + cfopEntradaTrf + '|' + aliqIcmsItTrf.toFixed(2)
+        if (!gruposC190Trf[chvGTrf]) {
+          gruposC190Trf[chvGTrf] = {
+            cst: cstEntradaTrf,
+            cfop: cfopEntradaTrf,
+            aliqIcms: aliqIcmsItTrf,
+            vlOpr: 0,
+            vlBcIcms: 0,
+            vlIcms: 0,
+            vlBcSt: 0,
+            vlSt: 0,
+            vlRedBc: 0,
+            vlIpi: 0,
+          }
+        }
+        var gTrf = gruposC190Trf[chvGTrf]
+        gTrf.vlOpr = round2(gTrf.vlOpr + vlOprItTrf)
+        gTrf.vlBcIcms = round2(gTrf.vlBcIcms + bcIcmsItTrf)
+        gTrf.vlIcms = round2(gTrf.vlIcms + vlIcmsItTrf)
+        gTrf.vlBcSt = round2(gTrf.vlBcSt + bcStItTrf)
+        gTrf.vlSt = round2(gTrf.vlSt + vlStItTrf)
+        gTrf.vlIpi = round2(gTrf.vlIpi + vlIpiItTrf)
+      }
+
+      // Ajuste de centavos no último grupo do documento para bater o crédito do C100
+      var listaChavesGTrf = Object.keys(gruposC190Trf).sort()
+      var somaVlIcmsGruposTrf = 0
+      for (var kgt = 0; kgt < listaChavesGTrf.length; kgt++) {
+        somaVlIcmsGruposTrf = round2(
+          somaVlIcmsGruposTrf + gruposC190Trf[listaChavesGTrf[kgt]].vlIcms,
+        )
+      }
+      var difIcmsTrf = round2(vlIcmsTrf - somaVlIcmsGruposTrf)
+      if (listaChavesGTrf.length > 0 && Math.abs(difIcmsTrf) > 0 && Math.abs(difIcmsTrf) <= 0.05) {
+        var ultGTrf = gruposC190Trf[listaChavesGTrf[listaChavesGTrf.length - 1]]
+        ultGTrf.vlIcms = round2(ultGTrf.vlIcms + difIcmsTrf)
+      }
+
+      // Monta as linhas C190 para a transferência recebida
+      for (var cgTrf = 0; cgTrf < listaChavesGTrf.length; cgTrf++) {
+        var grpTrf = gruposC190Trf[listaChavesGTrf[cgTrf]]
+        somaVlOprTrf = round2(somaVlOprTrf + grpTrf.vlOpr)
+
+        c100Linhas.push(
+          SpedFormato.montarLinha([
+            'C190',
+            grpTrf.cst,
+            grpTrf.cfop,
+            grpTrf.aliqIcms > 0 ? SpedFormato.formatarValor(grpTrf.aliqIcms) : '',
+            SpedFormato.formatarValor(grpTrf.vlOpr),
+            SpedFormato.formatarValor(grpTrf.vlBcIcms),
+            SpedFormato.formatarValor(grpTrf.vlIcms),
+            SpedFormato.formatarValor(grpTrf.vlBcSt),
+            SpedFormato.formatarValor(grpTrf.vlSt),
+            SpedFormato.formatarValor(grpTrf.vlRedBc),
+            SpedFormato.formatarValor(grpTrf.vlIpi),
+            '', // COD_OBS
+          ]),
+        )
+      }
+
+      var difVlOprTrf = Math.abs(round2(somaVlOprTrf - vlDocTrf))
+      if (itensDocTrf.length > 0 && difVlOprTrf > 0.01) {
+        ctx.adicionarValidacao(
+          'aviso',
+          'Soma do valor das operações dos registros analíticos C190 (R$ ' +
+            somaVlOprTrf.toFixed(2) +
+            ') diverge do VL_DOC da transferência recebida nº ' +
+            numTrf +
+            ' (R$ ' +
+            vlDocTrf.toFixed(2) +
+            ').',
+          'C190',
+          String(numTrf),
+        )
+      }
+    }
+
     // Regra 3: Inutilizações homologadas da empresa no período
     // Para cada número de cada faixa, gera um C100 com COD_SIT 05
     for (var inIdx = 0; inIdx < inutsPeriodo.length; inIdx++) {
@@ -809,6 +1774,14 @@ var SpedGerador = (function () {
       total_inutilizadas: totalInutilizadas,
       total_vl_doc: totalVlDoc,
       total_vl_icms: totalVlIcms,
+    }
+
+    // Guarda o resumo de entradas no contexto para ser salvo em sped_arquivos
+    ctx.resumoEntrada = {
+      total_compras: totalCompras,
+      total_transferencias: totalTransferenciasRecebidas,
+      total_vl_doc: totalVlDocEntrada,
+      total_credito_icms: totalVlCreditoIcms,
     }
 
     return linhas
@@ -1464,6 +2437,7 @@ var SpedGerador = (function () {
       status: status,
       temErros: temErros,
       resumoSaida: ctx.resumoSaida || null,
+      resumoEntrada: ctx.resumoEntrada || null,
       ctx: ctx,
     }
   }

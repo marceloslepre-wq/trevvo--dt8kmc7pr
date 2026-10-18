@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-18T12:00:48.322Z",
+  "generatedAt": "2026-10-18T12:24:18.405Z",
   "collections": [
     {
       "name": "users",
@@ -10674,6 +10674,12 @@
         },
         {
           "name": "resumo_saida",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resumo_entrada",
           "type": "json",
           "required": false,
           "system": false

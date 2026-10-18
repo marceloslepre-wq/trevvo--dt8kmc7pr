@@ -52,6 +52,13 @@ export interface SpedResumoSaida {
   total_vl_icms?: number
 }
 
+export interface SpedResumoEntrada {
+  total_compras?: number
+  total_transferencias?: number
+  total_vl_doc?: number
+  total_credito_icms?: number
+}
+
 export interface SpedArquivoRegistro {
   id: string
   empresa_id: string
@@ -65,6 +72,7 @@ export interface SpedArquivoRegistro {
   contagem_registros?: Record<string, number>
   resumo_apuracao?: SpedResumoApuracao
   resumo_saida?: SpedResumoSaida
+  resumo_entrada?: SpedResumoEntrada
   validacoes?: SpedValidacaoItem[]
   gerado_por?: string
   entregue_em?: string

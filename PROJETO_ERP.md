@@ -300,6 +300,7 @@ Tabela de registro e controle de arquivos da EFD ICMS/IPI (SPED Fiscal) gerados 
 - contagem_registros (json: quantidade por tipo de registro, ex: 0000, C100, C170, C190, E110, H010, 9999)
 - resumo_apuracao (json: débitos, créditos, saldo credor anterior, saldo apurado, ICMS a recolher, saldo credor a transportar)
 - resumo_saida (json: total_nfe, total_nfce, total_canceladas, total_denegadas, total_inutilizadas, total_vl_doc, total_vl_icms)
+- resumo_entrada (json: total_compras, total_transferencias, total_vl_doc, total_credito_icms — Migration 0056)
 - validacoes (json: lista de { nivel: "erro" | "aviso", registro, mensagem, referencia })
 - gerado_por (relation -> usuarios, usuário responsável pela geração)
 - entregue_em (date, data da transmissão à Receita Federal)
@@ -3117,6 +3118,60 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
     - Adição ao menu lateral `Sidebar.tsx` e rotas do `App.tsx`.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.95** — Etapa 7 SPED Fiscal (Prompt 7.3: Bloco C da EFD com Notas de Terceiros Recebidas — Compras e Transferências Recebidas, Registros C100, C170, C190 e Painel de Entradas do Período):
+
+1. **Notas de Entrada de Terceiros no Bloco C (`pocketbase/hooks/sped/gerador.js`):**
+   - Filtragem e escrituração da coleção `notas_entrada` da empresa ativa com status "Lançada", ativo = true e `data_entrada` no horário de Brasília pertencente ao período de apuração.
+   - Tratamento de situação do documento: `situacao_documento` "02" (cancelada pelo fornecedor) é desconsiderada; "08" entra com `COD_SIT` 08; "00" entra com `COD_SIT` 00.
+   - Modelos aceitos: 55 (NF-e), 01, 1B e 04 (modelos em papel de produtor/avulsos). Qualquer outro modelo gera aviso informativo nas validações e não entra.
+   - Deduplicação e prevenção de concorrência com transferências recebidas e devoluções através do mapa de controle de chaves de acesso.
+2. **Registro C100 de cada Nota de Entrada:**
+   - `IND_OPER` 0 (entrada); `IND_EMIT` 1 (terceiros); `COD_PART` = fornecedor da nota (`F` + id), registrado dinamicamente no coletor de participantes do Bloco 0 (0150).
+   - `COD_MOD` = modelo; `COD_SIT` (00 ou 08); `SER`; `NUM_DOC`; `CHV_NFE` = 44 dígitos da chave de acesso (suprimido nos modelos em papel 01, 1B e 04).
+   - Datas `DT_DOC` (`data_emissao`) e `DT_E_S` (`data_entrada`) em formato `ddmmaaaa` (horário de Brasília).
+   - `IND_PGTO` conforme indicador da nota; `IND_FRT` conforme modalidade do frete (0, 1, 2, 3, 4 ou 9).
+   - Valores contábeis e fiscais: `VL_DOC` = valor total, `VL_DESC` = valor desconto, `VL_ABAT_NT` = 0,00, `VL_MERC` = valor produtos, `VL_FRT` = frete, `VL_SEG` = seguro, `VL_OUT_DA` = outras despesas.
+   - `VL_BC_ICMS` e `VL_ICMS`: soma do crédito aproveitado nos itens da nota (base e valor do crédito dos itens com `aproveita_credito_icms` verdadeiro), e não o destaque do fornecedor.
+   - `VL_BC_ICMS_ST` e `VL_ICMS_ST` como na nota; `VL_IPI` com a soma de `valor_credito_ipi` quando `aproveita_credito_ipi` e a empresa for contribuinte do IPI, senão 0; `VL_PIS` e `VL_COFINS` com os créditos aproveitados dos itens (`valor_credito_pis` e `valor_credito_cofins`); `VL_PIS_ST` e `VL_COFINS_ST` vazios.
+3. **Registro C170 Obrigatório dos Itens de Entrada (`notas_entrada_itens`):**
+   - Ordenado por `numero_item`.
+   - `NUM_ITEM` = número do item; `COD_ITEM` = código cadastral do produto vinculado (`produtos.codigo`), com registro no coletor de itens do Bloco 0 (0200). Caso o item não possua produto vinculado no catálogo do ERP, gera erro impeditivo nas validações com o número da nota e do item.
+   - `DESCR_COMPL` vazio; `QTD` = quantidade no estoque (`quantidade_estoque`); `UNID` = sigla da unidade de medida do produto vinculado cadastrado no 0200 (dispensando 0220).
+   - `VL_ITEM` = valor do produto; `VL_DESC` = desconto do item; `IND_MOV` 0 (movimentação física do item).
+   - `CST_ICMS` = origem + CST ICMS de entrada (3 dígitos); `CFOP` = CFOP de entrada; `COD_NAT` vazio.
+   - Crédito de ICMS do item: `VL_BC_ICMS`, `ALIQ_ICMS` e `VL_ICMS` preenchidos exclusivamente quando `aproveita_credito_icms` for verdadeiro; caso falso, campos zerados/vazios.
+   - Substituição tributária do item: `VL_BC_ICMS_ST`, `ALIQ_ST` e `VL_ICMS_ST`; `IND_APUR` 0.
+   - IPI: `CST_IPI`, `COD_ENQ`, `VL_BC_IPI`, `ALIQ_IPI` e `VL_IPI` preenchidos SOMENTE se a empresa for contribuinte do IPI (`empresa.contribuinte_ipi = true`); caso contrário, todos vazios.
+   - PIS e COFINS: `CST_PIS` e `CST_COFINS` com base, alíquota e valor do crédito aproveitado (`valor_credito_pis` e `valor_credito_cofins`) quando houver crédito; sem crédito, valores vazios.
+   - `COD_CTA` vazio e `VL_ABAT_NT` = 0,00.
+4. **Registro Analítico C190 para Notas de Entrada com Rateio e Batimentos:**
+   - Agrupamento dos itens por `CST_ICMS`, `CFOP` e `aliquota_icms`.
+   - Rateio proporcional dos adicionais da nota (frete, seguro, outras despesas, ST, FCP ST e IPI menos desconto) sobre o valor dos produtos para apuração precisa do `VL_OPR` por item e por grupo, com compensação exata de centavos no último item/grupo.
+   - `VL_BC_ICMS` e `VL_ICMS` refletindo o crédito aproveitado; `VL_BC_ICMS_ST` e `VL_ICMS_ST`; `VL_RED_BC` de redução de base; `VL_IPI` do crédito aproveitado.
+   - Ajuste fino no último grupo analítico C190 para que a soma dos `VL_ICMS` bata exatamente com o `VL_ICMS` (crédito) do C100.
+   - Batimento contábil: soma de `VL_OPR` comparada com o `VL_DOC` do C100; divergência superior a R$ 0,01 emite aviso não impeditivo com o número da nota.
+5. **Transferências Recebidas entre Filiais no Bloco C:**
+   - Mapeamento de `documentos_fiscais` com origem "Transferência" (ou "Transferencia"), status "Autorizada" ou "Cancelada", cuja transferência vinculada (`transferencia_id`) tenha como destino a empresa do arquivo.
+   - Respeito aos ambientes de homologação e produção conforme o modo (Oficial vs Teste).
+   - Deduplicação inteligente: se a chave de acesso já tiver sido lançada em `notas_entrada`, não repete a nota no arquivo.
+   - C100 com `IND_OPER` 0, `IND_EMIT` 1, `COD_PART` = empresa de origem (`E` + id), `COD_SIT` 00 (ou 02 para canceladas com campos reduzidos).
+   - Registro C170 para cada item de `documentos_fiscais_itens`, convertendo automaticamente o primeiro dígito do CFOP de saída para entrada (5xxx -> 1xxx e 6xxx -> 2xxx, ex: 5152 -> 1152, 5409 -> 1409, 6152 -> 2152), e adotando como crédito de ICMS o imposto destacado na transferência.
+   - Agrupamento analítico C190 com o mesmo rateio e batimento.
+6. **Integridade de Devoluções de Venda:**
+   - Conferido e verificado que devoluções de venda continuam emitidas exclusivamente pelo fluxo de emissão própria do prompt 7.2 com `IND_OPER` 0 e `IND_EMIT` 0, não sofrendo duplicidade com notas de terceiros ou transferências recebidas.
+7. **Ordenação dos Registros e Bloco 9 (9900):**
+   - Cada C100 é seguido imediatamente de seus C101 (quando houver), C170 e C190.
+   - Bloco 9 computa dinamicamente a presença e a contagem de registros C170 no 9900 e recalcula linhas do arquivo.
+8. **Persistência de Dados (Migration 0056) e Interface do Usuário (`SpedFiscalPage.tsx`):**
+   - Migration `0056_add_resumo_entrada_sped_arquivos.js` adicionando campo JSON `resumo_entrada` em `sped_arquivos`.
+   - Adição do quadro **"Entradas do período"** (estilo visual verde esmeralda com selo Bloco C) na tela Fiscal > SPED Fiscal para o arquivo selecionado, exibindo:
+     - Quantidade de notas de compra (entradas de terceiros)
+     - Quantidade de transferências recebidas
+     - Total do `VL_DOC` das entradas
+     - Total do crédito de ICMS aproveitado
+
+---
 
 **Versão 0.0.94** — Etapa 7 SPED Fiscal (Prompt 7.2: Bloco C da EFD com Documentos Emitidos pela Empresa, Registros C100, C101, C190, Inutilizações e Painel de Saídas do Período):
 

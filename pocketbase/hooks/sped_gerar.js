@@ -244,6 +244,9 @@ routerAdd(
       if (resultado.resumoSaida) {
         arquivoRec.set('resumo_saida', JSON.stringify(resultado.resumoSaida))
       }
+      if (resultado.resumoEntrada) {
+        arquivoRec.set('resumo_entrada', JSON.stringify(resultado.resumoEntrada))
+      }
       arquivoRec.set('status', resultado.status)
       $app.save(arquivoRec)
 
