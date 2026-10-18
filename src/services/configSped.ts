@@ -33,7 +33,46 @@ export interface SpedValidacaoItem {
   referencia?: string
 }
 
+export interface SpedIcmsProprioApuracao {
+  total_debitos?: number
+  ajuste_debitos?: number
+  total_ajuste_debitos?: number
+  estorno_creditos?: number
+  total_creditos?: number
+  ajuste_creditos?: number
+  total_ajuste_creditos?: number
+  estorno_debitos?: number
+  saldo_credor_anterior?: number
+  saldo_apurado?: number
+  total_deducoes?: number
+  icms_recolher?: number
+  saldo_credor_transportar?: number
+  debito_especial?: number
+}
+
+export interface SpedDifalUfItem {
+  uf?: string
+  debDifal?: number
+  credDifal?: number
+  debFcp?: number
+  credFcp?: number
+  dtMaisAntigaIso?: string
+  vlRecolDifal?: number
+  vlSldCredTransportarDifal?: number
+  vlRecolFcp?: number
+  vlSldCredTransportarFcp?: number
+  debitos_difal?: number
+  creditos_difal?: number
+  recolher_difal?: number
+  debitos_fcp?: number
+  creditos_fcp?: number
+  recolher_fcp?: number
+}
+
 export interface SpedResumoApuracao {
+  icms_proprio?: SpedIcmsProprioApuracao
+  difal_por_uf?: Record<string, SpedDifalUfItem>
+  // Compatibilidade com versões anteriores
   debitos?: number
   creditos?: number
   ajustes_debitos?: number
@@ -46,17 +85,6 @@ export interface SpedResumoApuracao {
   saldo_apurado?: number
   icms_a_recolher?: number
   saldo_credor_a_transportar?: number
-  difal_por_uf?: Record<
-    string,
-    {
-      debitos_difal: number
-      creditos_difal: number
-      recolher_difal: number
-      debitos_fcp: number
-      creditos_fcp: number
-      recolher_fcp: number
-    }
-  >
 }
 
 export interface SpedAjusteApuracaoRegistro {
@@ -64,12 +92,15 @@ export interface SpedAjusteApuracaoRegistro {
   empresa_id: string
   periodo: string
   codigo_ajuste: string
-  descricao: string
+  descricao?: string
+  descricao_complementar?: string
   valor: number
   criado_por?: string
   created?: string
   updated?: string
 }
+
+export type SpedAjusteApuracao = SpedAjusteApuracaoRegistro
 
 export interface SpedResumoSaida {
   total_nfe?: number
@@ -324,18 +355,24 @@ export async function salvarAjusteApuracao(dados: {
   empresa_id: string
   periodo: string
   codigo_ajuste: string
-  descricao: string
+  descricao?: string
+  descricao_complementar?: string
   valor: number
 }): Promise<{ sucesso: boolean; message: string; ajuste?: SpedAjusteApuracaoRegistro }> {
   const token = pb.authStore.token
   const baseUrl = import.meta.env.VITE_POCKETBASE_URL || ''
+  const payload = {
+    ...dados,
+    descricao: dados.descricao || dados.descricao_complementar || '',
+    descricao_complementar: dados.descricao_complementar || dados.descricao || '',
+  }
   const res = await fetch(`${baseUrl}/backend/v1/sped/ajustes/salvar`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: token ? `Bearer ${token}` : '',
     },
-    body: JSON.stringify(dados),
+    body: JSON.stringify(payload),
   })
 
   const json = await res.json()

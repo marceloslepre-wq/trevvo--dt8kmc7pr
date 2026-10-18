@@ -134,10 +134,40 @@ var SpedGerador = (function () {
     return Math.round(num * 100) / 100
   }
 
+  function extrairUfDestinoDoc(doc) {
+    if (!doc) return ''
+    var uf = (doc.getString('destinatario_uf') || '').trim().toUpperCase()
+    if (uf && uf.length === 2) return uf
+    // Tenta pelo cliente_id ou json_enviado
+    var clienteId = doc.getString('cliente_id')
+    if (clienteId) {
+      try {
+        var cl = $app.findRecordById('clientes', clienteId)
+        var ufCl = (cl.getString('uf') || '').trim().toUpperCase()
+        if (ufCl && ufCl.length === 2) return ufCl
+      } catch (_) {}
+    }
+    var jsonEnv = doc.get('json_enviado')
+    if (jsonEnv) {
+      try {
+        var payload = typeof jsonEnv === 'string' ? JSON.parse(jsonEnv) : jsonEnv
+        if (payload && payload.destinatario && payload.destinatario.uf) {
+          var ufDest = String(payload.destinatario.uf).trim().toUpperCase()
+          if (ufDest.length === 2) return ufDest
+        }
+      } catch (_) {}
+    }
+    return ''
+  }
+
   // --- BLOCO C ---
   function gerarBlocoC(ctx) {
     var linhas = []
     var empresaId = ctx.empresa.id
+
+    // Coletores de registros analíticos C190 e C101 para o Bloco E em memória
+    var c190Registros = [] // { indOper: '0'|'1', cst, cfop, aliqIcms, vlOpr, vlBcIcms, vlIcms, vlBcIcmsSt, vlIcmsSt, vlRedBc, vlIpi }
+    var c101Registros = [] // { uf: string, tipo: 'saida'|'devolucao_venda', dtEmissaoIso: string, vlFcpUfDest, vlIcmsUfDest, vlIcmsUfRem }
 
     // Contadores para o resumo de saídas
     var totalNfe = 0
@@ -601,6 +631,18 @@ var SpedGerador = (function () {
             SpedFormato.formatarValor(vlIcmsUfRem),
           ]),
         )
+
+        var ufDestC101 = extrairUfDestinoDoc(rec)
+        var tipoOperC101 = indOper === '0' ? 'devolucao_venda' : 'saida'
+        var dtEmissaoDocIso = itemDoc.dtBsb ? itemDoc.dtBsb.isoDia : ''
+        c101Registros.push({
+          uf: ufDestC101,
+          tipo: tipoOperC101,
+          dtEmissaoIso: dtEmissaoDocIso,
+          vlFcpUfDest: vlFcpUfDest,
+          vlIcmsUfDest: vlIcmsUfDest,
+          vlIcmsUfRem: vlIcmsUfRem,
+        })
       }
 
       // C190: Registro analítico do documento autorizado
@@ -735,6 +777,20 @@ var SpedGerador = (function () {
             '', // COD_OBS vazio
           ]),
         )
+
+        c190Registros.push({
+          indOper: indOper,
+          cst: grp.cst,
+          cfop: grp.cfop,
+          aliqIcms: grp.aliqIcms,
+          vlOpr: grp.vlOpr,
+          vlBcIcms: grp.vlBcIcms,
+          vlIcms: grp.vlIcms,
+          vlBcIcmsSt: grp.vlBcIcmsSt,
+          vlIcmsSt: grp.vlIcmsSt,
+          vlRedBc: grp.vlRedBc,
+          vlIpi: grp.vlIpi,
+        })
       }
 
       // Validação: A soma dos VL_OPR do documento deve bater com o VL_DOC do C100; diferença > 0,01: erro
@@ -1270,6 +1326,20 @@ var SpedGerador = (function () {
             '', // COD_OBS
           ]),
         )
+
+        c190Registros.push({
+          indOper: '0',
+          cst: grpNe.cst,
+          cfop: grpNe.cfop,
+          aliqIcms: grpNe.aliqIcms,
+          vlOpr: grpNe.vlOpr,
+          vlBcIcms: grpNe.vlBcIcms,
+          vlIcms: grpNe.vlIcms,
+          vlBcIcmsSt: grpNe.vlBcSt,
+          vlIcmsSt: grpNe.vlSt,
+          vlRedBc: grpNe.vlRedBc,
+          vlIpi: grpNe.vlIpi,
+        })
       }
 
       // Batimento: soma VL_OPR vs VL_DOC (diferença > 0,01: aviso)
@@ -1688,6 +1758,20 @@ var SpedGerador = (function () {
             '', // COD_OBS
           ]),
         )
+
+        c190Registros.push({
+          indOper: '0',
+          cst: grpTrf.cst,
+          cfop: grpTrf.cfop,
+          aliqIcms: grpTrf.aliqIcms,
+          vlOpr: grpTrf.vlOpr,
+          vlBcIcms: grpTrf.vlBcIcms,
+          vlIcms: grpTrf.vlIcms,
+          vlBcIcmsSt: grpTrf.vlBcSt,
+          vlIcmsSt: grpTrf.vlSt,
+          vlRedBc: grpTrf.vlRedBc,
+          vlIpi: grpTrf.vlIpi,
+        })
       }
 
       var difVlOprTrf = Math.abs(round2(somaVlOprTrf - vlDocTrf))
@@ -1784,6 +1868,10 @@ var SpedGerador = (function () {
       total_credito_icms: totalVlCreditoIcms,
     }
 
+    // Disponibiliza os registros analíticos e de DIFAL para o Bloco E em memória
+    ctx.c190Registros = c190Registros
+    ctx.c101Registros = c101Registros
+
     return linhas
   }
 
@@ -1796,49 +1884,488 @@ var SpedGerador = (function () {
     return linhas
   }
 
-  // --- BLOCO E (apuração vazia com E110 zerado) ---
+  // --- BLOCO E (Apuração do ICMS e DIFAL) ---
   function gerarBlocoE(ctx) {
     var linhas = []
-    linhas.push(SpedFormato.montarLinha(['E001', '0']))
-    linhas.push(SpedFormato.montarLinha(['E100', ctx.dtIniSped, ctx.dtFinSped]))
+    var empresaId = ctx.empresa.id
+    var periodoStr = ctx.periodo // 'AAAA-MM'
+    var dtIni = ctx.dtIniSped
+    var dtFin = ctx.dtFinSped
+    var cfg = ctx.configSped
 
-    // Registro E110: Apuração do ICMS Próprio com todos os campos zerados
-    // Layout E110 (15 campos de valores):
-    // 01: REG ("E110")
-    // 02: VL_TOT_DEBITOS ("0,00")
-    // 03: VL_AJ_DEBITOS ("0,00")
-    // 04: VL_TOT_AJ_DEBITOS ("0,00")
-    // 05: VL_ESTORNOS_CRED ("0,00")
-    // 06: VL_TOT_CREDITOS ("0,00")
-    // 07: VL_AJ_CREDITOS ("0,00")
-    // 08: VL_TOT_AJ_CREDITOS ("0,00")
-    // 09: VL_ESTORNOS_DEB ("0,00")
-    // 10: VL_SLD_CREDOR_ANT ("0,00")
-    // 11: VL_SLD_APURADO ("0,00")
-    // 12: VL_TOT_DED ("0,00")
-    // 13: VL_ICMS_RECOLHER ("0,00")
-    // 14: VL_SLD_CREDOR_TRANSPORTAR ("0,00")
-    // 15: DEB_ESP ("0,00")
+    // E001 sempre com IND_MOV "0"
+    linhas.push(SpedFormato.montarLinha(['E001', '0']))
+
+    // Registros analíticos C190 coletados em memória
+    var c190Lista = ctx.c190Registros || []
+    var c101Lista = ctx.c101Registros || []
+
+    // 1. Checagem de ICMS ST nas saídas
+    // Algum C190 de saída com VL_ICMS_ST maior que zero: erro
+    for (var i = 0; i < c190Lista.length; i++) {
+      var rC190 = c190Lista[i]
+      var cfopPrim = (rC190.cfop || '').charAt(0)
+      var ehSaida =
+        rC190.indOper === '1' || cfopPrim === '5' || cfopPrim === '6' || cfopPrim === '7'
+      if (ehSaida && round2(rC190.vlIcmsSt) > 0) {
+        ctx.adicionarValidacao(
+          'erro',
+          'há ICMS ST retido nas saídas: a apuração E200/E210 precisa ser feita com o contador',
+          'E200',
+          rC190.cfop,
+        )
+        break
+      }
+    }
+
+    // 2. Cálculo dos Débitos e Créditos a partir dos C190
+    var vlTotDebitos = 0
+    var vlTotCreditos = 0
+
+    for (var j = 0; j < c190Lista.length; j++) {
+      var itemC190 = c190Lista[j]
+      var chCfop = (itemC190.cfop || '').charAt(0)
+      var valIcms = round2(itemC190.vlIcms || 0)
+      if (chCfop === '5' || chCfop === '6' || chCfop === '7') {
+        vlTotDebitos = round2(vlTotDebitos + valIcms)
+      } else if (chCfop === '1' || chCfop === '2' || chCfop === '3') {
+        vlTotCreditos = round2(vlTotCreditos + valIcms)
+      }
+    }
+
+    var vlAjDebitos = 0 // não usamos C197
+    var vlAjCreditos = 0 // não usamos C197
+
+    // 3. Consulta de Ajustes do Período (sped_ajustes_apuracao)
+    var ajustesPeriodo = []
+    try {
+      ajustesPeriodo = $app.findRecordsByFilter(
+        'sped_ajustes_apuracao',
+        "empresa_id = '" + empresaId + "' && periodo = '" + periodoStr + "'",
+        'created',
+        500,
+        0,
+      )
+    } catch (errAj) {
+      ctx.adicionarValidacao(
+        'erro',
+        'Falha ao consultar ajustes de apuração: ' + (errAj.message || errAj),
+        'E111',
+      )
+    }
+
+    var vlTotAjDebitos = 0 // 4º caractere = '0'
+    var vlEstornosCred = 0 // 4º caractere = '1'
+    var vlTotAjCreditos = 0 // 4º caractere = '2'
+    var vlEstornosDeb = 0 // 4º caractere = '3'
+    var vlTotDed = 0 // 4º caractere = '4'
+    var debEsp = 0 // 4º caractere = '5'
+
+    for (var a = 0; a < ajustesPeriodo.length; a++) {
+      var ajRec = ajustesPeriodo[a]
+      var codAj = (ajRec.getString('codigo_ajuste') || '').trim()
+      var valAj = round2(ajRec.getFloat('valor') || 0)
+      var quartoChar = codAj.length >= 4 ? codAj.charAt(3) : ''
+
+      if (quartoChar === '0') {
+        vlTotAjDebitos = round2(vlTotAjDebitos + valAj)
+      } else if (quartoChar === '1') {
+        vlEstornosCred = round2(vlEstornosCred + valAj)
+      } else if (quartoChar === '2') {
+        vlTotAjCreditos = round2(vlTotAjCreditos + valAj)
+      } else if (quartoChar === '3') {
+        vlEstornosDeb = round2(vlEstornosDeb + valAj)
+      } else if (quartoChar === '4') {
+        vlTotDed = round2(vlTotDed + valAj)
+      } else if (quartoChar === '5') {
+        debEsp = round2(debEsp + valAj)
+      } else {
+        ctx.adicionarValidacao(
+          'aviso',
+          'Código de ajuste "' +
+            codAj +
+            '" possui 4º caractere ("' +
+            quartoChar +
+            '") não mapeado para o E110.',
+          'E111',
+          codAj,
+        )
+      }
+    }
+
+    // 4. Saldo Credor Anterior
+    var vlSldCredorAnt = 0
+    var periodoSaldoInicial = cfg ? (cfg.getString('periodo_saldo_inicial') || '').trim() : ''
+    var saldoCredorInicialConfig = cfg ? round2(cfg.getFloat('saldo_credor_inicial') || 0) : 0
+
+    var mesAnteriorAno = ctx.mes === 1 ? ctx.ano - 1 : ctx.ano
+    var mesAnteriorMes = ctx.mes === 1 ? 12 : ctx.mes - 1
+    var periodoAnteriorStr =
+      mesAnteriorAno + '-' + (mesAnteriorMes < 10 ? '0' + mesAnteriorMes : String(mesAnteriorMes))
+
+    var achouSaldoAnterior = false
+
+    // Se o período for o periodo_saldo_inicial da config_sped_empresa, usar saldo_credor_inicial
+    if (periodoSaldoInicial && periodoSaldoInicial === periodoStr) {
+      vlSldCredorAnt = saldoCredorInicialConfig
+      achouSaldoAnterior = true
+    } else {
+      // Busca saldo credor a transportar do arquivo Oficial Entregue do mês anterior (ou último Gerado se nenhum entregue)
+      try {
+        var arqsAnt = $app.findRecordsByFilter(
+          'sped_arquivos',
+          "empresa_id = '" +
+            empresaId +
+            "' && periodo = '" +
+            periodoAnteriorStr +
+            "' && tipo_escrituracao = '0'",
+          '-created',
+          10,
+          0,
+        )
+
+        var arqAlvo = null
+        for (var f = 0; f < arqsAnt.length; f++) {
+          if (arqsAnt[f].getString('status') === 'Entregue') {
+            arqAlvo = arqsAnt[f]
+            break
+          }
+        }
+        if (!arqAlvo && arqsAnt.length > 0) {
+          arqAlvo = arqsAnt[0]
+        }
+
+        if (arqAlvo) {
+          var resApur = arqAlvo.get('resumo_apuracao')
+          if (resApur) {
+            var resParsed = typeof resApur === 'string' ? JSON.parse(resApur) : resApur
+            if (
+              resParsed &&
+              resParsed.icms_proprio &&
+              resParsed.icms_proprio.saldo_credor_transportar !== undefined
+            ) {
+              vlSldCredorAnt = round2(resParsed.icms_proprio.saldo_credor_transportar || 0)
+              achouSaldoAnterior = true
+            }
+          }
+        }
+      } catch (errAnt) {
+        // Ignora erro de busca e segue com checagem de saldo
+      }
+
+      if (!achouSaldoAnterior) {
+        vlSldCredorAnt = 0
+        ctx.adicionarValidacao(
+          'aviso',
+          'Nenhum arquivo anterior encontrado para obter o saldo credor transportado do mês ' +
+            periodoAnteriorStr +
+            '. Saldo credor anterior considerado como R$ 0,00.',
+          'E110',
+        )
+      }
+    }
+
+    // 5. Cálculo do Resultado da Apuração
+    // resultado = (VL_TOT_DEBITOS + VL_AJ_DEBITOS + VL_TOT_AJ_DEBITOS + VL_ESTORNOS_CRED) -
+    //             (VL_TOT_CREDITOS + VL_AJ_CREDITOS + VL_TOT_AJ_CREDITOS + VL_ESTORNOS_DEB + VL_SLD_CREDOR_ANT)
+    var totalDebitosApur = round2(vlTotDebitos + vlAjDebitos + vlTotAjDebitos + vlEstornosCred)
+    var totalCreditosApur = round2(
+      vlTotCreditos + vlAjCreditos + vlTotAjCreditos + vlEstornosDeb + vlSldCredorAnt,
+    )
+    var resultado = round2(totalDebitosApur - totalCreditosApur)
+
+    var vlSldApurado = 0
+    var vlIcmsRecolher = 0
+    var vlSldCredorTransportar = 0
+
+    if (resultado >= 0) {
+      vlSldApurado = resultado
+      if (vlTotDed > vlSldApurado) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Total de deduções do ICMS (R$ ' +
+            vlTotDed.toFixed(2) +
+            ') não pode ser superior ao saldo apurado (R$ ' +
+            vlSldApurado.toFixed(2) +
+            ').',
+          'E110',
+        )
+        vlIcmsRecolher = 0
+      } else {
+        vlIcmsRecolher = round2(vlSldApurado - vlTotDed)
+      }
+      vlSldCredorTransportar = 0
+    } else {
+      vlSldApurado = 0
+      vlIcmsRecolher = 0
+      vlSldCredorTransportar = Math.abs(resultado)
+    }
+
+    // E100 do período
+    linhas.push(SpedFormato.montarLinha(['E100', dtIni, dtFin]))
+
+    // E110
     linhas.push(
       SpedFormato.montarLinha([
         'E110',
-        '0,00', // VL_TOT_DEBITOS
-        '0,00', // VL_AJ_DEBITOS
-        '0,00', // VL_TOT_AJ_DEBITOS
-        '0,00', // VL_ESTORNOS_CRED
-        '0,00', // VL_TOT_CREDITOS
-        '0,00', // VL_AJ_CREDITOS
-        '0,00', // VL_TOT_AJ_CREDITOS
-        '0,00', // VL_ESTORNOS_DEB
-        '0,00', // VL_SLD_CREDOR_ANT
-        '0,00', // VL_SLD_APURADO
-        '0,00', // VL_TOT_DED
-        '0,00', // VL_ICMS_RECOLHER
-        '0,00', // VL_SLD_CREDOR_TRANSPORTAR
-        '0,00', // DEB_ESP
+        SpedFormato.formatarValor(vlTotDebitos),
+        SpedFormato.formatarValor(vlAjDebitos),
+        SpedFormato.formatarValor(vlTotAjDebitos),
+        SpedFormato.formatarValor(vlEstornosCred),
+        SpedFormato.formatarValor(vlTotCreditos),
+        SpedFormato.formatarValor(vlAjCreditos),
+        SpedFormato.formatarValor(vlTotAjCreditos),
+        SpedFormato.formatarValor(vlEstornosDeb),
+        SpedFormato.formatarValor(vlSldCredorAnt),
+        SpedFormato.formatarValor(vlSldApurado),
+        SpedFormato.formatarValor(vlTotDed),
+        SpedFormato.formatarValor(vlIcmsRecolher),
+        SpedFormato.formatarValor(vlSldCredorTransportar),
+        SpedFormato.formatarValor(debEsp),
       ]),
     )
 
+    // E111 para cada ajuste do período (COD_AJ_APUR, DESCR_COMPL_AJ, VL_AJ_APUR) logo após o E110
+    for (var k = 0; k < ajustesPeriodo.length; k++) {
+      var itemAj = ajustesPeriodo[k]
+      var codAjApur = (itemAj.getString('codigo_ajuste') || '').trim()
+      var descrComplAj = SpedFormato.formatarTexto(itemAj.getString('descricao_complementar'), 100)
+      var vlAjApur = round2(itemAj.getFloat('valor') || 0)
+
+      linhas.push(
+        SpedFormato.montarLinha([
+          'E111',
+          codAjApur,
+          descrComplAj,
+          SpedFormato.formatarValor(vlAjApur),
+        ]),
+      )
+    }
+
+    // E116 quando VL_ICMS_RECOLHER + DEB_ESP > 0
+    var totalRecolherComEsp = round2(vlIcmsRecolher + debEsp)
+    if (totalRecolherComEsp > 0) {
+      var codRecIcms = cfg ? (cfg.getString('codigo_receita_icms') || '').trim() : ''
+      if (!codRecIcms) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Há ICMS a recolher (R$ ' +
+            totalRecolherComEsp.toFixed(2) +
+            '), mas o código da receita do ICMS (codigo_receita_icms) não está configurado na empresa.',
+          'E116',
+        )
+      }
+
+      var diaVctoIcms = cfg ? cfg.getInt('dia_vencimento_icms') || 10 : 10
+      if (diaVctoIcms < 1 || diaVctoIcms > 31) diaVctoIcms = 10
+
+      // Mês seguinte ao período
+      var mesSegAno = ctx.mes === 12 ? ctx.ano + 1 : ctx.ano
+      var mesSegMes = ctx.mes === 12 ? 1 : ctx.mes + 1
+      var ultimoDiaMesSeg = new Date(mesSegAno, mesSegMes, 0).getDate()
+      var diaVctoFinal = Math.min(diaVctoIcms, ultimoDiaMesSeg)
+      var dtVctoE116 =
+        (diaVctoFinal < 10 ? '0' + diaVctoFinal : String(diaVctoFinal)) +
+        (mesSegMes < 10 ? '0' + mesSegMes : String(mesSegMes)) +
+        String(mesSegAno)
+
+      var mesRefE116 = (ctx.mes < 10 ? '0' + ctx.mes : String(ctx.mes)) + String(ctx.ano)
+
+      linhas.push(
+        SpedFormato.montarLinha([
+          'E116',
+          '000', // COD_OR "000"
+          SpedFormato.formatarValor(totalRecolherComEsp), // VL_OR
+          dtVctoE116, // DT_VCTO ddmmaaaa
+          codRecIcms, // COD_REC
+          '', // NUM_PROC
+          '', // IND_PROC
+          '', // PROC
+          '', // TXT_COMPL
+          mesRefE116, // MES_REF mmaaaa
+        ]),
+      )
+    }
+
+    // 6. DIFAL (EC 87) - E300, E310, E316
+    // Só quando o Bloco C tiver algum C101 no período
+    var difalPorUf = {} // uf -> { debDifal, credDifal, debFcp, credFcp, dtMaisAntigaIso, itens: [] }
+
+    if (c101Lista.length > 0) {
+      for (var c1 = 0; c1 < c101Lista.length; c1++) {
+        var r101 = c101Lista[c1]
+        var ufDest = (r101.uf || '').trim().toUpperCase()
+        if (!ufDest || ufDest.length !== 2) {
+          ctx.adicionarValidacao(
+            'aviso',
+            'C101 com DIFAL sem UF de destino identificada. O registro foi desconsiderado na apuração E300.',
+            'E300',
+          )
+          continue
+        }
+
+        if (!difalPorUf[ufDest]) {
+          difalPorUf[ufDest] = {
+            uf: ufDest,
+            debDifal: 0,
+            credDifal: 0,
+            debFcp: 0,
+            credFcp: 0,
+            dtMaisAntigaIso: r101.dtEmissaoIso || '',
+          }
+        }
+
+        var objUf = difalPorUf[ufDest]
+        if (r101.dtEmissaoIso) {
+          if (!objUf.dtMaisAntigaIso || r101.dtEmissaoIso < objUf.dtMaisAntigaIso) {
+            objUf.dtMaisAntigaIso = r101.dtEmissaoIso
+          }
+        }
+
+        if (r101.tipo === 'devolucao_venda') {
+          objUf.credDifal = round2(objUf.credDifal + (r101.vlIcmsUfDest || 0))
+          objUf.credFcp = round2(objUf.credFcp + (r101.vlFcpUfDest || 0))
+        } else {
+          objUf.debDifal = round2(objUf.debDifal + (r101.vlIcmsUfDest || 0))
+          objUf.debFcp = round2(objUf.debFcp + (r101.vlFcpUfDest || 0))
+        }
+      }
+
+      var ufsDifal = Object.keys(difalPorUf).sort()
+      if (ufsDifal.length > 0) {
+        ctx.adicionarValidacao(
+          'aviso',
+          'DIFAL apurado pelo ERP: o contador confere os códigos de obrigação e de receita antes de transmitir.',
+          'E300',
+        )
+      }
+
+      for (var u = 0; u < ufsDifal.length; u++) {
+        var sUf = ufsDifal[u]
+        var dUf = difalPorUf[sUf]
+
+        // E300 (UF, DT_INI, DT_FIN)
+        linhas.push(SpedFormato.montarLinha(['E300', sUf, dtIni, dtFin]))
+
+        // Cálculo apuração DIFAL
+        var resDifal = round2(dUf.debDifal - dUf.credDifal)
+        var sldDevAntDifal = 0
+        var vlRecolDifal = resDifal > 0 ? resDifal : 0
+        var vlSldCredTransportarDifal = resDifal < 0 ? Math.abs(resDifal) : 0
+
+        // Cálculo apuração FCP
+        var resFcp = round2(dUf.debFcp - dUf.credFcp)
+        var sldDevAntFcp = 0
+        var vlRecolFcp = resFcp > 0 ? resFcp : 0
+        var vlSldCredTransportarFcp = resFcp < 0 ? Math.abs(resFcp) : 0
+
+        dUf.vlRecolDifal = vlRecolDifal
+        dUf.vlSldCredTransportarDifal = vlSldCredTransportarDifal
+        dUf.vlRecolFcp = vlRecolFcp
+        dUf.vlSldCredTransportarFcp = vlSldCredTransportarFcp
+
+        // E310 com 21 campos na ordem do leiaute
+        linhas.push(
+          SpedFormato.montarLinha([
+            'E310',
+            '1', // IND_MOV_FCP_DIFAL (1 - Com operações)
+            '0,00', // VL_SLD_CRED_ANT_DIFAL
+            SpedFormato.formatarValor(dUf.debDifal), // VL_TOT_DEBITOS_DIFAL
+            '0,00', // VL_OUT_DEB_DIFAL
+            SpedFormato.formatarValor(dUf.credDifal), // VL_TOT_CREDITOS_DIFAL
+            '0,00', // VL_OUT_CRED_DIFAL
+            '0,00', // VL_SLD_DEV_ANT_DIFAL
+            '0,00', // VL_DEDUCOES_DIFAL
+            SpedFormato.formatarValor(vlRecolDifal), // VL_RECOL_DIFAL
+            SpedFormato.formatarValor(vlSldCredTransportarDifal), // VL_SLD_CRED_TRANSPORTAR_DIFAL
+            '0,00', // DEB_ESP_DIFAL
+            // 10 campos FCP
+            '0,00', // VL_SLD_CRED_ANT_FCP
+            SpedFormato.formatarValor(dUf.debFcp), // VL_TOT_DEB_FCP
+            '0,00', // VL_OUT_DEB_FCP
+            SpedFormato.formatarValor(dUf.credFcp), // VL_TOT_CRED_FCP
+            '0,00', // VL_OUT_CRED_FCP
+            '0,00', // VL_SLD_DEV_ANT_FCP
+            '0,00', // VL_DEDUCOES_FCP
+            SpedFormato.formatarValor(vlRecolFcp), // VL_RECOL_FCP
+            SpedFormato.formatarValor(vlSldCredTransportarFcp), // VL_SLD_CRED_TRANSPORTAR_FCP
+            '0,00', // DEB_ESP_FCP
+          ]),
+        )
+
+        // Data de vencimento E316 = data de emissão da nota mais antiga do mês para aquela UF
+        var dtVctoE316 = ''
+        if (dUf.dtMaisAntigaIso) {
+          var partesIso = dUf.dtMaisAntigaIso.split('-')
+          if (partesIso.length === 3) {
+            dtVctoE316 = partesIso[2] + partesIso[1] + partesIso[0]
+          }
+        }
+        if (!dtVctoE316) {
+          dtVctoE316 = dtIni
+        }
+        var mesRefE316 = (ctx.mes < 10 ? '0' + ctx.mes : String(ctx.mes)) + String(ctx.ano)
+
+        // E316 por UF quando houver valor a recolher DIFAL ("000")
+        if (vlRecolDifal > 0) {
+          linhas.push(
+            SpedFormato.montarLinha([
+              'E316',
+              '000', // COD_OR
+              SpedFormato.formatarValor(vlRecolDifal),
+              dtVctoE316,
+              '', // COD_REC vazio
+              '', // NUM_PROC
+              '', // IND_PROC
+              '', // PROC
+              '', // TXT_COMPL
+              mesRefE316,
+            ]),
+          )
+        }
+
+        // E316 por UF quando houver valor a recolher FCP ("006")
+        if (vlRecolFcp > 0) {
+          linhas.push(
+            SpedFormato.montarLinha([
+              'E316',
+              '006', // COD_OR
+              SpedFormato.formatarValor(vlRecolFcp),
+              dtVctoE316,
+              '', // COD_REC vazio
+              '', // NUM_PROC
+              '', // IND_PROC
+              '', // PROC
+              '', // TXT_COMPL
+              mesRefE316,
+            ]),
+          )
+        }
+      }
+    }
+
+    // 7. Salva o resumo_apuracao no contexto para gravação no registro do arquivo SPED
+    ctx.resumoApuracao = {
+      icms_proprio: {
+        total_debitos: vlTotDebitos,
+        ajuste_debitos: vlAjDebitos,
+        total_ajuste_debitos: vlTotAjDebitos,
+        estorno_creditos: vlEstornosCred,
+        total_creditos: vlTotCreditos,
+        ajuste_creditos: vlAjCreditos,
+        total_ajuste_creditos: vlTotAjCreditos,
+        estorno_debitos: vlEstornosDeb,
+        saldo_credor_anterior: vlSldCredorAnt,
+        saldo_apurado: vlSldApurado,
+        total_deducoes: vlTotDed,
+        icms_recolher: vlIcmsRecolher,
+        saldo_credor_transportar: vlSldCredorTransportar,
+        debito_especial: debEsp,
+      },
+      difal_por_uf: difalPorUf,
+    }
+
+    // E990: Encerramento do Bloco E
     var totalLinhas = linhas.length + 1
     linhas.push(SpedFormato.montarLinha(['E990', String(totalLinhas)]))
     return linhas
@@ -2438,6 +2965,7 @@ var SpedGerador = (function () {
       temErros: temErros,
       resumoSaida: ctx.resumoSaida || null,
       resumoEntrada: ctx.resumoEntrada || null,
+      resumoApuracao: ctx.resumoApuracao || null,
       ctx: ctx,
     }
   }

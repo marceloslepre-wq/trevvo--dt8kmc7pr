@@ -284,6 +284,21 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### sped_ajustes_apuracao
+
+Tabela de registro e controle de ajustes manuais da apuração do ICMS Próprio para o Registro E111 da EFD ICMS/IPI (SPED Fiscal). Utilizada para lançar benefícios fiscais estaduais (ex: COMPETE-ES Lei 10.568/2016), estornos de débito/crédito, deduções do imposto apurado e débitos especiais com códigos tabelados pela SEFAZ de cada estado (Tabela 5.1.1). Os códigos devem conter exatamente 8 dígitos alfanuméricos, onde o 4º caractere mapeia diretamente para os campos do registro E110: "0" = Outros débitos (VL_TOT_AJ_DEBITOS), "1" = Estorno de créditos (VL_ESTORNOS_CRED), "2" = Outros créditos (VL_TOT_AJ_CREDITOS), "3" = Estorno de débitos (VL_ESTORNOS_DEB), "4" = Deduções do ICMS (VL_TOT_DED), "5" = Débito especial (DEB_ESP). Permissões estritas: somente leitura pelo navegador autenticado (`listRule` e `viewRule` com `@request.auth.id != ''`); inserções, edições e exclusões restritas ao backend (`createRule: null`, `updateRule: null`, `deleteRule: null`), operadas exclusivamente pelos endpoints `/backend/v1/sped/ajustes/salvar` e `/backend/v1/sped/ajustes/excluir`, que validam perfil de Administrador (`perfis_acesso.administrador = true`) e bloqueiam alterações em períodos com arquivo Oficial já Entregue. Criada na Migration 0057.
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório, cascadeDelete)
+- periodo (text, formato AAAA-MM, obrigatório)
+- codigo_ajuste (text, exatamente 8 caracteres, tabela 5.1.1 da SEFAZ, obrigatório)
+- descricao_complementar (text, até 100 caracteres, base legal ou justificativa)
+- valor (number, 2 casas decimais, obrigatório > 0)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id` (`idx_sped_ajustes_empresa`), `periodo` (`idx_sped_ajustes_periodo`), `codigo_ajuste` (`idx_sped_ajustes_codigo`).
+
 ### sped_arquivos
 
 Tabela de registro e controle de arquivos da EFD ICMS/IPI (SPED Fiscal) gerados para a empresa ativa. Armazena períodos de apuração, finalidade (original ou retificadora), modo (Oficial ou Teste), status do arquivo, arquivo .txt persistido no PocketBase, contagem de registros por tipo/bloco, resumo da apuração do ICMS (débitos, créditos, saldo apurado, a recolher ou a transportar), validações de consistência do Guia Prático e dados de homologação e recibo de entrega à SEFAZ/Receita Federal. Regras de acesso estritas: somente leitura pelo navegador autenticado (`listRule` e `viewRule` com `@request.auth.id != ''`); criação e alteração 100% bloqueadas no navegador (`createRule: null`, `updateRule: null`, `deleteRule: null`), gravadas exclusivamente pelo backend, exceto a marcação como Entregue realizada pelo Administrador através do endpoint `/backend/v1/sped/marcar-entregue`.
@@ -3118,6 +3133,52 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
     - Adição ao menu lateral `Sidebar.tsx` e rotas do `App.tsx`.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.96** — Etapa 7 SPED Fiscal (Prompt 7.4: Bloco E da EFD com Apuração do ICMS Próprio E100/E110/E111/E116, DIFAL E300/E310/E316, Ajustes de Apuração e Painel Tributário):
+
+1. **Geração Real do Bloco E no Motor SPED (`pocketbase/hooks/sped/gerador.js`):**
+   - **Registro E100 e E110 (ICMS Próprio):** Calculado exclusivamente a partir dos registros analíticos `C190` e `C101` já montados em memória no Bloco C (sem requery no banco):
+     - `VL_TOT_DEBITOS`: soma do `VL_ICMS` dos C190 com CFOP iniciando em 5, 6 ou 7 (operações de saída).
+     - `VL_TOT_CREDITOS`: soma do `VL_ICMS` dos C190 com CFOP iniciando em 1, 2 ou 3 (entradas e devoluções de venda).
+     - `VL_AJ_DEBITOS` e `VL_AJ_CREDITOS`: 0,00 (não utilizamos C197 nesta versão).
+     - Ajustes de Apuração lidos de `sped_ajustes_apuracao`: distribuídos nos campos do E110 pelo 4º caractere do código do ajuste:
+       - 4º = "0": `VL_TOT_AJ_DEBITOS` (outros débitos)
+       - 4º = "1": `VL_ESTORNOS_CRED` (estorno de créditos)
+       - 4º = "2": `VL_TOT_AJ_CREDITOS` (outros créditos / benefícios fiscais como COMPETE-ES)
+       - 4º = "3": `VL_ESTORNOS_DEB` (estorno de débitos)
+       - 4º = "4": `VL_TOT_DED` (deduções do imposto apurado)
+       - 4º = "5": `DEB_ESP` (débito especial)
+     - `VL_SLD_CREDOR_ANT`: busca automática do `saldo_credor_transportar` do arquivo Oficial Entregue do mês anterior (ou último Gerado se nenhum entregue) a partir do campo `resumo_apuracao`; se for o `periodo_saldo_inicial` da `config_sped_empresa`, utiliza o `saldo_credor_inicial`; sem nenhum dos dois, adota 0,00 com aviso explicativo nas validações.
+     - **Equação de Apuração:**
+       `resultado = (VL_TOT_DEBITOS + VL_AJ_DEBITOS + VL_TOT_AJ_DEBITOS + VL_ESTORNOS_CRED) - (VL_TOT_CREDITOS + VL_AJ_CREDITOS + VL_TOT_AJ_CREDITOS + VL_ESTORNOS_DEB + VL_SLD_CREDOR_ANT)`.
+       - Se `resultado >= 0`: `VL_SLD_APURADO = resultado`, `VL_ICMS_RECOLHER = VL_SLD_APURADO - VL_TOT_DED` (se deduções superarem o saldo apurado, gera erro e zera o imposto a recolher), `VL_SLD_CREDOR_TRANSPORTAR = 0`.
+       - Se `resultado < 0`: `VL_SLD_APURADO = 0`, `VL_ICMS_RECOLHER = 0`, `VL_SLD_CREDOR_TRANSPORTAR = |resultado|`.
+     - Empresas sem débitos nem créditos no mês geram E100 e E110 zerados (Bloco E é sempre informado com E001 "0" e E990).
+   - **Registro E111:** Um registro para cada ajuste do período (`COD_AJ_APUR`, `DESCR_COMPL_AJ`, `VL_AJ_APUR`), emitido logo após o E110.
+   - **Registro E116 (Obrigações a Recolher):** Emitido quando `VL_ICMS_RECOLHER + DEB_ESP > 0`. `COD_OR` = "000", `VL_OR` = valor a recolher com débito especial, `DT_VCTO` = dia de vencimento (`dia_vencimento_icms`) no mês seguinte ao período, `COD_REC` = `codigo_receita_icms` cadastrado na configuração da empresa (se ausente, acusa erro impeditivo nas validações), `MES_REF` = `mmaaaa`.
+   - **Regra de Bloqueio de ICMS ST nas Saídas:** Havendo qualquer registro C190 de saída com `VL_ICMS_ST > 0`, gera erro impeditivo: _"há ICMS ST retido nas saídas: a apuração E200/E210 precisa ser feita com o contador"_ (o ERP não gera o E200 nesta versão).
+   - **DIFAL e FCP (EC 87/2015) — Registros E300, E310 e E316:**
+     - Ativado exclusivamente quando houver registros C101 coletados no período.
+     - Registro `E300` por UF de destino com período (`UF`, `DT_INI`, `DT_FIN`).
+     - Registro `E310` com os 21 campos no leiaute da EFD: `IND_MOV_FCP_DIFAL` = 1, `VL_TOT_DEBITOS_DIFAL` (soma do `VL_ICMS_UF_DEST` das saídas), `VL_TOT_CREDITOS_DIFAL` (soma das devoluções de venda), apuração de `VL_RECOL_DIFAL` e `VL_SLD_CRED_TRANSPORTAR_DIFAL`, acompanhados dos 10 campos análogos de FCP a partir do `VL_FCP_UF_DEST`.
+     - Registro `E316` por UF quando houver valor a recolher: `COD_OR` = "000" para DIFAL e "006" para FCP, `DT_VCTO` = data da emissão da nota mais antiga do mês para a UF (pagamento por GNRE a cada nota), `MES_REF` = `mmaaaa`, e aviso fixo: _"DIFAL apurado pelo ERP: o contador confere os códigos de obrigação e de receita antes de transmitir"_.
+   - **Persistência de `resumo_apuracao`:** Objeto estruturado com `icms_proprio` e `difal_por_uf` persistido no campo JSON `resumo_apuracao` em `sped_arquivos`.
+   - **Contagem do Bloco E no Bloco 9:** Todos os registros (E001, E100, E110, E111, E116, E300, E310, E316 e E990) são dinamicamente contabilizados no 9900.
+
+2. **Ajustes de Apuração e Endpoints Seguros (`pocketbase/hooks/fiscal_sped_operacoes.js` e Migration 0057):**
+   - Tabela `sped_ajustes_apuracao` com índice em `empresa_id`, `periodo` e `codigo_ajuste`.
+   - Endpoints `/backend/v1/sped/ajustes/salvar` e `/backend/v1/sped/ajustes/excluir` com checagem estrita de administrador (`perfis_acesso.administrador = true`) e bloqueio caso o período possua arquivo Oficial já Entregue.
+
+3. **Interface do Usuário na Tela Fiscal > SPED Fiscal (`src/pages/fiscal/SpedFiscalPage.tsx`):**
+   - **Aba "Ajustes da apuração":**
+     - Seletor reativo de período com tabela dos ajustes cadastrados para o mês (código, tipo no E110, descrição complementar e valor).
+     - Formulário modal com validação de 8 dígitos para o código da SEFAZ (explicando o impacto do 4º caractere) e orientações sobre benefícios fiscais (COMPETE-ES).
+     - Botões de Novo Ajuste, Edição e Exclusão liberados somente para Administrador e bloqueados com aviso detalhado quando o período possui arquivo Oficial com status "Entregue".
+   - **Quadro "Apuração do ICMS Próprio (Bloco E)" no Arquivo Selecionado:**
+     - Painel escuro estilizado exibindo débitos de saídas, créditos de entradas, saldo credor anterior, ajustes de débito e crédito, deduções, valor do ICMS a recolher e saldo credor a transportar.
+     - Quadro de apuração de DIFAL e FCP por UF de destino com recolhimentos discriminados.
+
+---
 
 **Versão 0.0.95** — Etapa 7 SPED Fiscal (Prompt 7.3: Bloco C da EFD com Notas de Terceiros Recebidas — Compras e Transferências Recebidas, Registros C100, C170, C190 e Painel de Entradas do Período):
 
