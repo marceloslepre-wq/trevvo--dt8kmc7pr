@@ -241,6 +241,9 @@ routerAdd(
       arquivoRec.set('quantidade_linhas', resultado.quantidadeLinhas)
       arquivoRec.set('contagem_registros', JSON.stringify(resultado.contagemRegistros))
       arquivoRec.set('validacoes', JSON.stringify(resultado.validacoes))
+      if (resultado.resumoApuracao) {
+        arquivoRec.set('resumo_apuracao', JSON.stringify(resultado.resumoApuracao))
+      }
       if (resultado.resumoSaida) {
         arquivoRec.set('resumo_saida', JSON.stringify(resultado.resumoSaida))
       }

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-18T12:24:18.405Z",
+  "generatedAt": "2026-10-18T12:53:49.385Z",
   "collections": [
     {
       "name": "users",
@@ -10690,6 +10690,76 @@
         "CREATE INDEX idx_sped_arquivos_periodo ON sped_arquivos (periodo)",
         "CREATE INDEX idx_sped_arquivos_status ON sped_arquivos (status)",
         "CREATE INDEX idx_sped_arquivos_modo ON sped_arquivos (modo)"
+      ]
+    },
+    {
+      "name": "sped_ajustes_apuracao",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "periodo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "codigo_ajuste",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "usuarios"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_sped_ajustes_empresa ON sped_ajustes_apuracao (empresa_id)",
+        "CREATE INDEX idx_sped_ajustes_periodo ON sped_ajustes_apuracao (periodo)",
+        "CREATE INDEX idx_sped_ajustes_emp_per ON sped_ajustes_apuracao (empresa_id, periodo)"
       ]
     }
   ]

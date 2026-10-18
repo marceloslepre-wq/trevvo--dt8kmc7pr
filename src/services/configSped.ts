@@ -36,10 +36,39 @@ export interface SpedValidacaoItem {
 export interface SpedResumoApuracao {
   debitos?: number
   creditos?: number
+  ajustes_debitos?: number
+  estornos_creditos?: number
+  ajustes_creditos?: number
+  estornos_debitos?: number
+  deducoes?: number
+  debitos_especiais?: number
   saldo_credor_anterior?: number
   saldo_apurado?: number
   icms_a_recolher?: number
   saldo_credor_a_transportar?: number
+  difal_por_uf?: Record<
+    string,
+    {
+      debitos_difal: number
+      creditos_difal: number
+      recolher_difal: number
+      debitos_fcp: number
+      creditos_fcp: number
+      recolher_fcp: number
+    }
+  >
+}
+
+export interface SpedAjusteApuracaoRegistro {
+  id: string
+  empresa_id: string
+  periodo: string
+  codigo_ajuste: string
+  descricao: string
+  valor: number
+  criado_por?: string
+  created?: string
+  updated?: string
 }
 
 export interface SpedResumoSaida {
@@ -271,4 +300,71 @@ export function obterUrlDownloadSped(
 ): string {
   if (!record.arquivo) return ''
   return pb.files.getURL(record as any, record.arquivo)
+}
+
+/**
+ * Lista os ajustes manuais da apuração (tabela sped_ajustes_apuracao) para uma empresa e período.
+ */
+export async function listarAjustesApuracao(
+  empresaId: string,
+  periodo: string,
+): Promise<SpedAjusteApuracaoRegistro[]> {
+  if (!empresaId || !periodo) return []
+  return await pb.collection('sped_ajustes_apuracao').getFullList<SpedAjusteApuracaoRegistro>({
+    filter: `empresa_id = '${empresaId}' && periodo = '${periodo}'`,
+    sort: 'codigo_ajuste,created',
+  })
+}
+
+/**
+ * Salva (cria ou atualiza) um ajuste manual da apuração através do endpoint seguro do backend.
+ */
+export async function salvarAjusteApuracao(dados: {
+  id?: string
+  empresa_id: string
+  periodo: string
+  codigo_ajuste: string
+  descricao: string
+  valor: number
+}): Promise<{ sucesso: boolean; message: string; ajuste?: SpedAjusteApuracaoRegistro }> {
+  const token = pb.authStore.token
+  const baseUrl = import.meta.env.VITE_POCKETBASE_URL || ''
+  const res = await fetch(`${baseUrl}/backend/v1/sped/ajustes/salvar`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: token ? `Bearer ${token}` : '',
+    },
+    body: JSON.stringify(dados),
+  })
+
+  const json = await res.json()
+  if (!res.ok || !json.sucesso) {
+    throw new Error(json.message || 'Falha ao salvar ajuste da apuração.')
+  }
+  return json
+}
+
+/**
+ * Exclui um ajuste manual da apuração através do endpoint seguro do backend.
+ */
+export async function excluirAjusteApuracao(
+  ajusteId: string,
+): Promise<{ sucesso: boolean; message: string }> {
+  const token = pb.authStore.token
+  const baseUrl = import.meta.env.VITE_POCKETBASE_URL || ''
+  const res = await fetch(`${baseUrl}/backend/v1/sped/ajustes/excluir`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: token ? `Bearer ${token}` : '',
+    },
+    body: JSON.stringify({ id: ajusteId }),
+  })
+
+  const json = await res.json()
+  if (!res.ok || !json.sucesso) {
+    throw new Error(json.message || 'Falha ao excluir ajuste da apuração.')
+  }
+  return json
 }
