@@ -3009,6 +3009,51 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.89** — Monitor de Documentos Fiscais (Fiscal > Documentos fiscais), Gestão e Reenvio de Notas, e Avisos da Focus (Webhooks em Tempo Real):
+
+1. **Monitor de Documentos Fiscais (`/fiscal/documentos` - `src/pages/fiscal/DocumentosFiscaisPage.tsx`):**
+   - Substituição do placeholder informativo pela tela definitiva de monitoramento de documentos fiscais.
+   - **Filtros Avançados:** Empresa emitente (padrão: a empresa ativa do contexto; Administrador pode alternar para ver todas as empresas simultaneamente), modelo fiscal (todos, NF-e 55 ou NFC-e 65), status (todos, Autorizada, Processando, Rejeitada, Cancelada, Denegada, Rascunho), origem da emissão (todas, Venda, Devolução de venda, Devolução de compra, Transferência), período por data de emissão inicial/final, destinatário (pesquisa por nome ou CPF/CNPJ) e número da nota ou 44 dígitos da chave de acesso.
+   - **Colunas da Listagem:** Empresa emitente, data de emissão/criação, modelo fiscal (badges estilizados 55 e 65), série e número, destinatário com CPF/CNPJ, valor total, status com selos coloridos (Autorizada em verde, Rejeitada em vermelho, Processando em âmbar com spinner, Cancelada em cinza, Denegada em vermelho-escuro com borda e Rascunho neutro) e ambiente (Produção em lilás ou Homologação em âmbar).
+   - **Ações Contextuais por Documento:**
+     - **"Consultar situação":** aciona `/backend/v1/fiscal/consultar-situacao-nfe`, sincronizando em tempo real os dados da Focus NFe e SEFAZ no documento e na venda correspondente.
+     - **"Tentar de novo" (apenas Rejeitada):** retransmite o documento para a SEFAZ mantendo a mesma referência através de `/backend/v1/fiscal/reenviar-documento`.
+     - **"Abrir DANFE":** visualização direta do PDF oficial da Focus NFe (`danfe_url`) em nova aba do navegador.
+     - **"Baixar XML":** download do XML autorizado arquivado no PocketBase (`xml_arquivo`) com fallback via Focus NFe (`baixarArquivoFiscal`).
+     - **"Cancelar":** modal com justificativa obrigatória de 15 a 255 caracteres (`ModalCancelarNFe`), condicionado à permissão de excluir em `notas_saida`.
+     - **"Carta de correção" (apenas NF-e 55 autorizada):** emissão de CC-e (`ModalCartaCorrecao`) com histórico e restrições legais.
+     - **"Ver JSON enviado e retorno" (exclusivo Administrador):** modal técnico formatado com syntax highlight para inspeção de `json_enviado` e `json_retorno`.
+   - **Destaque no Topo para Documentos Críticos:**
+     - Cartão proativo exibindo notas rejeitadas e notas em processamento há mais de 5 minutos.
+     - Botão em lote **"Consultar todos na SEFAZ"** (`/backend/v1/fiscal/consultar-lote`), executando varredura automatizada na Focus NFe e SEFAZ e reportando total de notas atualizadas, pendentes e falhas.
+   - **Permissões de Acesso:** Tela governada pelo módulo `notas_saida` (`pode('notas_saida', 'ver')`), com bloqueios de perfil para ações de cancelamento, reenvio e visualização técnica de JSON.
+
+2. **Avisos da Focus NFe (Webhooks):**
+   - **Endpoint Público Seguro (`pocketbase/hooks/fiscal_webhook_focus.js`):**
+     - `POST /backend/v1/fiscal/webhook-focus`: rota pública no PocketBase para callbacks assíncronos da Focus NFe.
+     - Validação estrita do cabeçalho `Authorization` contra o segredo `$os.getenv('FOCUS_NFE_WEBHOOK_SECRET')`. Chamadas sem autorização ou com segredo divergente retornam HTTP 401 imediatamente.
+     - **Zero Trust no Payload:** ao receber a notificação, localiza o documento fiscal pela referência recebida no padrão `{cnpj}-{modelo}-{id}`, extrai a empresa emitente, recupera o token fiscal cadastrado nos segredos do Skip Cloud e consulta a Focus NFe (`GET /nfe/{ref}?completa=1` ou `GET /nfce/{ref}`).
+     - Atualização atômica do documento fiscal e das entidades vinculadas (vendas, devoluções e transferências) de acordo com o status oficial retornado pela SEFAZ:
+       - Autorizada: preenche número, série, chave de 44 dígitos, protocolo, `danfe_url`, baixa o XML autorizado e grava em `xml_arquivo`.
+       - Rejeitada: registra status, motivo da SEFAZ e lista de erros estruturados.
+       - Denegada: marca o documento como Denegado com alerta explicativo.
+       - Cancelada: atualiza cancelamento.
+     - Resposta rápida HTTP 200 para a Focus NFe, evitando reenvios indevidos e registrando internamente eventuais inconsistências em log.
+   - **Painel Administrativo de Avisos (`/fiscal/configuracoes` - `ConfiguracaoEmissaoFiscalPage.tsx`):**
+     - Seção nova **"Avisos da Focus (Webhooks)"**, visível exclusivamente para Administradores do ERP.
+     - Exibição de alerta preventivo quando o segredo `FOCUS_NFE_WEBHOOK_SECRET` não estiver configurado no Skip Cloud.
+     - Ações: **"Registrar na Focus (Empresa Ativa)"** e **"Registrar para Todas as Empresas"**, disparando `POST /backend/v1/fiscal/registrar-webhook-focus` que cadastra o webhook com evento `"nfe"`, a URL pública do app e o segredo de autorização na API da Focus NFe.
+     - Tabela dinâmica de webhooks ativos consultada em tempo real via `GET /backend/v1/fiscal/listar-webhooks-focus` (`GET /hooks` na Focus NFe).
+
+3. **Endpoints Backend Implementados em `pocketbase/hooks/fiscal_webhook_focus.js`:**
+   - `POST /backend/v1/fiscal/webhook-focus`: receptor público autenticado do webhook da Focus NFe.
+   - `POST /backend/v1/fiscal/registrar-webhook-focus`: registro automático de webhook na Focus NFe por empresa ou em lote.
+   - `GET /backend/v1/fiscal/listar-webhooks-focus`: consulta dos hooks cadastrados na API da Focus NFe.
+   - `POST /backend/v1/fiscal/reenviar-documento`: retransmissão de documentos fiscais com status "Rejeitada".
+   - `POST /backend/v1/fiscal/consultar-lote`: sincronização e consulta em lote de documentos na SEFAZ.
+
+---
+
 **Versão 0.0.88** — Devolução de Venda com NF-e de Entrada Própria (Modelo 55), Modal de Conferência, Polling SEFAZ e Rastreio Fiscal:
 
 1. **Tela de Trocas e Devoluções (`src/pages/vendas/TrocasDevolucoesPage.tsx`):**

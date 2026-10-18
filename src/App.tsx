@@ -96,7 +96,7 @@ import { ConsultasVendasPage } from '@/pages/vendas/ConsultasVendasPage'
 
 // Páginas Fiscais (Etapa 6)
 import ConfiguracaoEmissaoFiscalPage from '@/pages/fiscal/ConfiguracaoEmissaoFiscalPage'
-import DocumentosFiscaisPlaceholderPage from '@/pages/fiscal/DocumentosFiscaisPlaceholderPage'
+import DocumentosFiscaisPage from '@/pages/fiscal/DocumentosFiscaisPage'
 import IntermediadoresPage from '@/pages/fiscal/IntermediadoresPage'
 import InutilizacaoPage from '@/pages/fiscal/InutilizacaoPage'
 
@@ -800,7 +800,7 @@ const App = () => (
                     path="/fiscal/documentos"
                     element={
                       <PermissaoGuard modulo="notas_saida" acao="ver">
-                        <DocumentosFiscaisPlaceholderPage />
+                        <DocumentosFiscaisPage />
                       </PermissaoGuard>
                     }
                   />

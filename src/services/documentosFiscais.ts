@@ -174,9 +174,14 @@ export async function montarDocumentoFiscal(params: {
 
 export interface DocumentoFiscalRegistro {
   id: string
+  created?: string
+  updated?: string
   empresa_id: string
+  ambiente?: 'Homologação' | 'Produção'
   modelo: ModeloDocumentoFiscal
   status: StatusDocumentoFiscal
+  origem?: OrigemDocumentoFiscal
+  origem_id?: string
   venda_id?: string
   transferencia_id?: string
   devolucao_venda_id?: string
@@ -189,14 +194,27 @@ export interface DocumentoFiscalRegistro {
   qrcode_url?: string
   url_consulta?: string
   referencia?: string
+  data_emissao?: string
+  data_autorizacao?: string
+  valor_total?: number
+  valor_produtos?: number
+  valor_desconto?: number
+  valor_frete?: number
+  status_sefaz?: string
   mensagem_sefaz?: string
+  erros?: any
   xml_arquivo?: string
+  xml_cancelamento?: string
   motivo_cancelamento?: string
   data_cancelamento?: string
-  data_autorizacao?: string
   destinatario_nome?: string
   destinatario_cpf_cnpj?: string
   destinatario_uf?: string
+  cliente_id?: string
+  cliente_nome?: string
+  cliente_cpf_cnpj?: string
+  json_enviado?: any
+  json_retorno?: any
 }
 
 export interface DocumentoFiscalCarta {
@@ -275,5 +293,115 @@ export async function listarCartasCorrecao(documentoId: string): Promise<Documen
     })
   } catch (_) {
     return []
+  }
+}
+
+export interface FiltrosDocumentosFiscais {
+  empresaId?: string
+  todasEmpresas?: boolean
+  dataInicio?: string
+  dataFim?: string
+  modelo?: string
+  status?: string
+  origem?: string
+  destinatario?: string
+  numeroOuChave?: string
+  page?: number
+  perPage?: number
+}
+
+/**
+ * Lista documentos fiscais com paginação e filtros refinados
+ */
+export async function listarDocumentosFiscaisComFiltros(filtros: FiltrosDocumentosFiscais) {
+  const condicoes: string[] = []
+
+  if (!filtros.todasEmpresas && filtros.empresaId) {
+    condicoes.push(`empresa_id = '${filtros.empresaId}'`)
+  }
+
+  if (filtros.modelo && filtros.modelo !== 'todos') {
+    condicoes.push(`modelo = '${filtros.modelo}'`)
+  }
+
+  if (filtros.status && filtros.status !== 'todos') {
+    condicoes.push(`status = '${filtros.status}'`)
+  }
+
+  if (filtros.origem && filtros.origem !== 'todos') {
+    condicoes.push(`origem = '${filtros.origem}'`)
+  }
+
+  if (filtros.dataInicio) {
+    condicoes.push(`data_emissao >= '${filtros.dataInicio} 00:00:00'`)
+  }
+
+  if (filtros.dataFim) {
+    condicoes.push(`data_emissao <= '${filtros.dataFim} 23:59:59'`)
+  }
+
+  if (filtros.destinatario && filtros.destinatario.trim()) {
+    const termo = filtros.destinatario.trim().replace(/'/g, "\\'")
+    condicoes.push(`(cliente_nome ~ '${termo}' || cliente_cpf_cnpj ~ '${termo}')`)
+  }
+
+  if (filtros.numeroOuChave && filtros.numeroOuChave.trim()) {
+    const termoNum = filtros.numeroOuChave.trim().replace(/'/g, "\\'")
+    const asNum = Number(termoNum)
+    if (!Number.isNaN(asNum) && asNum > 0) {
+      condicoes.push(
+        `(numero = ${asNum} || chave_acesso ~ '${termoNum}' || referencia ~ '${termoNum}')`,
+      )
+    } else {
+      condicoes.push(`(chave_acesso ~ '${termoNum}' || referencia ~ '${termoNum}')`)
+    }
+  }
+
+  const page = filtros.page || 1
+  const perPage = filtros.perPage || 30
+  const filter = condicoes.length > 0 ? condicoes.join(' && ') : ''
+
+  return await pb.collection('documentos_fiscais').getList<DocumentoFiscalRegistro>(page, perPage, {
+    filter,
+    sort: '-created',
+  })
+}
+
+/**
+ * Obtém a lista de documentos pendentes críticos:
+ * - Rejeitados
+ * - Processando há mais de 5 minutos
+ */
+export async function obterDocumentosCriticos(empresaId?: string, todasEmpresas?: boolean) {
+  const cincoMinutosAtras = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+  const condicoesEmpresa = !todasEmpresas && empresaId ? `empresa_id = '${empresaId}' && ` : ''
+
+  const filtroRejeitados = `${condicoesEmpresa}status = 'Rejeitada'`
+  const filtroProcessandoLongo = `${condicoesEmpresa}status = 'Processando' && created <= '${cincoMinutosAtras}'`
+
+  try {
+    const [rejeitados, processando] = await Promise.all([
+      pb.collection('documentos_fiscais').getList<DocumentoFiscalRegistro>(1, 50, {
+        filter: filtroRejeitados,
+        sort: '-created',
+      }),
+      pb.collection('documentos_fiscais').getList<DocumentoFiscalRegistro>(1, 50, {
+        filter: filtroProcessandoLongo,
+        sort: '-created',
+      }),
+    ])
+
+    return {
+      rejeitados: rejeitados.items,
+      processando: processando.items,
+      total: rejeitados.totalItems + processando.totalItems,
+    }
+  } catch (err) {
+    console.error('Erro ao buscar documentos críticos:', err)
+    return {
+      rejeitados: [],
+      processando: [],
+      total: 0,
+    }
   }
 }

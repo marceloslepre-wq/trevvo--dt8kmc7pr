@@ -12,9 +12,16 @@ import {
   copiarConfigEmissaoDeOutraEmpresa,
   listarTodasConfigsEmissao,
 } from '@/services/configEmissaoFiscal'
-import { testarConexaoFocus, obterStatusSegredosFocus } from '@/services/fiscalIntegracao'
+import {
+  testarConexaoFocus,
+  obterStatusSegredosFocus,
+  registrarWebhookFocus,
+  listarWebhooksFocus,
+  FocusHookItem,
+} from '@/services/fiscalIntegracao'
 import { listarEmpresasAtivas, Empresa } from '@/services/empresas'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -115,9 +122,92 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
     status_code?: number | null
   } | null>(null)
 
+  // Webhooks da Focus (Avisos)
+  const [webhooksFocus, setWebhooksFocus] = useState<FocusHookItem[]>([])
+  const [carregandoWebhooks, setCarregandoWebhooks] = useState(false)
+  const [registrandoWebhook, setRegistrandoWebhook] = useState(false)
+  const [segredoWebhookConfigurado, setSegredoWebhookConfigurado] = useState<boolean>(true)
+
   useEffect(() => {
     carregarDadosEmpresaAtiva()
   }, [empresaAtiva?.id])
+
+  useEffect(() => {
+    if (empresaAtiva?.id && administrador) {
+      carregarWebhooksFocus()
+    }
+  }, [empresaAtiva?.id, administrador])
+
+  async function carregarWebhooksFocus() {
+    if (!empresaAtiva?.id) return
+    setCarregandoWebhooks(true)
+    try {
+      const res = await listarWebhooksFocus(empresaAtiva.id)
+      setWebhooksFocus(res.hooks || [])
+      setSegredoWebhookConfigurado(res.tem_segredo_webhook)
+    } catch (err) {
+      console.warn('Erro ao carregar webhooks da Focus:', err)
+    } finally {
+      setCarregandoWebhooks(false)
+    }
+  }
+
+  async function handleRegistrarWebhookEmpresa() {
+    if (!empresaAtiva?.id) return
+    setRegistrandoWebhook(true)
+    try {
+      const res = await registrarWebhookFocus({ empresa_id: empresaAtiva.id })
+      if (res.sucesso) {
+        toast({
+          title: 'Avisos da Focus registrados',
+          description: res.message || 'Webhook configurado na Focus NFe com sucesso.',
+        })
+      } else {
+        toast({
+          title: 'Erro ao registrar avisos',
+          description: res.message || 'Não foi possível registrar o webhook.',
+          variant: 'destructive',
+        })
+      }
+      await carregarWebhooksFocus()
+    } catch (err: any) {
+      toast({
+        title: 'Falha no registro de avisos',
+        description: err?.data?.message || err?.message || 'Erro na comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setRegistrandoWebhook(false)
+    }
+  }
+
+  async function handleRegistrarWebhookTodas() {
+    setRegistrandoWebhook(true)
+    try {
+      const res = await registrarWebhookFocus()
+      if (res.sucesso) {
+        toast({
+          title: 'Registro global concluído',
+          description: res.message,
+        })
+      } else {
+        toast({
+          title: 'Falha no registro global',
+          description: res.message,
+          variant: 'destructive',
+        })
+      }
+      await carregarWebhooksFocus()
+    } catch (err: any) {
+      toast({
+        title: 'Falha no registro de avisos',
+        description: err?.data?.message || err?.message || 'Erro na comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setRegistrandoWebhook(false)
+    }
+  }
 
   useEffect(() => {
     carregarQuadroGeralEmpresas()
@@ -1140,6 +1230,155 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
             </Card>
           </div>
         </div>
+
+        {/* Seção "Avisos da Focus (Webhooks)" (só Administrador) */}
+        {administrador && (
+          <Card className="border-slate-200 shadow-xs mt-6">
+            <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" />
+                  Avisos da Focus (Webhooks)
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Recebimento assíncrono instantâneo de autorização, rejeição e cancelamento de
+                  NF-e/NFC-e diretamente da Focus NFe.
+                </CardDescription>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={carregarWebhooksFocus}
+                  disabled={carregandoWebhooks}
+                  className="gap-1 text-xs"
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${carregandoWebhooks ? 'animate-spin' : ''}`}
+                  />
+                  Atualizar Lista
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRegistrarWebhookEmpresa}
+                  disabled={registrandoWebhook}
+                  className="gap-1 text-xs"
+                >
+                  {registrandoWebhook ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}
+                  Registrar na Focus (Empresa Ativa)
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleRegistrarWebhookTodas}
+                  disabled={registrandoWebhook}
+                  className="gap-1 text-xs bg-primary hover:bg-primary/90 text-white"
+                >
+                  {registrandoWebhook ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Building2 className="h-3.5 w-3.5" />
+                  )}
+                  Registrar para Todas as Empresas
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              {!segredoWebhookConfigurado && (
+                <Alert className="border-amber-300 bg-amber-50 text-amber-900">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <AlertTitle className="text-xs font-semibold">
+                    Segredo FOCUS_NFE_WEBHOOK_SECRET não configurado no Skip Cloud
+                  </AlertTitle>
+                  <AlertDescription className="text-xs mt-1">
+                    Para que o ERP receba avisos em tempo real da Focus NFe de forma segura, crie o
+                    segredo <strong className="font-mono">FOCUS_NFE_WEBHOOK_SECRET</strong> no
+                    painel de Segredos/Ambiente do Skip Cloud com um valor seguro de sua escolha.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="rounded-md border border-slate-200 overflow-hidden">
+                <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span>
+                    Webhooks Cadastrados na Focus NFe (
+                    {empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social})
+                  </span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    Endpoint ERP:{' '}
+                    <code className="bg-slate-200/60 px-1 py-0.5 rounded text-[10px]">
+                      https://erp-de-gestao-comercial-24560.goskip.app/backend/v1/fiscal/webhook-focus
+                    </code>
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider text-[10px] border-b">
+                      <tr>
+                        <th className="py-2 px-4">Evento</th>
+                        <th className="py-2 px-3">URL do Webhook</th>
+                        <th className="py-2 px-3 text-center">Status</th>
+                        <th className="py-2 px-3 text-right">Cadastrado em</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {carregandoWebhooks ? (
+                        <tr>
+                          <td colSpan={4} className="py-6 text-center text-slate-400">
+                            <div className="flex items-center justify-center gap-2">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <span>Consultando webhooks na Focus NFe...</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : webhooksFocus.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-6 text-center text-slate-400">
+                            Nenhum webhook registrado na Focus NFe para esta empresa. Clique em
+                            "Registrar na Focus" acima.
+                          </td>
+                        </tr>
+                      ) : (
+                        webhooksFocus.map((h, idx) => (
+                          <tr key={h.id || idx} className="hover:bg-slate-50">
+                            <td className="py-2.5 px-4 font-mono font-medium text-slate-800">
+                              <Badge variant="outline" className="text-[10px] font-mono">
+                                {h.event || 'nfe'}
+                              </Badge>
+                            </td>
+                            <td
+                              className="py-2.5 px-3 font-mono text-[11px] text-slate-700 max-w-md truncate"
+                              title={h.url || ''}
+                            >
+                              {h.url || '-'}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <Badge className="bg-emerald-600 text-white text-[10px] py-0">
+                                {h.status || 'Ativo'}
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-500 whitespace-nowrap">
+                              {h.created_at
+                                ? new Date(h.created_at).toLocaleDateString('pt-BR')
+                                : '-'}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Quadro "Empresas Emissoras" (só Administrador) */}
         {administrador && (

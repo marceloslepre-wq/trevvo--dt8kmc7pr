@@ -568,3 +568,88 @@ export async function inutilizarNumeracaoFiscal(params: {
     body: params,
   })
 }
+
+/**
+ * Reenvia um documento fiscal rejeitado com a mesma referência
+ */
+export async function reenviarDocumentoFiscal(documentoId: string): Promise<{
+  sucesso: boolean
+  status?: string
+  message: string
+  detalhes?: any
+}> {
+  return await pb.send('/backend/v1/fiscal/reenviar-documento', {
+    method: 'POST',
+    body: { documento_id: documentoId },
+  })
+}
+
+/**
+ * Consulta em lote a situação de vários documentos fiscais
+ */
+export async function consultarDocumentosEmLote(documentoIds: string[]): Promise<{
+  sucesso: boolean
+  total: number
+  atualizados: number
+  pendentes: number
+  falhas: number
+  resultados: Array<{ id: string; status: string }>
+  message: string
+}> {
+  return await pb.send('/backend/v1/fiscal/consultar-lote', {
+    method: 'POST',
+    body: { documento_ids: documentoIds },
+  })
+}
+
+export interface FocusHookItem {
+  id?: string | number
+  event?: string
+  url?: string
+  authorization?: string
+  created_at?: string
+  status?: string
+}
+
+/**
+ * Registra o webhook na Focus NFe para uma ou todas as empresas (Apenas Administrador)
+ */
+export async function registrarWebhookFocus(params?: {
+  empresa_id?: string
+  url?: string
+}): Promise<{
+  sucesso: boolean
+  message: string
+  resultados?: Array<{
+    empresa_id: string
+    empresa_nome: string
+    sucesso: boolean
+    mensagem: string
+    detalhes?: any
+  }>
+  url_registrada?: string
+}> {
+  return await pb.send('/backend/v1/fiscal/registrar-webhook-focus', {
+    method: 'POST',
+    body: params || {},
+  })
+}
+
+/**
+ * Lista os webhooks registrados na Focus NFe para a empresa informada
+ */
+export async function listarWebhooksFocus(empresaId: string): Promise<{
+  sucesso: boolean
+  tem_segredo_webhook: boolean
+  webhook_secret_configurado?: boolean
+  ambiente?: string
+  message?: string
+  hooks: FocusHookItem[]
+}> {
+  return await pb.send(
+    `/backend/v1/fiscal/listar-webhooks-focus?empresa_id=${encodeURIComponent(empresaId)}`,
+    {
+      method: 'GET',
+    },
+  )
+}
