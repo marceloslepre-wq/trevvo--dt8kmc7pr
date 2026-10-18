@@ -493,7 +493,12 @@ export async function obterDadosSpedBlocoH(inventarioId: string): Promise<Regist
     const qtd =
       it.quantidade_contada !== null && it.quantidade_contada !== undefined
         ? it.quantidade_contada
-        : it.saldo_sistema
+        : inv.status === 'Finalizado'
+          ? 0
+          : it.saldo_sistema
+    if (qtd <= 0 && inv.status === 'Finalizado') {
+      continue
+    }
     const vlUnit = it.custo_unitario || 0
     const vlItem = Math.round(qtd * vlUnit * 100) / 100
 

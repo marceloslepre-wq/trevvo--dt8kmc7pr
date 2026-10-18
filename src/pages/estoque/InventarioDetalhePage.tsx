@@ -58,7 +58,23 @@ import {
   gerarCsvInventario,
   gerarCsvSpedBlocoH,
 } from '@/services/inventarios'
+import { obterOuCriarConfigSpedEmpresa } from '@/services/configSped'
 import { toast } from '@/hooks/use-toast'
+
+const NOMES_MESES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+]
 
 export const InventarioDetalhePage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -73,6 +89,7 @@ export const InventarioDetalhePage: React.FC = () => {
   const [inventario, setInventario] = useState<Inventario | null>(null)
   const [itens, setItens] = useState<InventarioItem[]>([])
   const [carregando, setCarregando] = useState(true)
+  const [mesBlocoH, setMesBlocoH] = useState<number>(2)
 
   // Opção Contagem Cega (esconde saldo e diferenças)
   const [contagemCega, setContagemCega] = useState(false)
@@ -108,9 +125,19 @@ export const InventarioDetalhePage: React.FC = () => {
   const recarregar = useCallback(async () => {
     if (!id) return
     try {
-      const [inv, listaItens] = await Promise.all([obterInventario(id), listarItensInventario(id)])
+      const promises: [Promise<Inventario>, Promise<InventarioItem[]>, Promise<any>?] = [
+        obterInventario(id),
+        listarItensInventario(id),
+      ]
+      if (empresaAtiva?.id) {
+        promises.push(obterOuCriarConfigSpedEmpresa(empresaAtiva.id))
+      }
+      const [inv, listaItens, cfgSped] = await Promise.all(promises)
       setInventario(inv)
       setItens(listaItens)
+      if (cfgSped && cfgSped.mes_bloco_h) {
+        setMesBlocoH(cfgSped.mes_bloco_h)
+      }
       if (inv.tipo === 'Anual (Bloco H)') {
         setSomenteRegistrarPosicao(true)
       }
@@ -133,6 +160,36 @@ export const InventarioDetalhePage: React.FC = () => {
 
   // Métricas de progresso
   const totalItens = itens.length
+
+  // Total de itens que vai para o H005 (soma dos VL_ITEM dos itens com quantidade_contada > 0)
+  const totalH005 = useMemo(() => {
+    let soma = 0
+    itens.forEach((it) => {
+      const qtd = it.quantidade_contada ?? 0
+      if (qtd > 0) {
+        const custo = it.custo_unitario || 0
+        const vlItem = Math.round(qtd * custo * 100) / 100
+        soma = Math.round((soma + vlItem) * 100) / 100
+      }
+    })
+    return soma
+  }, [itens])
+
+  // Informações do SPED para Inventário Anual
+  const infoSpedAnual = useMemo(() => {
+    if (!inventario || inventario.tipo !== 'Anual (Bloco H)') return null
+    // Ano de referência extraído da data_referencia
+    const dtRefAno = parseInt(inventario.data_referencia.substring(0, 4), 10)
+    // O SPED do Bloco H referente a 31/12/AAAA entra no SPED do ano seguinte (AAAA + 1)
+    const anoSped = isNaN(dtRefAno) ? new Date().getFullYear() : dtRefAno + 1
+    const idxMes = Math.max(1, Math.min(12, mesBlocoH)) - 1
+    const nomeMes = NOMES_MESES[idxMes] || 'fevereiro'
+    return {
+      textoSped: `Entra no SPED de ${nomeMes} de ${anoSped}`,
+      nomeMes,
+      anoSped,
+    }
+  }, [inventario, mesBlocoH])
   const itensContados = useMemo(
     () =>
       itens.filter((i) => i.quantidade_contada !== null && i.quantidade_contada !== undefined)
@@ -472,6 +529,25 @@ export const InventarioDetalhePage: React.FC = () => {
                 <span> • Aberto por: {inventario.expand.usuario_abertura_id.nome}</span>
               )}
             </p>
+            {inventario.tipo === 'Anual (Bloco H)' &&
+              inventario.status === 'Finalizado' &&
+              infoSpedAnual && (
+                <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
+                  <Badge
+                    variant="outline"
+                    className="bg-purple-50 text-purple-700 border-purple-200 font-medium"
+                  >
+                    {infoSpedAnual.textoSped}
+                  </Badge>
+                  <span className="text-slate-600 font-semibold">
+                    Total Registro H005: R${' '}
+                    {totalH005.toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              )}
           </div>
         </div>
 
@@ -1064,22 +1140,32 @@ export const InventarioDetalhePage: React.FC = () => {
             <div className="space-y-4 py-2 text-xs">
               {/* Registro H005 */}
               <div className="bg-purple-50/50 border border-purple-200 p-3 rounded-lg">
-                <p className="font-bold text-purple-900 mb-1 flex items-center justify-between">
-                  <span>Registro H005 — Totais do Inventário</span>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <p className="font-bold text-purple-900 flex items-center gap-2">
+                    <span>Registro H005 — Totais do Inventário</span>
+                    {infoSpedAnual && (
+                      <Badge
+                        variant="outline"
+                        className="border-purple-300 bg-purple-100/50 text-purple-800 text-[10px]"
+                      >
+                        {infoSpedAnual.textoSped}
+                      </Badge>
+                    )}
+                  </p>
                   <Badge
                     variant="outline"
                     className="border-purple-300 text-purple-800 text-[10px]"
                   >
                     {dadosSped.itens.length} itens
                   </Badge>
-                </p>
+                </div>
                 <div className="grid grid-cols-3 gap-2 text-[11px] text-purple-950">
                   <div>
                     <span className="text-purple-600 block">DT_INV (Data):</span>
                     <strong>{dadosSped.dt_inv}</strong>
                   </div>
                   <div>
-                    <span className="text-purple-600 block">VL_INV (Valor Total):</span>
+                    <span className="text-purple-600 block">VL_INV (Total H005):</span>
                     <strong>
                       R$ {dadosSped.vl_inv.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </strong>

@@ -2380,25 +2380,303 @@ var SpedGerador = (function () {
     return linhas
   }
 
-  // --- BLOCO H (vazio nesta rodada) ---
+  // --- BLOCO H (Inventário Físico) ---
   function gerarBlocoH(ctx) {
     var linhas = []
-    linhas.push(SpedFormato.montarLinha(['H001', '1']))
-    var totalLinhas = linhas.length + 1
-    linhas.push(SpedFormato.montarLinha(['H990', String(totalLinhas)]))
+    var mesBlocoH = 2 // padrão fevereiro
+    var contaContabilEstoque = ''
+    if (ctx.configSped) {
+      var mbh = ctx.configSped.getInt('mes_bloco_h')
+      if (mbh && mbh >= 1 && mbh <= 12) {
+        mesBlocoH = mbh
+      }
+      contaContabilEstoque = (ctx.configSped.getString('conta_contabil_estoque') || '').trim()
+    }
+
+    // Só no arquivo do mês mes_bloco_h (padrão 2). Nos outros meses, H001 IND_MOV 1 e H990
+    if (ctx.mes !== mesBlocoH) {
+      linhas.push(SpedFormato.montarLinha(['H001', '1']))
+      var totalLinhasVazio = linhas.length + 1
+      linhas.push(SpedFormato.montarLinha(['H990', String(totalLinhasVazio)]))
+      return linhas
+    }
+
+    // No mês do Bloco H, procure o inventário da empresa com tipo "Anual (Bloco H)",
+    // status Finalizado e data_referencia 31/12 do ano anterior
+    var anoAnterior = ctx.ano - 1
+    var dtRefEsperada = String(anoAnterior) + '-12-31'
+    var inventarios = []
+    try {
+      inventarios = $app.findRecordsByFilter(
+        'inventarios',
+        "empresa_id = '" +
+          ctx.empresa.id +
+          "' && tipo = 'Anual (Bloco H)' && status = 'Finalizado' && ativo = true",
+        '-created',
+        20,
+        0,
+      )
+    } catch (errInv) {
+      console.warn('Erro ao buscar inventários:', errInv)
+    }
+
+    var invEncontrado = null
+    for (var i = 0; i < inventarios.length; i++) {
+      var inv = inventarios[i]
+      var dtRef = (inv.getString('data_referencia') || '').substring(0, 10)
+      if (dtRef === dtRefEsperada) {
+        invEncontrado = inv
+        break
+      }
+    }
+
+    // Não existindo: erro "falta o inventário de 31/12"
+    if (!invEncontrado) {
+      ctx.adicionarValidacao('erro', 'falta o inventário de 31/12', 'H001', dtRefEsperada)
+      linhas.push(SpedFormato.montarLinha(['H001', '1']))
+      var totLinhasErro = linhas.length + 1
+      linhas.push(SpedFormato.montarLinha(['H990', String(totLinhasErro)]))
+      return linhas
+    }
+
+    // H001 IND_MOV 0
+    linhas.push(SpedFormato.montarLinha(['H001', '0']))
+
+    // Sem conta_contabil_estoque: aviso
+    if (!contaContabilEstoque) {
+      ctx.adicionarValidacao(
+        'aviso',
+        'o COD_CTA do H010 é exigido de quem tem escrituração contábil; confirme com o contador',
+        'H010',
+      )
+    }
+
+    // Carrega itens do inventário
+    var itensInv = []
+    try {
+      itensInv = $app.findRecordsByFilter(
+        'inventarios_itens',
+        "inventario_id = '" + invEncontrado.id + "' && ativo = true",
+        'created',
+        10000,
+        0,
+      )
+    } catch (errItensInv) {
+      console.warn('Erro ao carregar itens do inventário:', errItensInv)
+    }
+
+    // Agrupa por produto somando lotes e calculando VL_ITEM
+    var produtosAgrupados = {}
+    for (var j = 0; j < itensInv.length; j++) {
+      var itemRec = itensInv[j]
+      var prodId = itemRec.getString('produto_id')
+      if (!prodId) continue
+      var qtdContada = itemRec.getFloat('quantidade_contada') || 0
+      var custoUnit = itemRec.getFloat('custo_unitario') || 0
+
+      if (!produtosAgrupados[prodId]) {
+        produtosAgrupados[prodId] = {
+          produtoId: prodId,
+          quantidade: 0,
+          custoUnitario: custoUnit,
+        }
+      }
+      produtosAgrupados[prodId].quantidade += qtdContada
+      if (custoUnit > 0) {
+        produtosAgrupados[prodId].custoUnitario = custoUnit
+      }
+    }
+
+    // Filtra produtos com quantidade maior que zero
+    var chavesProdutos = Object.keys(produtosAgrupados).sort()
+    var itensH010 = []
+    var somaVlItem = 0
+
+    for (var k = 0; k < chavesProdutos.length; k++) {
+      var dadosProd = produtosAgrupados[chavesProdutos[k]]
+      if (dadosProd.quantidade <= 0) continue
+
+      var prodRec = null
+      try {
+        prodRec = $app.findRecordById('produtos', dadosProd.produtoId)
+      } catch (_) {}
+
+      var codItem = prodRec ? String(prodRec.getInt('codigo') || prodRec.id) : dadosProd.produtoId
+      var unid = 'UN'
+      if (prodRec) {
+        var unId = prodRec.getString('unidade_id')
+        if (unId) {
+          try {
+            var unRec = $app.findRecordById('unidades_medida', unId)
+            unid = unRec.getString('sigla') || 'UN'
+          } catch (_) {
+            unid = unId
+          }
+        }
+      }
+
+      ctx.registrarItem(dadosProd.produtoId)
+      ctx.registrarUnidade(unid)
+
+      var vlUnit = round2(dadosProd.custoUnitario)
+      var vlItem = round2(dadosProd.quantidade * dadosProd.custoUnitario)
+      somaVlItem = round2(somaVlItem + vlItem)
+
+      itensH010.push({
+        codItem: codItem,
+        unid: unid,
+        qtd: dadosProd.quantidade,
+        vlUnit: dadosProd.custoUnitario,
+        vlItem: vlItem,
+      })
+    }
+
+    // DT_INV = data_referencia formatada DDMMAAAA
+    var dtInvSped = SpedFormato.formatarData(dtRefEsperada)
+    var motInv = '01'
+    var motInvCampo = invEncontrado.getString('motivo_bloco_h') || ''
+    if (motInvCampo && motInvCampo.length >= 2) {
+      motInv = motInvCampo.substring(0, 2)
+    }
+
+    // H005: DT_INV, VL_INV, MOT_INV
+    linhas.push(
+      SpedFormato.montarLinha(['H005', dtInvSped, SpedFormato.formatarValor(somaVlItem), motInv]),
+    )
+
+    // H010 por produto com quantidade maior que zero
+    // Se estoque zerado em 31/12: H005 com VL_INV 0 e sem H010
+    for (var h = 0; h < itensH010.length; h++) {
+      var itemH = itensH010[h]
+      linhas.push(
+        SpedFormato.montarLinha([
+          'H010',
+          itemH.codItem, // COD_ITEM
+          SpedFormato.formatarTexto(itemH.unid, 6), // UNID
+          SpedFormato.formatarQuantidade(itemH.qtd, 3), // QTD
+          SpedFormato.formatarPrecoUnitario(itemH.vlUnit, 6), // VL_UNIT
+          SpedFormato.formatarValor(itemH.vlItem), // VL_ITEM
+          '0', // IND_PROP: 0 - Item de propriedade do informante e em seu poder
+          '', // COD_PART: vazio
+          '', // TXT_COMPL: vazio
+          contaContabilEstoque, // COD_CTA
+          SpedFormato.formatarValor(itemH.vlItem), // VL_ITEM_IR = VL_ITEM
+        ]),
+      )
+    }
+
+    // H990
+    var totalLinhasH = linhas.length + 1
+    linhas.push(SpedFormato.montarLinha(['H990', String(totalLinhasH)]))
     return linhas
   }
 
-  // --- BLOCO K (vazio nesta rodada) ---
+  // --- BLOCO K (Controle da Produção e do Estoque) ---
   function gerarBlocoK(ctx) {
     var linhas = []
-    linhas.push(SpedFormato.montarLinha(['K001', '1']))
-    var totalLinhas = linhas.length + 1
-    linhas.push(SpedFormato.montarLinha(['K990', String(totalLinhas)]))
+    var gerarBlocoKConfig = false
+    if (ctx.configSped) {
+      gerarBlocoKConfig = ctx.configSped.getBool('gerar_bloco_k') === true
+    }
+
+    // Desligado: K001 IND_MOV 1, como hoje
+    if (!gerarBlocoKConfig) {
+      linhas.push(SpedFormato.montarLinha(['K001', '1']))
+      var totalLinhasVazioK = linhas.length + 1
+      linhas.push(SpedFormato.montarLinha(['K990', String(totalLinhasVazioK)]))
+      return linhas
+    }
+
+    // Ligado:
+    // K001 IND_MOV 0
+    linhas.push(SpedFormato.montarLinha(['K001', '0']))
+
+    // K010 com IND_TP_LEIAUTE 2 (leiaute restrito aos saldos de estoque, usado pelo atacadista)
+    linhas.push(SpedFormato.montarLinha(['K010', '2']))
+
+    // Aviso fixo do Bloco K
+    ctx.adicionarValidacao(
+      'aviso',
+      'Bloco K ligado: o contador confirma se a empresa é obrigada e se o leiaute restrito vale para ela',
+      'K010',
+    )
+
+    // K100 (DT_INI, DT_FIN do período)
+    linhas.push(SpedFormato.montarLinha(['K100', ctx.dtIniSped, ctx.dtFinSped]))
+
+    // K200 por produto com saldo diferente de zero no último dia do período
+    // Calculado a partir das movimentações de estoque da Etapa 2
+    var saldosPorProduto = {}
+    try {
+      var dataLimiteIso = ctx.dtFinIso + ' 23:59:59'
+      var movs = $app.findRecordsByFilter(
+        'estoque_movimentos',
+        "empresa_id = '" +
+          ctx.empresa.id +
+          "' && ativo = true && estornado = false && data_movimento <= '" +
+          dataLimiteIso +
+          "'",
+        'data_movimento,id',
+        50000,
+        0,
+      )
+
+      for (var m = 0; m < movs.length; m++) {
+        var mov = movs[m]
+        var pId = mov.getString('produto_id')
+        if (!pId) continue
+        var tipoMov = mov.getString('tipo')
+        var qtdMov = mov.getFloat('quantidade') || 0
+
+        if (saldosPorProduto[pId] === undefined) {
+          saldosPorProduto[pId] = 0
+        }
+
+        if (tipoMov === 'Entrada') {
+          saldosPorProduto[pId] += qtdMov
+        } else if (tipoMov === 'Saída') {
+          saldosPorProduto[pId] -= qtdMov
+        }
+      }
+    } catch (errMovs) {
+      console.warn('Erro ao consultar movimentacoes de estoque para K200:', errMovs)
+    }
+
+    var prodsK = Object.keys(saldosPorProduto).sort()
+    for (var pk = 0; pk < prodsK.length; pk++) {
+      var prodIdK = prodsK[pk]
+      var saldoQtd = round2(saldosPorProduto[prodIdK])
+      if (Math.abs(saldoQtd) < 0.0001) continue
+
+      var prodRecK = null
+      try {
+        prodRecK = $app.findRecordById('produtos', prodIdK)
+      } catch (_) {}
+
+      var codItemK = prodRecK ? String(prodRecK.getInt('codigo') || prodRecK.id) : prodIdK
+
+      ctx.registrarItem(prodIdK)
+
+      // K200: DT_EST, COD_ITEM, QTD, IND_EST, COD_PART
+      linhas.push(
+        SpedFormato.montarLinha([
+          'K200',
+          ctx.dtFinSped, // DT_EST
+          codItemK, // COD_ITEM
+          SpedFormato.formatarQuantidade(saldoQtd, 3), // QTD
+          '0', // IND_EST: 0 - Estoque de propriedade do informante e em seu poder
+          '', // COD_PART: vazio
+        ]),
+      )
+    }
+
+    // K990
+    var totalLinhasK = linhas.length + 1
+    linhas.push(SpedFormato.montarLinha(['K990', String(totalLinhasK)]))
     return linhas
   }
 
-  // --- BLOCO 1 (outras informações) ---
+  // --- BLOCO 1 (Outras Informações) ---
   function gerarBloco1(ctx) {
     var linhas = []
     linhas.push(SpedFormato.montarLinha(['1001', '0']))
@@ -2422,8 +2700,117 @@ var SpedGerador = (function () {
         'N',
       ]),
     )
-    var totalLinhas = linhas.length + 1
-    linhas.push(SpedFormato.montarLinha(['1990', String(totalLinhas)]))
+
+    // Verifica se a empresa recebeu vendas por cartão, PIX ou marketplace no período
+    var recebeuEletronico = false
+    try {
+      // 1) Busca vendas da empresa no período
+      var dtIniFiltro = ctx.dtIniIso + ' 00:00:00'
+      var dtFinFiltro = ctx.dtFinIso + ' 23:59:59'
+      var vendasPeriodo = $app.findRecordsByFilter(
+        'vendas',
+        "empresa_id = '" +
+          ctx.empresa.id +
+          "' && ativo = true && data_venda >= '" +
+          dtIniFiltro +
+          "' && data_venda <= '" +
+          dtFinFiltro +
+          "'",
+        'created',
+        2000,
+        0,
+      )
+
+      if (vendasPeriodo.length > 0) {
+        var vendaIds = vendasPeriodo.map(function (v) {
+          return v.id
+        })
+
+        // Checa pagamentos das vendas
+        for (var vi = 0; vi < vendaIds.length; vi++) {
+          var pagtos = $app.findRecordsByFilter(
+            'vendas_pagamentos',
+            "venda_id = '" + vendaIds[vi] + "' && ativo = true",
+            'created',
+            50,
+            0,
+          )
+          for (var pi = 0; pi < pagtos.length; pi++) {
+            var fpId = pagtos[pi].getString('forma_pagamento_id')
+            if (fpId) {
+              try {
+                var fp = $app.findRecordById('formas_pagamento', fpId)
+                var tipoFp = fp.getString('tipo') || ''
+                var tPag = fp.getString('codigo_tpag') || ''
+                if (
+                  tipoFp === 'Cartão de crédito' ||
+                  tipoFp === 'Cartão de débito' ||
+                  tipoFp === 'PIX' ||
+                  tPag === '03' ||
+                  tPag === '04' ||
+                  tPag === '17'
+                ) {
+                  recebeuEletronico = true
+                  break
+                }
+              } catch (_) {}
+            }
+          }
+          if (recebeuEletronico) break
+        }
+      }
+
+      // 2) Checa também contas_receber no período com taxa de cartão ou forma eletrônica
+      if (!recebeuEletronico) {
+        var titulos = $app.findRecordsByFilter(
+          'contas_receber',
+          "empresa_id = '" +
+            ctx.empresa.id +
+            "' && ativo = true && data_emissao >= '" +
+            ctx.dtIniIso +
+            "' && data_emissao <= '" +
+            ctx.dtFinIso +
+            "'",
+          'created',
+          500,
+          0,
+        )
+        for (var tr = 0; tr < titulos.length; tr++) {
+          var fppId = titulos[tr].getString('forma_pagamento_prevista_id')
+          if (fppId) {
+            try {
+              var fpp = $app.findRecordById('formas_pagamento', fppId)
+              var tipoFpp = fpp.getString('tipo') || ''
+              var tPagFpp = fpp.getString('codigo_tpag') || ''
+              if (
+                tipoFpp === 'Cartão de crédito' ||
+                tipoFpp === 'Cartão de débito' ||
+                tipoFpp === 'PIX' ||
+                tPagFpp === '03' ||
+                tPagFpp === '04' ||
+                tPagFpp === '17'
+              ) {
+                recebeuEletronico = true
+                break
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (errEletr) {
+      console.warn('Erro ao verificar recebimentos eletronicos:', errEletr)
+    }
+
+    if (recebeuEletronico) {
+      ctx.adicionarValidacao(
+        'aviso',
+        'confira com o contador se o registro 1601 (pagamentos eletrônicos) é exigido; o ERP não gera o 1601 nesta versão',
+        '1010',
+      )
+    }
+
+    var totalLinhas1 = linhas.length + 1
+    linhas.push(SpedFormato.montarLinha(['1990', String(totalLinhas1)]))
     return linhas
   }
 
