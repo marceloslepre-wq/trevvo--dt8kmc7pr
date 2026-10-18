@@ -441,9 +441,15 @@ const navItems: NavGroupItem[] = [
         modulo: 'notas_saida',
       },
       {
+        title: 'SPED Fiscal (EFD)',
+        path: '/fiscal/sped',
+        icon: FileSpreadsheet,
+        modulo: 'notas_saida',
+      },
+      {
         title: 'Configuração do SPED',
         path: '/fiscal/sped/configuracoes',
-        icon: FileSpreadsheet,
+        icon: Settings,
         modulo: 'notas_saida',
       },
     ],
@@ -451,8 +457,9 @@ const navItems: NavGroupItem[] = [
   {
     id: 'sped',
     title: 'SPED Fiscal',
+    path: '/fiscal/sped',
     icon: FileSpreadsheet,
-    status: 'soon',
+    status: 'active',
     modulo: 'sped',
   },
   {

@@ -200,3 +200,56 @@ export async function marcarSpedEntregue(params: {
   }
   return json
 }
+
+export interface GerarSpedParams {
+  empresa_id: string
+  periodo: string // "AAAA-MM"
+  modo: SpedModo
+}
+
+export interface GerarSpedResponse {
+  sucesso: boolean
+  id?: string
+  status: SpedStatus
+  nome_arquivo?: string
+  quantidade_linhas?: number
+  total_validacoes?: number
+  tem_erros?: boolean
+  message?: string
+}
+
+/**
+ * Solicita a geração do arquivo SPED Fiscal ao backend através de POST /backend/v1/sped/gerar.
+ * O endpoint cria/atualiza o registro em sped_arquivos e retorna apenas o id e o status.
+ */
+export async function gerarArquivoSped(params: GerarSpedParams): Promise<GerarSpedResponse> {
+  if (!params.empresa_id) throw new Error('empresa_id é obrigatório.')
+  if (!params.periodo) throw new Error('periodo é obrigatório.')
+
+  const token = pb.authStore.token
+  const baseUrl = import.meta.env.VITE_POCKETBASE_URL || ''
+  const res = await fetch(`${baseUrl}/backend/v1/sped/gerar`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: token ? `Bearer ${token}` : '',
+    },
+    body: JSON.stringify(params),
+  })
+
+  const json = await res.json()
+  if (!res.ok) {
+    throw new Error(json.message || 'Falha ao processar solicitação de geração do SPED.')
+  }
+  return json
+}
+
+/**
+ * Retorna a URL pública de download do arquivo .txt do SPED através do PocketBase SDK.
+ */
+export function obterUrlDownloadSped(
+  record: { id: string; arquivo?: string } | SpedArquivoRegistro,
+): string {
+  if (!record.arquivo) return ''
+  return pb.files.getURL(record as any, record.arquivo)
+}

@@ -3088,7 +3088,46 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
       - A partir de janeiro: inventário do tipo "Anual (Bloco H)" com referência 31/12 do ano anterior finalizado (amarelo se não existir).
   - **Menu Lateral e Rotas:** item "Configuração do SPED" com ícone de planilha adicionado ao menu Fiscal em `Sidebar.tsx` e rota `/fiscal/sped/configuracoes` protegida por `PermissaoGuard` em `App.tsx`.
 
+- **Prompt 7.1 (Gerador SPED Fiscal, Blocos 0 e 9, Blocos Vazios, Endpoint e Tela):**
+  - **Módulo de Formatação Oficial (`pocketbase/hooks/sped/formato.js`):**
+    - Linhas iniciadas e terminadas por `|`, campos separados por `|`, finalizadas em CRLF (`\r\n`).
+    - Higienização estrita de texto: remoção de acentos/cedilha, eliminação de caracteres fora do ASCII imprimível (32 a 126), conversão de quebras de linha e `|` em espaço, trim de pontas.
+    - Números com vírgula decimal sem separador de milhar: 2 casas para valores monetários, até 3 casas para quantidades, até 6 casas para valor unitário. Campos vazios geram barras vazias.
+    - Datas no padrão `ddmmaaaa` com conversão de fuso horário de Brasília (America/Sao_Paulo, UTC-3) para integridade de competência.
+    - CNPJ, CPF, CEP, IE e telefones apenas com dígitos.
+  - **Motor Gerador Estruturado (`pocketbase/hooks/sped/gerador.js`):**
+    - Contexto de geração com empresa, configuração da EFD, período (primeiro e último dia calculados), modo e coletores com deduplicação: `registrarParticipante(tipo, id)` ("C" cliente, "F" fornecedor, "E" empresa), `registrarItem(produto_id)` e `registrarUnidade(unidade_id)`.
+    - Execução desacoplada: blocos operacionais (C, D, E, G, H, K, 1 e B) executam primeiro e alimentam os coletores; em seguida o Bloco 0 é gerado com os cadastros reais necessários; por fim o Bloco 9 consolida contagens e encerramentos.
+    - Blocos vazios nesta rodada: B (B001 "1", B990), C (C001 "1", C990), D (D001 "1", D990), E (E001 "0", E100 período, E110 apuração com todos os 14 campos zerados "0,00", E990), G (G001 "1", G990), H (H001 "1", H990), K (K001 "1", K990), Bloco 1 (1001 "0", 1010 com os 13 indicadores todos "N", 1990).
+    - Bloco 0 com dados reais: 0000 (versão de leiaute, finalidade, datas, razão social, CNPJ, UF, IE, código IBGE, perfil e indicador de atividade), 0001 ("0"), 0005 (endereço e contato), 0015 (IE substituta ST se houver), 0100 (dados do contador com validação de avisos), 0150 (participantes coletados), 0190 (unidades de medida coletadas), 0200 (itens coletados com NCM, tipo de item SPED e unidade), 0990 (total de linhas do bloco).
+    - Bloco 9: 9001 ("0"), um registro 9900 para cada tipo de registro do arquivo com sua quantidade de linhas (incluindo 9001, 9900, 9990 e 9999), 9990 (linhas do Bloco 9) e 9999 (linhas totais do arquivo).
+    - Nomenclatura oficial: `SPED_EFD_<CNPJ>_<AAAAMM>.txt` (prefixo `TESTE_` no modo Teste).
+  - **Endpoint Backend `POST /backend/v1/sped/gerar` (`pocketbase/hooks/sped_gerar.js`):**
+    - Autenticação obrigatória; permissão para usuários com acesso ao módulo Fiscal vinculados à empresa.
+    - Criação de registro em `sped_arquivos` com status `"Gerando"`, montagem do arquivo via gerador, upload do .txt no campo `arquivo`, preenchimento de `quantidade_linhas`, `contagem_registros` e `validacoes`.
+    - Em modo Oficial, validação impeditiva de Inscrição Estadual numérica (vazia ou "ISENTO" grava status "Erro" e validação descritiva).
+    - Arquivos anteriores do mesmo período e modo passam para status `"Substituído"` (exceto se "Entregue").
+    - Retorno econômico na resposta JSON contendo apenas o `id` e o `status` (sem expor o conteúdo bruto do arquivo).
+  - **Tela Fiscal > SPED Fiscal (`/fiscal/sped` - `src/pages/fiscal/SpedFiscalPage.tsx`):**
+    - Empresa ativa via `useEmpresaAtiva` e acesso governado pelo módulo fiscal.
+    - Seletor de mês de apuração (padrão mês anterior) e modo (Oficial/Teste) com botão de geração reativo e spinners de carregamento.
+    - Lista de arquivos gerados com status coloridos, período, modo, total de linhas, contadores de inconsistências e download direto.
+    - Painel lateral de detalhes do arquivo selecionado com resumo analítico dos registros do Bloco 9 (9900), lista resumida de erros/avisos e modal completo com todas as inconsistências identificadas.
+    - Adição ao menu lateral `Sidebar.tsx` e rotas do `App.tsx`.
+
 ## Versão Atual do Projeto
+
+**Versão 0.0.93** — Etapa 7 SPED Fiscal (Prompt 7.1: Gerador EFD ICMS/IPI com Blocos 0 e 9, Blocos Vazios, Endpoint /backend/v1/sped/gerar e Tela SPED Fiscal):
+
+1. **Módulo de Formatação e Gerador SPED (`pocketbase/hooks/sped/*`):**
+   - Utilitários de formatação oficial (CRLF, ASCII, vírgula decimal, datas em horário de Brasília, dígitos limpos).
+   - Motor orquestrador com contexto, coletores e montagem modular por bloco (0, B, C, D, E, G, H, K, 1 e 9).
+2. **Endpoint Transacional (`POST /backend/v1/sped/gerar`):**
+   - Criação de registro em `sped_arquivos`, geração e anexo do .txt, substituição automática de versões anteriores e validação de IE em modo Oficial.
+3. **Tela Fiscal > SPED Fiscal (`/fiscal/sped`):**
+   - Geração de arquivos por período/modo, acompanhamento de histórico, download do arquivo .txt e inspeção de inconsistências/avisos.
+
+---
 
 **Versão 0.0.92** — Etapa 7 SPED Fiscal (Prompt 7.0: Configuração da EFD ICMS/IPI, Tabelas config_sped_empresa e sped_arquivos, Endpoint marcar-entregue e Checklist de Prontidão):
 
