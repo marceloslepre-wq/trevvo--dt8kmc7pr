@@ -299,6 +299,7 @@ Tabela de registro e controle de arquivos da EFD ICMS/IPI (SPED Fiscal) gerados 
 - quantidade_linhas (number, total de linhas do arquivo SPED)
 - contagem_registros (json: quantidade por tipo de registro, ex: 0000, C100, C170, C190, E110, H010, 9999)
 - resumo_apuracao (json: débitos, créditos, saldo credor anterior, saldo apurado, ICMS a recolher, saldo credor a transportar)
+- resumo_saida (json: total_nfe, total_nfce, total_canceladas, total_denegadas, total_inutilizadas, total_vl_doc, total_vl_icms)
 - validacoes (json: lista de { nivel: "erro" | "aviso", registro, mensagem, referencia })
 - gerado_por (relation -> usuarios, usuário responsável pela geração)
 - entregue_em (date, data da transmissão à Receita Federal)
@@ -3116,6 +3117,46 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
     - Adição ao menu lateral `Sidebar.tsx` e rotas do `App.tsx`.
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.94** — Etapa 7 SPED Fiscal (Prompt 7.2: Bloco C da EFD com Documentos Emitidos pela Empresa, Registros C100, C101, C190, Inutilizações e Painel de Saídas do Período):
+
+1. **Documentos de Saída e Entrada Própria no Bloco C (`pocketbase/hooks/sped/gerador.js`):**
+   - Mapeamento e filtragem de `documentos_fiscais` (modelos 55 e 65) com `data_emissao` no horário de Brasília (UTC-3) pertencente ao período de apuração.
+   - Respeito estrito aos ambientes de emissão: Modo Oficial processa exclusivamente notas do ambiente "Produção"; Modo Teste inclui também "Homologação" quando parametrizado em `config_sped_empresa.incluir_homologacao_em_teste`.
+   - Documentos com status "Rascunho" e "Rejeitada" são ignorados; notas que permaneceram com status "Processando" ao fim do período geram aviso preventivo com o número do documento.
+2. **Registro C100 (Nota Fiscal / Consumidor) nos 29 Campos do Leiaute:**
+   - Preenchimento estrito de `IND_OPER` (1 para saídas e 0 para entradas de emissão própria, como devoluções de venda), `IND_EMIT` 0 (emissão própria) e `COD_PART` qualificado e registrado dinamicamente no coletor do Bloco 0150 (`C` + id do cliente para vendas e devoluções de venda; `F` + id do fornecedor para devoluções de compra; `E` + id da filial para transferências; e vazio para NFC-e modelo 65 sem participante).
+   - `COD_MOD`, `SER`, `NUM_DOC`, `CHV_NFE`, `COD_SIT` (00 Autorizada, 02 Cancelada, 04 Denegada, 05 Inutilizada), datas de emissão `DT_DOC` e `DT_E_S`.
+   - `IND_PGTO`: 0 quando todas as parcelas foram liquidadas à vista no mesmo dia, 1 quando houver parcelas a prazo no contas a receber, e 2 para as demais operações.
+   - `IND_FRT`: extração do modalidade de frete do XML autorizado ou do payload enviado (`json_enviado`); ausente ou sem frete, padrão 9.
+   - Valores contábeis e fiscais: `VL_DOC`, `VL_DESC`, `VL_ABAT_NT` (0,00), `VL_MERC`, `VL_FRT`, `VL_SEG`, `VL_OUT_DA`, `VL_BC_ICMS`, `VL_ICMS`, `VL_BC_ICMS_ST`, `VL_ICMS_ST`, `VL_IPI`, `VL_PIS`, `VL_COFINS`, `VL_PIS_ST` e `VL_COFINS_ST`.
+   - Notas Canceladas (02) e Denegadas (04): preenchimento restrito a `REG`, `IND_OPER`, `IND_EMIT`, `COD_MOD`, `COD_SIT`, `SER`, `NUM_DOC` e `CHV_NFE`, com os demais campos vazios e sem gerar registros C101 e C190.
+   - Validação cruzada de cancelamento: alerta automático quando uma nota fiscal tiver sido cancelada após a data de entrega de um arquivo SPED do mesmo período já entregue ao Fisco.
+   - NFC-e (modelo 65): desconsideração de participante e supressão de ST, IPI, PIS e COFINS no cabeçalho do C100 conforme regulamento.
+3. **Inutilizações de Numeração no Bloco C100:**
+   - Varredura das faixas de inutilizações homologadas da empresa na tabela `inutilizacoes` com data no período.
+   - Geração de registro C100 para cada número da faixa inutilizada com `IND_OPER` 1, `IND_EMIT` 0, `COD_SIT` 05 (Numeração Inutilizada), série e número, com os demais campos em branco.
+4. **Registro C101 (DIFAL e FCP Destino na NF-e):**
+   - Gerado imediatamente após o C100 nas NF-e modelo 55 que apresentarem `valor_fcp_uf_destino`, `valor_icms_uf_destino` ou `valor_icms_uf_remetente` maiores que zero.
+5. **Supressão do C170 em Emissão Própria e Registro Analítico C190:**
+   - Registro C170 suprimido nas notas eletrônicas de emissão própria (55 e 65).
+   - Agrupamento inteligente dos itens de cada nota autorizada por `CST_ICMS` (ou origem + CSOSN para empresas optantes pelo Simples Nacional com CRT 1 ou 4), `CFOP` e `aliquota_icms`.
+   - `VL_OPR` apurado pela soma dos itens com acréscimo de ICMS ST e IPI quando destacados por fora. Validação mandatória: divergência superior a R$ 0,01 entre a soma dos `VL_OPR` do C190 e o `VL_DOC` do C100 gera erro impeditivo no relatório de inconsistências com o número da nota.
+   - Apuração do `VL_RED_BC` quando houver percentual de redução de base de cálculo.
+6. **Controle de Movimento do Bloco C (C001 e C990) e Resumo de Saídas:**
+   - Registro `C001` atualizado para `IND_MOV` 0 quando houver qualquer C100, e totalizador `C990` calculado.
+   - Campo `resumo_saida` persistido em `sped_arquivos` (Migration 0055).
+7. **Tela Fiscal > SPED Fiscal (`/fiscal/sped` - `SpedFiscalPage.tsx`):**
+   - Exibição do quadro em destaque **"Saídas do período"** para o arquivo selecionado, apresentando métricas em cartões analíticos:
+     - Quantidade de NF-e (modelo 55)
+     - Quantidade de NFC-e (modelo 65)
+     - Quantidade de notas Canceladas
+     - Quantidade de notas Denegadas
+     - Quantidade de numerações Inutilizadas
+     - Total contábil do período (`VL_DOC`)
+     - Total do débito de ICMS destacado
+
+---
 
 **Versão 0.0.93** — Etapa 7 SPED Fiscal (Prompt 7.1: Gerador EFD ICMS/IPI com Blocos 0 e 9, Blocos Vazios, Endpoint /backend/v1/sped/gerar e Tela SPED Fiscal):
 

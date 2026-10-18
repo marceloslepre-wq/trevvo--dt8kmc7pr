@@ -16,6 +16,7 @@ import {
   Layers,
   ChevronRight,
   ShieldAlert,
+  TrendingUp,
 } from 'lucide-react'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
@@ -599,6 +600,96 @@ export const SpedFiscalPage: React.FC = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Quadro "Saídas do período" */}
+                {arquivoSelecionado.resumo_saida ? (
+                  <div className="bg-blue-50/50 border border-blue-200 rounded-lg p-3 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold text-blue-900 flex items-center gap-1.5">
+                        <TrendingUp size={14} className="text-blue-700" />
+                        Saídas do período
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-white border-blue-200 text-blue-800"
+                      >
+                        Bloco C (Emissão Própria)
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                      <div className="bg-white p-2 rounded border border-blue-100 shadow-2xs">
+                        <span className="text-[10px] text-slate-500 block uppercase font-medium">
+                          NF-e (55)
+                        </span>
+                        <span className="text-sm font-bold text-slate-800">
+                          {arquivoSelecionado.resumo_saida.total_nfe || 0}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-blue-100 shadow-2xs">
+                        <span className="text-[10px] text-slate-500 block uppercase font-medium">
+                          NFC-e (65)
+                        </span>
+                        <span className="text-sm font-bold text-slate-800">
+                          {arquivoSelecionado.resumo_saida.total_nfce || 0}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-blue-100 shadow-2xs">
+                        <span className="text-[10px] text-amber-700 block uppercase font-medium">
+                          Canceladas
+                        </span>
+                        <span className="text-sm font-bold text-amber-900">
+                          {arquivoSelecionado.resumo_saida.total_canceladas || 0}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-blue-100 shadow-2xs">
+                        <span className="text-[10px] text-rose-700 block uppercase font-medium">
+                          Denegadas
+                        </span>
+                        <span className="text-sm font-bold text-rose-900">
+                          {arquivoSelecionado.resumo_saida.total_denegadas || 0}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-blue-100 shadow-2xs col-span-2 sm:col-span-1">
+                        <span className="text-[10px] text-slate-600 block uppercase font-medium">
+                          Inutilizadas
+                        </span>
+                        <span className="text-sm font-bold text-slate-800">
+                          {arquivoSelecionado.resumo_saida.total_inutilizadas || 0}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div className="bg-white p-2.5 rounded border border-blue-100 shadow-2xs flex flex-col justify-between">
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          Total do VL_DOC
+                        </span>
+                        <span className="text-base font-bold text-slate-900">
+                          {(arquivoSelecionado.resumo_saida.total_vl_doc || 0).toLocaleString(
+                            'pt-BR',
+                            {
+                              style: 'currency',
+                              currency: 'BRL',
+                            },
+                          )}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded border border-blue-100 shadow-2xs flex flex-col justify-between">
+                        <span className="text-[11px] text-blue-700 font-medium">Total do ICMS</span>
+                        <span className="text-base font-bold text-blue-900">
+                          {(arquivoSelecionado.resumo_saida.total_vl_icms || 0).toLocaleString(
+                            'pt-BR',
+                            {
+                              style: 'currency',
+                              currency: 'BRL',
+                            },
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Resumo de Registros do Bloco 9 */}
                 {contagemItens.length > 0 && (

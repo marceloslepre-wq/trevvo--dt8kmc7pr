@@ -87,12 +87,730 @@ var SpedGerador = (function () {
     return linhas
   }
 
-  // --- BLOCO C (vazio nesta rodada) ---
+  /**
+   * Converte data ISO ou string para objeto Date considerando o fuso horário de Brasília (UTC-3).
+   */
+  function extrairDataBrasilia(dataStr) {
+    if (!dataStr) return null
+    var d = null
+    var raw = String(dataStr).trim()
+    if (!raw) return null
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      var p = raw.split('-')
+      return {
+        ano: parseInt(p[0], 10),
+        mes: parseInt(p[1], 10),
+        dia: parseInt(p[2], 10),
+        isoDia: raw,
+      }
+    }
+    d = new Date(raw)
+    if (!d || isNaN(d.getTime())) return null
+    // Converte para Brasília UTC-3
+    var utcMillis = d.getTime() + d.getTimezoneOffset() * 60000
+    var spOffsetMillis = -3 * 60 * 60000
+    var spDate = new Date(utcMillis + spOffsetMillis)
+
+    var ano = spDate.getFullYear()
+    var m = spDate.getMonth() + 1
+    var dia = spDate.getDate()
+    var mesStr = m < 10 ? '0' + m : String(m)
+    var diaStr = dia < 10 ? '0' + dia : String(dia)
+
+    return {
+      ano: ano,
+      mes: m,
+      dia: dia,
+      isoDia: ano + '-' + mesStr + '-' + diaStr,
+    }
+  }
+
+  /**
+   * Arredonda número para 2 casas decimais.
+   */
+  function round2(valor) {
+    var num = typeof valor === 'number' ? valor : parseFloat(String(valor || 0))
+    if (isNaN(num)) return 0
+    return Math.round(num * 100) / 100
+  }
+
+  // --- BLOCO C ---
   function gerarBlocoC(ctx) {
     var linhas = []
-    linhas.push(SpedFormato.montarLinha(['C001', '1']))
-    var totalLinhas = linhas.length + 1
-    linhas.push(SpedFormato.montarLinha(['C990', String(totalLinhas)]))
+    var empresaId = ctx.empresa.id
+
+    // Contadores para o resumo de saídas
+    var totalNfe = 0
+    var totalNfce = 0
+    var totalCanceladas = 0
+    var totalDenegadas = 0
+    var totalInutilizadas = 0
+    var totalVlDoc = 0
+    var totalVlIcms = 0
+
+    // Verifica se a empresa é do Simples Nacional (CRT 1 ou 4)
+    var crt = ctx.empresa.getInt('crt') || 1
+    var ehSimples = crt === 1 || crt === 4
+
+    // Configuração do SPED da empresa
+    var incluirHomologacaoEmTeste = true
+    if (ctx.configSped) {
+      if (ctx.configSped.getBool('incluir_homologacao_em_teste') === false) {
+        incluirHomologacaoEmTeste = false
+      }
+    }
+
+    // Busca arquivos já "Entregues" do mesmo período para validação de cancelamento posterior
+    var arquivosEntreguesPeriodo = []
+    try {
+      arquivosEntreguesPeriodo = $app.findRecordsByFilter(
+        'sped_arquivos',
+        "empresa_id = '" +
+          empresaId +
+          "' && periodo = '" +
+          ctx.periodo +
+          "' && status = 'Entregue'",
+        '-entregue_em',
+        50,
+        0,
+      )
+    } catch (_) {}
+
+    // Busca documentos fiscais da empresa, modelos 55 e 65
+    var docsBrutos = []
+    try {
+      docsBrutos = $app.findRecordsByFilter(
+        'documentos_fiscais',
+        "empresa_id = '" + empresaId + "' && (modelo = '55' || modelo = '65') && ativo = true",
+        'data_emissao,numero',
+        10000,
+        0,
+      )
+    } catch (errDocs) {
+      ctx.adicionarValidacao(
+        'erro',
+        'Falha ao carregar documentos fiscais: ' + (errDocs.message || errDocs),
+        'C100',
+      )
+    }
+
+    // Filtra documentos pela data_emissao no horário de Brasília dentro do período
+    var docsPeriodo = []
+    for (var d = 0; d < docsBrutos.length; d++) {
+      var doc = docsBrutos[d]
+      var dtEmissaoStr = doc.getString('data_emissao') || doc.getString('created')
+      var dtBsb = extrairDataBrasilia(dtEmissaoStr)
+      if (!dtBsb) continue
+
+      // Verifica se está dentro do mês e ano do período
+      if (dtBsb.ano !== ctx.ano || dtBsb.mes !== ctx.mes) {
+        continue
+      }
+
+      var statusDoc = doc.getString('status') || 'Rascunho'
+      var numDoc = doc.getInt('numero') || 0
+      var modeloDoc = doc.getString('modelo') || '55'
+      var ambienteDoc = doc.getString('ambiente') || 'Homologação'
+
+      // Filtro de ambiente:
+      // Modo Oficial: só ambiente Produção
+      // Modo Teste: também Homologação se incluir_homologacao_em_teste estiver ligado
+      if (ctx.modo === 'Oficial') {
+        if (ambienteDoc !== 'Produção') {
+          continue
+        }
+      } else {
+        // Modo Teste
+        if (ambienteDoc !== 'Produção' && !incluirHomologacaoEmTeste) {
+          continue
+        }
+      }
+
+      // Regra 1: Status Rascunho e Rejeitada NÃO entram
+      if (statusDoc === 'Rascunho' || statusDoc === 'Rejeitada') {
+        continue
+      }
+
+      // Regra 1: Status Processando no fim do período: aviso com o número
+      if (statusDoc === 'Processando') {
+        ctx.adicionarValidacao(
+          'aviso',
+          'Documento fiscal ' +
+            modeloDoc +
+            ' nº ' +
+            numDoc +
+            ' permaneceu com status "Processando" ao fim do período ' +
+            ctx.periodo +
+            '.',
+          'C100',
+          String(numDoc),
+        )
+        continue
+      }
+
+      // Consideramos Autorizada, Cancelada e Denegada
+      if (statusDoc === 'Autorizada' || statusDoc === 'Cancelada' || statusDoc === 'Denegada') {
+        docsPeriodo.push({
+          rec: doc,
+          dtBsb: dtBsb,
+        })
+      }
+    }
+
+    // Inutilizações de numeração da empresa no período
+    var inutsPeriodo = []
+    try {
+      var inutsBrutas = $app.findRecordsByFilter(
+        'inutilizacoes',
+        "empresa_id = '" + empresaId + "' && ativo = true",
+        'created',
+        1000,
+        0,
+      )
+      for (var u = 0; u < inutsBrutas.length; u++) {
+        var inut = inutsBrutas[u]
+        var dtInutStr = inut.getString('data_inutilizacao') || inut.getString('created')
+        var dtInutBsb = extrairDataBrasilia(dtInutStr)
+        if (!dtInutBsb) continue
+        if (dtInutBsb.ano !== ctx.ano || dtInutBsb.mes !== ctx.mes) continue
+
+        // Verifica status homologado/autorizado
+        var stInut = (inut.getString('status') || '').toLowerCase()
+        if (stInut !== 'autorizada' && stInut !== 'homologada' && stInut !== 'sucesso') {
+          continue
+        }
+
+        // Se a tabela tiver campo ambiente e modo for Oficial, só as de produção
+        var colInut = inut.collection()
+        var temCampoAmb = colInut && colInut.fields.getByName('ambiente')
+        if (temCampoAmb && ctx.modo === 'Oficial') {
+          var ambInut = inut.getString('ambiente')
+          if (ambInut && ambInut !== 'Produção') {
+            continue
+          }
+        }
+
+        inutsPeriodo.push(inut)
+      }
+    } catch (errInut) {
+      console.warn('Erro ao carregar inutilizacoes:', errInut)
+    }
+
+    // Linhas do Bloco C
+    var c100Linhas = []
+
+    // Processa os documentos fiscais emitidos
+    for (var idx = 0; idx < docsPeriodo.length; idx++) {
+      var itemDoc = docsPeriodo[idx]
+      var rec = itemDoc.rec
+      var status = rec.getString('status')
+      var modelo = rec.getString('modelo') || '55'
+      var serie = rec.getString('serie') || '1'
+      var numero = rec.getInt('numero') || 0
+      var chaveAcesso = SpedFormato.formatarDigitos(rec.getString('chave_acesso'))
+      var tipoDocumento = rec.getInt('tipo_documento') // 1 saída, 0 entrada própria
+      var indOper = tipoDocumento === 0 ? '0' : '1'
+      var indEmit = '0' // Emissão própria
+
+      // Atualiza totais para resumo
+      if (modelo === '65') {
+        totalNfce++
+      } else {
+        totalNfe++
+      }
+
+      var codSit = '00'
+      if (status === 'Cancelada') {
+        codSit = '02'
+        totalCanceladas++
+      } else if (status === 'Denegada') {
+        codSit = '04'
+        totalDenegadas++
+      }
+
+      // Validação: nota cancelada depois de um arquivo Entregue do mesmo período
+      if (status === 'Cancelada' && arquivosEntreguesPeriodo.length > 0) {
+        var dtCancStr = rec.getString('cancelada_em') || rec.getString('updated')
+        var dtCanc = dtCancStr ? new Date(dtCancStr) : null
+        for (var ae = 0; ae < arquivosEntreguesPeriodo.length; ae++) {
+          var arqEnt = arquivosEntreguesPeriodo[ae]
+          var dtEntStr = arqEnt.getString('entregue_em') || arqEnt.getString('created')
+          var dtEnt = dtEntStr ? new Date(dtEntStr) : null
+          if (dtCanc && dtEnt && dtCanc.getTime() > dtEnt.getTime()) {
+            ctx.adicionarValidacao(
+              'aviso',
+              'Nota ' +
+                modelo +
+                ' nº ' +
+                numero +
+                ' cancelada após a entrega do SPED anterior, é preciso retificar.',
+              'C100',
+              String(numero),
+            )
+            break
+          }
+        }
+      }
+
+      // Se Cancelada ou Denegada: preencher só REG, IND_OPER, IND_EMIT, COD_MOD, COD_SIT, SER, NUM_DOC e CHV_NFE
+      // (demais 21 campos vazios e sem C101 e C190)
+      if (status === 'Cancelada' || status === 'Denegada') {
+        c100Linhas.push(
+          SpedFormato.montarLinha([
+            'C100',
+            indOper, // IND_OPER
+            indEmit, // IND_EMIT
+            '', // COD_PART
+            modelo, // COD_MOD
+            codSit, // COD_SIT
+            serie, // SER
+            String(numero), // NUM_DOC
+            chaveAcesso, // CHV_NFE
+            '', // DT_DOC
+            '', // DT_E_S
+            '', // VL_DOC
+            '', // IND_PGTO
+            '', // VL_DESC
+            '', // VL_ABAT_NT
+            '', // VL_MERC
+            '', // IND_FRT
+            '', // VL_FRT
+            '', // VL_SEG
+            '', // VL_OUT_DA
+            '', // VL_BC_ICMS
+            '', // VL_ICMS
+            '', // VL_BC_ICMS_ST
+            '', // VL_ICMS_ST
+            '', // VL_IPI
+            '', // VL_PIS
+            '', // VL_COFINS
+            '', // VL_PIS_ST
+            '', // VL_COFINS_ST
+          ]),
+        )
+        continue
+      }
+
+      // Documento AUTORIZADO
+      var dtEmissaoSped = SpedFormato.formatarData(
+        rec.getString('data_emissao') || rec.getString('created'),
+      )
+
+      // Participante:
+      // Venda: o cliente da venda (C + id)
+      // devolução de venda: o cliente da venda original (C + id)
+      // devolução de compra: o fornecedor da nota de entrada (F + id)
+      // transferência: a empresa de destino (E + id)
+      // NFC-e (65) sem participante: vazio
+      var codPart = ''
+      var origemDoc = rec.getString('origem') || ''
+      var clienteId = rec.getString('cliente_id')
+      var fornecedorId = rec.getString('fornecedor_id')
+
+      if (modelo === '65') {
+        // NFC-e: não preencher COD_PART (conforme regra 2)
+        codPart = ''
+      } else {
+        // Modelo 55 (NF-e)
+        if (origemDoc === 'Transferência' || origemDoc === 'Transferencia') {
+          // Transferência: destino pode estar em venda ou transferência
+          var empDestId = ''
+          if (rec.getString('origem_id')) {
+            try {
+              var trfRec = $app.findRecordById('transferencias', rec.getString('origem_id'))
+              empDestId = trfRec.getString('empresa_destino_id')
+            } catch (_) {}
+          }
+          if (empDestId) {
+            codPart = 'E' + empDestId
+            ctx.registrarParticipante('E', empDestId)
+          } else if (clienteId) {
+            codPart = 'C' + clienteId
+            ctx.registrarParticipante('C', clienteId)
+          }
+        } else if (origemDoc === 'Devolução de compra' || origemDoc === 'Devolucao de compra') {
+          if (fornecedorId) {
+            codPart = 'F' + fornecedorId
+            ctx.registrarParticipante('F', fornecedorId)
+          } else if (rec.getString('origem_id')) {
+            try {
+              var neRec = $app.findRecordById('notas_entrada', rec.getString('origem_id'))
+              var fId = neRec.getString('fornecedor_id')
+              if (fId) {
+                codPart = 'F' + fId
+                ctx.registrarParticipante('F', fId)
+              }
+            } catch (_) {}
+          }
+        } else {
+          // Venda normal ou devolução de venda
+          if (clienteId) {
+            codPart = 'C' + clienteId
+            ctx.registrarParticipante('C', clienteId)
+          } else if (rec.getString('venda_id')) {
+            try {
+              var vRec = $app.findRecordById('vendas', rec.getString('venda_id'))
+              var cId = vRec.getString('cliente_id')
+              if (cId) {
+                codPart = 'C' + cId
+                ctx.registrarParticipante('C', cId)
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      // IND_PGTO:
+      // venda com tudo pago no dia 0
+      // venda com parcelas a prazo 1
+      // demais 2
+      var indPgto = '2'
+      if (rec.getString('venda_id')) {
+        try {
+          var parcelasRecs = $app.findRecordsByFilter(
+            'contas_receber',
+            "origem_id = '" + rec.getString('venda_id') + "' && ativo = true",
+            'data_vencimento',
+            100,
+            0,
+          )
+          if (parcelasRecs && parcelasRecs.length > 0) {
+            var temPrazo = false
+            var dtVendaIso = itemDoc.dtBsb.isoDia
+            for (var p = 0; p < parcelasRecs.length; p++) {
+              var dv = (parcelasRecs[p].getString('data_vencimento') || '').substring(0, 10)
+              if (dv && dv > dtVendaIso) {
+                temPrazo = true
+                break
+              }
+            }
+            indPgto = temPrazo ? '1' : '0'
+          } else {
+            indPgto = '0'
+          }
+        } catch (_) {
+          indPgto = '2'
+        }
+      } else {
+        indPgto = '2'
+      }
+
+      // IND_FRT: ler do xml_arquivo autorizado ou do payload enviado; se sem frete/xml: 9
+      var indFrt = '9'
+      var jsonEnv = rec.get('json_enviado')
+      if (jsonEnv) {
+        try {
+          var payloadParsed = typeof jsonEnv === 'string' ? JSON.parse(jsonEnv) : jsonEnv
+          if (
+            payloadParsed &&
+            payloadParsed.modalidade_frete !== undefined &&
+            payloadParsed.modalidade_frete !== null
+          ) {
+            indFrt = String(payloadParsed.modalidade_frete)
+          }
+        } catch (_) {}
+      }
+
+      // Valores contábeis e fiscais do C100
+      var vlDoc = round2(rec.getFloat('valor_total') || 0)
+      var vlDesc = round2(rec.getFloat('valor_desconto') || 0)
+      var vlAbatNt = '0,00'
+      var vlMerc = round2(rec.getFloat('valor_produtos') || 0)
+      var vlFrt = round2(rec.getFloat('valor_frete') || 0)
+      var vlSeg = round2(rec.getFloat('valor_seguro') || 0)
+      var vlOutDa = round2(rec.getFloat('valor_outras_despesas') || 0)
+      var vlBcIcms = round2(rec.getFloat('base_icms') || 0)
+      var vlIcms = round2(rec.getFloat('valor_icms') || 0)
+      var vlBcIcmsSt = round2(rec.getFloat('base_icms_st') || 0)
+      var vlIcmsSt = round2(rec.getFloat('valor_icms_st') || 0)
+      var vlIpi = round2(rec.getFloat('valor_ipi') || 0)
+      var vlPis = round2(rec.getFloat('valor_pis') || 0)
+      var vlCofins = round2(rec.getFloat('valor_cofins') || 0)
+
+      // Atualiza acumuladores de saída
+      totalVlDoc = round2(totalVlDoc + vlDoc)
+      totalVlIcms = round2(totalVlIcms + vlIcms)
+
+      // Se NFC-e (65): não preencher COD_PART, VL_BC_ICMS_ST, VL_ICMS_ST, VL_IPI, VL_PIS, VL_COFINS, VL_PIS_ST e VL_COFINS_ST
+      var sBcIcmsSt = modelo === '65' ? '' : SpedFormato.formatarValor(vlBcIcmsSt)
+      var sIcmsSt = modelo === '65' ? '' : SpedFormato.formatarValor(vlIcmsSt)
+      var sIpi = modelo === '65' ? '' : SpedFormato.formatarValor(vlIpi)
+      var sPis = modelo === '65' ? '' : SpedFormato.formatarValor(vlPis)
+      var sCofins = modelo === '65' ? '' : SpedFormato.formatarValor(vlCofins)
+
+      c100Linhas.push(
+        SpedFormato.montarLinha([
+          'C100',
+          indOper,
+          indEmit,
+          codPart,
+          modelo,
+          codSit,
+          serie,
+          String(numero),
+          chaveAcesso,
+          dtEmissaoSped,
+          dtEmissaoSped,
+          SpedFormato.formatarValor(vlDoc),
+          indPgto,
+          SpedFormato.formatarValor(vlDesc),
+          vlAbatNt,
+          SpedFormato.formatarValor(vlMerc),
+          indFrt,
+          SpedFormato.formatarValor(vlFrt),
+          SpedFormato.formatarValor(vlSeg),
+          SpedFormato.formatarValor(vlOutDa),
+          SpedFormato.formatarValor(vlBcIcms),
+          SpedFormato.formatarValor(vlIcms),
+          sBcIcmsSt,
+          sIcmsSt,
+          sIpi,
+          sPis,
+          sCofins,
+          '', // VL_PIS_ST
+          '', // VL_COFINS_ST
+        ]),
+      )
+
+      // C101: só na NF-e com DIFAL/FCP destino
+      var vlFcpUfDest = round2(rec.getFloat('valor_fcp_uf_destino') || 0)
+      var vlIcmsUfDest = round2(rec.getFloat('valor_icms_uf_destino') || 0)
+      var vlIcmsUfRem = round2(rec.getFloat('valor_icms_uf_remetente') || 0)
+
+      if (modelo === '55' && (vlFcpUfDest > 0 || vlIcmsUfDest > 0 || vlIcmsUfRem > 0)) {
+        c100Linhas.push(
+          SpedFormato.montarLinha([
+            'C101',
+            SpedFormato.formatarValor(vlFcpUfDest),
+            SpedFormato.formatarValor(vlIcmsUfDest),
+            SpedFormato.formatarValor(vlIcmsUfRem),
+          ]),
+        )
+      }
+
+      // C190: Registro analítico do documento autorizado
+      // Agrupa documentos_fiscais_itens por CST_ICMS, CFOP e alíquota de ICMS
+      var itensDoc = []
+      try {
+        itensDoc = $app.findRecordsByFilter(
+          'documentos_fiscais_itens',
+          "documento_id = '" + rec.id + "'",
+          'item',
+          500,
+          0,
+        )
+      } catch (errItens) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Falha ao carregar itens da nota ' + numero + ': ' + (errItens.message || errItens),
+          'C190',
+          String(numero),
+        )
+      }
+
+      // Agrupamento
+      var gruposC190 = {}
+      var somaVlOprDoc = 0
+
+      for (var it = 0; it < itensDoc.length; it++) {
+        var item = itensDoc[it]
+        var origItem = SpedFormato.formatarDigitos(item.getString('origem')) || '0'
+        var cstItem = SpedFormato.formatarDigitos(item.getString('cst_icms'))
+        var csosnItem = SpedFormato.formatarDigitos(item.getString('csosn'))
+
+        // Registra item e unidade para o Bloco 0 (0200 e 0190)
+        var prodIdItem = item.getString('produto_id')
+        if (prodIdItem) {
+          ctx.registrarItem(prodIdItem)
+        }
+        var unItem = item.getString('unidade')
+        if (unItem) {
+          ctx.registrarUnidade(unItem)
+        }
+
+        // CST_ICMS do registro analítico (3 dígitos)
+        // se a empresa for do Simples (CRT 1 ou 4), origem + csosn; senão, origem + cst_icms (com padding)
+        var cstFinal = ''
+        if (ehSimples) {
+          if (!csosnItem && cstItem) {
+            // Converte CST para CSOSN
+            csosnItem = cstItem.length === 2 ? '1' + cstItem : '102'
+          }
+          if (!csosnItem) csosnItem = '102'
+          cstFinal = origItem.substring(0, 1) + csosnItem
+        } else {
+          if (!cstItem && csosnItem) {
+            cstItem = csosnItem.length >= 2 ? csosnItem.slice(-2) : '00'
+          }
+          if (!cstItem) cstItem = '00'
+          if (cstItem.length === 1) cstItem = '0' + cstItem
+          cstFinal = origItem.substring(0, 1) + cstItem
+        }
+
+        var cfopItem = SpedFormato.formatarDigitos(item.getString('cfop')) || '5102'
+        var aliqIcmsItem = round2(item.getFloat('aliquota_icms') || 0)
+
+        // VL_OPR do item: valor_total do item + ICMS ST + FCP ST + IPI (se não já inclusos)
+        // No motor fiscal (Prompt 6.1), valor_total do item é (valorBruto - desconto + frete + outras).
+        // ST e IPI são destacados por fora na NF-e e somam no total da nota.
+        var vTotItem = round2(item.getFloat('valor_total') || 0)
+        var vIcmsStItem = round2(item.getFloat('valor_icms_st') || 0)
+        var vFcpStItem = round2(item.getFloat('valor_fcp_st') || 0)
+        var vIpiItem = round2(item.getFloat('valor_ipi') || 0)
+
+        var vlOprItem = round2(vTotItem + vIcmsStItem + vFcpStItem + vIpiItem)
+
+        var bcIcmsItem = round2(item.getFloat('base_icms') || 0)
+        var vIcmsItem = round2(item.getFloat('valor_icms') || 0)
+        var bcStItem = round2(item.getFloat('base_icms_st') || 0)
+        var redBcItem = round2(item.getFloat('reducao_bc_icms') || 0)
+
+        // VL_RED_BC: a parte da base que ficou fora (valor sem redução menos a base)
+        var vlRedBcItem = 0
+        if (redBcItem > 0 && redBcItem < 100 && bcIcmsItem > 0) {
+          var baseIntegral = round2(bcIcmsItem / (1 - redBcItem / 100))
+          vlRedBcItem = Math.max(0, round2(baseIntegral - bcIcmsItem))
+        }
+
+        var chaveGrupo = cstFinal + '|' + cfopItem + '|' + aliqIcmsItem.toFixed(2)
+        if (!gruposC190[chaveGrupo]) {
+          gruposC190[chaveGrupo] = {
+            cst: cstFinal,
+            cfop: cfopItem,
+            aliqIcms: aliqIcmsItem,
+            vlOpr: 0,
+            vlBcIcms: 0,
+            vlIcms: 0,
+            vlBcIcmsSt: 0,
+            vlIcmsSt: 0,
+            vlRedBc: 0,
+            vlIpi: 0,
+          }
+        }
+
+        var g = gruposC190[chaveGrupo]
+        g.vlOpr = round2(g.vlOpr + vlOprItem)
+        g.vlBcIcms = round2(g.vlBcIcms + bcIcmsItem)
+        g.vlIcms = round2(g.vlIcms + vIcmsItem)
+        g.vlBcIcmsSt = round2(g.vlBcIcmsSt + bcStItem)
+        g.vlIcmsSt = round2(g.vlIcmsSt + vIcmsStItem)
+        g.vlRedBc = round2(g.vlRedBc + vlRedBcItem)
+        g.vlIpi = round2(g.vlIpi + vIpiItem)
+      }
+
+      // Monta as linhas C190 para cada grupo
+      var chavesGrupo = Object.keys(gruposC190).sort()
+      for (var cg = 0; cg < chavesGrupo.length; cg++) {
+        var grp = gruposC190[chavesGrupo[cg]]
+        somaVlOprDoc = round2(somaVlOprDoc + grp.vlOpr)
+
+        c100Linhas.push(
+          SpedFormato.montarLinha([
+            'C190',
+            grp.cst,
+            grp.cfop,
+            grp.aliqIcms > 0 ? SpedFormato.formatarValor(grp.aliqIcms) : '',
+            SpedFormato.formatarValor(grp.vlOpr),
+            SpedFormato.formatarValor(grp.vlBcIcms),
+            SpedFormato.formatarValor(grp.vlIcms),
+            SpedFormato.formatarValor(grp.vlBcIcmsSt),
+            SpedFormato.formatarValor(grp.vlIcmsSt),
+            SpedFormato.formatarValor(grp.vlRedBc),
+            SpedFormato.formatarValor(grp.vlIpi),
+            '', // COD_OBS vazio
+          ]),
+        )
+      }
+
+      // Validação: A soma dos VL_OPR do documento deve bater com o VL_DOC do C100; diferença > 0,01: erro
+      var difVlOpr = Math.abs(round2(somaVlOprDoc - vlDoc))
+      if (itensDoc.length > 0 && difVlOpr > 0.01) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Soma do valor das operações dos registros analíticos C190 (R$ ' +
+            somaVlOprDoc.toFixed(2) +
+            ') diverge do VL_DOC da nota ' +
+            modelo +
+            ' nº ' +
+            numero +
+            ' (R$ ' +
+            vlDoc.toFixed(2) +
+            ').',
+          'C190',
+          String(numero),
+        )
+      }
+    }
+
+    // Regra 3: Inutilizações homologadas da empresa no período
+    // Para cada número de cada faixa, gera um C100 com COD_SIT 05
+    for (var inIdx = 0; inIdx < inutsPeriodo.length; inIdx++) {
+      var inutRec = inutsPeriodo[inIdx]
+      var modInut = inutRec.getString('modelo') || '55'
+      var serInut = inutRec.getString('serie') || '1'
+      var numIni = inutRec.getInt('numero_inicial') || 0
+      var numFim = inutRec.getInt('numero_final') || numIni
+
+      for (var n = numIni; n <= numFim; n++) {
+        totalInutilizadas++
+        c100Linhas.push(
+          SpedFormato.montarLinha([
+            'C100',
+            '1', // IND_OPER 1 (saída)
+            '0', // IND_EMIT 0 (própria)
+            '', // COD_PART
+            modInut, // COD_MOD
+            '05', // COD_SIT 05 (Numeração Inutilizada)
+            serInut, // SER
+            String(n), // NUM_DOC
+            '', // CHV_NFE
+            '', // DT_DOC
+            '', // DT_E_S
+            '', // VL_DOC
+            '', // IND_PGTO
+            '', // VL_DESC
+            '', // VL_ABAT_NT
+            '', // VL_MERC
+            '', // IND_FRT
+            '', // VL_FRT
+            '', // VL_SEG
+            '', // VL_OUT_DA
+            '', // VL_BC_ICMS
+            '', // VL_ICMS
+            '', // VL_BC_ICMS_ST
+            '', // VL_ICMS_ST
+            '', // VL_IPI
+            '', // VL_PIS
+            '', // VL_COFINS
+            '', // VL_PIS_ST
+            '', // VL_COFINS_ST
+          ]),
+        )
+      }
+    }
+
+    // Regra 7: Atualize C001 (IND_MOV 0 quando houver qualquer C100) e C990
+    var temMovimento = c100Linhas.length > 0
+    linhas.push(SpedFormato.montarLinha(['C001', temMovimento ? '0' : '1']))
+
+    if (temMovimento) {
+      linhas = linhas.concat(c100Linhas)
+    }
+
+    var totalLinhasC = linhas.length + 1
+    linhas.push(SpedFormato.montarLinha(['C990', String(totalLinhasC)]))
+
+    // Guarda o resumo de saídas no contexto para ser salvo em sped_arquivos
+    ctx.resumoSaida = {
+      total_nfe: totalNfe,
+      total_nfce: totalNfce,
+      total_canceladas: totalCanceladas,
+      total_denegadas: totalDenegadas,
+      total_inutilizadas: totalInutilizadas,
+      total_vl_doc: totalVlDoc,
+      total_vl_icms: totalVlIcms,
+    }
+
     return linhas
   }
 
@@ -745,6 +1463,7 @@ var SpedGerador = (function () {
       validacoes: ctx.validacoes,
       status: status,
       temErros: temErros,
+      resumoSaida: ctx.resumoSaida || null,
       ctx: ctx,
     }
   }

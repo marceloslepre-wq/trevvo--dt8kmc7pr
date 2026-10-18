@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-18T11:37:48.165Z",
+  "generatedAt": "2026-10-18T12:00:48.322Z",
   "collections": [
     {
       "name": "users",
@@ -10671,6 +10671,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "resumo_saida",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

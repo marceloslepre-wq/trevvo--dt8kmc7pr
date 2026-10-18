@@ -241,8 +241,10 @@ routerAdd(
       arquivoRec.set('quantidade_linhas', resultado.quantidadeLinhas)
       arquivoRec.set('contagem_registros', JSON.stringify(resultado.contagemRegistros))
       arquivoRec.set('validacoes', JSON.stringify(resultado.validacoes))
+      if (resultado.resumoSaida) {
+        arquivoRec.set('resumo_saida', JSON.stringify(resultado.resumoSaida))
+      }
       arquivoRec.set('status', resultado.status)
-
       $app.save(arquivoRec)
 
       // 6. Atualizar arquivos anteriores do mesmo período e modo para "Substituído" (exceto "Entregue" e exceto o atual)

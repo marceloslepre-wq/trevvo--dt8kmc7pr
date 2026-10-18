@@ -42,6 +42,16 @@ export interface SpedResumoApuracao {
   saldo_credor_a_transportar?: number
 }
 
+export interface SpedResumoSaida {
+  total_nfe?: number
+  total_nfce?: number
+  total_canceladas?: number
+  total_denegadas?: number
+  total_inutilizadas?: number
+  total_vl_doc?: number
+  total_vl_icms?: number
+}
+
 export interface SpedArquivoRegistro {
   id: string
   empresa_id: string
@@ -54,6 +64,7 @@ export interface SpedArquivoRegistro {
   quantidade_linhas?: number
   contagem_registros?: Record<string, number>
   resumo_apuracao?: SpedResumoApuracao
+  resumo_saida?: SpedResumoSaida
   validacoes?: SpedValidacaoItem[]
   gerado_por?: string
   entregue_em?: string
