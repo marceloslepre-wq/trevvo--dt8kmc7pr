@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { PermissaoGuard } from '@/components/PermissaoGuard'
 import { usePermissoes } from '@/contexts/PermissoesContext'
-import { useEmpresa } from '@/contexts/EmpresaContext'
-import { listarEmpresas, Empresa } from '@/services/empresas'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { listarEmpresasAtivas, Empresa } from '@/services/empresas'
 import { exportarXmlsFiscais } from '@/services/fiscalIntegracao'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -46,7 +46,7 @@ const MESES = [
 
 export default function ExportarXmlsPage() {
   const { toast } = useToast()
-  const { empresaAtiva } = useEmpresa()
+  const { empresaAtiva } = useEmpresaAtiva()
   const { administrador } = usePermissoes()
 
   const dataAtual = new Date()
@@ -86,7 +86,7 @@ export default function ExportarXmlsPage() {
     const buscar = async () => {
       try {
         setCarregandoEmpresas(true)
-        const lista = await listarEmpresas(true)
+        const lista = await listarEmpresasAtivas()
         if (montado) {
           setEmpresas(lista)
         }
