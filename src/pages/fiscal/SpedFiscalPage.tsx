@@ -30,6 +30,7 @@ import { usePermissoes } from '@/contexts/PermissoesContext'
 import {
   listarArquivosSped,
   gerarArquivoSped,
+  marcarSpedEntregue,
   obterUrlDownloadSped,
   listarAjustesApuracao,
   salvarAjusteApuracao,
@@ -157,6 +158,19 @@ export const SpedFiscalPage: React.FC = () => {
   const [excluindoAjusteId, setExcluindoAjusteId] = useState<string | null>(null)
   const [modalNovoAjusteAberto, setModalNovoAjusteAberto] = useState(false)
   const [ajusteEdicao, setAjusteEdicao] = useState<Partial<SpedAjusteApuracao> | null>(null)
+
+  // Modal de Confirmação de Retificadora (Prompt 7.6a - Item C1)
+  const [modalConfirmarRetificadoraAberto, setModalConfirmarRetificadoraAberto] = useState(false)
+
+  // Modal de Marcar como Entregue (Prompt 7.6a - Item C2)
+  const [modalEntregueAberto, setModalEntregueAberto] = useState(false)
+  const [arquivoParaEntregar, setArquivoParaEntregar] = useState<SpedArquivoRegistro | null>(null)
+  const [formReciboEntrega, setFormReciboEntrega] = useState('')
+  const [formDataEntrega, setFormDataEntrega] = useState(
+    () => new Date().toISOString().split('T')[0],
+  )
+  const [formObservacoesEntrega, setFormObservacoesEntrega] = useState('')
+  const [marcandoEntregue, setMarcandoEntregue] = useState(false)
 
   // Campos do formulário de ajuste
   const [formCodigoAjuste, setFormCodigoAjuste] = useState('')
@@ -356,25 +370,8 @@ export const SpedFiscalPage: React.FC = () => {
     }
   }
 
-  const handleGerarSped = async () => {
-    if (!empresaAtiva?.id) {
-      toast({
-        title: 'Nenhuma empresa selecionada',
-        description: 'Selecione uma empresa ativa para gerar o SPED Fiscal.',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    if (!periodo || !/^\d{4}-\d{2}$/.test(periodo)) {
-      toast({
-        title: 'Período inválido',
-        description: 'Informe o mês no formato AAAA-MM (exemplo: 2025-01).',
-        variant: 'destructive',
-      })
-      return
-    }
-
+  const dispararGeracaoSped = async () => {
+    if (!empresaAtiva?.id) return
     setGerando(true)
     try {
       const resp = await gerarArquivoSped({
@@ -413,6 +410,106 @@ export const SpedFiscalPage: React.FC = () => {
       })
     } finally {
       setGerando(false)
+      setModalConfirmarRetificadoraAberto(false)
+    }
+  }
+
+  const handleGerarSped = async () => {
+    if (!empresaAtiva?.id) {
+      toast({
+        title: 'Nenhuma empresa selecionada',
+        description: 'Selecione uma empresa ativa para gerar o SPED Fiscal.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!periodo || !/^\d{4}-\d{2}$/.test(periodo)) {
+      toast({
+        title: 'Período inválido',
+        description: 'Informe o mês no formato AAAA-MM (exemplo: 2025-01).',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Regra C1 (Prompt 7.6a): Se modo Oficial de período que já tem arquivo Oficial Entregue,
+    // verifica antes e pede confirmação com a mensagem do usuário
+    if (modo === 'Oficial' && periodoBloqueadoEntregue) {
+      setModalConfirmarRetificadoraAberto(true)
+      return
+    }
+
+    await dispararGeracaoSped()
+  }
+
+  const abrirModalMarcarEntregue = (arq: SpedArquivoRegistro) => {
+    if (!administrador) {
+      toast({
+        title: 'Acesso restrito',
+        description: 'Apenas administradores podem marcar arquivos SPED como entregues.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setArquivoParaEntregar(arq)
+    setFormReciboEntrega('')
+    setFormDataEntrega(new Date().toISOString().split('T')[0])
+    setFormObservacoesEntrega('')
+    setModalEntregueAberto(true)
+  }
+
+  const handleSalvarMarcarEntregue = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!arquivoParaEntregar?.id) return
+
+    if (!administrador) {
+      toast({
+        title: 'Acesso restrito',
+        description: 'Apenas administradores podem marcar arquivos SPED como entregues.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const recibo = formReciboEntrega.trim()
+    if (!recibo) {
+      toast({
+        title: 'Recibo obrigatório',
+        description: 'Informe o número do recibo de entrega gerado pelo PVA.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setMarcandoEntregue(true)
+    try {
+      await marcarSpedEntregue({
+        arquivo_id: arquivoParaEntregar.id,
+        recibo_entrega: recibo,
+        entregue_em: formDataEntrega ? `${formDataEntrega} 12:00:00` : undefined,
+        observacoes: formObservacoesEntrega.trim() || undefined,
+      })
+
+      toast({
+        title: 'Arquivo marcado como Entregue',
+        description: `O arquivo ${arquivoParaEntregar.nome_arquivo || ''} foi registrado como Entregue com o recibo ${recibo}.`,
+        className: 'bg-emerald-50 border-emerald-300 text-emerald-900',
+      })
+
+      setModalEntregueAberto(false)
+      setArquivoParaEntregar(null)
+      await carregarArquivos()
+    } catch (err: any) {
+      console.error('Falha ao marcar como entregue:', err)
+      toast({
+        title: 'Erro ao marcar entrega',
+        description: err.message || 'Não foi possível registrar a entrega do arquivo.',
+        variant: 'destructive',
+      })
+    } finally {
+      setMarcandoEntregue(false)
     }
   }
 
@@ -715,6 +812,25 @@ export const SpedFiscalPage: React.FC = () => {
                             </div>
 
                             <div className="flex items-center gap-2 sm:self-center">
+                              {/* Botão Marcar como entregue na linha (Item C2) */}
+                              {administrador &&
+                                arq.modo === 'Oficial' &&
+                                (arq.status === 'Gerado' || arq.status === 'Gerado com erros') && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      abrirModalMarcarEntregue(arq)
+                                    }}
+                                    className="h-8 px-2.5 text-xs text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300"
+                                    title="Marcar este arquivo oficial como entregue no PVA"
+                                  >
+                                    <CheckCircle2 size={13} className="mr-1 text-emerald-600" />
+                                    Entregue
+                                  </Button>
+                                )}
+
                               {temArquivo && arq.status !== 'Erro' && (
                                 <Button
                                   size="sm"
@@ -759,17 +875,34 @@ export const SpedFiscalPage: React.FC = () => {
                   </CardHeader>
                   <CardContent className="pt-4 space-y-4">
                     {/* Ações principais */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         onClick={() => handleBaixarArquivo(arquivoSelecionado)}
                         disabled={
                           !arquivoSelecionado.arquivo || arquivoSelecionado.status === 'Erro'
                         }
-                        className="flex-1 h-9 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium"
+                        className="flex-1 min-w-[140px] h-9 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium"
                       >
                         <Download size={15} className="mr-1.5" />
                         Baixar Arquivo .txt
                       </Button>
+
+                      {/* Botão Marcar como entregue (Prompt 7.6a - Item C2):
+                          visível somente para arquivo Oficial com status Gerado (ou Gerado com erros)
+                          e somente para Administrador; modo Teste nunca mostra */}
+                      {administrador &&
+                        arquivoSelecionado.modo === 'Oficial' &&
+                        (arquivoSelecionado.status === 'Gerado' ||
+                          arquivoSelecionado.status === 'Gerado com erros') && (
+                          <Button
+                            variant="outline"
+                            onClick={() => abrirModalMarcarEntregue(arquivoSelecionado)}
+                            className="h-9 text-xs border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100"
+                          >
+                            <CheckCircle2 size={14} className="mr-1.5 text-emerald-600" />
+                            Marcar como entregue
+                          </Button>
+                        )}
 
                       {(arquivoSelecionado.validacoes?.length || 0) > 0 && (
                         <Button
@@ -1488,6 +1621,166 @@ export const SpedFiscalPage: React.FC = () => {
                   </>
                 ) : (
                   'Salvar Ajuste'
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação de Retificadora (Prompt 7.6a - Item C1) */}
+      <Dialog
+        open={modalConfirmarRetificadoraAberto}
+        onOpenChange={setModalConfirmarRetificadoraAberto}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-amber-900">
+              <AlertTriangle className="text-amber-600" size={20} />
+              Confirmação de Geração — Retificadora
+            </DialogTitle>
+            <DialogDescription className="text-xs pt-1 text-slate-700 font-medium">
+              já existe arquivo entregue deste mês; o novo será uma retificadora
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 text-xs text-slate-600 space-y-2">
+            <p>
+              O período <strong>{periodo}</strong> já possui um arquivo SPED Fiscal Oficial com
+              status <strong>Entregue</strong>.
+            </p>
+            <p>
+              Ao prosseguir, o novo arquivo será gerado com finalidade retificadora (
+              <strong>COD_FIN = 1</strong>) e substituirá a versão anterior em aberto.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={gerando}
+              onClick={() => setModalConfirmarRetificadoraAberto(false)}
+              className="h-9 text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={gerando}
+              onClick={dispararGeracaoSped}
+              className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium"
+            >
+              {gerando ? (
+                <>
+                  <RotateCw size={14} className="animate-spin mr-1.5" />
+                  Gerando retificadora...
+                </>
+              ) : (
+                'Confirmar e Gerar Retificadora'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Marcar como Entregue (Prompt 7.6a - Item C2) */}
+      <Dialog open={modalEntregueAberto} onOpenChange={setModalEntregueAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-emerald-950">
+              <CheckCircle2 className="text-emerald-600" size={20} />
+              Marcar Arquivo SPED como Entregue
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Informe os dados do recibo emitido pelo PVA da Receita Federal para homologar este
+              arquivo oficial.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSalvarMarcarEntregue} className="space-y-4 pt-2">
+            <div className="bg-slate-50 p-2.5 rounded border border-slate-200 text-xs space-y-1">
+              <div>
+                <span className="text-slate-500">Arquivo:</span>{' '}
+                <span className="font-mono font-medium text-slate-800">
+                  {arquivoParaEntregar?.nome_arquivo}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500">Período:</span>{' '}
+                <span className="font-semibold text-slate-800">{arquivoParaEntregar?.periodo}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="form-recibo-pva" className="text-xs font-semibold text-slate-700">
+                Número do Recibo do PVA *
+              </Label>
+              <Input
+                id="form-recibo-pva"
+                value={formReciboEntrega}
+                onChange={(e) => setFormReciboEntrega(e.target.value)}
+                placeholder="Ex: 27.64.49.52.4E.B3.84.53..."
+                required
+                className="h-9 font-mono text-sm"
+              />
+              <p className="text-[11px] text-slate-500">
+                Código alfanumérico constante no comprovante de transmissão do PVA.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="form-data-entrega" className="text-xs font-semibold text-slate-700">
+                Data da Entrega
+              </Label>
+              <Input
+                id="form-data-entrega"
+                type="date"
+                value={formDataEntrega}
+                onChange={(e) => setFormDataEntrega(e.target.value)}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="form-obs-entrega" className="text-xs font-semibold text-slate-700">
+                Observações (opcional)
+              </Label>
+              <Input
+                id="form-obs-entrega"
+                value={formObservacoesEntrega}
+                onChange={(e) => setFormObservacoesEntrega(e.target.value)}
+                placeholder="Ex: Transmitido pelo contador responsável"
+                maxLength={255}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={marcandoEntregue}
+                onClick={() => {
+                  setModalEntregueAberto(false)
+                  setArquivoParaEntregar(null)
+                }}
+                className="h-9 text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={marcandoEntregue}
+                className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+              >
+                {marcandoEntregue ? (
+                  <>
+                    <RotateCw size={14} className="animate-spin mr-1.5" />
+                    Gravando entrega...
+                  </>
+                ) : (
+                  'Confirmar Entrega'
                 )}
               </Button>
             </div>

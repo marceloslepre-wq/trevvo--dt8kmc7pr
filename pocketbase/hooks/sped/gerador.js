@@ -793,11 +793,11 @@ var SpedGerador = (function () {
         })
       }
 
-      // Validação: A soma dos VL_OPR do documento deve bater com o VL_DOC do C100; diferença > 0,01: erro
+      // Validação: A soma dos VL_OPR do documento deve bater com o VL_DOC do C100 (aviso acima de 0,01 conforme Prompt 7.6a regra 7)
       var difVlOpr = Math.abs(round2(somaVlOprDoc - vlDoc))
       if (itensDoc.length > 0 && difVlOpr > 0.01) {
         ctx.adicionarValidacao(
-          'erro',
+          'aviso',
           'Soma do valor das operações dos registros analíticos C190 (R$ ' +
             somaVlOprDoc.toFixed(2) +
             ') diverge do VL_DOC da nota ' +
@@ -2826,7 +2826,7 @@ var SpedGerador = (function () {
       var cv = cfg.getString('versao_leiaute')
       if (cv && cv.trim()) codVer = cv.trim()
     }
-    var codFin = ctx.finalidade || '0'
+    var codFin = ctx.finalidade === '1' ? '1' : '0'
     var dtIni = ctx.dtIniSped
     var dtFin = ctx.dtFinSped
     var nome = SpedFormato.formatarTexto(
@@ -3273,6 +3273,607 @@ var SpedGerador = (function () {
    * 3) Monta Bloco 0 com o que foi coletado
    * 4) Monta Bloco 9 e fecha totais
    */
+  /**
+   * Valida dígito verificador de CPF (11 dígitos).
+   */
+  function validarDVCPF(cpfLimpo) {
+    if (!cpfLimpo || cpfLimpo.length !== 11) return false
+    if (/^(\d)\1{10}$/.test(cpfLimpo)) return false
+
+    var soma = 0
+    for (var i = 0; i < 9; i++) {
+      soma += parseInt(cpfLimpo.charAt(i), 10) * (10 - i)
+    }
+    var resto = 11 - (soma % 11)
+    var dv1 = resto >= 10 ? 0 : resto
+    if (dv1 !== parseInt(cpfLimpo.charAt(9), 10)) return false
+
+    soma = 0
+    for (var j = 0; j < 10; j++) {
+      soma += parseInt(cpfLimpo.charAt(j), 10) * (11 - j)
+    }
+    resto = 11 - (soma % 11)
+    var dv2 = resto >= 10 ? 0 : resto
+    return dv2 === parseInt(cpfLimpo.charAt(10), 10)
+  }
+
+  /**
+   * Valida dígito verificador de CNPJ numérico ou alfanumérico (14 caracteres).
+   */
+  function validarDVCNPJ(cnpjLimpo) {
+    if (!cnpjLimpo) return false
+    var str = String(cnpjLimpo)
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase()
+    if (str.length !== 14) return false
+
+    var raizFilial = str.substring(0, 12)
+    if (!/^[0-9A-Z]{12}$/.test(raizFilial)) return false
+
+    var dvEnviado1 = parseInt(str.charAt(12), 10)
+    var dvEnviado2 = parseInt(str.charAt(13), 10)
+    if (isNaN(dvEnviado1) || isNaN(dvEnviado2)) return false
+
+    var pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    var pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+
+    var soma1 = 0
+    for (var i = 0; i < 12; i++) {
+      var valAscii = str.charCodeAt(i) - 48
+      soma1 += valAscii * pesos1[i]
+    }
+    var resto1 = soma1 % 11
+    var dvCalc1 = resto1 < 2 ? 0 : 11 - resto1
+    if (dvCalc1 !== dvEnviado1) return false
+
+    var soma2 = 0
+    for (var j = 0; j < 12; j++) {
+      var valAscii2 = str.charCodeAt(j) - 48
+      soma2 += valAscii2 * pesos2[j]
+    }
+    soma2 += dvCalc1 * pesos2[12]
+    var resto2 = soma2 % 11
+    var dvCalc2 = resto2 < 2 ? 0 : 11 - resto2
+
+    return dvCalc2 === dvEnviado2
+  }
+
+  /**
+   * Executa a validação interna do arquivo SPED (Prompt 7.6a - Item A)
+   * antes do fechamento final dos blocos e status:
+   *
+   * 1. todo COD_PART usado no Bloco C existe em um 0150 (erro);
+   *    todo COD_ITEM usado em C170, H010 e K200 existe em um 0200 (erro);
+   *    toda unidade usada existe em um 0190 (erro);
+   * 2. nenhum 0150, 0190 ou 0200 sobrando sem uso: aviso E RETIRAR do arquivo;
+   * 3. CNPJ e CPF dos participantes do 0150 com dígito verificador válido (erro);
+   * 5. a mesma chave de acesso não pode aparecer duas vezes (erro);
+   * 6. todas as datas DT_DOC das saídas e DT_E_S das entradas dentro do período (erro);
+   * 7. soma dos VL_OPR dos C190 de cada C100 contra o VL_DOC do C100 (aviso acima de 0,01);
+   * 8. E110 recalculado a partir do arquivo pronto deve bater com o gravado (erro);
+   * 9. arquivo acima de 4 MB: aviso.
+   *
+   * A regra 4 (contagem de cada X990, de cada 9900, do 9990 e do 9999) é conferida
+   * contra as linhas reais do arquivo logo após a geração do Bloco 9.
+   */
+  function executarValidacaoInternaPreFechamento(ctx, linhasBlocosOperacionais) {
+    // Conjuntos de referências usadas nos blocos operacionais
+    var participantesUsados = {} // COD_PART -> boolean
+    var itensUsados = {} // COD_ITEM -> boolean
+    var unidadesUsadas = {} // UNID -> boolean
+    var chavesAcessoVistas = {} // CHV_NFE -> count
+
+    for (var b = 0; b < linhasBlocosOperacionais.length; b++) {
+      var linha = linhasBlocosOperacionais[b]
+      if (!linha || linha.charAt(0) !== '|') continue
+      var colunas = linha.split('|')
+      var reg = colunas[1]
+
+      if (reg === 'C100') {
+        var codPart = (colunas[4] || '').trim()
+        var chvNfe = (colunas[9] || '').trim()
+        var dtDoc = (colunas[10] || '').trim() // DDMMAAAA
+        var dtES = (colunas[11] || '').trim() // DDMMAAAA
+        var indOper = (colunas[2] || '').trim() // 0 Entrada, 1 Saída
+        var numDoc = (colunas[8] || '').trim()
+
+        if (codPart) {
+          participantesUsados[codPart] = true
+        }
+
+        // Regra 5: mesma chave de acesso não pode aparecer duas vezes (erro)
+        if (chvNfe && chvNfe.length === 44) {
+          if (chavesAcessoVistas[chvNfe]) {
+            ctx.adicionarValidacao(
+              'erro',
+              'A mesma chave de acesso não pode aparecer duas vezes no arquivo SPED: ' + chvNfe,
+              'C100',
+              chvNfe,
+            )
+          } else {
+            chavesAcessoVistas[chvNfe] = true
+          }
+        }
+
+        // Regra 6: todas as datas DT_DOC das saídas e DT_E_S das entradas dentro do período (erro)
+        // Período de apuração: MM e AAAA
+        var mesStrEsperado = ctx.mes < 10 ? '0' + ctx.mes : String(ctx.mes)
+        var anoStrEsperado = String(ctx.ano)
+
+        if (indOper === '1') {
+          // Saída: valida DT_DOC
+          if (dtDoc && dtDoc.length === 8) {
+            var mesDoc = dtDoc.substring(2, 4)
+            var anoDoc = dtDoc.substring(4, 8)
+            if (mesDoc !== mesStrEsperado || anoDoc !== anoStrEsperado) {
+              ctx.adicionarValidacao(
+                'erro',
+                'Data DT_DOC da nota de saída nº ' +
+                  numDoc +
+                  ' (' +
+                  dtDoc +
+                  ') está fora do período de apuração (' +
+                  ctx.periodo +
+                  ').',
+                'C100',
+                numDoc,
+              )
+            }
+          }
+        } else if (indOper === '0') {
+          // Entrada: valida DT_E_S
+          if (dtES && dtES.length === 8) {
+            var mesES = dtES.substring(2, 4)
+            var anoES = dtES.substring(4, 8)
+            if (mesES !== mesStrEsperado || anoES !== anoStrEsperado) {
+              ctx.adicionarValidacao(
+                'erro',
+                'Data DT_E_S da nota de entrada nº ' +
+                  numDoc +
+                  ' (' +
+                  dtES +
+                  ') está fora do período de apuração (' +
+                  ctx.periodo +
+                  ').',
+                'C100',
+                numDoc,
+              )
+            }
+          }
+        }
+      } else if (reg === 'C170') {
+        var codItemC170 = (colunas[3] || '').trim()
+        var unidC170 = (colunas[6] || '').trim()
+        if (codItemC170) itensUsados[codItemC170] = true
+        if (unidC170) unidadesUsadas[unidC170] = true
+      } else if (reg === 'H010') {
+        var codItemH010 = (colunas[2] || '').trim()
+        var unidH010 = (colunas[3] || '').trim()
+        if (codItemH010) itensUsados[codItemH010] = true
+        if (unidH010) unidadesUsadas[unidH010] = true
+      } else if (reg === 'K200') {
+        var codItemK200 = (colunas[3] || '').trim()
+        if (codItemK200) itensUsados[codItemK200] = true
+      }
+    }
+
+    // Regra 2: Filtrar no contexto participantes, itens e unidades não usados
+    // "nenhum 0150, 0190 ou 0200 sobrando sem uso: aviso E RETIRAR do arquivo"
+    // Atualizamos os mapas do ctx antes de chamar gerarBloco0
+    var chavesPartOriginal = Object.keys(ctx.participantesMap)
+    for (var p = 0; p < chavesPartOriginal.length; p++) {
+      var itemPart = ctx.participantesMap[chavesPartOriginal[p]]
+      var codPartCandidate = itemPart.tipo + itemPart.id
+      if (!participantesUsados[codPartCandidate]) {
+        ctx.adicionarValidacao(
+          'aviso',
+          'Participante ' +
+            codPartCandidate +
+            ' coletado não foi referenciado em nenhum documento e foi retirado do arquivo.',
+          '0150',
+          codPartCandidate,
+        )
+        delete ctx.participantesMap[chavesPartOriginal[p]]
+      }
+    }
+
+    // Itens: mapeia o código cadastral esperado de cada produto_id
+    var chavesItensOriginal = Object.keys(ctx.itensMap)
+    for (var itk = 0; itk < chavesItensOriginal.length; itk++) {
+      var prodIdCand = ctx.itensMap[chavesItensOriginal[itk]]
+      var codItemEsperado = prodIdCand
+      try {
+        var prodRecTemp = $app.findRecordById('produtos', prodIdCand)
+        codItemEsperado = String(prodRecTemp.getInt('codigo') || prodRecTemp.id)
+      } catch (_) {}
+
+      if (!itensUsados[codItemEsperado] && !itensUsados[prodIdCand]) {
+        ctx.adicionarValidacao(
+          'aviso',
+          'Item ' +
+            codItemEsperado +
+            ' não foi referenciado em C170, H010 ou K200 e foi retirado do arquivo.',
+          '0200',
+          codItemEsperado,
+        )
+        delete ctx.itensMap[chavesItensOriginal[itk]]
+      }
+    }
+
+    // Unidades:
+    var chavesUnidOriginal = Object.keys(ctx.unidadesMap)
+    for (var uk = 0; uk < chavesUnidOriginal.length; uk++) {
+      var unidCand = ctx.unidadesMap[chavesUnidOriginal[uk]]
+      var siglaCand = unidCand
+      try {
+        if (unidCand.length === 15) {
+          var unR = $app.findRecordById('unidades_medida', unidCand)
+          siglaCand = unR.getString('sigla') || unidCand
+        }
+      } catch (_) {}
+
+      if (!unidadesUsadas[siglaCand] && !unidadesUsadas[unidCand]) {
+        ctx.adicionarValidacao(
+          'aviso',
+          'Unidade de medida ' +
+            siglaCand +
+            ' não foi referenciada em nenhum item e foi retirada do arquivo.',
+          '0190',
+          siglaCand,
+        )
+        delete ctx.unidadesMap[chavesUnidOriginal[uk]]
+      }
+    }
+
+    // Retorna os dados coletados de uso para a checagem pós-Bloco 0
+    return {
+      participantesUsados: participantesUsados,
+      itensUsados: itensUsados,
+      unidadesUsadas: unidadesUsadas,
+    }
+  }
+
+  /**
+   * Validação pós-construção do Bloco 0 (Regras 1, 3, 4, 8 e 9).
+   */
+  function executarValidacaoInternaPosMontagem(ctx, linhasArquivoPronto, dadosUso) {
+    var linhas0150 = {} // COD_PART -> { cnpj, cpf }
+    var linhas0200 = {} // COD_ITEM -> true
+    var linhas0190 = {} // UNID -> true
+    var contagemReal = {}
+
+    // Linhas gravadas de cada X990
+    var x990Gravado = {}
+    var linhas9900 = {}
+    var reg9990Gravado = null
+    var reg9999Gravado = null
+
+    // Registros E110
+    var linhaE110Pronta = null
+
+    for (var i = 0; i < linhasArquivoPronto.length; i++) {
+      var l = linhasArquivoPronto[i]
+      if (!l || l.charAt(0) !== '|') continue
+      var cols = l.split('|')
+      var r = cols[1]
+
+      contagemReal[r] = (contagemReal[r] || 0) + 1
+
+      if (r === '0150') {
+        var codP = (cols[2] || '').trim()
+        var cnpjP = (cols[5] || '').trim()
+        var cpfP = (cols[6] || '').trim()
+        linhas0150[codP] = { cnpj: cnpjP, cpf: cpfP }
+      } else if (r === '0190') {
+        var un = (cols[2] || '').trim()
+        linhas0190[un] = true
+      } else if (r === '0200') {
+        var it = (cols[2] || '').trim()
+        linhas0200[it] = true
+      } else if (r === 'E110') {
+        linhaE110Pronta = cols
+      } else if (r === '9900') {
+        var regApontado = (cols[2] || '').trim()
+        var qtdApontada = parseInt((cols[3] || '0').trim(), 10)
+        linhas9900[regApontado] = qtdApontada
+      } else if (r === '9990') {
+        reg9990Gravado = parseInt((cols[2] || '0').trim(), 10)
+      } else if (r === '9999') {
+        reg9999Gravado = parseInt((cols[2] || '0').trim(), 10)
+      } else if (r.length === 4 && r.endsWith('990')) {
+        x990Gravado[r] = parseInt((cols[2] || '0').trim(), 10)
+      }
+    }
+
+    // Regra 1:
+    // - todo COD_PART usado no Bloco C existe em um 0150 (erro)
+    var partsUsadosLista = Object.keys(dadosUso.participantesUsados || {})
+    for (var pu = 0; pu < partsUsadosLista.length; pu++) {
+      var cp = partsUsadosLista[pu]
+      if (!linhas0150[cp]) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Participante ' + cp + ' utilizado no Bloco C não possui registro 0150 correspondente.',
+          '0150',
+          cp,
+        )
+      }
+    }
+
+    // - todo COD_ITEM usado em C170, H010 e K200 existe em um 0200 (erro)
+    var itensUsadosLista = Object.keys(dadosUso.itensUsados || {})
+    for (var iu = 0; iu < itensUsadosLista.length; iu++) {
+      var ci = itensUsadosLista[iu]
+      if (!linhas0200[ci]) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Item ' + ci + ' utilizado na movimentação não possui registro 0200 correspondente.',
+          '0200',
+          ci,
+        )
+      }
+    }
+
+    // - toda unidade usada existe em um 0190 (erro)
+    var unidUsadasLista = Object.keys(dadosUso.unidadesUsadas || {})
+    for (var uu = 0; uu < unidUsadasLista.length; uu++) {
+      var cu = unidUsadasLista[uu]
+      if (!linhas0190[cu]) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Unidade de medida ' + cu + ' utilizada não possui registro 0190 correspondente.',
+          '0190',
+          cu,
+        )
+      }
+    }
+
+    // Regra 3: CNPJ e CPF dos participantes do 0150 com dígito verificador válido (erro)
+    var codsPart0150 = Object.keys(linhas0150)
+    for (var cpIdx = 0; cpIdx < codsPart0150.length; cpIdx++) {
+      var codPart0150 = codsPart0150[cpIdx]
+      var dadosDocPart = linhas0150[codPart0150]
+      if (dadosDocPart.cnpj) {
+        if (!validarDVCNPJ(dadosDocPart.cnpj)) {
+          ctx.adicionarValidacao(
+            'erro',
+            'Participante ' +
+              codPart0150 +
+              ' possui CNPJ com dígito verificador inválido: ' +
+              dadosDocPart.cnpj,
+            '0150',
+            codPart0150,
+          )
+        }
+      } else if (dadosDocPart.cpf) {
+        if (!validarDVCPF(dadosDocPart.cpf)) {
+          ctx.adicionarValidacao(
+            'erro',
+            'Participante ' +
+              codPart0150 +
+              ' possui CPF com dígito verificador inválido: ' +
+              dadosDocPart.cpf,
+            '0150',
+            codPart0150,
+          )
+        }
+      } else {
+        ctx.adicionarValidacao(
+          'erro',
+          'Participante ' + codPart0150 + ' não possui CNPJ nem CPF informado.',
+          '0150',
+          codPart0150,
+        )
+      }
+    }
+
+    // Regra 4: contagem de cada X990, de cada 9900, do 9990 e do 9999 conferida contra as linhas reais do arquivo (erro)
+    // 4.1 Conferência de cada 9900
+    var tiposEncontrados = Object.keys(contagemReal)
+    for (var te = 0; te < tiposEncontrados.length; te++) {
+      var tipoReg = tiposEncontrados[te]
+      var qtdReal = contagemReal[tipoReg]
+      var qtdInformada9900 = linhas9900[tipoReg]
+      if (qtdInformada9900 !== qtdReal) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Contagem do registro 9900 para o tipo ' +
+            tipoReg +
+            ' (' +
+            qtdInformada9900 +
+            ') não confere com as linhas reais do arquivo (' +
+            qtdReal +
+            ').',
+          '9900',
+          tipoReg,
+        )
+      }
+    }
+
+    // 4.2 Conferência do 9990 (total de linhas do Bloco 9)
+    // Bloco 9 é composto por: 9001 + registros 9900 + 9990
+    var linhasReaisBloco9 = (contagemReal['9001'] || 0) + (contagemReal['9900'] || 0) + 1
+    if (reg9990Gravado !== linhasReaisBloco9) {
+      ctx.adicionarValidacao(
+        'erro',
+        'Registro 9990 (' +
+          reg9990Gravado +
+          ') não confere com a quantidade real de linhas do Bloco 9 (' +
+          linhasReaisBloco9 +
+          ').',
+        '9990',
+        String(reg9990Gravado),
+      )
+    }
+
+    // 4.3 Conferência do 9999 (total geral de linhas do arquivo pronto)
+    var totalRealLinhasArquivo = linhasArquivoPronto.length
+    if (reg9999Gravado !== totalRealLinhasArquivo) {
+      ctx.adicionarValidacao(
+        'erro',
+        'Registro 9999 (' +
+          reg9999Gravado +
+          ') não confere com a quantidade real total de linhas do arquivo (' +
+          totalRealLinhasArquivo +
+          ').',
+        '9999',
+        String(reg9999Gravado),
+      )
+    }
+
+    // 4.4 Conferência de cada X990 contra a contagem real das linhas daquele bloco no arquivo
+    // Blocos: 0 (0000 ao 0990), B (B001 ao B990), C (C001 ao C990), D (D001 ao D990),
+    // E (E001 ao E990), G (G001 ao G990), H (H001 ao H990), K (K001 ao K990), 1 (1001 ao 1990)
+    var blocosPrefixo = [
+      { bloco: '0', regEncerramento: '0990' },
+      { bloco: 'B', regEncerramento: 'B990' },
+      { bloco: 'C', regEncerramento: 'C990' },
+      { bloco: 'D', regEncerramento: 'D990' },
+      { bloco: 'E', regEncerramento: 'E990' },
+      { bloco: 'G', regEncerramento: 'G990' },
+      { bloco: 'H', regEncerramento: 'H990' },
+      { bloco: 'K', regEncerramento: 'K990' },
+      { bloco: '1', regEncerramento: '1990' },
+    ]
+
+    for (var bp = 0; bp < blocosPrefixo.length; bp++) {
+      var itemBp = blocosPrefixo[bp]
+      var bId = itemBp.bloco
+      var encReg = itemBp.regEncerramento
+      var linhasReaisDoBloco = 0
+
+      for (var lk = 0; lk < linhasArquivoPronto.length; lk++) {
+        var lin = linhasArquivoPronto[lk]
+        if (!lin || lin.charAt(0) !== '|') continue
+        var cod = lin.split('|')[1] || ''
+        if (cod.startsWith(bId)) {
+          linhasReaisDoBloco++
+        }
+      }
+
+      var gravadoX990 = x990Gravado[encReg]
+      if (gravadoX990 !== undefined && gravadoX990 !== linhasReaisDoBloco) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Registro ' +
+            encReg +
+            ' (' +
+            gravadoX990 +
+            ') não confere com a quantidade real de linhas do Bloco ' +
+            bId +
+            ' (' +
+            linhasReaisDoBloco +
+            ').',
+          encReg,
+          String(gravadoX990),
+        )
+      }
+    }
+
+    // Regra 8: E110 recalculado a partir do arquivo pronto deve bater com o gravado (erro)
+    // Recalcula somando os C190 presentes nas linhas reais do arquivo pronto e os E111
+    if (linhaE110Pronta) {
+      var vlTotDebRecalc = 0
+      var vlTotCredRecalc = 0
+      var vlTotAjDebRecalc = 0
+      var vlEstornosCredRecalc = 0
+      var vlTotAjCredRecalc = 0
+      var vlEstornosDebRecalc = 0
+      var vlTotDedRecalc = 0
+      var debEspRecalc = 0
+
+      for (var er = 0; er < linhasArquivoPronto.length; er++) {
+        var linE = linhasArquivoPronto[er]
+        if (!linE || linE.charAt(0) !== '|') continue
+        var colsE = linE.split('|')
+        var rE = colsE[1]
+
+        if (rE === 'C190') {
+          var cfopL = (colsE[3] || '').trim()
+          var vlIcmsL = parseFloat(String(colsE[7] || '0').replace(',', '.')) || 0
+          var primDig = cfopL.charAt(0)
+          if (primDig === '5' || primDig === '6' || primDig === '7') {
+            vlTotDebRecalc = round2(vlTotDebRecalc + vlIcmsL)
+          } else if (primDig === '1' || primDig === '2' || primDig === '3') {
+            vlTotCredRecalc = round2(vlTotCredRecalc + vlIcmsL)
+          }
+        } else if (rE === 'E111') {
+          var codAjL = (colsE[2] || '').trim()
+          var valAjL = parseFloat(String(colsE[4] || '0').replace(',', '.')) || 0
+          var qChar = codAjL.length >= 4 ? codAjL.charAt(3) : ''
+          if (qChar === '0') vlTotAjDebRecalc = round2(vlTotAjDebRecalc + valAjL)
+          else if (qChar === '1') vlEstornosCredRecalc = round2(vlEstornosCredRecalc + valAjL)
+          else if (qChar === '2') vlTotAjCredRecalc = round2(vlTotAjCredRecalc + valAjL)
+          else if (qChar === '3') vlEstornosDebRecalc = round2(vlEstornosDebRecalc + valAjL)
+          else if (qChar === '4') vlTotDedRecalc = round2(vlTotDedRecalc + valAjL)
+          else if (qChar === '5') debEspRecalc = round2(debEspRecalc + valAjL)
+        }
+      }
+
+      var gravadoDeb = parseFloat(String(linhaE110Pronta[2] || '0').replace(',', '.')) || 0
+      var gravadoCred = parseFloat(String(linhaE110Pronta[6] || '0').replace(',', '.')) || 0
+      var gravadoAjDeb = parseFloat(String(linhaE110Pronta[4] || '0').replace(',', '.')) || 0
+      var gravadoEstCred = parseFloat(String(linhaE110Pronta[5] || '0').replace(',', '.')) || 0
+      var gravadoAjCred = parseFloat(String(linhaE110Pronta[8] || '0').replace(',', '.')) || 0
+      var gravadoEstDeb = parseFloat(String(linhaE110Pronta[9] || '0').replace(',', '.')) || 0
+      var gravadoSldAnt = parseFloat(String(linhaE110Pronta[10] || '0').replace(',', '.')) || 0
+      var gravadoSldApur = parseFloat(String(linhaE110Pronta[11] || '0').replace(',', '.')) || 0
+      var gravadoTotDed = parseFloat(String(linhaE110Pronta[12] || '0').replace(',', '.')) || 0
+      var gravadoRecolher = parseFloat(String(linhaE110Pronta[13] || '0').replace(',', '.')) || 0
+      var gravadoTransportar = parseFloat(String(linhaE110Pronta[14] || '0').replace(',', '.')) || 0
+      var gravadoDebEsp = parseFloat(String(linhaE110Pronta[15] || '0').replace(',', '.')) || 0
+
+      // Re-executa fórmula do E110
+      var resRecalc = round2(
+        vlTotDebRecalc +
+          vlTotAjDebRecalc +
+          vlEstornosCredRecalc -
+          (vlTotCredRecalc + vlTotAjCredRecalc + vlEstornosDebRecalc + gravadoSldAnt),
+      )
+      var sldApurRecalc = resRecalc >= 0 ? resRecalc : 0
+      var sldTranspRecalc = resRecalc < 0 ? Math.abs(resRecalc) : 0
+      var recolherRecalc = resRecalc >= 0 ? Math.max(0, round2(sldApurRecalc - vlTotDedRecalc)) : 0
+
+      var difDeb = Math.abs(round2(gravadoDeb - vlTotDebRecalc))
+      var difCred = Math.abs(round2(gravadoCred - vlTotCredRecalc))
+      var difApur = Math.abs(round2(gravadoSldApur - sldApurRecalc))
+      var difRecol = Math.abs(round2(gravadoRecolher - recolherRecalc))
+      var difTransp = Math.abs(round2(gravadoTransportar - sldTranspRecalc))
+
+      if (
+        difDeb > 0.01 ||
+        difCred > 0.01 ||
+        difApur > 0.01 ||
+        difRecol > 0.01 ||
+        difTransp > 0.01
+      ) {
+        ctx.adicionarValidacao(
+          'erro',
+          'Recálculo da apuração E110 a partir dos registros do arquivo diverge dos valores gravados (Débitos gravados: ' +
+            gravadoDeb.toFixed(2) +
+            ' vs recalc: ' +
+            vlTotDebRecalc.toFixed(2) +
+            '; Créditos gravados: ' +
+            gravadoCred.toFixed(2) +
+            ' vs recalc: ' +
+            vlTotCredRecalc.toFixed(2) +
+            ').',
+          'E110',
+        )
+      }
+    }
+  }
+
+  /**
+   * Função orquestradora:
+   * 1) Cria contexto
+   * 2) Monta Blocos operacionais (B, C, D, E, G, H, K, 1) registrando o que usam
+   * 3) Executa validação interna pré-fechamento (retira 0150, 0190, 0200 não usados com aviso; confere datas e chaves)
+   * 4) Monta Bloco 0 com os dados estritamente necessários
+   * 5) Monta Bloco 9 e fecha totais e contagens
+   * 6) Executa validação interna pós-montagem (DVs de CPF/CNPJ, contagens reais X990, 9900, 9990, 9999, batimento E110, tamanho do arquivo)
+   * 7) Determina status ("Gerado com erros" se houver erros de validação; "Gerado" caso contrário)
+   */
   function gerarArquivoCompleto(params) {
     var ctx = criarContexto(params)
 
@@ -3290,7 +3891,7 @@ var SpedGerador = (function () {
       }
     }
 
-    // Blocos operacionais executam PRIMEIRO (registrando coletores para o Bloco 0)
+    // 1) Blocos operacionais executam PRIMEIRO (registrando coletores para o Bloco 0)
     var linhasB = gerarBlocoB(ctx)
     var linhasC = gerarBlocoC(ctx)
     var linhasD = gerarBlocoD(ctx)
@@ -3300,26 +3901,58 @@ var SpedGerador = (function () {
     var linhasK = gerarBlocoK(ctx)
     var linhas1 = gerarBloco1(ctx)
 
-    // Bloco 0 montado DEPOIS com dados da empresa e o que foi coletado
+    var linhasOperacionais = []
+    linhasOperacionais = linhasOperacionais.concat(linhasB)
+    linhasOperacionais = linhasOperacionais.concat(linhasC)
+    linhasOperacionais = linhasOperacionais.concat(linhasD)
+    linhasOperacionais = linhasOperacionais.concat(linhasE)
+    linhasOperacionais = linhasOperacionais.concat(linhasG)
+    linhasOperacionais = linhasOperacionais.concat(linhasH)
+    linhasOperacionais = linhasOperacionais.concat(linhasK)
+    linhasOperacionais = linhasOperacionais.concat(linhas1)
+
+    // 2) Validação interna pré-fechamento:
+    // Identifica uso real, remove itens/participantes/unidades não usados com aviso (Regra 2),
+    // checa chave única (Regra 5) e período de datas (Regra 6)
+    var dadosUso = executarValidacaoInternaPreFechamento(ctx, linhasOperacionais)
+
+    // 3) Bloco 0 montado com dados da empresa e o que permaneceu após a limpeza
     var linhas0 = gerarBloco0(ctx)
 
-    // Concatena blocos antes do Bloco 9
+    // 4) Concatena blocos antes do Bloco 9
     var linhasAntes9 = []
     linhasAntes9 = linhasAntes9.concat(linhas0)
-    linhasAntes9 = linhasAntes9.concat(linhasB)
-    linhasAntes9 = linhasAntes9.concat(linhasC)
-    linhasAntes9 = linhasAntes9.concat(linhasD)
-    linhasAntes9 = linhasAntes9.concat(linhasE)
-    linhasAntes9 = linhasAntes9.concat(linhasG)
-    linhasAntes9 = linhasAntes9.concat(linhasH)
-    linhasAntes9 = linhasAntes9.concat(linhasK)
-    linhasAntes9 = linhasAntes9.concat(linhas1)
+    linhasAntes9 = linhasAntes9.concat(linhasOperacionais)
 
-    // Bloco 9 monta contagens e totais
+    // 5) Bloco 9 monta contagens e totais
     var res9 = gerarBloco9(linhasAntes9)
     var linhasFinais = linhasAntes9.concat(res9.linhas)
 
+    // 6) Validação interna pós-montagem:
+    // Regras 1, 3, 4, 8 e 9
+    executarValidacaoInternaPosMontagem(ctx, linhasFinais, dadosUso)
+
     var conteudoTexto = linhasFinais.join('')
+
+    // Regra 9: Arquivo acima de 4 MB: aviso
+    // Em UTF-8, o tamanho em bytes do texto
+    var tamanhoBytes = 0
+    try {
+      tamanhoBytes = Buffer.byteLength(conteudoTexto, 'utf-8')
+    } catch (_) {
+      tamanhoBytes = conteudoTexto.length
+    }
+    if (tamanhoBytes > 4 * 1024 * 1024) {
+      var mbTamanho = (tamanhoBytes / (1024 * 1024)).toFixed(2)
+      ctx.adicionarValidacao(
+        'aviso',
+        'Arquivo SPED ultrapassou 4 MB (' +
+          mbTamanho +
+          ' MB). O PVA pode demorar mais para validar.',
+        '9999',
+        mbTamanho + ' MB',
+      )
+    }
 
     // Nome oficial do arquivo:
     // SPED_EFD_<CNPJ só dígitos>_<AAAAMM>.txt
@@ -3331,7 +3964,9 @@ var SpedGerador = (function () {
       nomeArquivo = 'TESTE_' + nomeArquivo
     }
 
-    // Status final
+    // Status final:
+    // Se houver erro: status "Gerado com erros" (o arquivo continua disponível para conferência);
+    // só erros impeditivos já existentes (como falta de IE na requisição) mudam para "Erro"
     var temErros = false
     for (var v = 0; v < ctx.validacoes.length; v++) {
       if (ctx.validacoes[v].nivel === 'erro') {
@@ -3345,7 +3980,7 @@ var SpedGerador = (function () {
     return {
       conteudo: conteudoTexto,
       nomeArquivo: nomeArquivo,
-      quantidadeLinhas: res9.totalLinhas,
+      quantidadeLinhas: linhasFinais.length,
       contagemRegistros: res9.contagem,
       validacoes: ctx.validacoes,
       status: status,
