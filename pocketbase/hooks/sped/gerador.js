@@ -1849,6 +1849,93 @@ var SpedGerador = (function () {
     var totalLinhasC = linhas.length + 1
     linhas.push(SpedFormato.montarLinha(['C990', String(totalLinhasC)]))
 
+    // Agrupa C190 de saídas e entradas por CFOP e CST para relatório de conferência
+    var agrupamentoSaidasCfopCst = {}
+    var agrupamentoEntradasCfopCst = {}
+    for (var a190 = 0; a190 < c190Registros.length; a190++) {
+      var item190 = c190Registros[a190]
+      var chave190 = (item190.cfop || '') + '_' + (item190.cst || '')
+      var ehOperSaida = item190.indOper === '1'
+      var mapaAlvo = ehOperSaida ? agrupamentoSaidasCfopCst : agrupamentoEntradasCfopCst
+      if (!mapaAlvo[chave190]) {
+        mapaAlvo[chave190] = {
+          cfop: item190.cfop,
+          cst: item190.cst,
+          vl_contabil: 0,
+          vl_bc_icms: 0,
+          vl_icms: 0,
+          vl_bc_icms_st: 0,
+          vl_icms_st: 0,
+          vl_ipi: 0,
+        }
+      }
+      var gAlvo = mapaAlvo[chave190]
+      gAlvo.vl_contabil = round2(gAlvo.vl_contabil + (item190.vlOpr || 0))
+      gAlvo.vl_bc_icms = round2(gAlvo.vl_bc_icms + (item190.vlBcIcms || 0))
+      gAlvo.vl_icms = round2(gAlvo.vl_icms + (item190.vlIcms || 0))
+      gAlvo.vl_bc_icms_st = round2(gAlvo.vl_bc_icms_st + (item190.vlBcIcmsSt || 0))
+      gAlvo.vl_icms_st = round2(gAlvo.vl_icms_st + (item190.vlIcmsSt || 0))
+      gAlvo.vl_ipi = round2(gAlvo.vl_ipi + (item190.vlIpi || 0))
+    }
+
+    var listaSaidasCfopCst = Object.keys(agrupamentoSaidasCfopCst)
+      .sort()
+      .map(function (k) {
+        return agrupamentoSaidasCfopCst[k]
+      })
+    var listaEntradasCfopCst = Object.keys(agrupamentoEntradasCfopCst)
+      .sort()
+      .map(function (k) {
+        return agrupamentoEntradasCfopCst[k]
+      })
+
+    // Lista de documentos cancelados e denegados para conferência
+    var listaCanceladasDenegadas = []
+    for (var cd = 0; cd < docsPeriodo.length; cd++) {
+      var dDoc = docsPeriodo[cd].rec
+      var stDoc = dDoc.getString('status')
+      if (stDoc === 'Cancelada' || stDoc === 'Denegada') {
+        listaCanceladasDenegadas.push({
+          tipo: stDoc,
+          modelo: dDoc.getString('modelo') || '55',
+          serie: dDoc.getString('serie') || '1',
+          numero: dDoc.getInt('numero') || 0,
+          chave_acesso: dDoc.getString('chave_acesso') || '',
+          data: (dDoc.getString('data_emissao') || dDoc.getString('created') || '').substring(
+            0,
+            10,
+          ),
+          motivo: dDoc.getString('motivo_cancelamento') || dDoc.getString('justificativa') || '',
+        })
+      }
+    }
+
+    // Lista de inutilizações detalhadas
+    var listaInutilizadasDet = []
+    for (var inD = 0; inD < inutsPeriodo.length; inD++) {
+      var inRec = inutsPeriodo[inD]
+      var mInut = inRec.getString('modelo') || '55'
+      var sInut = inRec.getString('serie') || '1'
+      var nIni = inRec.getInt('numero_inicial') || 0
+      var nFim = inRec.getInt('numero_final') || nIni
+      var jInut = inRec.getString('justificativa') || ''
+      var dtInut = (
+        inRec.getString('data_inutilizacao') ||
+        inRec.getString('created') ||
+        ''
+      ).substring(0, 10)
+      for (var nVal = nIni; nVal <= nFim; nVal++) {
+        listaInutilizadasDet.push({
+          tipo: 'Inutilizada',
+          modelo: mInut,
+          serie: sInut,
+          numero: nVal,
+          data: dtInut,
+          justificativa: jInut,
+        })
+      }
+    }
+
     // Guarda o resumo de saídas no contexto para ser salvo em sped_arquivos
     ctx.resumoSaida = {
       total_nfe: totalNfe,
@@ -1858,6 +1945,9 @@ var SpedGerador = (function () {
       total_inutilizadas: totalInutilizadas,
       total_vl_doc: totalVlDoc,
       total_vl_icms: totalVlIcms,
+      por_cfop_cst: listaSaidasCfopCst,
+      canceladas_denegadas: listaCanceladasDenegadas,
+      inutilizadas: listaInutilizadasDet,
     }
 
     // Guarda o resumo de entradas no contexto para ser salvo em sped_arquivos
@@ -1866,6 +1956,7 @@ var SpedGerador = (function () {
       total_transferencias: totalTransferenciasRecebidas,
       total_vl_doc: totalVlDocEntrada,
       total_credito_icms: totalVlCreditoIcms,
+      por_cfop_cst: listaEntradasCfopCst,
     }
 
     // Disponibiliza os registros analíticos e de DIFAL para o Bloco E em memória
@@ -2537,6 +2628,18 @@ var SpedGerador = (function () {
     var motInvCampo = invEncontrado.getString('motivo_bloco_h') || ''
     if (motInvCampo && motInvCampo.length >= 2) {
       motInv = motInvCampo.substring(0, 2)
+    }
+
+    // Registra valor do inventário no resumo da apuração para o relatório de conferência
+    if (!ctx.resumoApuracao) {
+      ctx.resumoApuracao = {}
+    }
+    ctx.resumoApuracao.inventario_h005 = {
+      dt_inv: dtRefEsperada,
+      dt_inv_sped: dtInvSped,
+      vl_inv: somaVlItem,
+      mot_inv: motInv,
+      total_itens: itensH010.length,
     }
 
     // H005: DT_INV, VL_INV, MOT_INV

@@ -69,9 +69,18 @@ export interface SpedDifalUfItem {
   recolher_fcp?: number
 }
 
+export interface SpedInventarioH005 {
+  dt_inv?: string
+  dt_inv_sped?: string
+  vl_inv?: number
+  mot_inv?: string
+  total_itens?: number
+}
+
 export interface SpedResumoApuracao {
   icms_proprio?: SpedIcmsProprioApuracao
   difal_por_uf?: Record<string, SpedDifalUfItem>
+  inventario_h005?: SpedInventarioH005
   // Compatibilidade com versões anteriores
   debitos?: number
   creditos?: number
@@ -102,6 +111,36 @@ export interface SpedAjusteApuracaoRegistro {
 
 export type SpedAjusteApuracao = SpedAjusteApuracaoRegistro
 
+export interface SpedResumoCfopCstItem {
+  cfop?: string
+  cst?: string
+  vl_contabil?: number
+  vl_bc_icms?: number
+  vl_icms?: number
+  vl_bc_icms_st?: number
+  vl_icms_st?: number
+  vl_ipi?: number
+}
+
+export interface SpedDocCanceladoItem {
+  tipo: string
+  modelo: string
+  serie: string
+  numero: number
+  chave_acesso?: string
+  data?: string
+  motivo?: string
+}
+
+export interface SpedInutilizacaoItem {
+  tipo: string
+  modelo: string
+  serie: string
+  numero: number
+  data?: string
+  justificativa?: string
+}
+
 export interface SpedResumoSaida {
   total_nfe?: number
   total_nfce?: number
@@ -110,6 +149,9 @@ export interface SpedResumoSaida {
   total_inutilizadas?: number
   total_vl_doc?: number
   total_vl_icms?: number
+  por_cfop_cst?: SpedResumoCfopCstItem[]
+  canceladas_denegadas?: SpedDocCanceladoItem[]
+  inutilizadas?: SpedInutilizacaoItem[]
 }
 
 export interface SpedResumoEntrada {
@@ -117,6 +159,7 @@ export interface SpedResumoEntrada {
   total_transferencias?: number
   total_vl_doc?: number
   total_credito_icms?: number
+  por_cfop_cst?: SpedResumoCfopCstItem[]
 }
 
 export interface SpedArquivoRegistro {
