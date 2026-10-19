@@ -82,6 +82,14 @@ routerAdd(
         return c.json(404, { sucesso: false, message: 'Registro de arquivo SPED não encontrado.' })
       }
 
+      const modoArquivo = arquivoRec.getString('modo')
+      if (modoArquivo === 'Teste') {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Arquivo gerado em modo Teste não pode ser marcado como entregue à SEFAZ.',
+        })
+      }
+
       arquivoRec.set('status', 'Entregue')
       arquivoRec.set('recibo_entrega', reciboEntrega)
       arquivoRec.set('entregue_em', entregueEm)

@@ -21,6 +21,7 @@ routerAdd(
     var empresaId = (body.empresa_id || '').trim()
     var periodo = (body.periodo || '').trim() // AAAA-MM
     var modo = (body.modo || 'Teste').trim() // Oficial | Teste
+    var finalidadeSolicitada = body.finalidade ? String(body.finalidade).trim() : ''
 
     if (!empresaId) {
       return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
@@ -153,7 +154,33 @@ routerAdd(
       }
     } catch (_) {}
 
-    // 3. Checagem prévia de Inscrição Estadual no modo Oficial
+    // 3. Checagem prévia de Inscrição Estadual no modo Oficial e determinação da Finalidade (0 Original ou 1 Retificadora)
+    var finalidadeCalculada = '0'
+    if (modo === 'Oficial') {
+      try {
+        var entreguesOficiais = $app.findRecordsByFilter(
+          'sped_arquivos',
+          "empresa_id = '" +
+            empresaId +
+            "' && periodo = '" +
+            periodo +
+            "' && modo = 'Oficial' && status = 'Entregue'",
+          '-created',
+          1,
+          0,
+        )
+        if (entreguesOficiais && entreguesOficiais.length > 0) {
+          finalidadeCalculada = '1'
+        }
+      } catch (errCheckEntregue) {
+        console.warn('Aviso: erro ao verificar arquivos entregues:', errCheckEntregue)
+      }
+    }
+
+    if (finalidadeSolicitada === '1' || finalidadeSolicitada === '0') {
+      finalidadeCalculada = finalidadeSolicitada
+    }
+
     var ieTexto = (empresa.getString('inscricao_estadual') || '').trim().toUpperCase()
     var ieDigitos = ieTexto.replace(/\D/g, '')
 
@@ -165,7 +192,7 @@ routerAdd(
           var recErro = new Record(colSped)
           recErro.set('empresa_id', empresaId)
           recErro.set('periodo', periodo)
-          recErro.set('finalidade', '0')
+          recErro.set('finalidade', finalidadeCalculada)
           recErro.set('modo', modo)
           recErro.set('status', 'Erro')
           recErro.set('gerado_por', usuarioErp.id)
@@ -208,7 +235,7 @@ routerAdd(
       arquivoRec = new Record(spedCol)
       arquivoRec.set('empresa_id', empresaId)
       arquivoRec.set('periodo', periodo)
-      arquivoRec.set('finalidade', '0')
+      arquivoRec.set('finalidade', finalidadeCalculada)
       arquivoRec.set('modo', modo)
       arquivoRec.set('status', 'Gerando')
       arquivoRec.set('gerado_por', usuarioErp.id)
@@ -229,7 +256,7 @@ routerAdd(
         configSped: configSped,
         periodo: periodo,
         modo: modo,
-        finalidade: '0',
+        finalidade: finalidadeCalculada,
       })
 
       // Converte o texto para bytes e anexa como arquivo PocketBase
@@ -283,6 +310,7 @@ routerAdd(
       return c.json(200, {
         sucesso: true,
         id: arquivoRec.id,
+        finalidade: finalidadeCalculada,
         status: resultado.status,
         nome_arquivo: resultado.nomeArquivo,
         quantidade_linhas: resultado.quantidadeLinhas,
