@@ -104,6 +104,9 @@ import ConfiguracaoSpedPage from '@/pages/fiscal/ConfiguracaoSpedPage'
 import SpedFiscalPage from '@/pages/fiscal/SpedFiscalPage'
 import SpedRelatorioConferenciaPage from '@/pages/fiscal/SpedRelatorioConferenciaPage'
 
+// Páginas de Relatórios (Etapa 8)
+import CentralRelatoriosPage from '@/pages/relatorios/CentralRelatoriosPage'
+
 const App = () => (
   <BrowserRouter>
     <AuthProvider>
@@ -839,6 +842,15 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="notas_saida" acao="ver">
                         <SpedRelatorioConferenciaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  {/* Relatórios (Etapa 8) */}
+                  <Route
+                    path="/relatorios"
+                    element={
+                      <PermissaoGuard modulo="relatorios" acao="ver">
+                        <CentralRelatoriosPage />
                       </PermissaoGuard>
                     }
                   />

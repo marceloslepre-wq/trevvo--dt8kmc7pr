@@ -3207,7 +3207,61 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
 
 ---
 
+## Etapa 8 Relatórios e painel
+
+Regras gerais para todos os relatórios desta etapa:
+
+1. **Cálculo e agregação estritamente no backend:**
+   - O cálculo e a soma são realizados no backend em endpoints `/backend/v1/relatorios/*`, nunca carregando milhares de registros no navegador do cliente. A resposta do backend traz somente as linhas já agrupadas e sintetizadas (com paginação quando se tratar de lista).
+2. **Período máximo por consulta:**
+   - Limite máximo estrito de 366 dias (1 ano bissexto) por consulta para resguardar a performance e a estabilidade das requisições.
+3. **Somente leitura:**
+   - Nenhum relatório altera ou mutaciona dados no banco de dados. Todas as rotinas e endpoints operam como leitura pura (read-only).
+4. **Multiempresa e consolidação:**
+   - Por padrão, a consulta seleciona somente a empresa ativa no contexto (`useEmpresaAtiva`).
+   - Usuários com acesso a mais de uma empresa (ou Administradores) contam com uma lista com caixas de seleção (checkboxes) para marcar qualquer combinação de empresas autorizadas, dispondo dos botões utilitários **"Marcar todas"** e **"Desmarcar todas"**.
+   - Com mais de uma empresa marcada, o relatório exibe cada empresa separada (em colunas distintas ou quadros segregados por empresa) juntamente com o total consolidado das empresas marcadas, além de oferecer a opção de alternância **"Ver só o total"**.
+   - O backend confere estritamente se o usuário autenticado possui acesso a cada empresa solicitada no parâmetro da requisição (Administrador tem acesso irrestrito; demais usuários são validados na tabela `usuarios_empresas`).
+5. **Documentos fiscais em homologação:**
+   - Documentos fiscais emitidos em ambiente de Homologação (testes) não entram nos relatórios fiscais, exceto se a opção **"Incluir notas de teste"** estiver explicitamente marcada na interface (e, nesse caso, o relatório exibe a faixa destacada em amarelo/âmbar: `"INCLUI NOTAS DE TESTE"`).
+6. **Cancelamentos desconsiderados:**
+   - Vendas canceladas e títulos financeiros cancelados nunca entram nos totais dos relatórios.
+7. **Padrão de exportação e impressão:**
+   - **Exportação CSV:** Arquivo formatado em UTF-8 com BOM (`\uFEFF`), separador ponto e vírgula (`;`), vírgula decimal para valores monetários e numéricos e tratamento adequado de acentuação para abertura imediata no Microsoft Excel.
+   - **Impressão / PDF:** Cabeçalho formal exibindo o nome, código e CNPJ da empresa (ou indicação de empresas consolidadas), período consultado e data/hora exata da emissão do relatório, com formatação limpa para folha e estilos de impressão `@media print`.
+
+### Componentes e Telas criados no Prompt 8.0
+
+- **Utilitários de Relatórios (`src/services/relatorios.ts`):** Funções utilitárias para geração e download de arquivos CSV (`gerarCsvRelatorio` e `fazerDownloadCsv`) com UTF-8 + BOM, ponto e vírgula, vírgula decimal e escape de aspas, além de disparador de impressão formatada (`imprimirRelatorio`).
+- **Configuração da Central de Relatórios (`src/config/relatoriosCatalogo.ts`):** Catálogo modular e extensível contendo todos os relatórios do sistema agrupados por assunto: Vendas, Estoque, Compras, Financeiro e Fiscal, mapeados para suas respectivas rotas e módulos de permissão (`vendas`, `estoque`, `compras`, `notas_entrada`, `financeiro_bancos`, `financeiro_receber`, `sped`, etc.).
+- **Componente Comum de Filtros (`src/components/relatorios/FiltrosRelatorio.tsx`):** Componente reutilizável para relatórios contendo:
+  - Seletor de empresas com checkboxes (código, razão social/nome fantasia e CNPJ), botões "Marcar todas" e "Desmarcar todas", e alternância "Ver só o total";
+  - Seletor de período com atalhos inteligentes (Hoje, Esta semana, Este mês, Mês anterior, Últimos 30 dias, Últimos 90 dias, Últimos 365 dias e Personalizado com validação de limite de 366 dias);
+  - Botões "Exportar CSV" e "Imprimir" integrados;
+  - Área expansível de filtros extras (`children` / `filtrosExtras`) preparada para receber os filtros específicos de produtos, pessoas, vendas, fiscal e financeiro do próximo prompt (8.0b).
+- **Tela Central de Relatórios (`src/pages/relatorios/CentralRelatoriosPage.tsx` - `/relatorios`):** Painel da Central de Relatórios no menu principal, protegido pelo módulo `relatorios` (`pode('relatorios', 'ver')`). Cartões agrupados por assunto, com nome, resumo do que mostram e link de acesso rápido, filtrados dinamicamente pelas permissões do usuário em cada módulo correspondente.
+
+---
+
 ## Versão Atual do Projeto
+
+**Versão 0.0.106** — Etapa 8 Relatórios e Painel (Prompt 8.0: Central de Relatórios e Padrão Comum dos Relatórios):
+
+1. **Regras da Etapa 8 Documentadas:**
+   - Adicionada seção completa "Etapa 8 Relatórios e painel" no `PROJETO_ERP.md` com as regras de cálculo e soma no backend, limite de 366 dias, modo somente leitura, consolidação multiempresa com conferência de acesso, descarte de cancelados, supressão de documentos fiscais em homologação (exceto com faixa `"INCLUI NOTAS DE TESTE"`), CSV padrão Excel (BOM UTF-8, `;`, vírgula decimal) e cabeçalho de impressão.
+2. **Utilitário Comum de Exportação CSV e Impressão (`src/services/relatorios.ts`):**
+   - Criação de helpers universais para download de CSV formatado com BOM UTF-8 e impressão padronizada com cabeçalho contendo identificação da(s) empresa(s), período apurado e data/hora de emissão.
+3. **Componente Reutilizável de Filtros de Relatórios (`src/components/relatorios/FiltrosRelatorio.tsx`):**
+   - Implementado componente comum com seleção de empresas via checkboxes (código, nome e CNPJ), botões "Marcar todas" e "Desmarcar todas", opção "Ver só o total", atalhos de período (Hoje, Esta semana, Este mês, Mês anterior, Últimos 30, 90 e 365 dias, Personalizado até 366 dias) e botões de ação (Exportar CSV e Imprimir).
+   - Slot preparado para os filtros complementares que serão adicionados na etapa 8.0b.
+4. **Catálogo de Relatórios Configurável (`src/config/relatoriosCatalogo.ts`):**
+   - Arquivo de configuração centralizando os relatórios existentes e futuros organizados por categoria (Vendas, Estoque, Compras, Financeiro, Fiscal) com metadados de rota, ícone, resumo e módulo de permissão.
+5. **Tela Central de Relatórios (`src/pages/relatorios/CentralRelatoriosPage.tsx`) e Navegação:**
+   - Rota `/relatorios` registrada no `App.tsx` e protegida pelo `PermissaoGuard modulo="relatorios" acao="ver"`.
+   - Item "Relatórios" no menu lateral (`Sidebar.tsx`) ativado com rota direta `/relatorios` e ícone `BarChart3`.
+   - Exibição condicional de cada cartão conforme as permissões do usuário no módulo do respectivo relatório.
+
+---
 
 **Versão 0.0.105** — Fechamento Oficial da Etapa 7 (SPED Fiscal / EFD ICMS/IPI) — Parte 3 de 3 do Prompt 7.6b:
 

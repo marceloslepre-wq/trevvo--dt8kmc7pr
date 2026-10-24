@@ -465,8 +465,9 @@ const navItems: NavGroupItem[] = [
   {
     id: 'relatorios',
     title: 'Relatórios',
+    path: '/relatorios',
     icon: BarChart3,
-    status: 'soon',
+    status: 'active',
     modulo: 'relatorios',
   },
   {
