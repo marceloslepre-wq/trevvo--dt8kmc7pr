@@ -3172,7 +3172,105 @@ A **Etapa 4 — Financeiro** foi oficialmente concluída de ponta a ponta com ri
     - No inventário do tipo `"Anual (Bloco H)"` com status `"Finalizado"`, exibição de badge de destaque: `"Entra no SPED de [mês] de AAAA"` (nome do mês em português por extenso conforme `mes_bloco_h` da configuração da empresa e ano seguinte ao de referência da contagem).
     - Exibição em destaque do valor total apurado para o registro `H005` (`Total Registro H005: R$ ...`), facilitando a conferência prévia e a conciliação física com o contador.
 
+## Etapa 7 concluída
+
+- **Tabelas do Módulo SPED Fiscal:**
+  - `config_sped_empresa` (Migration 0053): parametrização da EFD ICMS/IPI por empresa/filial com unicidade por `empresa_id`. Campos: `versao_leiaute` (padrão "020", COD_VER do 0000), `codigo_receita_icms` (código estadual ES para o E116, padrão "101-5"), `dia_vencimento_icms` (1 a 31, vencimento da guia no E116), `periodo_saldo_inicial` (AAAA-MM) e `saldo_credor_inicial` (saldo trazido do sistema anterior no primeiro mês gerado), `mes_bloco_h` (padrão 2, fevereiro, mês de inclusão do inventário anual de 31/12), `conta_contabil_estoque` (opcional, COD_CTA no H010), `gerar_bloco_k` (habilita o controle de produção e estoque) e `incluir_homologacao_em_teste` (inclusão de notas em homologação no modo Teste).
+  - `sped_arquivos` (Migrations 0054, 0055, 0056): histórico de arquivos SPED gerados com `empresa_id`, `periodo` (AAAA-MM), `finalidade` ("0" original, "1" retificadora), `modo` ("Oficial" ou "Teste"), `status` ("Gerando", "Gerado", "Gerado com erros", "Erro", "Substituído", "Entregue"), arquivo .txt (`arquivo`), `nome_arquivo` (`SPED_EFD_<CNPJ>_<AAAAMM>.txt`, prefixado por `TESTE_` em modo Teste), `quantidade_linhas`, `contagem_registros` (JSON com quantidade por registro), `resumo_apuracao` (JSON com apuração do ICMS próprio e DIFAL por UF), `resumo_saida` (JSON com totalizadores de saídas por modelo, cancelamentos, inutilizações, valores e ICMS), `resumo_entrada` (JSON com compras, transferências recebidas, valores e créditos), `validacoes` (JSON com erros impeditivos e avisos preventivos), `gerado_por`, `entregue_em`, `recibo_entrega` e `observacoes`.
+  - `sped_ajustes_apuracao` (Migration 0057): ajustes manuais da apuração do ICMS Próprio para o Registro E111 da EFD ICMS/IPI (benefícios como COMPETE-ES, estornos, deduções e débitos especiais) vinculados a `empresa_id` e `periodo`, com código da SEFAZ de 8 dígitos da Tabela 5.1.1 cujo 4º caractere mapeia diretamente para os campos do registro E110 (0=outros débitos, 1=estorno créditos, 2=outros créditos, 3=estorno débitos, 4=deduções, 5=débito especial).
+  - **Blindagem e Permissões:** O navegador autenticado possui permissão estrita de somente leitura em `sped_arquivos` e `sped_ajustes_apuracao` (`createRule: null`, `updateRule: null`, `deleteRule: null`). Gravação e mutações ocorrem exclusivamente pelo backend via pb_hooks. Inserção e edição em `sped_ajustes_apuracao` e marcação de entrega em `sped_arquivos` exigem perfil de Administrador (`perfis_acesso.administrador = true`) e são sumariamente bloqueadas quando o período já possui arquivo Oficial com status "Entregue".
+
+- **Endpoints Backend Seguros sob `/backend/v1/sped/*`:**
+  - `POST /backend/v1/sped/gerar` (`pocketbase/hooks/sped_gerar.js`): gera o arquivo SPED Fiscal executando os coletores, apurações em memória, validações cadastrais e cruzadas e gerador de leiaute oficial; salva o arquivo físico .txt na coleção `sped_arquivos`; grava `quantidade_linhas`, `contagem_registros`, `resumo_apuracao`, `resumo_saida`, `resumo_entrada` e `validacoes`. Em modo Oficial, substitui arquivos oficiais anteriores não entregues.
+  - `POST /backend/v1/sped/marcar-entregue` (`pocketbase/hooks/fiscal_sped_operacoes.js`): valida perfil de Administrador (`perfis_acesso.administrador = true`), rejeita arquivos gerados em modo Teste, exige o número do recibo de entrega do PVA, marca `status = 'Entregue'` com `recibo_entrega` e `entregue_em` e registra auditoria em `logs_auditoria`.
+  - `POST /backend/v1/sped/ajustes/salvar` (`pocketbase/hooks/fiscal_sped_operacoes.js`): salva ajustes manuais no registro E111; valida Administrador, UF no prefixo do código de ajuste, estrutura de 8 dígitos e bloqueia alterações se o período já tiver arquivo Oficial entregue.
+  - `POST /backend/v1/sped/ajustes/excluir` (`pocketbase/hooks/fiscal_sped_operacoes.js`): exclui ajuste manual da apuração sob as mesmas travas de Administrador e período não entregue.
+
+- **Telas e Recursos na Interface:**
+  - **Fiscal > SPED Fiscal (`/fiscal/sped`):** geração de arquivos por período e modo (Oficial/Teste), seletor de finalidade (Original COD_FIN 0 ou Retificadora COD_FIN 1 com diálogo de confirmação obrigatório quando já houver arquivo Oficial Entregue no período), lista detalhada com badges de status, download do .txt, modal e painel de inconsistências e avisos, quadros de apuração (Bloco E, Saídas Bloco C, Entradas Bloco C, DIFAL), botão "Marcar como entregue" exclusivo para Administrador (com data e recibo do PVA, permanentemente desabilitado para arquivos em modo Teste), e caixa expansível **"Como entregar o SPED Fiscal à Receita Federal / SEFAZ"** (passo a passo oficial de download, validação no PVA, correção de pendências, assinatura com e-CNPJ/e-CPF e gravação do recibo no ERP).
+  - **Aba "Ajustes da apuração" (`/fiscal/sped`):** controle completo dos registros E111 do período selecionado, com modal de lançamento validando códigos SEFAZ e descrição legal.
+  - **Relatório de Conferência do SPED Fiscal (`/fiscal/sped/:id/relatorio`):** visão consolidada e imprimível em folha A4 (via `window.print()`) baseada nos dados estruturados já persistidos em `sped_arquivos` (resumo de saídas por modelo, resumo de entradas e compras, resumo analítico por CFOP e CST/CSOSN com base e ICMS, apuração do ICMS próprio do Bloco E, apuração de DIFAL e FCP por UF de destino e quadro de inconsistências/avisos), exibindo faixa de advertência destacada em vermelho `"ARQUIVO DE TESTE — NÃO ENTREGAR AO FISCO"` quando o arquivo estiver em modo Teste.
+  - **Cartão no Painel Fiscal (`src/pages/Index.tsx`):** card inteligente **"SPED Fiscal do mês anterior"** no painel inicial do módulo fiscal, diagnosticando se o arquivo do mês anterior já foi gerado e entregue, exibindo selo de status ("Entregue com recibo", "Gerado — entrega pendente", "Não gerado" ou "Atenção: pendente"), botão de ação direta para geração/conferência e resumo rápido dos valores apurados.
+  - **Destaque na Tela de Inventários (`/estoque/inventarios/:id`):** no inventário Anual (Bloco H) de 31/12 finalizado, exibição de badge `"Entra no SPED de [mês] de AAAA"` e valor total apurado para o registro `H005`.
+  - **Fiscal > Configuração do SPED (`/fiscal/sped/configuracoes`):** formulário dos parâmetros da EFD e semáforo dinâmico "Pronto para gerar o SPED?".
+
+- **Regras Principais da Etapa 7:**
+  - **Desacoplamento e Não Intrusão:** Nada da Etapa 7 altera documentos fiscais, movimentações de estoque, lançamentos financeiros ou cadastros de clientes/produtos/fornecedores. O módulo é 100% de leitura de dados fiscais e escrituração.
+  - **Modo Teste Protegido:** Arquivo em modo Teste é sempre nomeado com prefixo `TESTE_`, pode incluir notas em homologação caso configurado, exibe tarja ostensiva no relatório de conferência e tem bloqueio mandatório tanto no backend (`/backend/v1/sped/marcar-entregue`) quanto na interface para marcação como Entregue.
+  - **Validação Interna Pré-PVA:** Motor realiza varreduras automáticas de integridade cruzada antes da gravação: referências cruzadas de cadastros (0150 COD_PART, 0200 COD_ITEM, 0190 UNID), cálculo de dígito verificador de CNPJ/CPF, contagens exatas de encerramentos (X990, 9900, 9990, 9999), chaves de acesso duplicadas, notas fora do período de apuração, batimento de `VL_OPR` com `VL_DOC` do C100 (tolerância de R$ 0,01), recálculo de batimento do E110 e alerta para arquivos superiores a 4 MB.
+
+- **O que o ERP NÃO gera nesta versão:**
+  - Registros `E200` e `E210` de Apuração do ICMS ST (o sistema gera aviso impeditivo caso haja ICMS ST destacado em notas de saída, orientando apuração direta com a contabilidade).
+  - Apuração de IPI (Bloco E da EFD para estabelecimentos industriais ou equiparados a indústria).
+  - Bloco D (documentos de transporte e comunicação; o ERP gera apenas totalizador de encerramento D001 com movimento 1 e D990).
+  - Registro `1601` de pagamentos eletrônicos no Bloco 1 (o sistema emite alerta preventivo quando detecta recebimentos via cartão, PIX ou marketplace para que o contador verifique a exigência estadual).
+
+---
+
 ## Versão Atual do Projeto
+
+**Versão 0.0.105** — Fechamento Oficial da Etapa 7 (SPED Fiscal / EFD ICMS/IPI) — Parte 3 de 3 do Prompt 7.6b:
+
+1. **Revisão de Regras e Blindagem:**
+   - Conferido e consolidado que `sped_arquivos` permanece com criação e alteração 100% bloqueadas para o navegador (`createRule: null`, `updateRule: null`, `deleteRule: null`), sendo gerada exclusivamente pelos endpoints de backend.
+   - Conferido que `sped_ajustes_apuracao` é mutável exclusivamente por Administradores (`perfis_acesso.administrador = true`) e bloqueada se o período já tiver arquivo Oficial entregue.
+   - Confirmado que nenhuma rotina da Etapa 7 modifica estoque, financeiro ou documentos fiscais emitidos.
+   - Confirmado que o modo Teste impõe o prefixo `TESTE_` no arquivo .txt e possui bloqueio impeditivo no endpoint `/backend/v1/sped/marcar-entregue` e na interface.
+2. **Atualização Completa da Documentação no `PROJETO_ERP.md`:**
+   - Documentação de todas as entregas da Etapa 7 (Prompts 7.0 a 7.6d, versões 0.0.92 a 0.0.105).
+   - Inclusão da seção consolidada "Etapa 7 concluída" com tabelas, endpoints, telas, regras e exceções legais.
+   - Versão do projeto atualizada para v0.0.105.
+
+---
+
+**Versão 0.0.104** — Etapa 7 SPED Fiscal (Prompt 7.6b - Parte 2: Orientações de Entrega do SPED e Cartão no Painel Fiscal):
+
+1. **Guia e Orientações "Como entregar o SPED Fiscal":**
+   - Inclusão de caixa de orientação sanfonada/expansível na tela Fiscal > SPED Fiscal (`/fiscal/sped`).
+   - Roteiro passo a passo oficial detalhando: download do .txt, importação e validação no PVA (Programa Validador e Assinador da EFD ICMS/IPI), saneamento de advertências e erros, assinatura digital com certificado e-CNPJ ou e-CPF do procurador, transmissão à Receita Federal e arquivamento do recibo no ERP com alteração de status para "Entregue".
+2. **Card "SPED Fiscal do mês anterior" no Painel Fiscal (`src/pages/Index.tsx`):**
+   - Diagnóstico proativo no dashboard inicial do módulo fiscal.
+   - Identifica se a escrituração da competência anterior foi transmitida com sucesso, se está gerada aguardando entrega ou se ainda não foi processada, com link direto de navegação.
+
+---
+
+**Versão 0.0.103** — Etapa 7 SPED Fiscal (Prompt 7.6b - Parte 1: Relatório de Conferência do SPED Fiscal):
+
+1. **Tela do Relatório de Conferência (`/fiscal/sped/:id/relatorio` - `src/pages/fiscal/SpedRelatorioConferenciaPage.tsx`):**
+   - Relatório completo de auditoria e pré-conferência tributária formatado para tela e impressão/PDF em folha A4 (`window.print()`).
+   - Alimentado integralmente pelo registro estruturado em `sped_arquivos` (sem onerar o banco com novas leituras de documentos).
+   - Seções analíticas: cabeçalho com dados cadastrais da empresa e período; quadro analítico por CFOP e CST/CSOSN (saídas e entradas); resumo da apuração do ICMS Próprio (Bloco E) com demonstrativo de cálculo do resultado; apuração de DIFAL e FCP por UF de destino; e relação completa de avisos e inconsistências pré-validadas.
+   - Tarja em destaque em vermelho `"ARQUIVO DE TESTE — NÃO ENTREGAR AO FISCO"` exibida quando o arquivo for do modo Teste.
+
+---
+
+**Versão 0.0.102** — Etapa 7 SPED Fiscal (Prompt 7.6d: Resumo Analítico por CFOP e CST em `sped_arquivos`):
+
+1. **Persistência de Dados Analíticos nos Arquivos SPED:**
+   - Atualização do gerador backend e do serviço `configSped.ts` com agregação detalhada de valores contábeis, base de cálculo e ICMS segregados por CFOP e CST/CSOSN, persistidos diretamente nos campos estruturados `resumo_saida` e `resumo_entrada` de `sped_arquivos`.
+
+---
+
+**Versão 0.0.101** — Etapa 7 SPED Fiscal (Prompt 7.6a: Retificadora com COD_FIN 1, Validação Interna Pré-PVA e Entrega Segura):
+
+1. **Geração de Arquivo Retificador (COD_FIN 1):**
+   - Suporte à seleção de finalidade Original (0) ou Retificadora (1) no cabeçalho do registro 0000.
+   - Diálogo de advertência e confirmação mandatória na tela `/fiscal/sped` ao gerar arquivo retificador para período que já possua arquivo Oficial marcado como "Entregue".
+2. **Motor de Validação Interna Pré-PVA no Backend (`pocketbase/hooks/sped/gerador.js`):**
+   - Varreduras automatizadas preventivas executadas ao final da montagem do arquivo:
+     - Referências cruzadas de cadastros coletados: consistência de `0150` (participantes COD_PART), `0200` (itens COD_ITEM) e `0190` (unidades UNID) em relação aos registros do Bloco C e H.
+     - Validação de dígito verificador de CNPJ e CPF de clientes, fornecedores e filiais.
+     - Conferência exata dos totalizadores e encerramentos de blocos (`X990`, `9900`, `9990`, `9999`).
+     - Detecção de chaves de acesso duplicadas no mesmo período.
+     - Verificação de datas de emissão/entrada pertencentes estritamente à competência apurada.
+     - Batimento de `VL_OPR` do analítico C190 com `VL_DOC` do cabeçalho C100 (alerta para divergência > R$ 0,01).
+     - Recálculo de batimento contábil da apuração do E110.
+     - Aviso preventivo de volumetria para arquivos gerados com tamanho superior a 4 MB.
+3. **Controle de Entrega e Blindagem do Modo Teste:**
+   - Botão "Marcar como entregue" liberado somente para Administrador, solicitando número do recibo oficial gerado pelo PVA e data da entrega.
+   - Bloqueio estrito no endpoint `/backend/v1/sped/marcar-entregue` impedindo que arquivos com `modo = "Teste"` sejam marcados como entregues.
+
+---
 
 **Versão 0.0.98** — Etapa 7 SPED Fiscal (Prompt 7.5: Blocos H, K e 1 do SPED Fiscal e Destaque no Inventário Anual):
 
