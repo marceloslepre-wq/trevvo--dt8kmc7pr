@@ -26,7 +26,10 @@ import {
   DollarSign,
   Scale,
   MapPin,
+  ChevronDown,
+  Info,
 } from 'lucide-react'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import {
@@ -161,6 +164,9 @@ export const SpedFiscalPage: React.FC = () => {
   const [excluindoAjusteId, setExcluindoAjusteId] = useState<string | null>(null)
   const [modalNovoAjusteAberto, setModalNovoAjusteAberto] = useState(false)
   const [ajusteEdicao, setAjusteEdicao] = useState<Partial<SpedAjusteApuracao> | null>(null)
+
+  // Caixa "Como entregar" recolhível (Prompt 7.6b)
+  const [comoEntregarAberto, setComoEntregarAberto] = useState(false)
 
   // Modal de Confirmação de Retificadora (Prompt 7.6a - Item C1)
   const [modalConfirmarRetificadoraAberto, setModalConfirmarRetificadoraAberto] = useState(false)
@@ -619,6 +625,76 @@ export const SpedFiscalPage: React.FC = () => {
         </TabsList>
 
         <TabsContent value="arquivos" className="space-y-6 m-0">
+          {/* Caixa recolhível "Como entregar" (Prompt 7.6b - Item 1) */}
+          <Collapsible
+            open={comoEntregarAberto}
+            onOpenChange={setComoEntregarAberto}
+            className="border border-blue-200 bg-blue-50/40 rounded-xl overflow-hidden transition-all shadow-2xs"
+          >
+            <div className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0">
+                  <HelpCircle size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Como entregar</h3>
+                  <p className="text-xs text-slate-500">
+                    Passo a passo para validação no PVA e transmissão à Receita Federal
+                  </p>
+                </div>
+              </div>
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2.5 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-100/60 gap-1.5"
+                >
+                  <span>{comoEntregarAberto ? 'Recolher' : 'Ver passo a passo'}</span>
+                  <ChevronDown
+                    size={15}
+                    className={`transition-transform duration-200 ${comoEntregarAberto ? 'rotate-180' : ''}`}
+                  />
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+
+            <CollapsibleContent>
+              <div className="px-4 pb-4 pt-1 border-t border-blue-100/80 space-y-4">
+                {/* Passo a passo numerado */}
+                <ol className="list-decimal list-inside space-y-1.5 text-xs text-slate-700 bg-white/80 p-3.5 rounded-lg border border-blue-100 shadow-2xs font-medium">
+                  <li>baixar o arquivo;</li>
+                  <li>abrir o PVA EFD ICMS IPI da Receita no computador;</li>
+                  <li>Importar escrituração;</li>
+                  <li>corrigir no ERP o que o PVA apontar e gerar de novo;</li>
+                  <li>Assinar com o certificado A1;</li>
+                  <li>Transmitir;</li>
+                  <li>voltar ao ERP e marcar como entregue com o número do recibo.</li>
+                </ol>
+
+                {/* Avisos verbatim */}
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2 text-xs text-amber-900 bg-amber-50/80 p-2.5 rounded-md border border-amber-200">
+                    <AlertCircle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <span>cada inscrição estadual entrega o seu arquivo</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-xs text-amber-900 bg-amber-50/80 p-2.5 rounded-md border border-amber-200">
+                    <AlertCircle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <span>
+                      não gere o SPED Oficial de um mês em que o estabelecimento ainda emitiu notas
+                      por outro sistema, porque o arquivo sairia incompleto
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 text-xs text-blue-900 bg-blue-50/80 p-2.5 rounded-md border border-blue-200">
+                    <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                    <span>
+                      empresa do Simples Nacional normalmente não entrega; confirme com o contador
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
           {/* Bloco de Ação: Parâmetros e Geração */}
           <Card className="border-slate-200 shadow-xs">
             <CardHeader className="pb-3">

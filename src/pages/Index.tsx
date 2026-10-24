@@ -25,8 +25,10 @@ import {
   FileClock,
   Award,
   ShieldAlert,
+  FileCheck2 as FileCheck2Icon,
 } from 'lucide-react'
 import { contarTransferenciasAguardandoRecebimento } from '@/services/transferencias'
+import { listarEmpresasAtivas, Empresa } from '@/services/empresas'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -148,7 +150,7 @@ export default function Index() {
   // Pendências de configuração
   const [pendencias, setPendencias] = useState<PendenciaConfiguracao[]>([])
 
-  // Indicadores Fiscais (Etapa 6)
+  // Indicadores Fiscais (Etapa 6 e 7)
   const [notasRejeitadasCount, setNotasRejeitadasCount] = useState<number>(0)
   const [notasProcessandoCount, setNotasProcessandoCount] = useState<number>(0)
   const [notasEmitidasHojeCount, setNotasEmitidasHojeCount] = useState<number>(0)
@@ -157,6 +159,15 @@ export default function Index() {
     null,
   )
   const [ambienteHomologacaoAtivo, setAmbienteHomologacaoAtivo] = useState<boolean>(false)
+
+  // Indicador de SPED do mês anterior (Etapa 7 - Prompt 7.6b)
+  const [statusSpedEmpresas, setStatusSpedEmpresas] = useState<
+    Array<{
+      empresa: Empresa
+      periodo: string
+      statusFormatado: 'não gerado' | 'gerado com erros' | 'gerado' | 'entregue'
+    }>
+  >([])
 
   // Permissões de cada módulo relevante
   const podeVerFiscal = pode('notas_saida', 'ver') || pode('tabelas_fiscais', 'ver')
@@ -604,6 +615,88 @@ export default function Index() {
                 setDiasVencimentoCertificado(null)
                 setDataVencimentoCertificadoStr(null)
                 setAmbienteHomologacaoAtivo(false)
+              }
+            })(),
+          )
+
+          // 5. SPED do mês anterior por empresa com obrigado_efd_icms_ipi (Prompt 7.6b - Item 2)
+          promisesContagens.push(
+            (async () => {
+              try {
+                // Cálculo do mês anterior no horário de Brasília (America/Sao_Paulo)
+                const agora = new Date()
+                const formatoBrasilia = new Intl.DateTimeFormat('en-CA', {
+                  timeZone: 'America/Sao_Paulo',
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                }).format(agora)
+                const [anoBsb, mesBsb] = formatoBrasilia.split('-').map(Number)
+                const dMesAnt = new Date(Date.UTC(anoBsb, mesBsb - 2, 1))
+                const anoMesAnt = dMesAnt.getUTCFullYear()
+                const mesMesAnt = String(dMesAnt.getUTCMonth() + 1).padStart(2, '0')
+                const periodoMesAnterior = `${anoMesAnt}-${mesMesAnt}`
+
+                // Buscar empresas ativas com obrigado_efd_icms_ipi
+                const todasEmpresas = await listarEmpresasAtivas()
+                const empresasObrigadas = todasEmpresas.filter((e) =>
+                  Boolean(e.obrigado_efd_icms_ipi),
+                )
+
+                if (empresasObrigadas.length === 0) {
+                  setStatusSpedEmpresas([])
+                  return
+                }
+
+                const listaStatus = await Promise.all(
+                  empresasObrigadas.map(async (emp) => {
+                    try {
+                      const resSped = await pb.collection('sped_arquivos').getList(1, 1, {
+                        filter: `empresa_id = '${emp.id}' && modo = 'Oficial' && periodo = '${periodoMesAnterior}'`,
+                        sort: '-created',
+                      })
+
+                      if (resSped.items.length === 0) {
+                        return {
+                          empresa: emp,
+                          periodo: periodoMesAnterior,
+                          statusFormatado: 'não gerado' as const,
+                        }
+                      }
+
+                      const statusRegistro = resSped.items[0].status
+                      let statusFmt: 'não gerado' | 'gerado com erros' | 'gerado' | 'entregue' =
+                        'não gerado'
+                      if (statusRegistro === 'Entregue') {
+                        statusFmt = 'entregue'
+                      } else if (statusRegistro === 'Gerado com erros') {
+                        statusFmt = 'gerado com erros'
+                      } else if (statusRegistro === 'Gerado') {
+                        statusFmt = 'gerado'
+                      } else {
+                        statusFmt = 'não gerado'
+                      }
+
+                      return {
+                        empresa: emp,
+                        periodo: periodoMesAnterior,
+                        statusFormatado: statusFmt,
+                      }
+                    } catch (errEmp) {
+                      console.warn(`Erro ao consultar SPED para empresa ${emp.id}:`, errEmp)
+                      return {
+                        empresa: emp,
+                        periodo: periodoMesAnterior,
+                        statusFormatado: 'não gerado' as const,
+                      }
+                    }
+                  }),
+                )
+
+                setStatusSpedEmpresas(listaStatus)
+              } catch (errSped) {
+                console.warn('Erro ao calcular status do SPED do mês anterior:', errSped)
+                setStatusSpedEmpresas([])
               }
             })(),
           )
@@ -1695,6 +1788,12 @@ export default function Index() {
                   <ArrowRight size={13} />
                 </Link>
               </Button>
+              <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1">
+                <Link to="/fiscal/sped">
+                  SPED Fiscal
+                  <ArrowRight size={13} />
+                </Link>
+              </Button>
             </div>
           </div>
 
@@ -1920,6 +2019,126 @@ export default function Index() {
               </Card>
             </Link>
           </div>
+
+          {/* Cards "SPED do mês anterior" para cada empresa obrigada à EFD (Prompt 7.6b - Item 2) */}
+          {statusSpedEmpresas.length > 0 && (
+            <div className="space-y-2.5 pt-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="h-4 w-4 text-blue-600" />
+                  <span className="text-xs font-semibold text-slate-700">
+                    Obrigatoriedade EFD ICMS/IPI — SPED do Mês Anterior
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  {statusSpedEmpresas[0]?.periodo} (horário de Brasília)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {statusSpedEmpresas.map(({ empresa: emp, periodo: per, statusFormatado }) => {
+                  const nomeEmpresa = emp.nome_fantasia || emp.razao_social
+
+                  let estiloCard = 'hover:border-slate-300'
+                  let badgeStatus = (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-slate-100 text-slate-700 border-slate-300"
+                    >
+                      não gerado
+                    </Badge>
+                  )
+                  let textoDesc = 'arquivo do mês anterior não gerado'
+                  let iconeCor = 'bg-slate-100 text-slate-600'
+
+                  if (statusFormatado === 'entregue') {
+                    estiloCard = 'border-emerald-300 bg-emerald-50/20 ring-1 ring-emerald-200'
+                    badgeStatus = (
+                      <Badge className="bg-blue-600 text-white text-[10px] hover:bg-blue-600 font-semibold">
+                        entregue
+                      </Badge>
+                    )
+                    textoDesc = 'transmitido com recibo no PVA'
+                    iconeCor = 'bg-blue-100 text-blue-700'
+                  } else if (statusFormatado === 'gerado') {
+                    estiloCard = 'border-blue-300 bg-blue-50/20 ring-1 ring-blue-200'
+                    badgeStatus = (
+                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] hover:bg-emerald-100 font-semibold">
+                        gerado
+                      </Badge>
+                    )
+                    textoDesc = 'gerado e pronto para o PVA'
+                    iconeCor = 'bg-emerald-100 text-emerald-700'
+                  } else if (statusFormatado === 'gerado com erros') {
+                    estiloCard = 'border-amber-300 bg-amber-50/25 ring-1 ring-amber-200'
+                    badgeStatus = (
+                      <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] hover:bg-amber-100 font-semibold">
+                        gerado com erros
+                      </Badge>
+                    )
+                    textoDesc = 'requer revisão de consistências'
+                    iconeCor = 'bg-amber-100 text-amber-700'
+                  } else {
+                    estiloCard = 'border-rose-200 bg-rose-50/20'
+                    badgeStatus = (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-rose-100 text-rose-800 border-rose-300 font-semibold"
+                      >
+                        não gerado
+                      </Badge>
+                    )
+                    textoDesc = 'pendente de geração oficial'
+                    iconeCor = 'bg-rose-100 text-rose-700'
+                  }
+
+                  return (
+                    <Link
+                      key={emp.id}
+                      to="/fiscal/sped"
+                      className="group block focus:outline-none"
+                      title={`Abrir tela do SPED Fiscal (${nomeEmpresa})`}
+                    >
+                      <Card
+                        className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${estiloCard}`}
+                      >
+                        <CardContent className="p-4 flex flex-col justify-between h-full">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                                SPED do mês anterior
+                              </span>
+                              <h4 className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors truncate mt-0.5">
+                                {nomeEmpresa}
+                              </h4>
+                            </div>
+                            <div
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconeCor}`}
+                            >
+                              <FileSpreadsheet size={18} />
+                            </div>
+                          </div>
+
+                          <div className="mt-3">
+                            <div className="flex items-center gap-2">
+                              {badgeStatus}
+                              <span className="text-[11px] text-slate-400 font-mono">({per})</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+                              <span className="truncate">{textoDesc}</span>
+                              <span className="text-slate-400 group-hover:text-primary ml-1 font-semibold">
+                                →
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
