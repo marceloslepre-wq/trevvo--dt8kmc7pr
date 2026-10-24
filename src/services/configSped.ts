@@ -297,6 +297,14 @@ export async function listarArquivosSped(empresaId: string): Promise<SpedArquivo
 }
 
 /**
+ * Obtém um registro de arquivo SPED pelo ID.
+ */
+export async function obterArquivoSpedPorId(id: string): Promise<SpedArquivoRegistro> {
+  if (!id) throw new Error('ID do arquivo SPED é obrigatório.')
+  return await pb.collection('sped_arquivos').getOne<SpedArquivoRegistro>(id)
+}
+
+/**
  * Marca um arquivo SPED como entregue à SEFAZ / Receita Federal via endpoint seguro do backend.
  */
 export async function marcarSpedEntregue(params: {

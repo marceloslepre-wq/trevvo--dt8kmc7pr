@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   FileSpreadsheet,
   Download,
+  Printer,
   Play,
   RotateCw,
   AlertTriangle,
@@ -134,6 +136,7 @@ function renderStatusBadge(status: SpedStatus) {
 }
 
 export const SpedFiscalPage: React.FC = () => {
+  const navigate = useNavigate()
   const { empresaAtiva } = useEmpresaAtiva()
   const { pode, administrador } = usePermissoes()
 
@@ -885,6 +888,16 @@ export const SpedFiscalPage: React.FC = () => {
                       >
                         <Download size={15} className="mr-1.5" />
                         Baixar Arquivo .txt
+                      </Button>
+
+                      {/* Botão Relatório de conferência */}
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate(`/fiscal/sped/${arquivoSelecionado.id}/relatorio`)}
+                        className="h-9 text-xs border-blue-300 text-blue-800 bg-blue-50/70 hover:bg-blue-100"
+                      >
+                        <Printer size={14} className="mr-1.5 text-blue-700" />
+                        Relatório de conferência
                       </Button>
 
                       {/* Botão Marcar como entregue (Prompt 7.6a - Item C2):
