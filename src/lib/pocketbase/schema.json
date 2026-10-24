@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-24T21:22:34.666Z",
+  "generatedAt": "2026-10-24T21:33:13.617Z",
   "collections": [
     {
       "name": "users",
@@ -10760,6 +10760,69 @@
         "CREATE INDEX idx_sped_ajustes_empresa ON sped_ajustes_apuracao (empresa_id)",
         "CREATE INDEX idx_sped_ajustes_periodo ON sped_ajustes_apuracao (periodo)",
         "CREATE INDEX idx_sped_ajustes_emp_per ON sped_ajustes_apuracao (empresa_id, periodo)"
+      ]
+    },
+    {
+      "name": "relatorios_filtros_salvos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)",
+        "view": "@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)",
+        "create": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "update": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && usuario_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "usuario_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "relatorio",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "filtros",
+          "type": "json",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "compartilhado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_rel_filtros_usuario ON relatorios_filtros_salvos (usuario_id)",
+        "CREATE INDEX idx_rel_filtros_relatorio ON relatorios_filtros_salvos (relatorio)",
+        "CREATE INDEX idx_rel_filtros_compartilhado ON relatorios_filtros_salvos (compartilhado)"
       ]
     }
   ]

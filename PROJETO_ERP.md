@@ -284,6 +284,21 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### relatorios_filtros_salvos
+
+Tabela de registro e controle de filtros salvos e combinações de parâmetros personalizadas para relatórios do ERP (Prompt 8.0b). Permite ao operador salvar conjuntos de filtros aplicados (empresas, períodos, produtos, clientes, vendedores, formas de pagamento, plano de contas, etc.) e reutilizá-los com um clique no botão "Meus filtros". Suporta compartilhamento com toda a equipe (`compartilhado = true`), onde o filtro compartilhado fica visível para todos os usuários com acesso ao relatório correspondente. Regras de segurança estritas na API da collection: leitura restrita aos filtros do próprio usuário autenticado ou aos filtros marcados como compartilhados (`@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)`); criação permitida apenas para o próprio usuário (`usuario_id = @request.auth.id`); edição e exclusão restritas exclusivamente ao proprietário do filtro (`usuario_id = @request.auth.id`). Criada na Migration 0058.
+
+- id (text, PK)
+- usuario_id (relation -> users, obrigatório, cascadeDelete, proprietário do filtro)
+- relatorio (text, identificador único do relatório no catálogo, ex.: "vendas_consultas", "estoque_posicao", obrigatório)
+- nome (text, título amigável de identificação do filtro salvo, obrigatório)
+- filtros (json, objeto completo no formato único `ObjetoFiltrosRelatorio`, obrigatório)
+- compartilhado (bool, indica se o filtro salvo está visível para outros usuários com acesso ao relatório)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `usuario_id` (`idx_rel_filtros_usuario`), `relatorio` (`idx_rel_filtros_relatorio`), `compartilhado` (`idx_rel_filtros_compartilhado`).
+
 ### sped_ajustes_apuracao
 
 Tabela de registro e controle de ajustes manuais da apuração do ICMS Próprio para o Registro E111 da EFD ICMS/IPI (SPED Fiscal). Utilizada para lançar benefícios fiscais estaduais (ex: COMPETE-ES Lei 10.568/2016), estornos de débito/crédito, deduções do imposto apurado e débitos especiais com códigos tabelados pela SEFAZ de cada estado (Tabela 5.1.1). Os códigos devem conter exatamente 8 dígitos alfanuméricos, onde o 4º caractere mapeia diretamente para os campos do registro E110: "0" = Outros débitos (VL_TOT_AJ_DEBITOS), "1" = Estorno de créditos (VL_ESTORNOS_CRED), "2" = Outros créditos (VL_TOT_AJ_CREDITOS), "3" = Estorno de débitos (VL_ESTORNOS_DEB), "4" = Deduções do ICMS (VL_TOT_DED), "5" = Débito especial (DEB_ESP). Permissões estritas: somente leitura pelo navegador autenticado (`listRule` e `viewRule` com `@request.auth.id != ''`); inserções, edições e exclusões restritas ao backend (`createRule: null`, `updateRule: null`, `deleteRule: null`), operadas exclusivamente pelos endpoints `/backend/v1/sped/ajustes/salvar` e `/backend/v1/sped/ajustes/excluir`, que validam perfil de Administrador (`perfis_acesso.administrador = true`) e bloqueiam alterações em períodos com arquivo Oficial já Entregue. Criada na Migration 0057.
@@ -3241,9 +3256,75 @@ Regras gerais para todos os relatórios desta etapa:
   - Área expansível de filtros extras (`children` / `filtrosExtras`) preparada para receber os filtros específicos de produtos, pessoas, vendas, fiscal e financeiro do próximo prompt (8.0b).
 - **Tela Central de Relatórios (`src/pages/relatorios/CentralRelatoriosPage.tsx` - `/relatorios`):** Painel da Central de Relatórios no menu principal, protegido pelo módulo `relatorios` (`pode('relatorios', 'ver')`). Cartões agrupados por assunto, com nome, resumo do que mostram e link de acesso rápido, filtrados dinamicamente pelas permissões do usuário em cada módulo correspondente.
 
+### Catálogo de Filtros e Formato Único de Filtros no Prompt 8.0b
+
+No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e o motor comum de aplicação no frontend e backend:
+
+1. **Catálogo de Filtros Declaráveis (`ChaveFiltroDeclaravel`):**
+   - **Produto:** `produto_grupos_categorias` (grupos e categorias do cadastro; marcar o grupo marca automaticamente as categorias dele), `produto_marcas`, `produto_produtos` (busca por código, descrição ou código de barras), `produto_fornecedores` (fornecedor do produto), `produto_ncms`, `produto_situacao` (ativo ou inativo) e `produto_so_fiscal_nao_revisado` (produtos com dados fiscais pendentes de revisão).
+   - **Pessoas:** `pessoas_clientes`, `pessoas_fornecedores`, `pessoas_vendedores`, `pessoas_operadores_caixa`, `pessoas_cliente_ufs` e `pessoas_cliente_cidades`.
+   - **Vendas:** `vendas_tipos` (PDV, Pedido, Orçamento), `vendas_status`, `vendas_formas_pagamento`, `vendas_terminais_pdv`, `vendas_intermediadores` (marketplaces) e `vendas_com_sem_nota` (todas, com nota fiscal, sem nota fiscal).
+   - **Fiscal:** `fiscal_modelos` (NF-e modelo 55, NFC-e modelo 65), `fiscal_cfops`, `fiscal_csts_csosns`, `fiscal_situacoes_nota` e `fiscal_ufs_destino`.
+   - **Financeiro:** `financeiro_plano_contas` (marcar a conta sintética marca automaticamente todas as contas analíticas filhas vinculadas), `financeiro_centros_custo`, `financeiro_contas_financeiras`, `financeiro_situacoes_titulo` e `financeiro_origens_titulo`.
+   - **Datas:** `datas_tipo_data` (escolha da data de referência do período: emissão, vencimento, pagamento ou competência).
+   - Cada relatório declara em `filtrosDeclarados` / `filtrosPermitidos` quais filtros utiliza, e estritamente esses são renderizados na tela.
+
+2. **Formato Único do Objeto `filtros` (`ObjetoFiltrosRelatorio`):**
+   - Estrutura única tipada utilizada pelo frontend e enviada ao backend:
+     - `empresas_ids`: array de IDs de empresas selecionadas;
+     - `ver_so_total`: booleano para consolidar totais sem segregar por empresa;
+     - `periodo`: `{ dataInicio: string, dataFim: string }` (com limite de até 366 dias);
+     - `atalho_periodo`: identificador do atalho ativo;
+     - `incluir_notas_teste`: booleano para notas em homologação;
+     - `grupos_ids`, `categorias_ids`, `marcas_ids`, `produtos_ids`, `fornecedores_produto_ids`, `ncms`, `situacao_produto`, `so_fiscal_nao_revisado`;
+     - `clientes_ids`, `fornecedores_ids`, `vendedores_ids`, `operadores_caixa_ids`, `cliente_ufs`, `cliente_cidades`;
+     - `vendas_tipos`, `vendas_status`, `formas_pagamento_ids`, `terminais_pdv_ids`, `intermediadores_ids`, `vendas_nota_fiscal`;
+     - `fiscal_modelos`, `fiscal_cfops`, `fiscal_csts_csosns`, `fiscal_situacoes_nota`, `fiscal_ufs_destino`;
+     - `plano_contas_ids`, `centros_custo_ids`, `contas_financeiras_ids`, `situacoes_titulo`, `origens_titulo`;
+     - `tipo_data`: `'emissao' | 'vencimento' | 'pagamento' | 'competencia'`.
+
+3. **Função Comum de Aplicação no Backend (`pocketbase/hooks/relatorios_base.js`):**
+   - Endpoint `POST /backend/v1/relatorios/validar-filtros` e rotinas compartilhadas para todos os endpoints `/backend/v1/relatorios/*`.
+   - Valida autorização de acesso do usuário às empresas consultadas (`usuarios_empresas` ou admin).
+   - Valida período mandatório máximo de 366 dias.
+   - Aplica os critérios sempre do mesmo jeito: suprime cancelados e notas em homologação (salvo se permitido).
+   - **Regra Mandatória de Produto:** havendo filtro de produto aplicado em relatório de vendas ou compras, os itens são filtrados diretamente (os totais passam a ser estritamente dos itens filtrados), e o cabeçalho avisa expressamente essa condição.
+
+4. **Cabeçalho Legível de Filtros (`formatarLinhaLegivelFiltros`):**
+   - Apresenta os filtros aplicados em linha única legível na tela, no cabeçalho de impressão e no CSV (ex.: `"Empresas: Loja 01, Loja 02 · Marcas: X, Y · Período: 01/10/2025 a 31/10/2025"`).
+
+5. **Filtros Salvos (`relatorios_filtros_salvos`):**
+   - Tabela criada via Migration 0058 (`usuario_id`, `relatorio`, `nome`, `filtros`, `compartilhado`).
+   - Botões integrados **"Salvar estes filtros"** e **"Meus filtros"** em `FiltrosRelatorio.tsx`.
+   - Filtros compartilhados aparecem para todos os usuários com acesso ao relatório; edição e exclusão restritas unicamente ao criador/proprietário do filtro.
+
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.107** — Etapa 8 Relatórios e Painel (Prompt 8.0b: Catálogo Completo de Filtros, Formato Único, Motor Comum no Backend e Filtros Salvos):
+
+1. **Catálogo Completo de Filtros nos Relatórios (`FiltrosRelatorio.tsx` e `MultiSelectFiltro.tsx`):**
+   - Implementação dos filtros de Produto (grupos e categorias encadeadas, marcas, produtos com busca por código/descrição/barras, fornecedores do produto, situação ativo/inativo, só fiscal não revisado).
+   - Filtros de Pessoas (clientes, fornecedores, vendedores, operadores de caixa e UFs).
+   - Filtros de Vendas (tipos de venda PDV/Pedido/Orçamento, status da venda, formas de pagamento, terminais do PDV, intermediadores e documento fiscal).
+   - Filtros Fiscais (modelos 55/65, situações da nota e UFs de destino).
+   - Filtros Financeiros (plano de contas com seleção hierárquica automática sintética->analíticas, centros de custo, contas financeiras/bancos, situações de título e origens).
+   - Filtros de Datas (seleção de emissão, vencimento, pagamento ou competência).
+   - Todos com botões utilitários "Marcar todos" e "Desmarcar todos" e suporte à seleção múltipla reativa.
+2. **Formato Único de Filtros e Motor Comum no Backend (`pocketbase/hooks/relatorios_base.js`):**
+   - Padronização do contrato `ObjetoFiltrosRelatorio`.
+   - Validação uniforme de empresas permitidas e limite máximo de 366 dias.
+   - Aplicação consistente onde filtros de produto filtram itens e exibem aviso de recalque de totais.
+   - Rota base `POST /backend/v1/relatorios/validar-filtros`.
+3. **Cabeçalho Legível de Filtros para Tela, Impressão e CSV:**
+   - Implementação de `formatarLinhaLegivelFiltros` e inclusão do parâmetro `linhaFiltros` em `gerarCsvRelatorio`.
+   - Exibição de tarja e aviso de filtros aplicados na impressão e na visualização da tela.
+4. **Filtros Salvos e Compartilhamento (`relatorios_filtros_salvos` - Migration 0058):**
+   - Migration 0058 criando a coleção no PocketBase com regras restritas de acesso.
+   - Componente `GerenciadorFiltrosSalvos.tsx` acoplado aos botões "Salvar estes filtros" e "Meus filtros" com suporte a compartilhamento para a equipe e exclusão exclusiva pelo proprietário.
+
+---
 
 **Versão 0.0.106** — Etapa 8 Relatórios e Painel (Prompt 8.0: Central de Relatórios e Padrão Comum dos Relatórios):
 

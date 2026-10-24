@@ -17,6 +17,8 @@ import { ModuloSistema } from '@/services/perfis'
 
 export type CategoriaRelatorio = 'Vendas' | 'Estoque' | 'Compras' | 'Financeiro' | 'Fiscal'
 
+import { ChaveFiltroDeclaravel } from '@/services/relatorios'
+
 export interface ItemRelatorioCatalogo {
   id: string
   nome: string
@@ -27,6 +29,8 @@ export interface ItemRelatorioCatalogo {
   icone: React.ComponentType<{ className?: string; size?: number }>
   novo?: boolean
   emBreve?: boolean
+  /** Catálogo de filtros declaráveis que este relatório utiliza (Prompt 8.0b) */
+  filtrosPermitidos?: ChaveFiltroDeclaravel[]
 }
 
 /**
@@ -43,6 +47,23 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'vendas',
     categoria: 'Vendas',
     icone: BarChart3,
+    filtrosPermitidos: [
+      'produto_grupos_categorias',
+      'produto_marcas',
+      'produto_produtos',
+      'pessoas_clientes',
+      'pessoas_vendedores',
+      'pessoas_operadores_caixa',
+      'pessoas_cliente_ufs',
+      'pessoas_cliente_cidades',
+      'vendas_tipos',
+      'vendas_status',
+      'vendas_formas_pagamento',
+      'vendas_terminais_pdv',
+      'vendas_intermediadores',
+      'vendas_com_sem_nota',
+      'datas_tipo_data',
+    ],
   },
   {
     id: 'vendas_comissoes',
@@ -53,6 +74,12 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'vendas',
     categoria: 'Vendas',
     icone: Award,
+    filtrosPermitidos: [
+      'pessoas_vendedores',
+      'vendas_status',
+      'vendas_formas_pagamento',
+      'datas_tipo_data',
+    ],
   },
 
   // ===================== ESTOQUE =====================
@@ -65,6 +92,15 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'estoque',
     categoria: 'Estoque',
     icone: Package,
+    filtrosPermitidos: [
+      'produto_grupos_categorias',
+      'produto_marcas',
+      'produto_produtos',
+      'produto_fornecedores',
+      'produto_ncms',
+      'produto_situacao',
+      'produto_so_fiscal_nao_revisado',
+    ],
   },
   {
     id: 'estoque_kardex',
@@ -75,6 +111,12 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'estoque',
     categoria: 'Estoque',
     icone: Layers,
+    filtrosPermitidos: [
+      'produto_grupos_categorias',
+      'produto_marcas',
+      'produto_produtos',
+      'datas_tipo_data',
+    ],
   },
   {
     id: 'estoque_lotes',
@@ -84,6 +126,7 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'estoque',
     categoria: 'Estoque',
     icone: Tag,
+    filtrosPermitidos: ['produto_grupos_categorias', 'produto_marcas', 'produto_produtos'],
   },
 
   // ===================== COMPRAS =====================
@@ -96,6 +139,17 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'compras',
     categoria: 'Compras',
     icone: ShoppingCart,
+    filtrosPermitidos: [
+      'produto_grupos_categorias',
+      'produto_marcas',
+      'produto_produtos',
+      'produto_fornecedores',
+      'produto_ncms',
+      'pessoas_fornecedores',
+      'fiscal_cfops',
+      'fiscal_csts_csosns',
+      'datas_tipo_data',
+    ],
   },
   {
     id: 'compras_livro_entradas',
@@ -105,6 +159,14 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'notas_entrada',
     categoria: 'Compras',
     icone: BookOpen,
+    filtrosPermitidos: [
+      'pessoas_fornecedores',
+      'fiscal_modelos',
+      'fiscal_cfops',
+      'fiscal_csts_csosns',
+      'fiscal_situacoes_nota',
+      'datas_tipo_data',
+    ],
   },
 
   // ===================== FINANCEIRO =====================
@@ -116,6 +178,7 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'financeiro_bancos',
     categoria: 'Financeiro',
     icone: FileText,
+    filtrosPermitidos: ['financeiro_plano_contas', 'financeiro_centros_custo', 'datas_tipo_data'],
   },
   {
     id: 'financeiro_fluxo_caixa',
@@ -125,6 +188,12 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'financeiro_bancos',
     categoria: 'Financeiro',
     icone: TrendingUp,
+    filtrosPermitidos: [
+      'financeiro_contas_financeiras',
+      'financeiro_plano_contas',
+      'financeiro_centros_custo',
+      'datas_tipo_data',
+    ],
   },
   {
     id: 'financeiro_inadimplencia',
@@ -135,6 +204,14 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'financeiro_receber',
     categoria: 'Financeiro',
     icone: AlertTriangle,
+    filtrosPermitidos: [
+      'pessoas_clientes',
+      'pessoas_cliente_ufs',
+      'pessoas_cliente_cidades',
+      'financeiro_situacoes_titulo',
+      'financeiro_origens_titulo',
+      'datas_tipo_data',
+    ],
   },
 
   // ===================== FISCAL =====================
@@ -147,6 +224,14 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'sped',
     categoria: 'Fiscal',
     icone: FileSpreadsheet,
+    filtrosPermitidos: [
+      'fiscal_modelos',
+      'fiscal_cfops',
+      'fiscal_csts_csosns',
+      'fiscal_situacoes_nota',
+      'fiscal_ufs_destino',
+      'datas_tipo_data',
+    ],
   },
 ]
 

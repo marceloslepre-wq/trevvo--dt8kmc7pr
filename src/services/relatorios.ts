@@ -1,3 +1,5 @@
+import pb from '@/lib/pocketbase/client'
+
 /**
  * Utilitários padronizados para relatórios (Etapa 8):
  * - Exportação CSV com delimitador ponto e vírgula (;), vírgula decimal e UTF-8 com BOM (\uFEFF)
@@ -10,6 +12,107 @@ export interface PeriodoRelatorio {
   dataFim: string // YYYY-MM-DD
 }
 
+/**
+ * Catálogo completo de campos de filtros declaráveis por cada relatório (Prompt 8.0b)
+ */
+export type ChaveFiltroDeclaravel =
+  // PRODUTO
+  | 'produto_grupos_categorias'
+  | 'produto_marcas'
+  | 'produto_produtos'
+  | 'produto_fornecedores'
+  | 'produto_ncms'
+  | 'produto_situacao'
+  | 'produto_so_fiscal_nao_revisado'
+  // PESSOAS
+  | 'pessoas_clientes'
+  | 'pessoas_fornecedores'
+  | 'pessoas_vendedores'
+  | 'pessoas_operadores_caixa'
+  | 'pessoas_cliente_ufs'
+  | 'pessoas_cliente_cidades'
+  // VENDAS
+  | 'vendas_tipos'
+  | 'vendas_status'
+  | 'vendas_formas_pagamento'
+  | 'vendas_terminais_pdv'
+  | 'vendas_intermediadores'
+  | 'vendas_com_sem_nota'
+  // FISCAL
+  | 'fiscal_modelos'
+  | 'fiscal_cfops'
+  | 'fiscal_csts_csosns'
+  | 'fiscal_situacoes_nota'
+  | 'fiscal_ufs_destino'
+  // FINANCEIRO
+  | 'financeiro_plano_contas'
+  | 'financeiro_centros_custo'
+  | 'financeiro_contas_financeiras'
+  | 'financeiro_situacoes_titulo'
+  | 'financeiro_origens_titulo'
+  // DATAS
+  | 'datas_tipo_data'
+
+/**
+ * Opção de tipo de data quando o relatório tiver mais de uma
+ */
+export type OpcaoTipoData = 'emissao' | 'vencimento' | 'pagamento' | 'competencia'
+
+/**
+ * Formato único do objeto `filtros` enviado ao backend e manipulado no frontend (Prompt 8.0b)
+ */
+export interface ObjetoFiltrosRelatorio {
+  // Básico / Multiempresa e Período (8.0)
+  empresas_ids?: string[]
+  ver_so_total?: boolean
+  periodo?: PeriodoRelatorio
+  atalho_periodo?: TipoAtalhoPeriodo
+  incluir_notas_teste?: boolean
+
+  // 1. Produto
+  grupos_ids?: string[]
+  categorias_ids?: string[]
+  marcas_ids?: string[]
+  produtos_ids?: string[]
+  fornecedores_produto_ids?: string[]
+  ncms?: string[]
+  situacao_produto?: ('ativo' | 'inativo')[]
+  so_fiscal_nao_revisado?: boolean
+
+  // 2. Pessoas
+  clientes_ids?: string[]
+  fornecedores_ids?: string[]
+  vendedores_ids?: string[]
+  operadores_caixa_ids?: string[]
+  cliente_ufs?: string[]
+  cliente_cidades?: string[]
+
+  // 3. Vendas
+  vendas_tipos?: ('PDV' | 'Pedido' | 'Orçamento')[]
+  vendas_status?: string[]
+  formas_pagamento_ids?: string[]
+  terminais_pdv_ids?: string[]
+  intermediadores_ids?: string[]
+  vendas_nota_fiscal?: 'todas' | 'com_nota' | 'sem_nota'
+
+  // 4. Fiscal
+  fiscal_modelos?: ('55' | '65')[]
+  fiscal_cfops?: string[]
+  fiscal_csts_csosns?: string[]
+  fiscal_situacoes_nota?: string[]
+  fiscal_ufs_destino?: string[]
+
+  // 5. Financeiro
+  plano_contas_ids?: string[]
+  centros_custo_ids?: string[]
+  contas_financeiras_ids?: string[]
+  situacoes_titulo?: string[]
+  origens_titulo?: string[]
+
+  // 6. Datas
+  tipo_data?: OpcaoTipoData
+}
+
 export type TipoAtalhoPeriodo =
   | 'hoje'
   | 'esta_semana'
@@ -19,6 +122,279 @@ export type TipoAtalhoPeriodo =
   | 'ultimos_90'
   | 'ultimos_365'
   | 'personalizado'
+
+/**
+ * Registro de Filtro Salvo persistido na tabela relatorios_filtros_salvos
+ */
+export interface FiltroSalvoRelatorio {
+  id: string
+  usuario_id: string
+  relatorio: string
+  nome: string
+  filtros: ObjetoFiltrosRelatorio
+  compartilhado: boolean
+  created?: string
+  updated?: string
+  expand?: {
+    usuario_id?: {
+      id: string
+      name?: string
+      email?: string
+    }
+  }
+}
+
+/**
+ * Lista todos os filtros salvos visíveis para o relatório especificado:
+ * Retorna os filtros do próprio usuário logado + os filtros compartilhados por outros usuários.
+ */
+export async function listarFiltrosSalvos(relatorioId: string): Promise<FiltroSalvoRelatorio[]> {
+  if (!relatorioId) return []
+  try {
+    const records = await pb.collection('relatorios_filtros_salvos').getFullList({
+      filter: `relatorio = '${relatorioId.replace(/'/g, "\\'")}'`,
+      sort: '-created',
+      expand: 'usuario_id',
+    })
+    return records.map((rec) => {
+      let filtrosParsed: ObjetoFiltrosRelatorio = {}
+      try {
+        filtrosParsed =
+          typeof rec.filtros === 'string'
+            ? JSON.parse(rec.filtros)
+            : (rec.filtros as ObjetoFiltrosRelatorio) || {}
+      } catch {
+        filtrosParsed = {}
+      }
+      return {
+        id: rec.id,
+        usuario_id: rec.usuario_id,
+        relatorio: rec.relatorio,
+        nome: rec.nome,
+        filtros: filtrosParsed,
+        compartilhado: Boolean(rec.compartilhado),
+        created: rec.created,
+        updated: rec.updated,
+        expand: rec.expand as FiltroSalvoRelatorio['expand'],
+      }
+    })
+  } catch (err) {
+    console.error('Erro ao listar filtros salvos do relatório:', err)
+    return []
+  }
+}
+
+/**
+ * Salva (cria ou atualiza) um filtro de relatório na collection relatorios_filtros_salvos.
+ * Usuário comum grava com seu próprio ID.
+ */
+export async function salvarFiltroRelatorio(params: {
+  id?: string
+  relatorio: string
+  nome: string
+  filtros: ObjetoFiltrosRelatorio
+  compartilhado?: boolean
+}): Promise<FiltroSalvoRelatorio> {
+  const userId = pb.authStore.record?.id
+  if (!userId) {
+    throw new Error('Você precisa estar autenticado para salvar filtros.')
+  }
+  if (!params.nome || !params.nome.trim()) {
+    throw new Error('Informe um nome para o filtro salvo.')
+  }
+  if (!params.relatorio || !params.relatorio.trim()) {
+    throw new Error('Identificador do relatório não informado.')
+  }
+
+  const payload = {
+    usuario_id: userId,
+    relatorio: params.relatorio.trim(),
+    nome: params.nome.trim(),
+    filtros: params.filtros,
+    compartilhado: Boolean(params.compartilhado),
+  }
+
+  let rec
+  if (params.id) {
+    rec = await pb.collection('relatorios_filtros_salvos').update(params.id, payload)
+  } else {
+    rec = await pb.collection('relatorios_filtros_salvos').create(payload)
+  }
+
+  let filtrosParsed: ObjetoFiltrosRelatorio = {}
+  try {
+    filtrosParsed =
+      typeof rec.filtros === 'string'
+        ? JSON.parse(rec.filtros)
+        : (rec.filtros as ObjetoFiltrosRelatorio) || {}
+  } catch {
+    filtrosParsed = {}
+  }
+
+  return {
+    id: rec.id,
+    usuario_id: rec.usuario_id,
+    relatorio: rec.relatorio,
+    nome: rec.nome,
+    filtros: filtrosParsed,
+    compartilhado: Boolean(rec.compartilhado),
+    created: rec.created,
+    updated: rec.updated,
+  }
+}
+
+/**
+ * Exclui um filtro salvo (apenas o dono tem permissão pela API rule)
+ */
+export async function excluirFiltroSalvo(id: string): Promise<boolean> {
+  try {
+    await pb.collection('relatorios_filtros_salvos').delete(id)
+    return true
+  } catch (err) {
+    console.error('Erro ao excluir filtro salvo:', err)
+    throw err
+  }
+}
+
+/**
+ * Monta linha legível de filtros aplicados para exibição em cabeçalho, tela, impressão e CSV.
+ * Exemplo: "Empresas: Loja 01, Loja 02 · Marcas: X, Y · Período: 01/10/2025 a 31/10/2025"
+ */
+export function formatarLinhaLegivelFiltros(params: {
+  filtros: ObjetoFiltrosRelatorio
+  nomesEmpresas?: string[]
+  nomesMarcas?: string[]
+  nomesGrupos?: string[]
+  nomesCategorias?: string[]
+  nomesClientes?: string[]
+  nomesFornecedores?: string[]
+  nomesVendedores?: string[]
+  nomesPlanosContas?: string[]
+}): string {
+  const { filtros } = params
+  const partes: string[] = []
+
+  // 1. Empresas
+  if (params.nomesEmpresas && params.nomesEmpresas.length > 0) {
+    partes.push(`Empresas: ${params.nomesEmpresas.join(', ')}`)
+  } else if (filtros.empresas_ids && filtros.empresas_ids.length > 0) {
+    partes.push(`Empresas: ${filtros.empresas_ids.length} selecionada(s)`)
+  }
+
+  // 2. Período
+  if (filtros.periodo?.dataInicio && filtros.periodo?.dataFim) {
+    partes.push(
+      `Período: ${formatarDataBr(filtros.periodo.dataInicio)} a ${formatarDataBr(filtros.periodo.dataFim)}`,
+    )
+  }
+
+  // 3. Marcas
+  if (params.nomesMarcas && params.nomesMarcas.length > 0) {
+    partes.push(`Marcas: ${params.nomesMarcas.join(', ')}`)
+  } else if (filtros.marcas_ids && filtros.marcas_ids.length > 0) {
+    partes.push(`Marcas: ${filtros.marcas_ids.length}`)
+  }
+
+  // 4. Grupos e Categorias
+  if (params.nomesGrupos && params.nomesGrupos.length > 0) {
+    partes.push(`Grupos: ${params.nomesGrupos.join(', ')}`)
+  } else if (filtros.grupos_ids && filtros.grupos_ids.length > 0) {
+    partes.push(`Grupos: ${filtros.grupos_ids.length}`)
+  }
+  if (params.nomesCategorias && params.nomesCategorias.length > 0) {
+    partes.push(`Categorias: ${params.nomesCategorias.join(', ')}`)
+  } else if (filtros.categorias_ids && filtros.categorias_ids.length > 0) {
+    partes.push(`Categorias: ${filtros.categorias_ids.length}`)
+  }
+
+  // 5. Pessoas
+  if (params.nomesClientes && params.nomesClientes.length > 0) {
+    partes.push(`Clientes: ${params.nomesClientes.join(', ')}`)
+  } else if (filtros.clientes_ids && filtros.clientes_ids.length > 0) {
+    partes.push(`Clientes: ${filtros.clientes_ids.length}`)
+  }
+  if (params.nomesFornecedores && params.nomesFornecedores.length > 0) {
+    partes.push(`Fornecedores: ${params.nomesFornecedores.join(', ')}`)
+  } else if (filtros.fornecedores_ids && filtros.fornecedores_ids.length > 0) {
+    partes.push(`Fornecedores: ${filtros.fornecedores_ids.length}`)
+  }
+  if (params.nomesVendedores && params.nomesVendedores.length > 0) {
+    partes.push(`Vendedores: ${params.nomesVendedores.join(', ')}`)
+  } else if (filtros.vendedores_ids && filtros.vendedores_ids.length > 0) {
+    partes.push(`Vendedores: ${filtros.vendedores_ids.length}`)
+  }
+
+  // 6. Vendas
+  if (filtros.vendas_tipos && filtros.vendas_tipos.length > 0) {
+    partes.push(`Tipos: ${filtros.vendas_tipos.join(', ')}`)
+  }
+  if (filtros.vendas_status && filtros.vendas_status.length > 0) {
+    partes.push(`Status: ${filtros.vendas_status.join(', ')}`)
+  }
+  if (filtros.vendas_nota_fiscal && filtros.vendas_nota_fiscal !== 'todas') {
+    partes.push(filtros.vendas_nota_fiscal === 'com_nota' ? 'Apenas com NF' : 'Apenas sem NF')
+  }
+
+  // 7. Fiscal
+  if (filtros.fiscal_modelos && filtros.fiscal_modelos.length > 0) {
+    partes.push(
+      `Modelos: ${filtros.fiscal_modelos.map((m) => (m === '55' ? 'NF-e' : 'NFC-e')).join(', ')}`,
+    )
+  }
+  if (filtros.fiscal_cfops && filtros.fiscal_cfops.length > 0) {
+    partes.push(`CFOP: ${filtros.fiscal_cfops.join(', ')}`)
+  }
+  if (filtros.fiscal_csts_csosns && filtros.fiscal_csts_csosns.length > 0) {
+    partes.push(`CST/CSOSN: ${filtros.fiscal_csts_csosns.join(', ')}`)
+  }
+
+  // 8. Financeiro
+  if (params.nomesPlanosContas && params.nomesPlanosContas.length > 0) {
+    partes.push(`Contas: ${params.nomesPlanosContas.join(', ')}`)
+  } else if (filtros.plano_contas_ids && filtros.plano_contas_ids.length > 0) {
+    partes.push(`Contas: ${filtros.plano_contas_ids.length}`)
+  }
+  if (filtros.situacoes_titulo && filtros.situacoes_titulo.length > 0) {
+    partes.push(`Situação: ${filtros.situacoes_titulo.join(', ')}`)
+  }
+  if (filtros.origens_titulo && filtros.origens_titulo.length > 0) {
+    partes.push(`Origem: ${filtros.origens_titulo.join(', ')}`)
+  }
+
+  // 9. Situação de produto ou fiscal não revisado
+  if (filtros.so_fiscal_nao_revisado) {
+    partes.push('Só fiscal não revisado')
+  }
+  if (filtros.situacao_produto && filtros.situacao_produto.length === 1) {
+    partes.push(filtros.situacao_produto[0] === 'ativo' ? 'Produtos Ativos' : 'Produtos Inativos')
+  }
+
+  // 10. Tipo de data se for diferente do padrão emissão
+  if (filtros.tipo_data && filtros.tipo_data !== 'emissao') {
+    const labelData: Record<string, string> = {
+      vencimento: 'Por Vencimento',
+      pagamento: 'Por Pagamento',
+      competencia: 'Por Competência',
+    }
+    partes.push(labelData[filtros.tipo_data] || `Data: ${filtros.tipo_data}`)
+  }
+
+  // 11. Aviso se houver filtro de produto em relatório
+  const temFiltroProduto =
+    (filtros.grupos_ids && filtros.grupos_ids.length > 0) ||
+    (filtros.categorias_ids && filtros.categorias_ids.length > 0) ||
+    (filtros.marcas_ids && filtros.marcas_ids.length > 0) ||
+    (filtros.produtos_ids && filtros.produtos_ids.length > 0) ||
+    (filtros.fornecedores_produto_ids && filtros.fornecedores_produto_ids.length > 0) ||
+    (filtros.ncms && filtros.ncms.length > 0) ||
+    filtros.so_fiscal_nao_revisado
+
+  if (temFiltroProduto) {
+    partes.push('Filtro de produto ativo (totais dos itens filtrados)')
+  }
+
+  return partes.join(' · ') || 'Sem filtros aplicados'
+}
 
 /**
  * Formata um objeto Date como YYYY-MM-DD no fuso local
@@ -210,6 +586,7 @@ export function gerarCsvRelatorio(params: {
   titulo: string
   empresaNome?: string
   periodo?: PeriodoRelatorio
+  linhaFiltros?: string
   colunas: string[]
   linhas: (string | number | boolean | null | undefined)[][]
   totais?: (string | number | boolean | null | undefined)[]
@@ -228,6 +605,9 @@ export function gerarCsvRelatorio(params: {
     linhasCsv.push(
       `PERÍODO:;${formatarDataBr(params.periodo.dataInicio)} até ${formatarDataBr(params.periodo.dataFim)}`,
     )
+  }
+  if (params.linhaFiltros) {
+    linhasCsv.push(`FILTROS APLICADOS:;${params.linhaFiltros}`)
   }
   linhasCsv.push(`EMISSÃO:;${formatarDataHoraEmissao()}`)
 
