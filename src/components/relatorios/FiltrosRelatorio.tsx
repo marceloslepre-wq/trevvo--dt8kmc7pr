@@ -78,6 +78,8 @@ export interface FiltrosRelatorioProps {
   children?: React.ReactNode
   /** Seção extra de filtros complementares */
   filtrosExtras?: React.ReactNode
+  /** Oculta o seletor padrão de período de datas quando o relatório usa data base pontual ou parâmetros próprios */
+  ocultarPeriodo?: boolean
 }
 
 export const ATALHOS_PERIODO: { id: TipoAtalhoPeriodo; label: string }[] = [
@@ -106,6 +108,7 @@ export const FiltrosRelatorio: React.FC<FiltrosRelatorioProps> = ({
   desabilitado = false,
   children,
   filtrosExtras,
+  ocultarPeriodo = false,
 }) => {
   const { empresas, empresaAtiva } = useEmpresaAtiva()
   const [empresasAbertas, setEmpresasAbertas] = useState(false)
@@ -876,113 +879,119 @@ export const FiltrosRelatorio: React.FC<FiltrosRelatorioProps> = ({
           )}
 
           {/* Linha 2: Período com Atalhos e Datas Personalizadas */}
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
-                <Calendar className="h-4 w-4 text-slate-500" />
-                Período de Consulta (máx. 366 dias)
-              </Label>
-              {validacaoPeriodo.valido && (
-                <span className="text-[11px] text-slate-500">
-                  {validacaoPeriodo.dias} {validacaoPeriodo.dias === 1 ? 'dia' : 'dias'}{' '}
-                  selecionados
-                </span>
-              )}
-            </div>
-
-            {/* Botões de Atalhos de Período */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {ATALHOS_PERIODO.map((atalho) => {
-                const ativo = filtros.atalho_periodo === atalho.id
-                return (
-                  <Button
-                    key={atalho.id}
-                    type="button"
-                    variant={ativo ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => handleTrocarAtalho(atalho.id)}
-                    className={`h-7 text-xs px-2.5 ${
-                      ativo
-                        ? 'bg-blue-600 text-white shadow-2xs font-semibold'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    {atalho.label}
-                  </Button>
-                )
-              })}
-            </div>
-
-            {/* Inputs de Data Inicial, Data Final e Tipo de Data */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
-              <div className="space-y-1">
-                <Label className="text-[11px] font-medium text-slate-600">Data Inicial</Label>
-                <Input
-                  type="date"
-                  value={filtros.periodo?.dataInicio || ''}
-                  onChange={(e) => handleMudarDataInicio(e.target.value)}
-                  className="h-8 text-xs bg-white"
-                />
+          {!ocultarPeriodo && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                  <Calendar className="h-4 w-4 text-slate-500" />
+                  Período de Consulta (máx. 366 dias)
+                </Label>
+                {validacaoPeriodo.valido && (
+                  <span className="text-[11px] text-slate-500">
+                    {validacaoPeriodo.dias} {validacaoPeriodo.dias === 1 ? 'dia' : 'dias'}{' '}
+                    selecionados
+                  </span>
+                )}
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-[11px] font-medium text-slate-600">Data Final</Label>
-                <Input
-                  type="date"
-                  value={filtros.periodo?.dataFim || ''}
-                  onChange={(e) => handleMudarDataFim(e.target.value)}
-                  className="h-8 text-xs bg-white"
-                />
+              {/* Botões de Atalhos de Período */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {ATALHOS_PERIODO.map((atalho) => {
+                  const ativo = filtros.atalho_periodo === atalho.id
+                  return (
+                    <Button
+                      key={atalho.id}
+                      type="button"
+                      variant={ativo ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handleTrocarAtalho(atalho.id)}
+                      className={`h-7 text-xs px-2.5 ${
+                        ativo
+                          ? 'bg-blue-600 text-white shadow-2xs font-semibold'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {atalho.label}
+                    </Button>
+                  )
+                })}
               </div>
 
-              {/* Escolha do tipo de data quando o relatório suportar (ex: emissão, vencimento, pagamento ou competência) */}
-              {usaFiltro('datas_tipo_data') && (
+              {/* Inputs de Data Inicial, Data Final e Tipo de Data */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-medium text-slate-600">Filtrar data por</Label>
-                  <Select
-                    value={filtros.tipo_data || 'emissao'}
-                    onValueChange={(val: OpcaoTipoData) => onChange({ ...filtros, tipo_data: val })}
-                  >
-                    <SelectTrigger className="h-8 text-xs bg-white border-slate-200">
-                      <SelectValue placeholder="Data de..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="emissao">Data de Emissão</SelectItem>
-                      <SelectItem value="vencimento">Data de Vencimento</SelectItem>
-                      <SelectItem value="pagamento">Data de Pagamento / Liquidação</SelectItem>
-                      <SelectItem value="competencia">Data de Competência</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-[11px] font-medium text-slate-600">Data Inicial</Label>
+                  <Input
+                    type="date"
+                    value={filtros.periodo?.dataInicio || ''}
+                    onChange={(e) => handleMudarDataInicio(e.target.value)}
+                    className="h-8 text-xs bg-white"
+                  />
                 </div>
-              )}
 
-              {/* Opção notas fiscais de homologação / teste */}
-              {suportaNotasTeste && (
-                <div className="flex items-end pb-1.5">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
-                    <Checkbox
-                      checked={Boolean(filtros.incluir_notas_teste)}
-                      onCheckedChange={(checked) =>
-                        onChange({
-                          ...filtros,
-                          incluir_notas_teste: Boolean(checked),
-                        })
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-medium text-slate-600">Data Final</Label>
+                  <Input
+                    type="date"
+                    value={filtros.periodo?.dataFim || ''}
+                    onChange={(e) => handleMudarDataFim(e.target.value)}
+                    className="h-8 text-xs bg-white"
+                  />
+                </div>
+
+                {/* Escolha do tipo de data quando o relatório suportar (ex: emissão, vencimento, pagamento ou competência) */}
+                {usaFiltro('datas_tipo_data') && (
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-slate-600">
+                      Filtrar data por
+                    </Label>
+                    <Select
+                      value={filtros.tipo_data || 'emissao'}
+                      onValueChange={(val: OpcaoTipoData) =>
+                        onChange({ ...filtros, tipo_data: val })
                       }
-                    />
-                    <span>Incluir notas de teste (homologação)</span>
-                  </label>
+                    >
+                      <SelectTrigger className="h-8 text-xs bg-white border-slate-200">
+                        <SelectValue placeholder="Data de..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="emissao">Data de Emissão</SelectItem>
+                        <SelectItem value="vencimento">Data de Vencimento</SelectItem>
+                        <SelectItem value="pagamento">Data de Pagamento / Liquidação</SelectItem>
+                        <SelectItem value="competencia">Data de Competência</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Opção notas fiscais de homologação / teste */}
+                {suportaNotasTeste && (
+                  <div className="flex items-end pb-1.5">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                      <Checkbox
+                        checked={Boolean(filtros.incluir_notas_teste)}
+                        onCheckedChange={(checked) =>
+                          onChange({
+                            ...filtros,
+                            incluir_notas_teste: Boolean(checked),
+                          })
+                        }
+                      />
+                      <span>Incluir notas de teste (homologação)</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Mensagem de Erro de Validação de Período (> 366 dias ou início > fim) */}
+              {!validacaoPeriodo.valido && (
+                <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{validacaoPeriodo.mensagem}</span>
                 </div>
               )}
             </div>
-
-            {/* Mensagem de Erro de Validação de Período (> 366 dias ou início > fim) */}
-            {!validacaoPeriodo.valido && (
-              <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{validacaoPeriodo.mensagem}</span>
-              </div>
-            )}
-          </div>
+          )}
 
           {/* ========================================================
               CATÁLOGO DE FILTROS ESPECÍFICOS DECLARADOS (Prompt 8.0b)

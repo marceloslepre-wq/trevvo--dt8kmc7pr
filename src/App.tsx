@@ -109,6 +109,7 @@ import ResumoIcmsPage from '@/pages/fiscal/ResumoIcmsPage'
 // Páginas de Relatórios (Etapa 8)
 import CentralRelatoriosPage from '@/pages/relatorios/CentralRelatoriosPage'
 import VendasCanaisPage from '@/pages/relatorios/VendasCanaisPage'
+import EstoqueGerencialPage from '@/pages/relatorios/EstoqueGerencialPage'
 
 const App = () => (
   <BrowserRouter>
@@ -878,6 +879,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="vendas" acao="ver">
                         <VendasCanaisPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/relatorios/estoque-gerencial"
+                    element={
+                      <PermissaoGuard modulo="estoque" acao="ver">
+                        <EstoqueGerencialPage />
                       </PermissaoGuard>
                     }
                   />

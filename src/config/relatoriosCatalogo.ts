@@ -116,6 +116,26 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
 
   // ===================== ESTOQUE =====================
   {
+    id: 'estoque_gerencial',
+    nome: 'Estoque Gerencial',
+    descricao:
+      'Visão valorizada por grupo/marca, análise de giro, cobertura em dias, produtos parados e sugestão inteligente de reposição.',
+    rota: '/relatorios/estoque-gerencial',
+    modulo: 'estoque',
+    categoria: 'Estoque',
+    icone: Layers,
+    novo: true,
+    filtrosPermitidos: [
+      'produto_grupos_categorias',
+      'produto_marcas',
+      'produto_produtos',
+      'produto_fornecedores',
+      'produto_ncms',
+      'produto_situacao',
+      'produto_so_fiscal_nao_revisado',
+    ],
+  },
+  {
     id: 'estoque_posicao',
     nome: 'Posição de Estoque',
     descricao:

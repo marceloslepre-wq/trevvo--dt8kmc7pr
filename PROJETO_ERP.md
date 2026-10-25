@@ -3326,6 +3326,43 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 
 ---
 
+**Versão 0.0.110** — Etapa 8 Relatórios e Painel (Prompt 8.3: Estoque Gerencial — Valorizado, Giro, Parados e Sugestão de Compra):
+
+1. **Endpoint Backend de Estoque Gerencial (`POST /backend/v1/relatorios/estoque-gerencial`):**
+   - Implementado em `pocketbase/hooks/relatorio_estoque_gerencial.js` no Skip Cloud (PocketBase).
+   - Validações e multiempresa: autenticação obrigatória, conferência de vínculo do usuário com as empresas selecionadas (`usuarios_empresas` ou admin), limite de dias de análise até 366 dias.
+   - Parâmetros aceitos: `empresas_ids`, `data_base` (padrão hoje), `dias_analise` (padrão 90), `dias_cobertura_alvo` (padrão 30) e `dias_parado` (padrão 90).
+   - Universo avaliado: produtos com `ativo = true` e `controla_estoque = true`, aplicando estritamente os filtros de produto do padrão 8.0b (produtos, grupos, categorias, marcas, fornecedor padrão do produto, NCMs, situação e revisão fiscal).
+   - Cálculos e métricas apurados no servidor:
+     - **Saldo e valor na data_base:** se a data base for hoje ou futura, obtém diretamente de `estoque_saldos`; se for data passada, apura pelo `saldo_posterior` e `custo_medio_posterior` do último `estoque_movimentos` não estornado até aquela data (23:59:59).
+     - **Saídas por venda:** total de saídas no período de análise a partir de `estoque_movimentos` com origem `VENDA` menos `DEVOLUCAO_VENDA`, e a média diária de venda (`quantidade / dias_analise`).
+     - **Cobertura em dias:** `saldo / media_diaria` (para itens sem venda no período: descrição "sem giro" e cobertura nula).
+     - **Giro no período:** `quantidade_vendida / saldo_medio` (saldo médio = `(saldo_inicio + saldo_fim) / 2`, com `saldo_inicio` obtido pelo saldo posterior do movimento anterior ao período de análise).
+     - **Dias desde a última saída:** calculado a partir de `data_ultima_saida` em relação à data base.
+     - **Sugestão de compra:** `(media_diaria * dias_cobertura_alvo) - saldo - em_pedido`, quando for maior que zero, ou quando o saldo estiver abaixo do `estoque_minimo` cadastrado no produto deduzindo pedidos de compra em aberto (`pedidos_compra` com status pendente).
+     - **Último fornecedor e custo:** busca o último custo unitário de estoque da última nota de entrada com status "Lançada" (`notas_entrada_itens`), ou fornecedor padrão/preço de custo do cadastro.
+     - **Critério de produtos parados:** produtos com saldo físico > 0, sem histórico de venda no período e sem saída há mais de `dias_parado` dias.
+   - Resumo estruturado com totalizadores, produtos detalhados, agregações hierárquicas por Grupo/Categoria e por Marca, além de listas segregadas de parados e de sugestão.
+
+2. **Tela Relatórios > Estoque Gerencial (`/relatorios/estoque-gerencial` - `src/pages/relatorios/EstoqueGerencialPage.tsx`):**
+   - Utilização do componente `FiltrosRelatorio.tsx` com catálogo completo de filtros de produtos do Prompt 8.0b (incluindo fornecedor do produto).
+   - Barra de parâmetros específicos: Data Base, Dias de Análise de Venda, Dias de Cobertura Alvo e Critério de Dias Parado.
+   - Quatro abas gerenciais de alto valor:
+     1. **Valorizado:** quadros consolidadores por Grupo/Categoria e por Marca (com saldo, valor e percentuais) e relação completa de produtos com quantidade, custo médio e valor total.
+     2. **Giro e Cobertura:** lista ordenada pela cobertura em dias (menor cobertura primeiro, destacando risco de ruptura), com destaque em âmbar para cobertura acima de 180 dias e badge "sem giro" para itens sem venda.
+     3. **Parados:** lista de produtos com estoque e sem movimentação de saída há mais de `dias_parado` dias, com valor parado e totalizador de capital estagnado.
+     4. **Sugestão de compra:** produtos com recomendação de reposição, exibindo saldo atual, média diária, pedidos em aberto, sugestão calculada, último fornecedor e custo estimado, com botão exclusivo **"Exportar CSV p/ Fornecedor"**.
+   - **Blindagem de sigilo de custos:** visualização de custos médios, últimos custos e valores monetários condicionada à permissão no módulo `produtos` (`pode('produtos', 'ver')` ou `pode('produtos', 'editar')`).
+   - Permissão de acesso da tela: governada pelo módulo `estoque` (`pode('estoque', 'ver')`).
+   - Exportação completa para CSV (BOM UTF-8, ponto e vírgula, vírgula decimal) e impressão formatada (`window.print()`).
+
+3. **Catálogo de Relatórios, Rotas e Navegação:**
+   - Adicionada rota `/relatorios/estoque-gerencial` em `src/App.tsx` protegida por `PermissaoGuard modulo="estoque" acao="ver"`.
+   - Inclusão do item "Estoque Gerencial" no catálogo `src/config/relatoriosCatalogo.ts` no grupo Estoque com selo de novo e filtros de produto declarados.
+   - A tela existente `/estoque/posicao` foi rigorosamente preservada sem nenhuma alteração.
+
+---
+
 **Versão 0.0.109** — Etapa 8 Relatórios e Painel (Prompt 8.2: Vendas por Loja e por Canal):
 
 1. **Endpoint Backend de Alta Precisão (`POST /backend/v1/relatorios/vendas-canais`):**
