@@ -26,6 +26,12 @@ routerAdd('POST', '/backend/v1/caixa/abrir', (c) => {
   if (!empresa_id) return c.json(400, { message: 'empresa_id é obrigatório.' })
   if (!pdv_terminal_id) return c.json(400, { message: 'pdv_terminal_id é obrigatório.' })
 
+  try {
+    exigirEmpresaDoUsuario(authRecord, empresa_id)
+  } catch (errEmp) {
+    return c.json(403, { message: errEmp.message || 'Acesso negado à empresa especificada.' })
+  }
+
   const fundoInformado = Number(valor_abertura) || 0
   if (fundoInformado < 0) {
     return c.json(400, { message: 'O valor do fundo de troco não pode ser negativo.' })
@@ -321,6 +327,7 @@ routerAdd('POST', '/backend/v1/caixa/sangria', (c) => {
       }
 
       const empresaId = sessao.getString('empresa_id')
+      exigirEmpresaDoUsuario(authRecord, empresaId)
       const terminalId = sessao.getString('pdv_terminal_id')
       const terminal = txApp.findRecordById('pdv_terminais', terminalId)
       if (!terminal) throw new BadRequestError('Terminal do caixa não encontrado.')
@@ -512,6 +519,7 @@ routerAdd('POST', '/backend/v1/caixa/suprimento', (c) => {
       }
 
       const empresaId = sessao.getString('empresa_id')
+      exigirEmpresaDoUsuario(authRecord, empresaId)
       const terminalId = sessao.getString('pdv_terminal_id')
       const terminal = txApp.findRecordById('pdv_terminais', terminalId)
       if (!terminal) throw new BadRequestError('Terminal do caixa não encontrado.')
@@ -710,6 +718,7 @@ routerAdd('POST', '/backend/v1/caixa/fechar', (c) => {
       }
 
       const empresaId = sessao.getString('empresa_id')
+      exigirEmpresaDoUsuario(authRecord, empresaId)
       const terminalId = sessao.getString('pdv_terminal_id')
       const terminal = txApp.findRecordById('pdv_terminais', terminalId)
       if (!terminal) throw new BadRequestError('Terminal do caixa não encontrado.')
@@ -1118,6 +1127,9 @@ routerAdd('POST', '/backend/v1/caixa/conferir', (c) => {
           'Apenas sessões de caixa com status "Fechado" podem ser conferidas.',
         )
       }
+
+      const empresaId = sessao.getString('empresa_id')
+      exigirEmpresaDoUsuario(authRecord, empresaId)
 
       const agora = new Date().toISOString()
       sessao.set('conferido_por_id', usuarioERP.id)

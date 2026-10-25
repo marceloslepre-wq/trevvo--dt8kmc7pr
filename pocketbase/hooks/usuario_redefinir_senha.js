@@ -80,13 +80,9 @@ routerAdd(
 
     // Isolar por assinante: impedir redefinir senha de usuário de outro assinante
     const targetAssinanteId = usuarioRec.getString('assinante_id')
-    const ehMasterCaller = authRecord.getString && authRecord.getString('tipo') === 'master'
-    if (
-      !ehMasterCaller &&
-      callerAssinanteId &&
-      targetAssinanteId &&
-      targetAssinanteId !== callerAssinanteId
-    ) {
+    const ehMasterCaller = eMaster(authRecord)
+    const assinanteChamador = assinanteDoUsuario(authRecord)
+    if (!ehMasterCaller && (!assinanteChamador || assinanteChamador !== targetAssinanteId)) {
       return e.json(403, {
         error:
           'Acesso negado: você não pode redefinir a senha de um usuário pertencente a outro assinante.',

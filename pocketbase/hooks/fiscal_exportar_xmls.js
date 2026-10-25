@@ -53,6 +53,15 @@ routerAdd(
       })
     }
 
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
+
     const userId = authRecord.id
 
     // Checagem de permissão e vínculo com empresa

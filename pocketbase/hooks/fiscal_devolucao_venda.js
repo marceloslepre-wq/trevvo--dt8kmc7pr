@@ -162,6 +162,14 @@ routerAdd(
     }
 
     const empresaId = vendaOrig.getString('empresa_id')
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
     const empresaEmitente = $app.findRecordById('empresas', empresaId)
     if (!empresaEmitente || !empresaEmitente.getBool('ativo')) {
       return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada.' })

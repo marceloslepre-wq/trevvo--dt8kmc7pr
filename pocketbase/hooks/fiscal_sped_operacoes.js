@@ -81,6 +81,7 @@ routerAdd(
       if (!arquivoRec) {
         return c.json(404, { sucesso: false, message: 'Registro de arquivo SPED não encontrado.' })
       }
+      exigirEmpresaDoUsuario(authRecord, arquivoRec.getString('empresa_id'))
 
       const modoArquivo = arquivoRec.getString('modo')
       if (modoArquivo === 'Teste') {
@@ -205,6 +206,14 @@ routerAdd(
         : parseFloat(String(body.valor || 0).replace(',', '.'))
 
     if (!empresaId) return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
     if (!periodo || !/^\d{4}-\d{2}$/.test(periodo)) {
       return c.json(400, { sucesso: false, message: 'periodo deve estar no formato AAAA-MM.' })
     }
@@ -378,6 +387,14 @@ routerAdd(
     }
 
     const empresaId = reg.getString('empresa_id')
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
     const periodo = reg.getString('periodo')
 
     // Verifica se já existe arquivo Entregue no período

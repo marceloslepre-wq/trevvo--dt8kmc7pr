@@ -185,7 +185,7 @@ routerAdd('POST', '/backend/v1/relatorios/livro-saidas', (c) => {
   try {
     docsBrutos = $app.findRecordsByFilter(
       'documentos_fiscais',
-      "empresa_id = '" + empresaId + "' && tipo_documento = 1 && ativo = true",
+      "empresa_id = '" + empresaId + "' && tipo_documento = 1",
       'data_emissao,numero',
       10000,
       0,

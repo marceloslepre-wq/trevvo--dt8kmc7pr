@@ -127,30 +127,24 @@ routerAdd(
     // Validar empresa padrão se informada
     if (empresa_padrao_id) {
       try {
-        const empAlvo = $app.findRecordById('empresas', empresa_padrao_id)
-        if (!empAlvo || empAlvo.getString('assinante_id') !== assinanteId) {
-          return e.json(403, {
-            error: 'Operação rejeitada: a empresa padrão informada pertence a outro assinante.',
-          })
-        }
+        exigirEmpresaDoUsuario(authRecord, empresa_padrao_id)
       } catch (errE) {
-        return e.json(400, { error: 'Empresa padrão inválida ou não encontrada.' })
+        return e.json(403, {
+          error: errE.message || 'Empresa padrão inválida ou não permitida para seu usuário.',
+        })
       }
     }
 
-    // Validar empresas_ids: nenhuma pode pertencer a outro assinante
+    // Validar empresas_ids: nenhuma pode pertencer a outro assinante / empresa não permitida
     for (let i = 0; i < empresas_ids.length; i++) {
       const empId = empresas_ids[i]
       if (empId) {
         try {
-          const empAlvo = $app.findRecordById('empresas', empId)
-          if (!empAlvo || empAlvo.getString('assinante_id') !== assinanteId) {
-            return e.json(403, {
-              error: `Operação rejeitada: a empresa vinculada (${empId}) pertence a outro assinante.`,
-            })
-          }
-        } catch (_) {
-          return e.json(400, { error: `Empresa vinculada (${empId}) inválida.` })
+          exigirEmpresaDoUsuario(authRecord, empId)
+        } catch (errE) {
+          return e.json(403, {
+            error: `Operação rejeitada: ${errE.message || 'empresa não permitida'}`,
+          })
         }
       }
     }

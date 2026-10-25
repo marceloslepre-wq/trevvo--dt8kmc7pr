@@ -13,14 +13,15 @@
 
 // 1. TRANSFERÊNCIA ENTRE CONTAS
 routerAdd('POST', '/financeiro/bancos/transferir', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    const reqInfo = c.requestInfo()
+    body = (reqInfo && reqInfo.body) || {}
   } catch (_e) {
     body = {}
   }
@@ -28,6 +29,11 @@ routerAdd('POST', '/financeiro/bancos/transferir', (c) => {
   const { empresa_id, conta_origem_id, conta_destino_id, data, valor, historico } = body
 
   if (!empresa_id) return c.json(400, { message: 'empresa_id é obrigatório.' })
+  try {
+    exigirEmpresaDoUsuario(authRecord, empresa_id)
+  } catch (errEmp) {
+    return c.json(403, { message: errEmp.message || 'Acesso negado à empresa especificada.' })
+  }
   if (!conta_origem_id || !conta_destino_id) {
     return c.json(400, { message: 'conta_origem_id e conta_destino_id são obrigatórias.' })
   }
@@ -177,14 +183,15 @@ routerAdd('POST', '/financeiro/bancos/transferir', (c) => {
 
 // 2. LANÇAMENTO AVULSO / AJUSTE DE SALDO
 routerAdd('POST', '/financeiro/bancos/avulso', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    const reqInfo = c.requestInfo()
+    body = (reqInfo && reqInfo.body) || {}
   } catch (_e) {
     body = {}
   }
@@ -201,6 +208,11 @@ routerAdd('POST', '/financeiro/bancos/avulso', (c) => {
   } = body
 
   if (!empresa_id) return c.json(400, { message: 'empresa_id é obrigatório.' })
+  try {
+    exigirEmpresaDoUsuario(authRecord, empresa_id)
+  } catch (errEmp) {
+    return c.json(403, { message: errEmp.message || 'Acesso negado à empresa especificada.' })
+  }
   if (!conta_financeira_id) return c.json(400, { message: 'conta_financeira_id é obrigatória.' })
   if (tipo !== 'Entrada' && tipo !== 'Saída') {
     return c.json(400, { message: "tipo deve ser 'Entrada' ou 'Saída'." })
@@ -301,14 +313,15 @@ routerAdd('POST', '/financeiro/bancos/avulso', (c) => {
 
 // 3. ESTORNO DE MOVIMENTAÇÃO (TRANSFERÊNCIA OU AVULSO)
 routerAdd('POST', '/financeiro/bancos/estornar', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    const reqInfo = c.requestInfo()
+    body = (reqInfo && reqInfo.body) || {}
   } catch (_e) {
     body = {}
   }
@@ -325,6 +338,9 @@ routerAdd('POST', '/financeiro/bancos/estornar', (c) => {
       if (!mov || !mov.get('ativo')) {
         throw new BadRequestError('Movimento financeiro não encontrado ou inativo.')
       }
+      const movEmpresaId = mov.getString('empresa_id') || mov.get('empresa_id')
+      exigirEmpresaDoUsuario(authRecord, movEmpresaId)
+
       if (mov.get('estornado')) {
         throw new BadRequestError('Este movimento já foi estornado anteriormente.')
       }
@@ -474,14 +490,15 @@ routerAdd('POST', '/financeiro/bancos/estornar', (c) => {
 
 // 4. IMPORTAÇÃO DE EXTRATO OFX
 routerAdd('POST', '/financeiro/bancos/importar-ofx', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    const reqInfo = c.requestInfo()
+    body = (reqInfo && reqInfo.body) || {}
   } catch (_e) {
     body = {}
   }
@@ -489,6 +506,11 @@ routerAdd('POST', '/financeiro/bancos/importar-ofx', (c) => {
   const { empresaId, contaFinanceiraId, arquivoNome, transacoes = [] } = body
   if (!empresaId || !contaFinanceiraId) {
     return c.json(400, { message: 'empresaId e contaFinanceiraId são obrigatórios.' })
+  }
+  try {
+    exigirEmpresaDoUsuario(authRecord, empresaId)
+  } catch (errEmp) {
+    return c.json(403, { message: errEmp.message || 'Acesso negado à empresa especificada.' })
   }
 
   let novas = 0
@@ -551,14 +573,15 @@ routerAdd('POST', '/financeiro/bancos/importar-ofx', (c) => {
 
 // 5. CONCILIAR (AUTOMÁTICA OU MANUAL)
 routerAdd('POST', '/financeiro/bancos/conciliar', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    const reqInfo = c.requestInfo()
+    body = (reqInfo && reqInfo.body) || {}
   } catch (_e) {
     body = {}
   }
@@ -577,6 +600,9 @@ routerAdd('POST', '/financeiro/bancos/conciliar', (c) => {
         const item = casamentos[i]
         const linha = txApp.findRecordById('extratos_linhas', item.linha_id)
         if (!linha || !linha.get('ativo')) continue
+
+        const linhaEmpresaId = linha.getString('empresa_id') || linha.get('empresa_id')
+        exigirEmpresaDoUsuario(authRecord, linhaEmpresaId)
 
         linha.set('situacao', 'Conciliada')
         linha.set('movimentos_ids', JSON.stringify(item.movimentos_ids || []))
@@ -609,14 +635,15 @@ routerAdd('POST', '/financeiro/bancos/conciliar', (c) => {
 
 // 6. DESCONCILIAR LINHA DE EXTRATO
 routerAdd('POST', '/financeiro/bancos/desconciliar', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    const reqInfo = c.requestInfo()
+    body = (reqInfo && reqInfo.body) || {}
   } catch (_e) {
     body = {}
   }
@@ -630,6 +657,8 @@ routerAdd('POST', '/financeiro/bancos/desconciliar', (c) => {
       if (!linha || !linha.get('ativo')) {
         throw new BadRequestError('Linha de extrato não encontrada.')
       }
+      const linhaEmpresaId = linha.getString('empresa_id') || linha.get('empresa_id')
+      exigirEmpresaDoUsuario(authRecord, linhaEmpresaId)
 
       let movs = []
       try {
@@ -665,14 +694,15 @@ routerAdd('POST', '/financeiro/bancos/desconciliar', (c) => {
 
 // 7. ALTERNAR IGNORAR LINHA OFX
 routerAdd('POST', '/financeiro/bancos/alternar-ignorar-ofx', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    const reqInfo = c.requestInfo()
+    body = (reqInfo && reqInfo.body) || {}
   } catch (_e) {
     body = {}
   }
@@ -685,6 +715,8 @@ routerAdd('POST', '/financeiro/bancos/alternar-ignorar-ofx', (c) => {
     if (!linha || !linha.get('ativo')) {
       throw new BadRequestError('Linha de extrato não encontrada.')
     }
+    const linhaEmpresaId = linha.getString('empresa_id') || linha.get('empresa_id')
+    exigirEmpresaDoUsuario(authRecord, linhaEmpresaId)
 
     const novaSituacao = ignorar ? 'Ignorada' : 'Pendente'
     linha.set('situacao', novaSituacao)

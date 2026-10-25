@@ -96,6 +96,14 @@ routerAdd(
     }
 
     const empresaId = notaEntrada.getString('empresa_id')
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
     const fornecedorId = notaEntrada.getString('fornecedor_id')
     const chaveNotaReferenciada = (notaEntrada.getString('chave_acesso') || '').replace(/\D/g, '')
 
@@ -571,7 +579,18 @@ routerAdd(
     }
 
     const docRec = $app.findRecordById('documentos_fiscais', documentoId)
-    if (!docRec || docRec.getString('status') !== 'Autorizada') {
+    if (!docRec) {
+      return c.json(400, { sucesso: false, message: 'Documento fiscal não encontrado.' })
+    }
+    try {
+      exigirEmpresaDoUsuario(authRecord, docRec.getString('empresa_id'))
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
+    if (docRec.getString('status') !== 'Autorizada') {
       return c.json(400, {
         sucesso: false,
         message:
@@ -840,6 +859,14 @@ routerAdd(
     }
 
     const empresaOrigemId = transf.getString('empresa_origem_id')
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaOrigemId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa de origem.',
+      })
+    }
     const empresaDestinoId = transf.getString('empresa_destino_id')
 
     // Carregar empresas

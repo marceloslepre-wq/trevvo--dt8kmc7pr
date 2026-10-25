@@ -27,6 +27,15 @@ routerAdd(
       return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
     }
 
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
+
     if (!periodo || !/^\d{4}-\d{2}$/.test(periodo)) {
       return c.json(400, {
         sucesso: false,

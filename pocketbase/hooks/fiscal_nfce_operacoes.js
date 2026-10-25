@@ -90,6 +90,15 @@ routerAdd(
     }
 
     const empresaId = venda.getString('empresa_id')
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
+
     let empresa = null
     try {
       empresa = $app.findRecordById('empresas', empresaId)
@@ -629,6 +638,14 @@ routerAdd(
 
     const docRec = docs[0]
     const empresaId = docRec.getString('empresa_id')
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
     const refFocus = docRec.getString('referencia')
 
     const configs = $app.findRecordsByFilter(

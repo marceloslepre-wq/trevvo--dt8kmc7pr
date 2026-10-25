@@ -60,6 +60,7 @@ routerAdd(
         }
 
         const empresaId = venda.getString('empresa_id')
+        exigirEmpresaDoUsuario(authRecord, empresaId)
         const tipoVenda = venda.getString('tipo') || 'Venda'
         const caixaSessaoId = venda.getString('caixa_sessao_id') || ''
         const docNumero = venda.getInt('numero') || venda.id
@@ -1064,6 +1065,7 @@ routerAdd(
         }
 
         const empresaId = venda.getString('empresa_id')
+        exigirEmpresaDoUsuario(authRecord, empresaId)
         const docNumero = venda.getInt('numero') || venda.id
         const tipoVenda = venda.getString('tipo') || 'Venda'
 

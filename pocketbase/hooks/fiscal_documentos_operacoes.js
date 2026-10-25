@@ -179,6 +179,7 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       if (!empresaId) {
         throw new Error('O documento não possui empresa_id vinculado.')
       }
+      exigirEmpresaDoUsuario(authRecord, empresaId)
       const empresaRec = txApp.findRecordById('empresas', empresaId)
       if (!empresaRec || !empresaRec.getBool('ativo')) {
         throw new Error('Empresa emitente não encontrada ou inativa.')

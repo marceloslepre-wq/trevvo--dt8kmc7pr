@@ -43,6 +43,15 @@ routerAdd(
       return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
     }
 
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
+
     // Validação da empresa
     let empresa = null
     try {
@@ -254,12 +263,16 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
+    const permitidas = empresasDoUsuario(authRecord)
     const configs = $app.findRecordsByFilter('config_emissao_fiscal', 'ativo = true', 'empresa_id')
     const statusPorEmpresa = {}
 
     for (let i = 0; i < configs.length; i++) {
       const cfg = configs[i]
       const empId = cfg.getString('empresa_id')
+      if (permitidas.length > 0 && !permitidas.includes(empId)) {
+        continue
+      }
       const ambiente = cfg.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
       const codToken = (cfg.getString('codigo_token') || '').trim().toUpperCase()
       const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
@@ -308,6 +321,15 @@ routerAdd(
 
     if (!empresaId || !ref) {
       return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
+    }
+
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
     }
 
     const empresa = $app.findRecordById('empresas', empresaId)
@@ -504,6 +526,15 @@ routerAdd(
       return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
     }
 
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
+
     const empresa = $app.findRecordById('empresas', empresaId)
     if (!empresa || !empresa.getBool('ativo')) {
       return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
@@ -694,6 +725,15 @@ routerAdd(
       return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
     }
 
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
+
     const empresa = $app.findRecordById('empresas', empresaId)
     if (!empresa || !empresa.getBool('ativo')) {
       return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
@@ -858,6 +898,15 @@ routerAdd(
 
     if (!empresaId || !ref) {
       return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
+    }
+
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
     }
 
     if (!justificativa || justificativa.length < 15 || justificativa.length > 255) {
@@ -1043,6 +1092,15 @@ routerAdd(
       return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
     }
 
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
+    }
+
     if (!correcao || correcao.length < 15 || correcao.length > 1000) {
       return c.json(400, {
         sucesso: false,
@@ -1226,6 +1284,15 @@ routerAdd(
 
     if (!empresaId) {
       return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
+    }
+
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
+      })
     }
 
     if (
@@ -1498,6 +1565,15 @@ routerAdd(
       return c.json(400, {
         sucesso: false,
         message: 'Campos empresa_id e caminho são obrigatórios.',
+      })
+    }
+
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message: errEmp.message || 'Acesso negado à empresa especificada.',
       })
     }
 

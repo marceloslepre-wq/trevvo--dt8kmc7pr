@@ -84,7 +84,7 @@ routerAdd('POST', '/backend/v1/relatorios/painel-grupo', (c) => {
   }
 
   const empsAcessiveis = empresasDoUsuario(auth)
-  const empresasIdsPermitidas = empsAcessiveis.map((e) => e.id)
+  const empresasIdsPermitidas = empsAcessiveis.map((e) => (typeof e === 'string' ? e : e.id))
 
   if (empresasIdsPermitidas.length === 0) {
     return c.json(400, {
@@ -326,7 +326,7 @@ routerAdd('POST', '/backend/v1/relatorios/painel-grupo', (c) => {
     try {
       const docsLote = $app.findRecordsByFilter(
         'documentos_fiscais',
-        '(' + filterDocs + ") && status = 'Autorizada' && ativo = true",
+        '(' + filterDocs + ") && status = 'Autorizada'",
         '',
         1000,
         0,
