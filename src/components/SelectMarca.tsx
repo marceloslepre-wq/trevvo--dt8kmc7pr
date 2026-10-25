@@ -17,6 +17,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { Marca, listarTodasMarcasAtivas, salvarMarca } from '@/services/marcas'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 
 export interface SelectMarcaProps {
   value?: string
@@ -42,6 +43,7 @@ export const SelectMarca: React.FC<SelectMarcaProps> = ({
   const { toast } = useToast()
   const { pode } = usePermissoes()
   const podeCriarMarca = pode('marcas', 'criar')
+  const assinanteId = useAssinanteId()
 
   const [open, setOpen] = useState(false)
   const [busca, setBusca] = useState('')
@@ -59,14 +61,14 @@ export const SelectMarca: React.FC<SelectMarcaProps> = ({
   const carregarMarcas = useCallback(async () => {
     setCarregando(true)
     try {
-      const lista = await listarTodasMarcasAtivas()
+      const lista = await listarTodasMarcasAtivas(assinanteId || undefined)
       setMarcas(lista)
     } catch (err) {
       console.error('Erro ao carregar marcas:', err)
     } finally {
       setCarregando(false)
     }
-  }, [])
+  }, [assinanteId])
 
   useEffect(() => {
     carregarMarcas()

@@ -48,6 +48,7 @@ export async function listarGrupos(
     busca?: string
     situacao?: 'todos' | 'ativos' | 'inativos'
     ordenacao?: string
+    assinante_id?: string
   } = {},
 ): Promise<Grupo[]> {
   const condicoes: string[] = []
@@ -63,6 +64,10 @@ export async function listarGrupos(
     condicoes.push('ativo = false')
   }
 
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
+
   const filter = condicoes.length > 0 ? condicoes.join(' && ') : ''
   const sort = params.ordenacao || 'codigo'
 
@@ -72,9 +77,13 @@ export async function listarGrupos(
   })
 }
 
-export async function listarTodosGruposAtivos(): Promise<Grupo[]> {
+export async function listarTodosGruposAtivos(assinanteId?: string): Promise<Grupo[]> {
+  const conds = ['ativo = true']
+  if (assinanteId) {
+    conds.push(`assinante_id = '${assinanteId}'`)
+  }
   return await pb.collection('grupos').getFullList<Grupo>({
-    filter: 'ativo = true',
+    filter: conds.join(' && '),
     sort: 'codigo',
   })
 }
@@ -222,10 +231,14 @@ export async function ativarGrupo(id: string): Promise<void> {
 export async function listarCategoriasPorGrupo(
   grupoId: string,
   somenteAtivos = true,
+  assinanteId?: string,
 ): Promise<Categoria[]> {
   const condicoes: string[] = [`grupo_id = '${grupoId}'`]
   if (somenteAtivos) {
     condicoes.push('ativo = true')
+  }
+  if (assinanteId) {
+    condicoes.push(`assinante_id = '${assinanteId}'`)
   }
 
   return await pb.collection('categorias').getFullList<Categoria>({
@@ -234,9 +247,13 @@ export async function listarCategoriasPorGrupo(
   })
 }
 
-export async function listarTodasCategoriasAtivas(): Promise<Categoria[]> {
+export async function listarTodasCategoriasAtivas(assinanteId?: string): Promise<Categoria[]> {
+  const conds = ['ativo = true']
+  if (assinanteId) {
+    conds.push(`assinante_id = '${assinanteId}'`)
+  }
   return await pb.collection('categorias').getFullList<Categoria>({
-    filter: 'ativo = true',
+    filter: conds.join(' && '),
     sort: 'nome',
     expand: 'grupo_id',
   })
@@ -376,12 +393,14 @@ export async function carregarArvoreMercadologica(
   params: {
     busca?: string
     situacao?: 'todos' | 'ativos' | 'inativos'
+    assinante_id?: string
   } = {},
 ): Promise<GrupoComCategorias[]> {
   // 1. Carrega todos os grupos
   const grupos = await listarGrupos({
     situacao: params.situacao,
     ordenacao: 'codigo,nome',
+    assinante_id: params.assinante_id,
   })
 
   // 2. Carrega todas as categorias
@@ -390,6 +409,9 @@ export async function carregarArvoreMercadologica(
     condicoesCat.push('ativo = true')
   } else if (params.situacao === 'inativos') {
     condicoesCat.push('ativo = false')
+  }
+  if (params.assinante_id) {
+    condicoesCat.push(`assinante_id = '${params.assinante_id}'`)
   }
   const categorias = await pb.collection('categorias').getFullList<Categoria>({
     filter: condicoesCat.length > 0 ? condicoesCat.join(' && ') : '',

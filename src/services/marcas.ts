@@ -19,6 +19,7 @@ export interface ListarMarcasParams {
   page?: number
   perPage?: number
   ordenacao?: string
+  assinante_id?: string
 }
 
 export interface ResultadoPaginado<T> {
@@ -47,6 +48,10 @@ export async function listarMarcas(
     condicoes.push('ativo = false')
   }
 
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
+
   const filter = condicoes.length > 0 ? condicoes.join(' && ') : ''
   const sort = params.ordenacao || 'nome'
 
@@ -58,9 +63,13 @@ export async function listarMarcas(
   return res
 }
 
-export async function listarTodasMarcasAtivas(): Promise<Marca[]> {
+export async function listarTodasMarcasAtivas(assinanteId?: string): Promise<Marca[]> {
+  const conds = ['ativo = true']
+  if (assinanteId) {
+    conds.push(`assinante_id = '${assinanteId}'`)
+  }
   return await pb.collection('marcas').getFullList<Marca>({
-    filter: 'ativo = true',
+    filter: conds.join(' && '),
     sort: 'nome',
   })
 }

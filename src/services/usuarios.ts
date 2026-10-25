@@ -12,6 +12,7 @@ export interface Usuario {
   foto?: string
   perfil_id: string
   empresa_padrao_id?: string
+  assinante_id?: string
   desconto_maximo_percentual: number
   comissao_percentual: number
   e_vendedor: boolean

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-25T19:58:51.255Z",
+  "generatedAt": "2026-10-25T20:14:23.120Z",
   "collections": [
     {
       "name": "users",
@@ -582,9 +582,9 @@
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_perfis_acesso_nome ON perfis_acesso (nome)",
         "CREATE INDEX idx_perfis_acesso_ativo ON perfis_acesso (ativo)",
-        "CREATE INDEX idx_perfis_assinante ON perfis_acesso (assinante_id)"
+        "CREATE INDEX idx_perfis_assinante ON perfis_acesso (assinante_id)",
+        "CREATE UNIQUE INDEX idx_perfis_acesso_assinante_nome ON perfis_acesso (assinante_id, nome)"
       ]
     },
     {
@@ -1394,11 +1394,18 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_marcas_nome ON marcas (nome)",
-        "CREATE INDEX idx_marcas_ativo ON marcas (ativo)"
+        "CREATE INDEX idx_marcas_ativo ON marcas (ativo)",
+        "CREATE UNIQUE INDEX idx_marcas_assinante_nome ON marcas (assinante_id, nome)"
       ]
     },
     {
@@ -1469,12 +1476,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_grupos_codigo ON grupos (codigo)",
-        "CREATE UNIQUE INDEX idx_grupos_nome ON grupos (nome)",
-        "CREATE INDEX idx_grupos_ativo ON grupos (ativo)"
+        "CREATE INDEX idx_grupos_ativo ON grupos (ativo)",
+        "CREATE UNIQUE INDEX idx_grupos_assinante_codigo ON grupos (assinante_id, codigo)",
+        "CREATE UNIQUE INDEX idx_grupos_assinante_nome ON grupos (assinante_id, nome)"
       ]
     },
     {
@@ -1546,12 +1560,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_categorias_grupo_nome ON categorias (grupo_id, nome)",
         "CREATE INDEX idx_categorias_grupo ON categorias (grupo_id)",
-        "CREATE INDEX idx_categorias_ativo ON categorias (ativo)"
+        "CREATE INDEX idx_categorias_ativo ON categorias (ativo)",
+        "CREATE UNIQUE INDEX idx_categorias_assinante_grupo_nome ON categorias (assinante_id, grupo_id, nome)"
       ]
     },
     {
@@ -1897,17 +1918,24 @@
           "required": false,
           "system": false,
           "collectionRef": "condicoes_pagamento"
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE INDEX idx_clientes_codigo ON clientes (codigo)",
-        "CREATE INDEX idx_clientes_cpf_cnpj ON clientes (cpf_cnpj)",
         "CREATE INDEX idx_clientes_nome ON clientes (nome_razao_social)",
         "CREATE INDEX idx_clientes_tipo_pessoa ON clientes (tipo_pessoa)",
         "CREATE INDEX idx_clientes_ativo ON clientes (ativo)",
         "CREATE INDEX idx_clientes_vendedor ON clientes (vendedor_id)",
         "CREATE INDEX idx_clientes_bloqueado ON clientes (bloqueado)",
-        "CREATE INDEX `idx_clientes_condicao_pagamento` ON `clientes` (condicao_pagamento_id)"
+        "CREATE INDEX `idx_clientes_condicao_pagamento` ON `clientes` (condicao_pagamento_id)",
+        "CREATE UNIQUE INDEX idx_clientes_assinante_codigo ON clientes (assinante_id, codigo)",
+        "CREATE UNIQUE INDEX idx_clientes_assinante_cpf_cnpj ON clientes (assinante_id, cpf_cnpj) WHERE cpf_cnpj != '' AND cpf_cnpj IS NOT NULL"
       ]
     },
     {
@@ -2249,16 +2277,23 @@
           "required": false,
           "system": false,
           "collectionRef": "condicoes_pagamento"
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE INDEX idx_fornecedores_codigo ON fornecedores (codigo)",
-        "CREATE INDEX idx_fornecedores_cpf_cnpj ON fornecedores (cpf_cnpj)",
         "CREATE INDEX idx_fornecedores_razao_social ON fornecedores (razao_social)",
         "CREATE INDEX idx_fornecedores_tipo_pessoa ON fornecedores (tipo_pessoa)",
         "CREATE INDEX idx_fornecedores_ativo ON fornecedores (ativo)",
         "CREATE INDEX idx_fornecedores_uf ON fornecedores (uf)",
-        "CREATE INDEX `idx_fornecedores_condicao_pagamento` ON `fornecedores` (condicao_pagamento_id)"
+        "CREATE INDEX `idx_fornecedores_condicao_pagamento` ON `fornecedores` (condicao_pagamento_id)",
+        "CREATE UNIQUE INDEX idx_fornecedores_assinante_codigo ON fornecedores (assinante_id, codigo)",
+        "CREATE UNIQUE INDEX idx_fornecedores_assinante_cpf_cnpj ON fornecedores (assinante_id, cpf_cnpj) WHERE cpf_cnpj != '' AND cpf_cnpj IS NOT NULL"
       ]
     },
     {
@@ -2342,12 +2377,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_perfis_trib_nome ON perfis_tributarios (nome)",
         "CREATE INDEX idx_perfis_trib_regime ON perfis_tributarios (regime)",
-        "CREATE INDEX idx_perfis_trib_ativo ON perfis_tributarios (ativo)"
+        "CREATE INDEX idx_perfis_trib_ativo ON perfis_tributarios (ativo)",
+        "CREATE UNIQUE INDEX idx_perfis_tributarios_assinante_nome ON perfis_tributarios (assinante_id, nome)"
       ]
     },
     {
@@ -3238,10 +3280,16 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_produtos_codigo ON produtos (codigo)",
         "CREATE INDEX idx_produtos_descricao ON produtos (descricao)",
         "CREATE INDEX idx_produtos_gtin ON produtos (gtin)",
         "CREATE INDEX idx_produtos_referencia ON produtos (referencia)",
@@ -3252,7 +3300,9 @@
         "CREATE INDEX idx_produtos_fornecedor ON produtos (fornecedor_principal_id)",
         "CREATE INDEX idx_produtos_ncm ON produtos (ncm)",
         "CREATE INDEX idx_produtos_ativo ON produtos (ativo)",
-        "CREATE INDEX idx_produtos_fiscal_revisado ON produtos (fiscal_revisado)"
+        "CREATE INDEX idx_produtos_fiscal_revisado ON produtos (fiscal_revisado)",
+        "CREATE UNIQUE INDEX idx_produtos_assinante_codigo ON produtos (assinante_id, codigo)",
+        "CREATE UNIQUE INDEX idx_produtos_assinante_gtin ON produtos (assinante_id, gtin) WHERE gtin != '' AND gtin IS NOT NULL"
       ]
     },
     {
@@ -3659,9 +3709,19 @@
           "type": "number",
           "required": false,
           "system": false
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
-      "indexes": ["CREATE INDEX idx_configuracoes_ativo ON configuracoes (ativo)"]
+      "indexes": [
+        "CREATE INDEX idx_configuracoes_ativo ON configuracoes (ativo)",
+        "CREATE INDEX idx_configuracoes_assinante ON configuracoes (assinante_id)"
+      ]
     },
     {
       "name": "condicoes_pagamento",
@@ -3775,14 +3835,21 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_condicoes_pagamento_nome ON condicoes_pagamento (nome)",
         "CREATE INDEX idx_condicoes_pagamento_codigo ON condicoes_pagamento (codigo)",
         "CREATE INDEX idx_condicoes_pagamento_tipo ON condicoes_pagamento (tipo)",
         "CREATE INDEX idx_condicoes_pagamento_uso ON condicoes_pagamento (uso)",
-        "CREATE INDEX idx_condicoes_pagamento_ativo ON condicoes_pagamento (ativo)"
+        "CREATE INDEX idx_condicoes_pagamento_ativo ON condicoes_pagamento (ativo)",
+        "CREATE UNIQUE INDEX idx_condicoes_pagamento_assinante_nome ON condicoes_pagamento (assinante_id, nome)"
       ]
     },
     {
@@ -6075,6 +6142,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
@@ -6082,7 +6156,8 @@
         "CREATE INDEX idx_regras_fiscais_ncm_uf ON regras_fiscais_ncm (uf)",
         "CREATE INDEX idx_regras_fiscais_ncm_regime ON regras_fiscais_ncm (regime_empresa)",
         "CREATE INDEX idx_regras_fiscais_ncm_prioridade ON regras_fiscais_ncm (prioridade)",
-        "CREATE INDEX idx_regras_fiscais_ncm_ativo ON regras_fiscais_ncm (ativo)"
+        "CREATE INDEX idx_regras_fiscais_ncm_ativo ON regras_fiscais_ncm (ativo)",
+        "CREATE INDEX idx_regras_fiscais_ncm_assinante ON regras_fiscais_ncm (assinante_id)"
       ]
     },
     {
@@ -6329,12 +6404,19 @@
           "required": false,
           "system": false,
           "collectionRef": "plano_contas"
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_plano_contas_codigo ON plano_contas (codigo)",
         "CREATE INDEX idx_plano_contas_ativo ON plano_contas (ativo)",
-        "CREATE INDEX `idx_plano_contas_conta_pai` ON `plano_contas` (conta_pai_id)"
+        "CREATE INDEX `idx_plano_contas_conta_pai` ON `plano_contas` (conta_pai_id)",
+        "CREATE UNIQUE INDEX idx_plano_contas_assinante_codigo ON plano_contas (assinante_id, codigo)"
       ]
     },
     {
@@ -6393,11 +6475,18 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_centros_custo_codigo ON centros_custo (codigo)",
-        "CREATE INDEX idx_centros_custo_ativo ON centros_custo (ativo)"
+        "CREATE INDEX idx_centros_custo_ativo ON centros_custo (ativo)",
+        "CREATE UNIQUE INDEX idx_centros_custo_assinante_codigo ON centros_custo (assinante_id, codigo)"
       ]
     },
     {
@@ -6660,11 +6749,19 @@
           "type": "bool",
           "required": false,
           "system": false
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
         "CREATE INDEX idx_formas_pag_codigo_tpag ON formas_pagamento (codigo_tpag)",
-        "CREATE INDEX idx_formas_pag_ativo ON formas_pagamento (ativo)"
+        "CREATE INDEX idx_formas_pag_ativo ON formas_pagamento (ativo)",
+        "CREATE INDEX idx_formas_pagamento_assinante ON formas_pagamento (assinante_id)"
       ]
     },
     {
@@ -10855,12 +10952,20 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
         "CREATE INDEX idx_rel_filtros_usuario ON relatorios_filtros_salvos (usuario_id)",
         "CREATE INDEX idx_rel_filtros_relatorio ON relatorios_filtros_salvos (relatorio)",
-        "CREATE INDEX idx_rel_filtros_compartilhado ON relatorios_filtros_salvos (compartilhado)"
+        "CREATE INDEX idx_rel_filtros_compartilhado ON relatorios_filtros_salvos (compartilhado)",
+        "CREATE INDEX idx_relatorios_filtros_salvos_assinante ON relatorios_filtros_salvos (assinante_id)"
       ]
     },
     {
@@ -10948,12 +11053,20 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
         "CREATE INDEX idx_rel_salvos_usuario ON relatorios_salvos (usuario_id)",
         "CREATE INDEX idx_rel_salvos_tipo ON relatorios_salvos (tipo)",
-        "CREATE INDEX idx_rel_salvos_compartilhado ON relatorios_salvos (compartilhado)"
+        "CREATE INDEX idx_rel_salvos_compartilhado ON relatorios_salvos (compartilhado)",
+        "CREATE INDEX idx_relatorios_salvos_assinante ON relatorios_salvos (assinante_id)"
       ]
     },
     {

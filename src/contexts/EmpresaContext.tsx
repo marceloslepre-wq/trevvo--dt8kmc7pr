@@ -4,9 +4,22 @@ import { useAuth } from '@/contexts/AuthContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { obterEmpresasDoUsuario } from '@/services/usuarios'
 
+interface AssinanteTenancy {
+  id: string
+  numero_licenca: string
+  nome: string
+  documento?: string
+  email_contato?: string
+  telefone?: string
+  status: string
+  origem: boolean
+}
+
 interface EmpresaContextType {
   empresas: Empresa[]
   empresaAtiva: Empresa | null
+  assinanteId: string | null
+  assinante: AssinanteTenancy | null
   carregando: boolean
   selecionarEmpresa: (empresaId: string) => void
   recarregarEmpresas: () => Promise<void>
@@ -20,6 +33,7 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const { isAuthenticated } = useAuth()
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [empresaAtiva, setEmpresaAtiva] = useState<Empresa | null>(null)
+  const [assinante, setAssinante] = useState<AssinanteTenancy | null>(null)
   const [carregando, setCarregando] = useState(false)
 
   const { usuarioERP, administrador, carregando: carregandoPerms } = usePermissoes()
@@ -37,6 +51,16 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     try {
       setCarregando(true)
+
+      // Obter dados de tenancy se ainda não carregados
+      try {
+        const respTenancy = await pb.send('/backend/v1/tenancy/me', { method: 'GET' })
+        if (respTenancy && respTenancy.assinante) {
+          setAssinante(respTenancy.assinante)
+        }
+      } catch (errTen) {
+        console.warn('Não foi possível obter dados de tenancy/me:', errTen)
+      }
 
       // Etapa 9 (Multi-tenant): Consome o endpoint backend /backend/v1/empresas/acessiveis,
       // onde o backend já aplica a governança estrita de assinante (empresasDoUsuario):
@@ -112,10 +136,19 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }
 
   return (
+    const assinanteIdCalculado =
+      assinante?.id ||
+      usuarioERP?.assinante_id ||
+      empresaAtiva?.assinante_id ||
+      (empresas.length > 0 ? empresas[0].assinante_id : null) ||
+      null
+
     <EmpresaContext.Provider
       value={{
         empresas,
         empresaAtiva,
+        assinanteId: assinanteIdCalculado,
+        assinante,
         carregando,
         selecionarEmpresa,
         recarregarEmpresas,
