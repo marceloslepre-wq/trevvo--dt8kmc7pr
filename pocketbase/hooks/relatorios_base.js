@@ -185,7 +185,7 @@ routerAdd('POST', '/backend/v1/relatorios/validar-filtros', (c) => {
     })
   }
 
-  // Conferência de permissões multiempresa
+  // Conferência de permissões multiempresa e governança multi-tenant (Etapa 9)
   const userId = authRecord.id
   let isAdmin = false
   let callerUser = null
@@ -208,14 +208,49 @@ routerAdd('POST', '/backend/v1/relatorios/validar-filtros', (c) => {
     }
   } catch (_) {}
 
-  if (!isAdmin) {
-    if (!callerUser) {
-      return c.json(403, { sucesso: false, message: 'Usuário não localizado no ERP.' })
-    }
+  if (!callerUser) {
+    return c.json(403, { sucesso: false, message: 'Usuário não localizado no ERP.' })
+  }
 
-    const empresasPermitidas = new Set()
+  const assinanteId = callerUser.getString('assinante_id')
+  if (!assinanteId) {
+    return c.json(403, {
+      sucesso: false,
+      message: 'Usuário não possui vínculo com nenhum assinante.',
+    })
+  }
+
+  const empresasPermitidas = new Set()
+
+  if (isAdmin) {
+    // Administrador do assinante: vê todas as empresas ativas do PRÓPRIO assinante (nunca de outro)
+    try {
+      const empsAssinante = $app.findRecordsByFilter(
+        'empresas',
+        `assinante_id = '${assinanteId}' && ativo = true`,
+        '',
+        500,
+        0,
+      )
+      for (let i = 0; i < empsAssinante.length; i++) {
+        empresasPermitidas.add(empsAssinante[i].id)
+      }
+    } catch (_) {}
+  } else {
+    // Usuário comum: apenas as empresas ativas de usuarios_empresas que pertençam ao mesmo assinante
     const padraoId = callerUser.getString('empresa_padrao_id')
-    if (padraoId) empresasPermitidas.add(padraoId)
+    if (padraoId) {
+      try {
+        const empPadrao = $app.findRecordById('empresas', padraoId)
+        if (
+          empPadrao &&
+          empPadrao.getBool('ativo') &&
+          empPadrao.getString('assinante_id') === assinanteId
+        ) {
+          empresasPermitidas.add(padraoId)
+        }
+      } catch (_) {}
+    }
 
     try {
       const vinculos = $app.findRecordsByFilter(
@@ -227,18 +262,29 @@ routerAdd('POST', '/backend/v1/relatorios/validar-filtros', (c) => {
       )
       for (let i = 0; i < vinculos.length; i++) {
         const eId = vinculos[i].getString('empresa_id')
-        if (eId) empresasPermitidas.add(eId)
+        if (eId) {
+          try {
+            const empVinculo = $app.findRecordById('empresas', eId)
+            if (
+              empVinculo &&
+              empVinculo.getBool('ativo') &&
+              empVinculo.getString('assinante_id') === assinanteId
+            ) {
+              empresasPermitidas.add(eId)
+            }
+          } catch (_) {}
+        }
       }
     } catch (_) {}
+  }
 
-    for (let j = 0; j < filtrosNorm.empresas_ids.length; j++) {
-      const id = filtrosNorm.empresas_ids[j]
-      if (!empresasPermitidas.has(id)) {
-        return c.json(403, {
-          sucesso: false,
-          message: `Acesso negado: você não tem permissão para consultar a empresa ID ${id}.`,
-        })
-      }
+  for (let j = 0; j < filtrosNorm.empresas_ids.length; j++) {
+    const id = filtrosNorm.empresas_ids[j]
+    if (!empresasPermitidas.has(id)) {
+      return c.json(403, {
+        sucesso: false,
+        message: `Acesso negado: a empresa ID ${id} não pertence ao seu assinante ou não está autorizada.`,
+      })
     }
   }
 

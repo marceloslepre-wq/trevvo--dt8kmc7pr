@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-25T18:45:56.843Z",
+  "generatedAt": "2026-10-25T19:58:51.255Z",
   "collections": [
     {
       "name": "users",
@@ -8,7 +8,7 @@
         "list": "id = @request.auth.id",
         "view": "id = @request.auth.id",
         "create": "",
-        "update": "id = @request.auth.id",
+        "update": "@request.auth.id = id && @request.body.tipo:isset = false && (@request.auth.tipo != 'master' || @request.body.email:isset = false || @request.body.email = email)",
         "delete": "id = @request.auth.id"
       },
       "fields": [
@@ -37,6 +37,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["master", "usuario"]
         }
       ],
       "indexes": [
@@ -486,13 +493,21 @@
           "type": "bool",
           "required": false,
           "system": false
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_empresas_cnpj ON empresas (cnpj)",
         "CREATE UNIQUE INDEX idx_empresas_codigo ON empresas (codigo)",
         "CREATE INDEX idx_empresas_tipo ON empresas (tipo)",
-        "CREATE INDEX idx_empresas_ativo ON empresas (ativo)"
+        "CREATE INDEX idx_empresas_ativo ON empresas (ativo)",
+        "CREATE INDEX idx_empresas_assinante ON empresas (assinante_id)"
       ]
     },
     {
@@ -557,11 +572,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_perfis_acesso_nome ON perfis_acesso (nome)",
-        "CREATE INDEX idx_perfis_acesso_ativo ON perfis_acesso (ativo)"
+        "CREATE INDEX idx_perfis_acesso_ativo ON perfis_acesso (ativo)",
+        "CREATE INDEX idx_perfis_assinante ON perfis_acesso (assinante_id)"
       ]
     },
     {
@@ -804,13 +827,21 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "assinantes"
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_usuarios_email ON usuarios (email)",
         "CREATE INDEX idx_usuarios_auth_user_id ON usuarios (auth_user_id)",
         "CREATE INDEX idx_usuarios_perfil_id ON usuarios (perfil_id)",
-        "CREATE INDEX idx_usuarios_ativo ON usuarios (ativo)"
+        "CREATE INDEX idx_usuarios_ativo ON usuarios (ativo)",
+        "CREATE INDEX idx_usuarios_assinante ON usuarios (assinante_id)"
       ]
     },
     {
@@ -10923,6 +10954,129 @@
         "CREATE INDEX idx_rel_salvos_usuario ON relatorios_salvos (usuario_id)",
         "CREATE INDEX idx_rel_salvos_tipo ON relatorios_salvos (tipo)",
         "CREATE INDEX idx_rel_salvos_compartilhado ON relatorios_salvos (compartilhado)"
+      ]
+    },
+    {
+      "name": "assinantes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "view": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "create": null,
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "numero_licenca",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "documento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_contato",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "telefone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "whatsapp_contato",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Trial", "Ativa", "Pausada", "Expirada", "Cancelada"]
+        },
+        {
+          "name": "origem",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "plano_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_inicio",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_expiracao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "limites_personalizados",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "limite_usuarios",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "limite_empresas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_assinantes_licenca ON assinantes (numero_licenca)",
+        "CREATE INDEX idx_assinantes_status ON assinantes (status)",
+        "CREATE INDEX idx_assinantes_origem ON assinantes (origem)"
       ]
     }
   ]

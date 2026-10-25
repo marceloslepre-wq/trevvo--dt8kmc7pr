@@ -11,6 +11,7 @@ export interface Empresa {
   ativo: boolean
   created_by?: string
   updated_by?: string
+  assinante_id?: string
   tipo: EmpresaTipo
   matriz_id?: string
   codigo: number
@@ -65,6 +66,30 @@ export interface Empresa {
   contador_email?: string
   created?: string
   updated?: string
+}
+
+/**
+ * Consulta as empresas acessíveis pelo usuário autenticado via endpoint backend
+ * de governança multi-tenant (/backend/v1/empresas/acessiveis).
+ */
+export async function listarEmpresasAcessiveis(): Promise<Empresa[]> {
+  try {
+    const res = await pb.send<{ sucesso: boolean; empresas: Empresa[] }>(
+      '/backend/v1/empresas/acessiveis',
+      {
+        method: 'GET',
+      },
+    )
+    if (res && res.sucesso && Array.isArray(res.empresas)) {
+      return res.empresas
+    }
+  } catch (err) {
+    console.warn(
+      'Falha ao consultar /backend/v1/empresas/acessiveis, aplicando fallback local:',
+      err,
+    )
+  }
+  return listarEmpresasAtivas()
 }
 
 export interface ListarEmpresasParams {
