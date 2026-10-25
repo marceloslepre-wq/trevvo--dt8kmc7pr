@@ -3326,6 +3326,41 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 
 ---
 
+**Versão 0.0.109** — Etapa 8 Relatórios e Painel (Prompt 8.2: Vendas por Loja e por Canal):
+
+1. **Endpoint Backend de Alta Precisão (`POST /backend/v1/relatorios/vendas-canais`):**
+   - Implementado em `pocketbase/hooks/relatorio_vendas_canais.js` no Skip Cloud (PocketBase).
+   - Validações: autenticação obrigatória, limite de 366 dias por período, checagem estrita de permissões multiempresa (`usuarios_empresas` ou admin).
+   - Coleta de vendas com `status = 'Finalizada'`, `ativo = true` e descarte de vendas canceladas, descontando devoluções do período (`tipo = 'Devolução'`).
+   - Suporte aos filtros de produto, pessoas e vendas do padrão 8.0b: havendo filtro de produto, faturamentos, quantidades e custos computam exclusivamente os itens (`vendas_itens`) que atendem aos filtros do catálogo (produtos, grupos, categorias, marcas, fornecedores, NCMs, situação e revisão fiscal).
+   - Três períodos processados em paralelo para comparação:
+     1. Período atual solicitado.
+     2. Período anterior de mesmo tamanho (exatamente `dias` antes da data inicial).
+     3. Mesmo período do ano anterior (exatamente 1 ano antes: mesmo mês e dia).
+   - Retornos estruturados do endpoint:
+     - **Por empresa / loja:** Faturamento líquido, quantidade de vendas, ticket médio, custo total (CMV), margem bruta em valor (R$) e em percentual (%), desconto concedido e comparativos analíticos com o período anterior e ano anterior (com valor e percentual de variação).
+     - **Consolidado geral:** Totalizador de todas as empresas marcadas com comparativos de variação.
+     - **Por UF de destino (ordenado pelo faturamento):** Regra oficial do PROJETO_ERP: UF do cliente ou destinatario_uf da nota fiscal quando houver; venda de balcão sem cliente conta como UF da própria empresa emitente.
+     - **Por canal de venda (ordenado pelo faturamento):** Balcão/PDV (`tipo = 'PDV'`), Pedido de Venda (`tipo = 'Pedido'`), Site Próprio (E-commerce) e Marketplaces por intermediador cadastrado (`intermediador_id` da nota).
+     - **Por forma de pagamento (`vendas_pagamentos`):** Valor recebido, quantidade de transações e custo das taxas operacionais (`valor_taxa` / taxa percentual da forma), com percentual sobre o faturamento.
+     - **Quadro de vendas por grupo e categoria:** Agrupamento hierárquico com itens vendidos, faturamento e percentual de participação.
+
+2. **Tela Relatórios > Vendas por Loja e Canal (`/relatorios/vendas-canais` - `src/pages/relatorios/VendasCanaisPage.tsx`):**
+   - Utilização do componente unificado `FiltrosRelatorio.tsx` com catálogo completo de filtros do Prompt 8.0b (produtos, pessoas e vendas).
+   - Tarja de aviso padrão no cabeçalho quando houver filtro de produto ativo informando que os números refletem apenas os itens filtrados.
+   - Quadro de resumo consolidado com comparativos de variação (`ArrowUpRight` em verde, `ArrowDownRight` em vermelho e traço neutro).
+   - Abas organizadas: 1) Por Empresa / Loja; 2) Por Canal de Venda; 3) Por UF de Destino; 4) Formas de Pagamento e Taxas; 5) Grupos e Categorias.
+   - Blindagem de margem bruta e CMV: os valores e percentuais de margem bruta só são exibidos para quem possui permissão no módulo de produtos (`pode('produtos', 'ver')` ou `pode('produtos', 'editar')`), idêntico à regra de consultas de vendas.
+   - Exportação completa para CSV (BOM UTF-8, ponto e vírgula, vírgula decimal) e impressão formatada (`window.print()`).
+   - Permissão de acesso da tela: governada pelo módulo `vendas` (`pode('vendas', 'ver')`).
+
+3. **Catálogo de Relatórios e Rotas:**
+   - Adicionada rota `/relatorios/vendas-canais` em `src/App.tsx` protegida por `PermissaoGuard modulo="vendas" acao="ver"`.
+   - Adicionado item "Vendas por Loja e por Canal" em `src/config/relatoriosCatalogo.ts` na categoria "Vendas" com selo de novo e filtros permitidos declarados.
+   - As consultas legadas de `/vendas/consultas` foram rigorosamente preservadas sem qualquer alteração.
+
+---
+
 **Versão 0.0.108** — Etapa 8 Relatórios e Painel (Prompt 8.1: Livro de Registro de Saídas e Resumo da Apuração do ICMS do Mês):
 
 1. **Endpoint Backend de Alta Precisão Fiscal (`POST /backend/v1/relatorios/livro-saidas`):**

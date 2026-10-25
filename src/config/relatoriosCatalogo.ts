@@ -13,6 +13,7 @@ import {
   BarChart3,
   FileText,
   Scale,
+  Store,
 } from 'lucide-react'
 import { ModuloSistema } from '@/services/perfis'
 
@@ -40,6 +41,36 @@ export interface ItemRelatorioCatalogo {
  */
 export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
   // ===================== VENDAS =====================
+  {
+    id: 'vendas_canais',
+    nome: 'Vendas por Loja e por Canal',
+    descricao:
+      'Faturamento líquido, ticket médio, margem bruta, comparativos com períodos anteriores, vendas por UF, canais, grupos/categorias e taxas de pagamento.',
+    rota: '/relatorios/vendas-canais',
+    modulo: 'vendas',
+    categoria: 'Vendas',
+    icone: Store,
+    novo: true,
+    filtrosPermitidos: [
+      'produto_grupos_categorias',
+      'produto_marcas',
+      'produto_produtos',
+      'produto_fornecedores',
+      'produto_ncms',
+      'produto_situacao',
+      'produto_so_fiscal_nao_revisado',
+      'pessoas_clientes',
+      'pessoas_vendedores',
+      'pessoas_operadores_caixa',
+      'pessoas_cliente_ufs',
+      'pessoas_cliente_cidades',
+      'vendas_tipos',
+      'vendas_formas_pagamento',
+      'vendas_terminais_pdv',
+      'vendas_intermediadores',
+      'vendas_com_sem_nota',
+    ],
+  },
   {
     id: 'vendas_consultas',
     nome: 'Consultas de Vendas',
