@@ -16,6 +16,7 @@ import {
   Store,
   CalendarClock,
   Building,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { ModuloSistema } from '@/services/perfis'
 
@@ -58,6 +59,17 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
     modulo: 'relatorios',
     categoria: 'Grupo',
     icone: Building,
+    novo: true,
+  },
+  {
+    id: 'relatorio_personalizado',
+    nome: 'Relatório Personalizado (Montador)',
+    descricao:
+      'Crie relatórios sob medida em 4 passos: escolha a base (Vendas ou Compras), agrupe em até 3 níveis, selecione métricas e aplique filtros.',
+    rota: '/relatorios/personalizado',
+    modulo: 'relatorios',
+    categoria: 'Grupo',
+    icone: SlidersHorizontal,
     novo: true,
   },
 

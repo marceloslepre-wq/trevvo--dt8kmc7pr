@@ -40,6 +40,7 @@ import {
   FileX2,
   FileArchive,
   Scale,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -487,10 +488,23 @@ const navItems: NavGroupItem[] = [
   {
     id: 'relatorios',
     title: 'Relatórios',
-    path: '/relatorios',
     icon: BarChart3,
     status: 'active',
     modulo: 'relatorios',
+    items: [
+      {
+        title: 'Central de Relatórios',
+        path: '/relatorios',
+        icon: BarChart3,
+        modulo: 'relatorios',
+      },
+      {
+        title: 'Relatório Personalizado',
+        path: '/relatorios/personalizado',
+        icon: SlidersHorizontal,
+        modulo: 'relatorios',
+      },
+    ],
   },
   {
     id: 'configuracoes',
@@ -546,6 +560,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isFinanceiroActive = location.pathname.startsWith('/financeiro')
   const isVendasActive = location.pathname.startsWith('/vendas')
   const isFiscalActive = location.pathname.startsWith('/fiscal')
+  const isRelatoriosActive = location.pathname.startsWith('/relatorios')
   const isConfiguracoesActive = location.pathname.startsWith('/configuracoes')
   const [cadastrosOpen, setCadastrosOpen] = useState(true)
   const [estoqueOpen, setEstoqueOpen] = useState(true)
@@ -553,6 +568,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [financeiroOpen, setFinanceiroOpen] = useState(true)
   const [vendasOpen, setVendasOpen] = useState(true)
   const [fiscalOpen, setFiscalOpen] = useState(true)
+  const [relatoriosOpen, setRelatoriosOpen] = useState(true)
   const [configuracoesOpen, setConfiguracoesOpen] = useState(true)
 
   const { pode, administrador } = usePermissoes()
@@ -676,7 +692,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           ? isVendasActive
                           : item.id === 'fiscal'
                             ? isFiscalActive
-                            : isConfiguracoesActive
+                            : item.id === 'relatorios'
+                              ? isRelatoriosActive
+                              : isConfiguracoesActive
               const isOpen =
                 item.id === 'cadastros'
                   ? cadastrosOpen
@@ -690,7 +708,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           ? vendasOpen
                           : item.id === 'fiscal'
                             ? fiscalOpen
-                            : configuracoesOpen
+                            : item.id === 'relatorios'
+                              ? relatoriosOpen
+                              : configuracoesOpen
               const setOpen =
                 item.id === 'cadastros'
                   ? setCadastrosOpen
@@ -704,7 +724,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           ? setVendasOpen
                           : item.id === 'fiscal'
                             ? setFiscalOpen
-                            : setConfiguracoesOpen
+                            : item.id === 'relatorios'
+                              ? setRelatoriosOpen
+                              : setConfiguracoesOpen
 
               if (isCollapsed) {
                 return (

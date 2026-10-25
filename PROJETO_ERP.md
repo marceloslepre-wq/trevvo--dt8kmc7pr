@@ -284,6 +284,26 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### relatorios_salvos
+
+Tabela de registro e controle de relatórios personalizados completos montados pelo usuário (Prompt 8.6). Guarda a definição completa da consulta: base de dados selecionada (`itens_vendidos` ou `itens_comprados`), array ordenado de agrupamentos (até 3 níveis hierárquicos), array de valores e métricas selecionadas, objeto completo de filtros aplicados (`ObjetoFiltrosRelatorio`) e tipo de gráfico configurado. Suporta compartilhamento com a empresa (`compartilhado = true`), sendo exibidos na Central de Relatórios divididos entre "Meus relatórios salvos" e "Relatórios da empresa". Regras de acesso estritas na collection: leitura permitida para o próprio autor ou quando compartilhado (`usuario_id = @request.auth.id || compartilhado = true`); criação, atualização e exclusão restritas unicamente ao proprietário do relatório (`usuario_id = @request.auth.id`). Criada na Migration 0059.
+
+- id (text, PK)
+- usuario_id (relation -> users, obrigatório, cascadeDelete, criador do relatório)
+- nome (text, título amigável do relatório personalizado, obrigatório)
+- descricao (text, finalidade ou notas do relatório)
+- tipo (text, identificador de montador, padrão "personalizado", obrigatório)
+- base (text, "itens_vendidos" ou "itens_comprados", obrigatório)
+- agrupamentos (json, array de strings com até 3 níveis de agrupamento, obrigatório)
+- valores (json, array de strings com as chaves de métricas ativas, obrigatório)
+- filtros (json, objeto completo no formato `ObjetoFiltrosRelatorio`, obrigatório)
+- tipo_grafico (text, "nenhum", "barras" ou "linhas")
+- compartilhado (bool, indica se fica visível na seção "Relatórios da empresa")
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `usuario_id` (`idx_rel_salvos_usuario`), `tipo` (`idx_rel_salvos_tipo`), `compartilhado` (`idx_rel_salvos_compartilhado`).
+
 ### relatorios_filtros_salvos
 
 Tabela de registro e controle de filtros salvos e combinações de parâmetros personalizadas para relatórios do ERP (Prompt 8.0b). Permite ao operador salvar conjuntos de filtros aplicados (empresas, períodos, produtos, clientes, vendedores, formas de pagamento, plano de contas, etc.) e reutilizá-los com um clique no botão "Meus filtros". Suporta compartilhamento com toda a equipe (`compartilhado = true`), onde o filtro compartilhado fica visível para todos os usuários com acesso ao relatório correspondente. Regras de segurança estritas na API da collection: leitura restrita aos filtros do próprio usuário autenticado ou aos filtros marcados como compartilhados (`@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)`); criação permitida apenas para o próprio usuário (`usuario_id = @request.auth.id`); edição e exclusão restritas exclusivamente ao proprietário do filtro (`usuario_id = @request.auth.id`). Criada na Migration 0058.
@@ -3323,6 +3343,59 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 4. **Filtros Salvos e Compartilhamento (`relatorios_filtros_salvos` - Migration 0058):**
    - Migration 0058 criando a coleção no PocketBase com regras restritas de acesso.
    - Componente `GerenciadorFiltrosSalvos.tsx` acoplado aos botões "Salvar estes filtros" e "Meus filtros" com suporte a compartilhamento para a equipe e exclusão exclusiva pelo proprietário.
+
+---
+
+**Versão 0.0.113** — Etapa 8 Relatórios e Painel (Prompt 8.6: Relatório Personalizado - Montador de Vendas e Compras):
+
+1. **Endpoint Backend do Relatório Personalizado (`POST /backend/v1/relatorios/personalizado`):**
+   - Implementado em `pocketbase/hooks/relatorio_personalizado.js` no Skip Cloud (PocketBase).
+   - Validações estritas e segurança:
+     - Autenticação mandatória e identificação do usuário logado.
+     - Validação estrita da base: somente `itens_vendidos` ou `itens_comprados`.
+     - Validação rigorosa dos agrupamentos: máximo de 3 níveis da lista permitida (bloqueio total de texto livre ou injeção SQL/NoSQL).
+       - Vendas: empresa, dia, semana, mes, ano, grupo, categoria, marca, produto, fornecedor_produto, cliente, uf_cliente, cidade_cliente, vendedor, forma_pagamento, canal, terminal, cfop, ncm.
+       - Compras: empresa, dia, semana, mes, ano, grupo, categoria, marca, produto, fornecedor_produto, fornecedor_nota, cfop_entrada, tipo_entrada, ncm.
+     - Validação rigorosa dos valores/métricas da lista permitida:
+       - Vendas: quantidade, valor_bruto, desconto, valor_liquido, custo, margem_valor, margem_percentual, quantidade_vendas, ticket_medio, preco_medio, percentual_total.
+       - Compras: quantidade, valor_produtos, frete, ipi, icms_st, credito_icms, custo_total, quantidade_notas, preco_medio, percentual_total.
+     - Validação de período máximo de 366 dias e vínculo multiempresa com `usuarios_empresas` (ou administrador).
+     - **Regras de permissões por módulo:**
+       - Base de compras restrita a usuários com permissão no módulo `compras` (`pode_ver` ou admin); retorna 403 em caso contrário.
+       - Custos e margens no relatório de vendas blindados para usuários com permissão de ver `produtos` (`pode('produtos', 'ver')` ou admin); se o usuário não possuir essa permissão, custos e margens retornam nulos.
+     - **Limite de Segurança:** Processa e agrega no servidor, limitando o resultado a no máximo 5.000 linhas. Se exceder, retorna aviso solicitando filtros mais específicos.
+     - **Agrupamentos hierárquicos e subtotais:** Gera árvore de nós até 3 níveis e planifica com níveis 1, 2 e 3, identificando subtotais e gerando o total geral consolidado.
+     - **Séries para Gráfico:** Devolve série agregada para o 1º nível de agrupamento quando este for temporal (dia, semana, mês, ano) ou possuir até 20 linhas.
+
+2. **Tela Relatório Personalizado (`/relatorios/personalizado` - `src/pages/relatorios/RelatorioPersonalizadoPage.tsx`):**
+   - Rota protegida por `PermissaoGuard modulo="relatorios" acao="ver"`.
+   - **Montador de 4 Passos na mesma tela:**
+     - **Passo 1 (Base de dados):** Seletor em cards de rádio entre "Itens vendidos" (vendas finalizadas descontando devoluções) e "Itens comprados" (notas lançadas com impostos e custos), com bloqueio e selo de exigência do módulo compras.
+     - **Passo 2 (Agrupamentos):** Permite escolher até 3 níveis da lista permitida da base, com botões para subir e descer níveis (reordenação) e exclusão rápida.
+     - **Passo 3 (Valores e Métricas):** Checkboxes organizados em grid, com marcação de sigilo para custos/margens se não tiver permissão de produtos.
+     - **Passo 4 (Filtros):** Integrado ao catálogo completo de filtros do Prompt 8.0b via `FiltrosRelatorio.tsx`.
+   - **Resultado em Tabela:**
+     - Hierarquia visual com recuo para os níveis 2 e 3 e badges de "Subtotal" nas quebras de grupo.
+     - Linha de "Total Geral Consolidado" com fundo contrastante.
+     - Ordenação interativa ao clicar no cabeçalho de qualquer coluna (rótulo ou métrica).
+   - **Gráfico Integrado (Recharts):**
+     - Botões de alternância entre Barras, Linhas ou Ocultar, com seletor de métrica quando o primeiro agrupamento for temporal ou tiver até 20 linhas.
+   - **Exportação CSV e Impressão:**
+     - Botões no cabeçalho com metadados do relatório, base selecionada, níveis de agrupamento e linha legível de todos os filtros aplicados.
+   - **Modal "Salvar este relatório":**
+     - Permite salvar a configuração completa com nome, descrição e opção "Compartilhar com toda a empresa".
+
+3. **Collection `relatorios_salvos` (Migration 0059):**
+   - Criação da tabela `relatorios_salvos` no Skip Cloud para persistência dos relatórios personalizados com base, agrupamentos, valores, filtros, tipo de gráfico e flag de compartilhamento.
+   - Regras de listagem e leitura pública entre o autor e registros compartilhados; criação e exclusão restritas ao proprietário.
+
+4. **Central de Relatórios (`/relatorios` - `CentralRelatoriosPage.tsx`) e Menu:**
+   - Adicionadas seções no topo da Central de Relatórios:
+     - **Meus Relatórios Salvos:** listagem dos relatórios salvos pelo usuário logado com botão de exclusão e atalho direto de execução.
+     - **Relatórios da Empresa:** relatórios compartilhados por outros colaboradores da empresa.
+   - Adicionado botão "Novo Relatório Personalizado" na Central de Relatórios.
+   - Adicionado item "Relatório Personalizado (Montador)" na categoria "Grupo" do catálogo de relatórios (`relatoriosCatalogo.ts`).
+   - Adicionado subitem "Relatório Personalizado" no menu lateral `Sidebar.tsx` sob o grupo de "Relatórios".
 
 ---
 

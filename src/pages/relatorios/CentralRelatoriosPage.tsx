@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   BarChart3,
@@ -10,6 +10,10 @@ import {
   Sparkles,
   Building,
   ChevronRight,
+  SlidersHorizontal,
+  Bookmark,
+  Share2,
+  Trash2,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -23,8 +27,15 @@ import {
   CategoriaRelatorio,
   ItemRelatorioCatalogo,
 } from '@/config/relatoriosCatalogo'
+import {
+  RelatorioSalvoRegistro,
+  listarRelatoriosSalvos,
+  excluirRelatorioSalvo,
+} from '@/services/relatorioPersonalizado'
+import { useToast } from '@/hooks/use-toast'
 
 export const CentralRelatoriosPage: React.FC = () => {
+  const { toast } = useToast()
   const { pode, administrador } = usePermissoes()
   const { empresas } = useEmpresaAtiva()
   const temMultiplasEmpresas = empresas.length > 1
@@ -32,6 +43,45 @@ export const CentralRelatoriosPage: React.FC = () => {
 
   const [busca, setBusca] = useState('')
   const [categoriaAtiva, setCategoriaAtiva] = useState<CategoriaRelatorio | 'todos'>('todos')
+
+  // Relatórios Salvos (Prompt 8.6 Item 4)
+  const [meusRelatorios, setMeusRelatorios] = useState<RelatorioSalvoRegistro[]>([])
+  const [relatoriosEmpresa, setRelatoriosEmpresa] = useState<RelatorioSalvoRegistro[]>([])
+  const [carregandoSalvos, setCarregandoSalvos] = useState(false)
+
+  const carregarSalvos = async () => {
+    setCarregandoSalvos(true)
+    try {
+      const res = await listarRelatoriosSalvos()
+      setMeusRelatorios(res.meusRelatorios)
+      setRelatoriosEmpresa(res.relatoriosEmpresa)
+    } catch {
+      /* intentionally ignored */
+    } finally {
+      setCarregandoSalvos(false)
+    }
+  }
+
+  useEffect(() => {
+    carregarSalvos()
+  }, [])
+
+  const handleExcluirSalvo = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!confirm('Deseja realmente remover este relatório salvo?')) return
+    try {
+      await excluirRelatorioSalvo(id)
+      toast({ title: 'Relatório removido' })
+      carregarSalvos()
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao remover',
+        description: err instanceof Error ? err.message : 'Falha ao remover.',
+        variant: 'destructive',
+      })
+    }
+  }
 
   // Filtra relatórios aos quais o usuário tem permissão de visualização
   const relatoriosAutorizados = useMemo(() => {
@@ -103,6 +153,12 @@ export const CentralRelatoriosPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link to="/relatorios/personalizado">
+            <Button className="h-8 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 shadow-sm">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              <span>Novo Relatório Personalizado</span>
+            </Button>
+          </Link>
           <Badge
             variant="outline"
             className="bg-white border-slate-200 text-slate-700 px-3 py-1 text-xs"
@@ -113,6 +169,142 @@ export const CentralRelatoriosPage: React.FC = () => {
           </Badge>
         </div>
       </div>
+
+      {/* ============================================================== */}
+      {/* SEÇÃO 1: MEUS RELATÓRIOS SALVOS (Prompt 8.6 Item 4)             */}
+      {/* ============================================================== */}
+      {meusRelatorios.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Bookmark className="h-4 w-4 text-indigo-600" />
+              <span>Meus Relatórios Salvos</span>
+              <Badge variant="secondary" className="text-[10px] bg-indigo-50 text-indigo-700">
+                {meusRelatorios.length}
+              </Badge>
+            </h2>
+            <Link
+              to="/relatorios/personalizado"
+              className="text-xs text-indigo-600 hover:underline font-medium"
+            >
+              Criar outro relatório
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {meusRelatorios.map((rel) => (
+              <Card
+                key={rel.id}
+                className="border-indigo-100 bg-white hover:border-indigo-300 hover:shadow-sm transition-all"
+              >
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="p-2 rounded bg-indigo-50 text-indigo-700">
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {rel.compartilhado && (
+                        <Badge
+                          variant="secondary"
+                          className="text-[9px] bg-blue-50 text-blue-700 flex items-center gap-0.5"
+                        >
+                          <Share2 className="h-2.5 w-2.5" /> Compartilhado
+                        </Badge>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => handleExcluirSalvo(rel.id, e)}
+                        title="Remover relatório salvo"
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <CardTitle className="text-sm font-semibold text-slate-900 mt-2">
+                    {rel.nome}
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-500 line-clamp-2">
+                    {rel.descricao ||
+                      `Base: ${rel.base === 'itens_vendidos' ? 'Vendas' : 'Compras'} · Agrupado por: ${rel.agrupamentos.join(' > ')}`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 pt-1">
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-indigo-600 font-medium">
+                    <Link
+                      to="/relatorios/personalizado"
+                      className="hover:underline flex items-center gap-1"
+                    >
+                      <span>Abrir relatório</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                    <span className="text-[10px] text-slate-400">
+                      {rel.created ? new Date(rel.created).toLocaleDateString('pt-BR') : ''}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* SEÇÃO 2: RELATÓRIOS DA EMPRESA (COMPARTILHADOS) (Prompt 8.6)    */}
+      {/* ============================================================== */}
+      {relatoriosEmpresa.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Building className="h-4 w-4 text-blue-600" />
+              <span>Relatórios da Empresa (Compartilhados)</span>
+              <Badge variant="secondary" className="text-[10px] bg-blue-50 text-blue-700">
+                {relatoriosEmpresa.length}
+              </Badge>
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {relatoriosEmpresa.map((rel) => (
+              <Card
+                key={rel.id}
+                className="border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm transition-all"
+              >
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="p-2 rounded bg-blue-50 text-blue-700">
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </div>
+                    <Badge variant="outline" className="text-[9px] text-slate-600 border-slate-200">
+                      {rel.base === 'itens_vendidos' ? 'Vendas' : 'Compras'}
+                    </Badge>
+                  </div>
+                  <CardTitle className="text-sm font-semibold text-slate-900 mt-2">
+                    {rel.nome}
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-500 line-clamp-2">
+                    {rel.descricao || `Agrupado por: ${rel.agrupamentos.join(' > ')}`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 pt-1">
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-blue-600 font-medium">
+                    <Link
+                      to="/relatorios/personalizado"
+                      className="hover:underline flex items-center gap-1"
+                    >
+                      <span>Abrir relatório</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                    <span className="text-[10px] text-slate-400">
+                      Por: {rel.expand?.usuario_id?.name || 'Equipe'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Card de Destaque no Topo: Painel do Grupo (Prompt 8.5) */}
       {temMultiplasEmpresas && podeVerRelatorios && (

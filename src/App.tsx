@@ -112,6 +112,7 @@ import PainelGrupoPage from '@/pages/relatorios/PainelGrupoPage'
 import VendasCanaisPage from '@/pages/relatorios/VendasCanaisPage'
 import EstoqueGerencialPage from '@/pages/relatorios/EstoqueGerencialPage'
 import ContasPagarPorVencimentoPage from '@/pages/relatorios/ContasPagarVencimentoPage'
+import RelatorioPersonalizadoPage from '@/pages/relatorios/RelatorioPersonalizadoPage'
 
 const App = () => (
   <BrowserRouter>
@@ -905,6 +906,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="financeiro_pagar" acao="ver">
                         <ContasPagarPorVencimentoPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/relatorios/personalizado"
+                    element={
+                      <PermissaoGuard modulo="relatorios" acao="ver">
+                        <RelatorioPersonalizadoPage />
                       </PermissaoGuard>
                     }
                   />

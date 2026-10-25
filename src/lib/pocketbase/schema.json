@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-25T17:36:34.238Z",
+  "generatedAt": "2026-10-25T18:00:53.081Z",
   "collections": [
     {
       "name": "users",
@@ -10823,6 +10823,99 @@
         "CREATE INDEX idx_rel_filtros_usuario ON relatorios_filtros_salvos (usuario_id)",
         "CREATE INDEX idx_rel_filtros_relatorio ON relatorios_filtros_salvos (relatorio)",
         "CREATE INDEX idx_rel_filtros_compartilhado ON relatorios_filtros_salvos (compartilhado)"
+      ]
+    },
+    {
+      "name": "relatorios_salvos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)",
+        "view": "@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)",
+        "create": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "update": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && usuario_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "usuario_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "base",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "agrupamentos",
+          "type": "json",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valores",
+          "type": "json",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "filtros",
+          "type": "json",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo_grafico",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "compartilhado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_rel_salvos_usuario ON relatorios_salvos (usuario_id)",
+        "CREATE INDEX idx_rel_salvos_tipo ON relatorios_salvos (tipo)",
+        "CREATE INDEX idx_rel_salvos_compartilhado ON relatorios_salvos (compartilhado)"
       ]
     }
   ]
