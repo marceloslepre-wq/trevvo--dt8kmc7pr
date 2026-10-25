@@ -666,7 +666,8 @@ export const FiltrosRelatorio: React.FC<FiltrosRelatorioProps> = ({
     if (filtros.contas_financeiras_ids?.length) count++
     if (filtros.situacoes_titulo?.length) count++
     if (filtros.origens_titulo?.length) count++
-    if (filtros.tipo_data && filtros.tipo_data !== 'emissao') count++
+    if (filtros.tipo_data && filtros.tipo_data !== 'emissao' && filtros.tipo_data !== 'entrada')
+      count++
     return count
   }, [filtros])
 
@@ -956,6 +957,7 @@ export const FiltrosRelatorio: React.FC<FiltrosRelatorioProps> = ({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="emissao">Data de Emissão</SelectItem>
+                        <SelectItem value="entrada">Data de Entrada da Nota</SelectItem>
                         <SelectItem value="vencimento">Data de Vencimento</SelectItem>
                         <SelectItem value="pagamento">Data de Pagamento / Liquidação</SelectItem>
                         <SelectItem value="competencia">Data de Competência</SelectItem>
@@ -1042,8 +1044,10 @@ export const FiltrosRelatorio: React.FC<FiltrosRelatorioProps> = ({
                 <div className="pt-1 space-y-4">
                   {/* Grade de Filtros de Produto */}
                   {(usaFiltro('produto_grupos_categorias') ||
+                    usaFiltro('produtos_grupos') ||
                     usaFiltro('produto_marcas') ||
                     usaFiltro('produto_produtos') ||
+                    usaFiltro('produtos_especificos') ||
                     usaFiltro('produto_fornecedores') ||
                     usaFiltro('produto_ncms') ||
                     usaFiltro('produto_situacao') ||
@@ -1054,22 +1058,29 @@ export const FiltrosRelatorio: React.FC<FiltrosRelatorioProps> = ({
                         <span>Filtros de Produtos</span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                        {usaFiltro('produto_grupos_categorias') && (
+                        {(usaFiltro('produto_grupos_categorias') ||
+                          usaFiltro('produtos_grupos')) && (
                           <>
                             <MultiSelectFiltro
-                              label="Grupos (marcar o grupo marca as categorias)"
+                              label={
+                                usaFiltro('produto_grupos_categorias')
+                                  ? 'Grupos (marcar o grupo marca as categorias)'
+                                  : 'Grupo de Produtos'
+                              }
                               opcoes={opcoesGrupos}
                               valoresSelecionados={filtros.grupos_ids || []}
                               onChange={handleGruposChange}
                               buscaPlaceholder="Buscar grupo..."
                             />
-                            <MultiSelectFiltro
-                              label="Categorias"
-                              opcoes={opcoesCategorias}
-                              valoresSelecionados={filtros.categorias_ids || []}
-                              onChange={(cats) => onChange({ ...filtros, categorias_ids: cats })}
-                              buscaPlaceholder="Buscar categoria..."
-                            />
+                            {usaFiltro('produto_grupos_categorias') && (
+                              <MultiSelectFiltro
+                                label="Categorias"
+                                opcoes={opcoesCategorias}
+                                valoresSelecionados={filtros.categorias_ids || []}
+                                onChange={(cats) => onChange({ ...filtros, categorias_ids: cats })}
+                                buscaPlaceholder="Buscar categoria..."
+                              />
+                            )}
                           </>
                         )}
                         {usaFiltro('produto_marcas') && (
@@ -1081,7 +1092,7 @@ export const FiltrosRelatorio: React.FC<FiltrosRelatorioProps> = ({
                             buscaPlaceholder="Buscar marca..."
                           />
                         )}
-                        {usaFiltro('produto_produtos') && (
+                        {(usaFiltro('produto_produtos') || usaFiltro('produtos_especificos')) && (
                           <MultiSelectFiltro
                             label="Produto (código, descrição, barras)"
                             opcoes={opcoesProdutos}

@@ -56,7 +56,14 @@ import {
   CartesianGrid,
   ResponsiveContainer,
 } from 'recharts'
-import { TrendingUp, Wallet, ArrowDownRight, ArrowUpRight, AlertTriangle } from 'lucide-react'
+import {
+  TrendingUp,
+  Wallet,
+  ArrowDownRight,
+  ArrowUpRight,
+  AlertTriangle,
+  Filter,
+} from 'lucide-react'
 
 const chartConfig: ChartConfig = {
   entradas: {
@@ -92,11 +99,11 @@ export const FluxoCaixaPage: React.FC = () => {
       dataFim: d90Iso,
     },
     tipo_data: 'vencimento',
-    contas_bancarias_ids: [],
+    contas_financeiras_ids: [],
   })
 
   const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(
-    () => ['financeiro_contas_bancarias', 'datas_tipo_data'],
+    () => ['financeiro_contas_financeiras', 'datas_tipo_data'],
     [],
   )
 
@@ -107,7 +114,7 @@ export const FluxoCaixaPage: React.FC = () => {
   const dataInicio = filtros.periodo?.dataInicio || hojeIso
   const dataFim = filtros.periodo?.dataFim || d90Iso
   const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
-  const contasSelecionadasIds = filtros.contas_bancarias_ids || []
+  const contasSelecionadasIds = filtros.contas_financeiras_ids || []
 
   const [resumo, setResumo] = useState<ResumoFluxoCaixa | null>(null)
   const [carregando, setCarregando] = useState<boolean>(false)
@@ -172,18 +179,18 @@ export const FluxoCaixaPage: React.FC = () => {
   // Toggle conta no filtro
   const handleToggleConta = (contaId: string) => {
     setFiltros((prev) => {
-      const atuais = prev.contas_bancarias_ids || []
+      const atuais = prev.contas_financeiras_ids || []
       const novos = atuais.includes(contaId)
         ? atuais.filter((id) => id !== contaId)
         : [...atuais, contaId]
-      return { ...prev, contas_bancarias_ids: novos }
+      return { ...prev, contas_financeiras_ids: novos }
     })
   }
 
   const handleSelectTodasContas = (todas: boolean) => {
     setFiltros((prev) => ({
       ...prev,
-      contas_bancarias_ids: todas ? contasDisponiveis.map((c) => c.id) : [],
+      contas_financeiras_ids: todas ? contasDisponiveis.map((c) => c.id) : [],
     }))
   }
 

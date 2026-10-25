@@ -18,8 +18,10 @@ export interface PeriodoRelatorio {
 export type ChaveFiltroDeclaravel =
   // PRODUTO
   | 'produto_grupos_categorias'
+  | 'produtos_grupos'
   | 'produto_marcas'
   | 'produto_produtos'
+  | 'produtos_especificos'
   | 'produto_fornecedores'
   | 'produto_ncms'
   | 'produto_situacao'
@@ -56,7 +58,7 @@ export type ChaveFiltroDeclaravel =
 /**
  * Opção de tipo de data quando o relatório tiver mais de uma
  */
-export type OpcaoTipoData = 'emissao' | 'vencimento' | 'pagamento' | 'competencia'
+export type OpcaoTipoData = 'emissao' | 'vencimento' | 'pagamento' | 'competencia' | 'entrada'
 
 /**
  * Formato único do objeto `filtros` enviado ao backend e manipulado no frontend (Prompt 8.0b)
@@ -375,6 +377,7 @@ export function formatarLinhaLegivelFiltros(params: {
       vencimento: 'Por Vencimento',
       pagamento: 'Por Pagamento',
       competencia: 'Por Competência',
+      entrada: 'Por Data de Entrada',
     }
     partes.push(labelData[filtros.tipo_data] || `Data: ${filtros.tipo_data}`)
   }

@@ -3331,7 +3331,7 @@ O roteiro de desenvolvimento do ERP foi concluído com sucesso em todas as suas 
 - **Etapa 5: Vendas e PDV** — Versão de fechamento: **0.0.71** (Orçamentos, pedidos de venda, controle de sessões de caixa às cegas, frente de caixa PDV, trocas/devoluções e comissões).
 - **Etapa 6: Emissão Fiscal** — Versão de fechamento: **0.0.91** (Motor fiscal de tributação, emissão de NF-e 55 e NFC-e 65, cancelamentos, cartas de correção CC-e, inutilizações e exportação de XMLs).
 - **Etapa 7: SPED Fiscal (EFD ICMS/IPI)** — Versão de fechamento: **0.0.105** (Geração dos Blocos 0, C, E, H, K, 1 e 9, apuração de ICMS Próprio e DIFAL, validações pré-PVA e relatório de conferência).
-- **Etapa 8: Relatórios e Painel** — Versão de fechamento: **0.0.115** (Central de relatórios, filtros comuns 8.0b, livro de saídas, resumo de ICMS, vendas por canal, estoque gerencial, contas a pagar, painel do grupo, relatório personalizado com 7 bases, filtros salvos, filtros nas telas existentes e migration 0060 de índices).
+- **Etapa 8: Relatórios e Painel** — Versão de fechamento: **0.0.117** (Central de relatórios, filtros comuns 8.0b, livro de saídas, resumo de ICMS, vendas por canal, estoque gerencial, contas a pagar, painel do grupo, relatório personalizado com 7 bases, filtros salvos, filtros nas telas existentes, migration 0060 de índices e alinhamento do filtro de data de entrada em compras).
 
 ---
 
@@ -3381,7 +3381,18 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 
 ## Versão Atual do Projeto
 
-**Versão 0.0.115** — Fechamento Oficial da Etapa 8 (Relatórios e Painel) e Conclusão do Roteiro Geral do ERP:
+**Versão 0.0.117** — Fechamento Oficial da Etapa 8 (Relatórios e Painel) e Conclusão do Roteiro Geral do ERP:
+
+1. **Correção e Expansão do Tipo de Data de Entrada no Catálogo 8.0b (`FiltrosRelatorio` e `relatorios.ts`):**
+   - Inclusão de `'entrada'` (Data de Entrada da Nota) nas opções válidas de `OpcaoTipoData` e no seletor de tipos de data de `FiltrosRelatorio.tsx`.
+   - Ajuste nos aliases de filtros de produtos (`produtos_especificos`, `produtos_grupos`) em `ChaveFiltroDeclaravel` e `FiltrosRelatorio.tsx` para suporte completo nas telas legadas.
+   - Atualização do endpoint de backend `relatorios_base.js` (`POST /backend/v1/relatorios/validar-filtros`) para reconhecer `'entrada'` como tipo de data válido e formatá-lo na linha legível de filtros (`"Por Data de Entrada"`).
+   - Validação de que `/compras/itens-comprados` filtra estritamente pelo campo `data_entrada` das notas lançadas no backend e exibe a data de entrada dos itens.
+   - Roteiro concluído atualizado para apontar a Etapa 8 na versão 0.0.117.
+
+---
+
+**Versão 0.0.115** — Etapa 8 (Relatórios e Painel) — Consolidação de Telas e Migration 0060:
 
 1. **Filtros nas Telas Existentes com o Componente Comum 8.0b (`FiltrosRelatorio`):**
    - Integrado o componente unificado de filtros do 8.0b nas 7 telas consolidadas de vendas, estoque, compras e financeiro, preservando 100% de seus cálculos internos e regras de negócio:

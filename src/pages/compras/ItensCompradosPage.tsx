@@ -124,13 +124,18 @@ export const ItensCompradosPage: React.FC = () => {
   }, [carregarDados])
 
   const handleLimparFiltros = () => {
-    const d = new Date()
-    d.setDate(d.getDate() - 30)
-    setDataInicio(d.toISOString().split('T')[0])
-    setDataFim(new Date().toISOString().split('T')[0])
-    setFornecedorId('todos')
-    setProdutoId('todos')
-    setGrupoId('todos')
+    setFiltros({
+      empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
+      atalho_periodo: 'ultimos_30',
+      periodo: {
+        dataInicio: dataInicioPadrao,
+        dataFim: dataFimPadrao,
+      },
+      tipo_data: 'entrada',
+      fornecedores_ids: [],
+      produtos_ids: [],
+      grupos_ids: [],
+    })
     setCfopEntrada('todos')
     setBusca('')
   }

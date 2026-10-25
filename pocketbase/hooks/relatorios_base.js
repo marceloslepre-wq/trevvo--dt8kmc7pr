@@ -132,7 +132,11 @@ routerAdd('POST', '/backend/v1/relatorios/validar-filtros', (c) => {
     : []
 
   // 6. Datas
-  const tipoData = f.tipo_data || 'emissao'
+  const tipoData = ['emissao', 'vencimento', 'pagamento', 'competencia', 'entrada'].includes(
+    f.tipo_data,
+  )
+    ? f.tipo_data
+    : f.tipo_data || 'emissao'
 
   const filtrosNorm = {
     empresas_ids: empresasIds,
@@ -304,6 +308,15 @@ routerAdd('POST', '/backend/v1/relatorios/validar-filtros', (c) => {
   }
   if (filtrosNorm.plano_contas_ids.length > 0) {
     partes.push(`Plano de Contas: ${filtrosNorm.plano_contas_ids.length}`)
+  }
+  if (filtrosNorm.tipo_data && filtrosNorm.tipo_data !== 'emissao') {
+    const mapData = {
+      vencimento: 'Por Vencimento',
+      pagamento: 'Por Pagamento',
+      competencia: 'Por Competência',
+      entrada: 'Por Data de Entrada',
+    }
+    partes.push(mapData[filtrosNorm.tipo_data] || `Data: ${filtrosNorm.tipo_data}`)
   }
   if (filtrosNorm.temFiltroProduto) {
     partes.push('Filtro de produto ativo (totais correspondem apenas aos itens filtrados)')
