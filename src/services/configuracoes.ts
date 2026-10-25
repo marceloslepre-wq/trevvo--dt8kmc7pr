@@ -25,9 +25,11 @@ export const CONFIG_PADRAO: ConfiguracaoGeral = {
 /**
  * Obtém a configuração ativa geral do sistema (primeiro registro da tabela configuracoes).
  */
-export async function obterConfiguracaoGeral(): Promise<ConfiguracaoGeral> {
+export async function obterConfiguracaoGeral(assinanteId?: string): Promise<ConfiguracaoGeral> {
   try {
+    const filter = assinanteId ? `assinante_id = '${assinanteId}'` : undefined
     const list = await pb.collection('configuracoes').getList<ConfiguracaoGeral>(1, 1, {
+      filter,
       sort: '-created',
     })
     if (list.items.length > 0) {

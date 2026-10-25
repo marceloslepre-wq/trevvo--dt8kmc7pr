@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { Empresa, listarEmpresasAcessiveis, listarEmpresasAtivas } from '@/services/empresas'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { obterEmpresasDoUsuario } from '@/services/usuarios'
+import pb from '@/lib/pocketbase/client'
 
 interface AssinanteTenancy {
   id: string
@@ -135,14 +136,17 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }
 
-  return (
-    const assinanteIdCalculado =
+  const assinanteIdCalculado = useMemo(() => {
+    return (
       assinante?.id ||
       usuarioERP?.assinante_id ||
       empresaAtiva?.assinante_id ||
       (empresas.length > 0 ? empresas[0].assinante_id : null) ||
       null
+    )
+  }, [assinante, usuarioERP, empresaAtiva, empresas])
 
+  return (
     <EmpresaContext.Provider
       value={{
         empresas,

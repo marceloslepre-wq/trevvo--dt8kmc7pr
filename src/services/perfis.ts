@@ -60,12 +60,17 @@ export interface ListarPerfisParams {
   page?: number
   perPage?: number
   ordenacao?: string
+  assinante_id?: string
 }
 
 export async function listarPerfis(params: ListarPerfisParams = {}) {
   const page = params.page || 1
   const perPage = params.perPage || 20
   const condicoes: string[] = []
+
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
 
   if (params.busca && params.busca.trim()) {
     const b = params.busca.trim().replace(/['"]/g, '')
@@ -89,9 +94,13 @@ export async function listarPerfis(params: ListarPerfisParams = {}) {
   return res
 }
 
-export async function listarTodosPerfisAtivos(): Promise<PerfilAcesso[]> {
+export async function listarTodosPerfisAtivos(assinanteId?: string): Promise<PerfilAcesso[]> {
+  const conds = ['ativo = true']
+  if (assinanteId) {
+    conds.push(`assinante_id = '${assinanteId}'`)
+  }
   return await pb.collection('perfis_acesso').getFullList<PerfilAcesso>({
-    filter: 'ativo = true',
+    filter: conds.join(' && '),
     sort: 'nome',
   })
 }

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Fornecedor, TipoFornecedor, listarTodosFornecedoresAtivos } from '@/services/fornecedores'
 import { formatarCNPJ, formatarCPF } from '@/lib/validacoes'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 
 export interface SelectFornecedorProps {
   value?: string
@@ -35,18 +36,19 @@ export const SelectFornecedor: React.FC<SelectFornecedorProps> = ({
   const [busca, setBusca] = useState('')
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
   const [carregando, setCarregando] = useState(false)
+  const assinanteId = useAssinanteId()
 
   const carregarFornecedores = useCallback(async () => {
     setCarregando(true)
     try {
-      const lista = await listarTodosFornecedoresAtivos(filtroTipo)
+      const lista = await listarTodosFornecedoresAtivos(filtroTipo, assinanteId || undefined)
       setFornecedores(lista)
     } catch (err) {
       console.error('Erro ao carregar fornecedores:', err)
     } finally {
       setCarregando(false)
     }
-  }, [filtroTipo])
+  }, [filtroTipo, assinanteId])
 
   useEffect(() => {
     carregarFornecedores()

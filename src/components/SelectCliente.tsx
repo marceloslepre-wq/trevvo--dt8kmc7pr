@@ -6,6 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Input } from '@/components/ui/input'
 import { Cliente, listarClientes } from '@/services/clientes'
 import { formatarCNPJ, formatarCPF } from '@/lib/validacoes'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 
 export interface SelectClienteProps {
   value?: string
@@ -32,6 +33,7 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
   const [busca, setBusca] = useState('')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [carregando, setCarregando] = useState(false)
+  const assinanteId = useAssinanteId()
 
   const carregarClientes = useCallback(async () => {
     setCarregando(true)
@@ -40,6 +42,7 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
         situacao: 'ativos',
         porPagina: 100,
         sort: 'razao_social',
+        assinante_id: assinanteId || undefined,
       })
       setClientes(resp.items)
     } catch (err) {
@@ -47,7 +50,7 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
     } finally {
       setCarregando(false)
     }
-  }, [])
+  }, [assinanteId])
 
   useEffect(() => {
     carregarClientes()

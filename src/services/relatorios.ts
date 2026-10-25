@@ -150,11 +150,18 @@ export interface FiltroSalvoRelatorio {
  * Lista todos os filtros salvos visíveis para o relatório especificado:
  * Retorna os filtros do próprio usuário logado + os filtros compartilhados por outros usuários.
  */
-export async function listarFiltrosSalvos(relatorioId: string): Promise<FiltroSalvoRelatorio[]> {
+export async function listarFiltrosSalvos(
+  relatorioId: string,
+  assinanteId?: string,
+): Promise<FiltroSalvoRelatorio[]> {
   if (!relatorioId) return []
   try {
+    const conds = [`relatorio = '${relatorioId.replace(/'/g, "\\'")}'`]
+    if (assinanteId) {
+      conds.push(`assinante_id = '${assinanteId}'`)
+    }
     const records = await pb.collection('relatorios_filtros_salvos').getFullList({
-      filter: `relatorio = '${relatorioId.replace(/'/g, "\\'")}'`,
+      filter: conds.join(' && '),
       sort: '-created',
       expand: 'usuario_id',
     })

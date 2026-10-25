@@ -53,6 +53,7 @@ export interface ListarFormasPagamentoParams {
   busca?: string
   tipo?: TipoFormaPagamento | 'todos'
   situacao?: 'todos' | 'ativos' | 'inativos'
+  assinante_id?: string
 }
 
 export async function listarFormasPagamento(
@@ -61,6 +62,10 @@ export async function listarFormasPagamento(
   const normParams: ListarFormasPagamentoParams = typeof params === 'string' ? {} : params || {}
   params = normParams
   const condicoes: string[] = []
+
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
 
   if (params.situacao === 'ativos' || !params.situacao) {
     condicoes.push('ativo = true')
@@ -96,13 +101,15 @@ export async function obterFormaPagamentoPorId(id: string): Promise<FormaPagamen
 
 export async function obterFormaPagamentoPorCodigoTpag(
   codigo: string,
+  assinanteId?: string,
 ): Promise<FormaPagamento | null> {
   try {
-    const rec = await pb
-      .collection('formas_pagamento')
-      .getFirstListItem<FormaPagamento>(`codigo_tpag = '${codigo.trim()}'`, {
-        expand: 'conta_financeira_padrao_id,operadora_cliente_id',
-      })
+    const filter = assinanteId
+      ? `codigo_tpag = '${codigo.trim()}' && assinante_id = '${assinanteId}'`
+      : `codigo_tpag = '${codigo.trim()}'`
+    const rec = await pb.collection('formas_pagamento').getFirstListItem<FormaPagamento>(filter, {
+      expand: 'conta_financeira_padrao_id,operadora_cliente_id',
+    })
     return rec
   } catch {
     return null

@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 import {
   CondicaoPagamento,
   TipoCondicaoPagamento,
@@ -57,6 +58,7 @@ export const SelectCondicaoPagamento: React.FC<SelectCondicaoPagamentoProps> = (
   const { toast } = useToast()
   const { pode } = usePermissoes()
   const podeCriarCondicao = pode('condicoes_pagamento', 'criar')
+  const assinanteId = useAssinanteId()
 
   const [open, setOpen] = useState(false)
   const [busca, setBusca] = useState('')
@@ -75,14 +77,14 @@ export const SelectCondicaoPagamento: React.FC<SelectCondicaoPagamentoProps> = (
   const carregarCondicoes = useCallback(async () => {
     setCarregando(true)
     try {
-      const lista = await listarTodasCondicoesAtivas(uso)
+      const lista = await listarTodasCondicoesAtivas(uso, assinanteId || undefined)
       setCondicoes(lista)
     } catch (err) {
       console.error('Erro ao carregar condições de pagamento:', err)
     } finally {
       setCarregando(false)
     }
-  }, [uso])
+  }, [uso, assinanteId])
 
   useEffect(() => {
     carregarCondicoes()

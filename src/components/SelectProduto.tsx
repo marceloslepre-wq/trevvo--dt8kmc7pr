@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Produto, TipoProduto, listarProdutos } from '@/services/produtos'
 import pb from '@/lib/pocketbase/client'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 
 export interface SelectProdutoProps {
   value?: string
@@ -36,6 +37,7 @@ export const SelectProduto: React.FC<SelectProdutoProps> = ({
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [carregando, setCarregando] = useState(false)
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null)
+  const assinanteId = useAssinanteId()
 
   const carregarProdutos = useCallback(
     async (termo: string) => {
@@ -47,6 +49,7 @@ export const SelectProduto: React.FC<SelectProdutoProps> = ({
           situacao: 'ativos',
           itensPorPagina: 30,
           ordenacao: 'descricao',
+          assinante_id: assinanteId || undefined,
         })
         setProdutos(res.items)
       } catch (err) {
@@ -55,7 +58,7 @@ export const SelectProduto: React.FC<SelectProdutoProps> = ({
         setCarregando(false)
       }
     },
-    [filtroTipo],
+    [filtroTipo, assinanteId],
   )
 
   // Carrega produtos iniciais ao abrir o combobox ou quando o termo de busca mudar

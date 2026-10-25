@@ -34,13 +34,13 @@ export interface ListarCondicoesParams {
   pagina?: number
   porPagina?: number
   busca?: string
-  tipo?: 'todos' | TipoCondicaoPagamento
-  uso?: 'todos' | UsoCondicaoPagamento
+  tipo?: string
+  uso?: string
   situacao?: 'todos' | 'ativos' | 'inativos'
   ordenarPor?: string
   ordem?: 'asc' | 'desc'
+  assinante_id?: string
 }
-
 export interface ResultadoPaginado<T> {
   items: T[]
   page: number
@@ -329,9 +329,11 @@ export function validarDadosCondicao(dados: Partial<CondicaoPagamento>): {
 /**
  * Retorna o próximo código sequencial para condicao_pagamento
  */
-export async function obterProximoCodigoCondicao(): Promise<number> {
+export async function obterProximoCodigoCondicao(assinanteId?: string): Promise<number> {
   try {
+    const filter = assinanteId ? `assinante_id = '${assinanteId}'` : undefined
     const res = await pb.collection('condicoes_pagamento').getList(1, 1, {
+      filter,
       sort: '-codigo',
     })
     if (res.items.length > 0) {
@@ -362,6 +364,10 @@ export async function listarCondicoesPagamento(
   } = params
 
   const filters: string[] = []
+
+  if (params.assinante_id) {
+    filters.push(`assinante_id = '${params.assinante_id}'`)
+  }
 
   if (situacao === 'ativos') {
     filters.push('ativo = true')
@@ -411,9 +417,13 @@ export async function listarCondicoesPagamento(
  */
 export async function listarTodasCondicoesAtivas(
   usoFiltro?: 'Vendas' | 'Compras',
+  assinanteId?: string,
 ): Promise<CondicaoPagamento[]> {
   try {
     const condicoes: string[] = ['ativo = true']
+    if (assinanteId) {
+      condicoes.push(`assinante_id = '${assinanteId}'`)
+    }
     if (usoFiltro === 'Vendas') {
       condicoes.push('(uso = "Vendas" || uso = "Ambos")')
     } else if (usoFiltro === 'Compras') {

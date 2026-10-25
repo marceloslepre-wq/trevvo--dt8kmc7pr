@@ -15,6 +15,7 @@ import {
   listarTodosGruposAtivos,
   listarCategoriasPorGrupo,
 } from '@/services/gruposCategorias'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 
 export interface SelectGrupoCategoriaProps {
   grupoId?: string
@@ -45,6 +46,7 @@ export const SelectGrupoCategoria: React.FC<SelectGrupoCategoriaProps> = ({
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [carregandoGrupos, setCarregandoGrupos] = useState(false)
   const [carregandoCategorias, setCarregandoCategorias] = useState(false)
+  const assinanteId = useAssinanteId()
 
   // Carregar grupos
   useEffect(() => {
@@ -52,7 +54,7 @@ export const SelectGrupoCategoria: React.FC<SelectGrupoCategoriaProps> = ({
     async function carregar() {
       setCarregandoGrupos(true)
       try {
-        const dados = await listarTodosGruposAtivos()
+        const dados = await listarTodosGruposAtivos(assinanteId || undefined)
         if (ativo) {
           setGrupos(dados)
         }
@@ -66,7 +68,7 @@ export const SelectGrupoCategoria: React.FC<SelectGrupoCategoriaProps> = ({
     return () => {
       ativo = false
     }
-  }, [somenteAtivos])
+  }, [somenteAtivos, assinanteId])
 
   // Carregar categorias quando o grupoId muda
   const carregarCategorias = useCallback(
@@ -77,7 +79,7 @@ export const SelectGrupoCategoria: React.FC<SelectGrupoCategoriaProps> = ({
       }
       setCarregandoCategorias(true)
       try {
-        const dados = await listarCategoriasPorGrupo(gid, somenteAtivos)
+        const dados = await listarCategoriasPorGrupo(gid, somenteAtivos, assinanteId || undefined)
         setCategorias(dados)
       } catch (err) {
         console.error('Erro ao carregar categorias do grupo:', err)
@@ -86,7 +88,7 @@ export const SelectGrupoCategoria: React.FC<SelectGrupoCategoriaProps> = ({
         setCarregandoCategorias(false)
       }
     },
-    [somenteAtivos],
+    [somenteAtivos, assinanteId],
   )
 
   useEffect(() => {

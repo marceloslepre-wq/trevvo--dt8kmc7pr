@@ -215,6 +215,7 @@ export interface ListarProdutosParams {
   pagina?: number
   itensPorPagina?: number
   ordenacao?: string
+  assinante_id?: string
 }
 
 export interface ResultadoPaginado<T> {
@@ -286,9 +287,11 @@ export function calcularMarkup(precoVenda: number, custoFinal: number): number {
 // -------------------------------------------------------------
 // OBTENÇÃO DO PRÓXIMO CÓDIGO SEQUENCIAL
 // -------------------------------------------------------------
-export async function obterProximoCodigoProduto(): Promise<number> {
+export async function obterProximoCodigoProduto(assinanteId?: string): Promise<number> {
   try {
+    const filter = assinanteId ? `assinante_id = '${assinanteId}'` : undefined
     const registros = await pb.collection('produtos').getList<Produto>(1, 1, {
+      filter,
       sort: '-codigo',
       fields: 'codigo',
     })
@@ -315,6 +318,11 @@ export async function listarProdutos(
   const ordenacao = params.ordenacao || '-created'
 
   const condicoes: string[] = []
+
+  // Filtro de multi-tenant (assinante)
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
 
   // Filtro de situação
   if (params.situacao === 'ativos') {
@@ -397,7 +405,10 @@ export async function obterProdutoPorId(id: string): Promise<Produto> {
   })
 }
 
-export async function buscarProdutoPorCodigoOuGtin(termo: string): Promise<Produto | null> {
+export async function buscarProdutoPorCodigoOuGtin(
+  termo: string,
+  assinanteId?: string,
+): Promise<Produto | null> {
   const t = termo.trim().replace(/['"]/g, '')
   if (!t) return null
 
@@ -406,9 +417,14 @@ export async function buscarProdutoPorCodigoOuGtin(termo: string): Promise<Produ
     ? `codigo = ${Number(t)} || gtin = '${t}' || referencia = '${t}'`
     : `gtin = '${t}' || referencia = '${t}' || descricao ~ '${t}'`
 
+  const conds = ['ativo = true', `(${filter})`]
+  if (assinanteId) {
+    conds.push(`assinante_id = '${assinanteId}'`)
+  }
+
   try {
     const res = await pb.collection('produtos').getList<Produto>(1, 1, {
-      filter: `ativo = true && (${filter})`,
+      filter: conds.join(' && '),
       expand: 'marca_id,grupo_id,categoria_id,unidade_id',
     })
     return res.items[0] || null
@@ -420,7 +436,11 @@ export async function buscarProdutoPorCodigoOuGtin(termo: string): Promise<Produ
 /**
  * Busca produtos ativos para o modal de vínculo de itens da nota de entrada (por termo: código, descrição, GTIN ou ref)
  */
-export async function buscarProdutosParaVinculo(termo: string, limite = 20): Promise<Produto[]> {
+export async function buscarProdutosParaVinculo(
+  termo: string,
+  limite = 20,
+  assinanteId?: string,
+): Promise<Produto[]> {
   const t = termo.trim().replace(/['"]/g, '')
   if (!t) return []
 
@@ -429,9 +449,14 @@ export async function buscarProdutosParaVinculo(termo: string, limite = 20): Pro
     ? `codigo = ${Number(t)} || gtin ~ '${t}' || referencia ~ '${t}' || descricao ~ '${t}'`
     : `gtin ~ '${t}' || referencia ~ '${t}' || descricao ~ '${t}'`
 
+  const conds = ['ativo = true', `(${filterBusca})`]
+  if (assinanteId) {
+    conds.push(`assinante_id = '${assinanteId}'`)
+  }
+
   try {
     const res = await pb.collection('produtos').getList<Produto>(1, limite, {
-      filter: `ativo = true && (${filterBusca})`,
+      filter: conds.join(' && '),
       sort: 'descricao',
       expand: 'marca_id,grupo_id,categoria_id,unidade_id',
     })

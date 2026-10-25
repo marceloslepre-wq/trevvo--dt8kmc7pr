@@ -95,6 +95,7 @@ export interface ListarFornecedoresParams {
   situacao?: 'todos' | 'ativos' | 'inativos'
   ordenarPor?: string
   ordem?: 'asc' | 'desc'
+  assinante_id?: string
 }
 
 export interface ResultadoPaginado<T> {
@@ -116,9 +117,11 @@ export function normalizarCpfCnpj(valor?: string): string {
 /**
  * Retorna o próximo código sequencial para fornecedor
  */
-export async function obterProximoCodigoFornecedor(): Promise<number> {
+export async function obterProximoCodigoFornecedor(assinanteId?: string): Promise<number> {
   try {
+    const filter = assinanteId ? `assinante_id = '${assinanteId}'` : undefined
     const res = await pb.collection('fornecedores').getList(1, 1, {
+      filter,
       sort: '-codigo',
     })
     if (res.items.length > 0) {
@@ -203,13 +206,18 @@ export function validarDadosFornecedor(dados: Partial<Fornecedor>): {
 export async function buscarFornecedorPorCpfCnpj(
   cpfCnpj: string,
   ignorarId?: string,
+  assinanteId?: string,
 ): Promise<{ ativo?: Fornecedor | null; inativo?: Fornecedor | null }> {
   const limpo = normalizarCpfCnpj(cpfCnpj)
   if (!limpo) return { ativo: null, inativo: null }
 
   try {
+    const conds = [`cpf_cnpj = "${limpo}"`]
+    if (assinanteId) {
+      conds.push(`assinante_id = '${assinanteId}'`)
+    }
     const records = await pb.collection('fornecedores').getFullList<Fornecedor>({
-      filter: `cpf_cnpj = "${limpo}"`,
+      filter: conds.join(' && '),
     })
 
     const filtrados = ignorarId ? records.filter((r) => r.id !== ignorarId) : records
@@ -246,6 +254,10 @@ export async function listarFornecedores(
   } = params
 
   const filters: string[] = []
+
+  if (params.assinante_id) {
+    filters.push(`assinante_id = '${params.assinante_id}'`)
+  }
 
   if (situacao === 'ativos') {
     filters.push('ativo = true')
@@ -320,9 +332,13 @@ export async function obterFornecedorPorId(id: string): Promise<Fornecedor> {
  */
 export async function listarTodosFornecedoresAtivos(
   filtroTipo?: TipoFornecedor,
+  assinanteId?: string,
 ): Promise<Fornecedor[]> {
   try {
     const condicoes = ['ativo = true']
+    if (assinanteId) {
+      condicoes.push(`assinante_id = '${assinanteId}'`)
+    }
     if (filtroTipo) {
       condicoes.push(`tipo_fornecedor ?~ "${filtroTipo}"`)
     }

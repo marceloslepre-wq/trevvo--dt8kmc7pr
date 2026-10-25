@@ -164,6 +164,7 @@ export interface ListarPerfisParams {
   page?: number
   perPage?: number
   ordenacao?: string
+  assinante_id?: string
 }
 
 export interface ResultadoPaginado<T> {
@@ -274,6 +275,10 @@ export async function listarPerfisTributarios(
   const perPage = params.perPage || 20
   const condicoes: string[] = []
 
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
+
   if (params.busca && params.busca.trim()) {
     const termo = params.busca.trim().replace(/['"]/g, '')
     condicoes.push(`(nome ~ '${termo}' || descricao ~ '${termo}')`)
@@ -306,9 +311,13 @@ export async function listarPerfisTributarios(
   }
 }
 
-export async function listarTodosPerfisAtivos(): Promise<PerfilTributario[]> {
+export async function listarTodosPerfisAtivos(assinanteId?: string): Promise<PerfilTributario[]> {
+  const conds = ['ativo = true']
+  if (assinanteId) {
+    conds.push(`assinante_id = '${assinanteId}'`)
+  }
   return await pb.collection('perfis_tributarios').getFullList<PerfilTributario>({
-    filter: 'ativo = true',
+    filter: conds.join(' && '),
     sort: 'nome',
   })
 }

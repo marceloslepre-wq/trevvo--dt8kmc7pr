@@ -9,6 +9,7 @@ import {
   listarTodosPerfisAtivos,
   RegimePerfilTributario,
 } from '@/services/perfisTributarios'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 
 export interface SelectPerfilTributarioProps {
   value?: string
@@ -35,13 +36,14 @@ export const SelectPerfilTributario: React.FC<SelectPerfilTributarioProps> = ({
   const [busca, setBusca] = useState('')
   const [itens, setItens] = useState<PerfilTributario[]>([])
   const [carregando, setCarregando] = useState(false)
+  const assinanteId = useAssinanteId()
 
   useEffect(() => {
     let ativo = true
     async function carregar() {
       setCarregando(true)
       try {
-        const perfis = await listarTodosPerfisAtivos()
+        const perfis = await listarTodosPerfisAtivos(assinanteId || undefined)
         if (ativo) {
           if (regimeFiltro) {
             setItens(perfis.filter((p) => p.regime === regimeFiltro))
@@ -61,7 +63,7 @@ export const SelectPerfilTributario: React.FC<SelectPerfilTributarioProps> = ({
     return () => {
       ativo = false
     }
-  }, [regimeFiltro])
+  }, [regimeFiltro, assinanteId])
 
   const selecionado = useMemo(() => {
     if (!value) return null

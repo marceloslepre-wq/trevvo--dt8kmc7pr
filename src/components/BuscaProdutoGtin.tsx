@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Produto, listarProdutos } from '@/services/produtos'
 import pb from '@/lib/pocketbase/client'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 
 export interface BuscaProdutoGtinProps {
   onSelecionarProduto: (produto: Produto, quantidade?: number) => void
@@ -32,6 +33,7 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
   const [menuAberto, setMenuAberto] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const assinanteId = useAssinanteId()
 
   useEffect(() => {
     if (autoFoco && inputRef.current) {
@@ -67,6 +69,7 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
           situacao: 'ativos',
           itensPorPagina: 15,
           ordenacao: 'descricao',
+          assinante_id: assinanteId || undefined,
         })
         const filtrados = filtroControlaEstoque
           ? res.items.filter((p) => p.controla_estoque !== false && p.tipo !== 'Serviço')
@@ -81,7 +84,7 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
     }, 250)
 
     return () => clearTimeout(timer)
-  }, [termo, filtroControlaEstoque])
+  }, [termo, filtroControlaEstoque, assinanteId])
 
   // Ao bipar código de barras (Enter)
   const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -95,8 +98,11 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
         // Tenta achar por GTIN exato
         let encontrado: Produto | null = null
         try {
+          const gtinFilter = assinanteId
+            ? `gtin = '${codigoLimpo}' && ativo = true && assinante_id = '${assinanteId}'`
+            : `gtin = '${codigoLimpo}' && ativo = true`
           const porGtin = await pb.collection('produtos').getList<Produto>(1, 1, {
-            filter: `gtin = '${codigoLimpo}' && ativo = true`,
+            filter: gtinFilter,
             expand: 'unidade_id,marca_id',
           })
           if (porGtin.items.length > 0) {
@@ -109,8 +115,11 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
         // Se não achou por GTIN, tenta por código numérico exato
         if (!encontrado && /^\d+$/.test(codigoLimpo)) {
           try {
+            const codFilter = assinanteId
+              ? `codigo = ${parseInt(codigoLimpo, 10)} && ativo = true && assinante_id = '${assinanteId}'`
+              : `codigo = ${parseInt(codigoLimpo, 10)} && ativo = true`
             const porCod = await pb.collection('produtos').getList<Produto>(1, 1, {
-              filter: `codigo = ${parseInt(codigoLimpo, 10)} && ativo = true`,
+              filter: codFilter,
               expand: 'unidade_id,marca_id',
             })
             if (porCod.items.length > 0) {

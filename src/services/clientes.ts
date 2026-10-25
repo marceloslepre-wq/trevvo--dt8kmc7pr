@@ -99,6 +99,7 @@ export interface ListarClientesParams {
   ordenarPor?: string
   ordem?: 'asc' | 'desc'
   sort?: string
+  assinante_id?: string
 }
 
 export interface ResultadoPaginado<T> {
@@ -112,13 +113,15 @@ export interface ResultadoPaginado<T> {
 /**
  * Retorna o próximo código sequencial para novo cliente
  */
-export async function obterProximoCodigoCliente(): Promise<number> {
+export async function obterProximoCodigoCliente(assinanteId?: string): Promise<number> {
   try {
-    const res = await pb.collection('clientes').getList(1, 1, {
+    const filter = assinanteId ? `assinante_id = '${assinanteId}'` : undefined
+    const records = await pb.collection('clientes').getList<Cliente>(1, 1, {
+      filter,
       sort: '-codigo',
     })
-    if (res.items.length > 0) {
-      const maior = (res.items[0] as unknown as { codigo?: number }).codigo || 0
+    if (records.items.length > 0) {
+      const maior = (records.items[0] as unknown as { codigo?: number }).codigo || 0
       return Number(maior) + 1
     }
     return 1
@@ -212,13 +215,18 @@ export function validarDadosCliente(
 export async function buscarClientePorCpfCnpj(
   cpfCnpj: string,
   ignorarId?: string,
+  assinanteId?: string,
 ): Promise<{ ativo?: Cliente | null; inativo?: Cliente | null }> {
   const limpo = normalizarCpfCnpj(cpfCnpj)
   if (!limpo) return { ativo: null, inativo: null }
 
   try {
+    const conds = [`cpf_cnpj = "${limpo}"`]
+    if (assinanteId) {
+      conds.push(`assinante_id = '${assinanteId}'`)
+    }
     const records = await pb.collection('clientes').getFullList<Cliente>({
-      filter: `cpf_cnpj = "${limpo}"`,
+      filter: conds.join(' && '),
     })
 
     const filtrados = ignorarId ? records.filter((r) => r.id !== ignorarId) : records
@@ -256,6 +264,10 @@ export async function listarClientes(
   } = params
 
   const filters: string[] = []
+
+  if (params.assinante_id) {
+    filters.push(`assinante_id = '${params.assinante_id}'`)
+  }
 
   if (situacao === 'ativos') {
     filters.push('ativo = true')
@@ -336,10 +348,16 @@ export async function obterClientePorId(id: string): Promise<Cliente> {
 /**
  * Lista usuários que são vendedores ativos para seleção no comercial
  */
-export async function listarVendedoresAtivos(): Promise<Array<{ id: string; nome: string }>> {
+export async function listarVendedoresAtivos(
+  assinanteId?: string,
+): Promise<Array<{ id: string; nome: string }>> {
   try {
+    const conds = ['e_vendedor = true && ativo = true']
+    if (assinanteId) {
+      conds.push(`assinante_id = '${assinanteId}'`)
+    }
     const res = await pb.collection('usuarios').getFullList<{ id: string; nome: string }>({
-      filter: 'e_vendedor = true && ativo = true',
+      filter: conds.join(' && '),
       sort: 'nome',
     })
     return res

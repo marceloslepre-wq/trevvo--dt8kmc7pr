@@ -27,12 +27,17 @@ export interface ListarRegrasNcmParams {
   regime?: string
   page?: number
   perPage?: number
+  assinante_id?: string
 }
 
 export async function listarRegrasNcm(params: ListarRegrasNcmParams = {}) {
   const page = params.page || 1
   const perPage = params.perPage || 20
   const condicoes: string[] = ['ativo = true']
+
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
 
   if (params.busca && params.busca.trim()) {
     const b = params.busca.trim().replace(/['"]/g, '')
@@ -127,6 +132,7 @@ export async function buscarMelhorRegraNcm(params: {
   ncm: string
   uf?: string
   regimeEmpresa?: 'Simples Nacional' | 'Regime Normal'
+  assinante_id?: string
 }): Promise<RegraFiscalNcm | null> {
   const ncmLimpo = (params.ncm || '').replace(/\D/g, '')
   if (!ncmLimpo) return null
@@ -136,6 +142,9 @@ export async function buscarMelhorRegraNcm(params: {
 
   // Busca regras ativas que combinem com a UF ou sem UF específica
   const condicoes = [`ativo = true`]
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
   if (ufAlvo) {
     condicoes.push(`(uf = '${ufAlvo}' || uf = '' || uf = 'BR')`)
   }

@@ -41,12 +41,17 @@ export interface ListarPlanoContasParams {
   natureza?: NaturezaContaPlano | 'todos'
   situacao?: 'todos' | 'ativos' | 'inativos'
   apenasAnaliticas?: boolean
+  assinante_id?: string
 }
 
 export async function listarTodasContasPlano(
   params: ListarPlanoContasParams = {},
 ): Promise<PlanoConta[]> {
   const condicoes: string[] = []
+
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
 
   if (params.situacao === 'ativos' || !params.situacao) {
     condicoes.push('ativo = true')
@@ -88,11 +93,15 @@ export async function obterContaPlanoPorId(id: string): Promise<PlanoConta> {
   })
 }
 
-export async function obterContaPlanoPorCodigo(codigo: string): Promise<PlanoConta | null> {
+export async function obterContaPlanoPorCodigo(
+  codigo: string,
+  assinanteId?: string,
+): Promise<PlanoConta | null> {
   try {
-    const rec = await pb
-      .collection('plano_contas')
-      .getFirstListItem<PlanoConta>(`codigo = '${codigo.trim()}'`)
+    const filter = assinanteId
+      ? `codigo = '${codigo.trim()}' && assinante_id = '${assinanteId}'`
+      : `codigo = '${codigo.trim()}'`
+    const rec = await pb.collection('plano_contas').getFirstListItem<PlanoConta>(filter)
     return rec
   } catch {
     return null

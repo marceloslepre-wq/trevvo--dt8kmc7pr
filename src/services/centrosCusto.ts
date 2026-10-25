@@ -17,6 +17,7 @@ export interface ListarCentrosCustoParams {
   situacao?: 'todos' | 'ativos' | 'inativos'
   page?: number
   perPage?: number
+  assinante_id?: string
 }
 
 export interface ResultadoPaginadoCentrosCusto {
@@ -33,6 +34,10 @@ export async function listarCentrosCusto(
   const page = params.page || 1
   const perPage = params.perPage || 20
   const condicoes: string[] = []
+
+  if (params.assinante_id) {
+    condicoes.push(`assinante_id = '${params.assinante_id}'`)
+  }
 
   if (params.situacao === 'ativos' || !params.situacao) {
     condicoes.push('ativo = true')
@@ -61,9 +66,13 @@ export async function listarCentrosCusto(
   }
 }
 
-export async function listarTodosCentrosCustoAtivos(): Promise<CentroCusto[]> {
+export async function listarTodosCentrosCustoAtivos(assinanteId?: string): Promise<CentroCusto[]> {
+  const conds = ['ativo = true']
+  if (assinanteId) {
+    conds.push(`assinante_id = '${assinanteId}'`)
+  }
   return await pb.collection('centros_custo').getFullList<CentroCusto>({
-    filter: 'ativo = true',
+    filter: conds.join(' && '),
     sort: 'codigo',
   })
 }
@@ -72,11 +81,15 @@ export async function obterCentroCustoPorId(id: string): Promise<CentroCusto> {
   return await pb.collection('centros_custo').getOne<CentroCusto>(id)
 }
 
-export async function obterCentroCustoPorCodigo(codigo: string): Promise<CentroCusto | null> {
+export async function obterCentroCustoPorCodigo(
+  codigo: string,
+  assinanteId?: string,
+): Promise<CentroCusto | null> {
   try {
-    const rec = await pb
-      .collection('centros_custo')
-      .getFirstListItem<CentroCusto>(`codigo = '${codigo.trim()}'`)
+    const filter = assinanteId
+      ? `codigo = '${codigo.trim()}' && assinante_id = '${assinanteId}'`
+      : `codigo = '${codigo.trim()}'`
+    const rec = await pb.collection('centros_custo').getFirstListItem<CentroCusto>(filter)
     return rec
   } catch {
     return null
