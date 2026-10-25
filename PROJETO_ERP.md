@@ -3322,6 +3322,44 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.114** — Etapa 8 Relatórios e Painel (Prompt 8.7: Relatório Personalizado - Parte 2: Estoque e Financeiro):
+
+1. **Expansão do Endpoint Backend (`POST /backend/v1/relatorios/personalizado`):**
+   - Atualizado em `pocketbase/hooks/relatorio_personalizado.js` no Skip Cloud (PocketBase).
+   - Agora suporta 7 bases de dados estritas:
+     1. `itens_vendidos`: Vendas finalizadas deduzindo devoluções (Prompt 8.6).
+     2. `itens_comprados`: Notas de entrada lançadas com tributos e custos (Prompt 8.6).
+     3. `estoque_data`: Estoque em uma data escolhida (`data_base` ou período). Reutiliza a lógica do 8.3 / estoque-gerencial: se `data_base >= hoje`, consulta `estoque_saldos`; se `data_base < hoje`, recupera `saldo_posterior` e `custo_medio_posterior` do último `estoque_movimentos` não estornado até a data. Agrupamentos: `empresa`, `grupo`, `categoria`, `marca`, `produto`, `fornecedor_produto`. Métricas: `quantidade`, `custo_medio`, `valor_estoque`, `percentual_total`.
+     4. `estoque_movimentos`: Movimentações de estoque não estornadas (`estoque_movimentos`). Agrupamentos: `empresa`, `dia`, `semana`, `mes`, `ano`, `grupo`, `categoria`, `marca`, `produto`, `fornecedor_produto`, `origem`, `tipo`. Métricas: `quantidade`, `valor`.
+     5. `contas_pagar`: Títulos de contas a pagar não cancelados (`contas_pagar`). Agrupamentos: `empresa`, `fornecedor`, `plano_contas`, `centro_custo`, `situacao`, `origem`, `mes_vencimento`, `faixa_atraso`. Métricas: `valor_original`, `valor_pago`, `saldo`, `quantidade_titulos`, `atraso_medio`.
+     6. `contas_receber`: Títulos de contas a receber não cancelados (`contas_receber`). Agrupamentos: `empresa`, `cliente`, `plano_contas`, `centro_custo`, `situacao`, `origem`, `mes_vencimento`, `faixa_atraso`. Métricas: `valor_original`, `valor_recebido`, `saldo`, `quantidade_titulos`, `atraso_medio`.
+     7. `movimentacoes_financeiras`: Movimentações bancárias e de caixa não estornadas (`movimentacoes_financeiras`). Agrupamentos: `empresa`, `dia`, `semana`, `mes`, `ano`, `conta_financeira`, `plano_contas`, `centro_custo`, `origem`, `tipo`. Métricas: `entradas`, `saidas`, `saldo_periodo`.
+   - **Regras de Permissão por Módulo e Sigilo de Custos:**
+     - Base `itens_comprados`: exige módulo `compras`.
+     - Bases `estoque_data` e `estoque_movimentos`: exigem módulo `estoque`.
+     - Base `contas_pagar`: exige módulo `financeiro_pagar`.
+     - Base `contas_receber`: exige módulo `financeiro_receber`.
+     - Base `movimentacoes_financeiras`: exige módulo `financeiro_receber` ou `financeiro_bancos`.
+     - Valores e métricas de custo (`custo_medio`, `valor_estoque`, `valor`, `custo`, margens) são blindados para quem tem permissão no módulo `produtos` (`pode('produtos', 'ver')` ou admin). Sem a permissão, os valores retornam nulos.
+   - **Filtros e Limites:**
+     - Integração com catálogo 8.0b (produtos, fornecedores, clientes, datas por vencimento/emissão/pagamento/competência, planos de contas, centros de custo, contas financeiras).
+     - Limite máximo estrito de 5.000 linhas com retorno de erro orientativo caso exceda.
+
+2. **Tipagem e Serviços no Frontend (`src/services/relatorioPersonalizado.ts`):**
+   - Types completos para todas as 7 bases, seus agrupamentos específicos e métricas permitidas.
+   - Dicionários legíveis de agrupamentos e de métricas com formatação (moeda, número, percentual) e flags de sigilo.
+   - Funções tipadas `consultarRelatorioPersonalizado`, `listarRelatoriosSalvos` e `salvarRelatorioPersonalizado`.
+
+3. **Tela do Montador Atualizada (`src/pages/relatorios/RelatorioPersonalizadoPage.tsx`):**
+   - Seletor de Base de Dados no Passo 1 com cards ilustrados e badges com ícone de cadeado para módulos sem permissão.
+   - Atualização dinâmica e sincronizada dos agrupamentos disponíveis (Passo 2) e métricas (Passo 3) conforme a base selecionada.
+   - Filtros contextuais no Passo 4 através do componente unificado `FiltrosRelatorio.tsx` adaptados para cada base (ex.: tipo de data emissão/vencimento/pagamento/competência em financeiro; contas financeiras em movimentações).
+   - Tabela analítica com recuo hierárquico, subtotais destacados e linha de total geral consolidado.
+   - Gráfico interativo (Barras ou Linhas) disponível quando o primeiro agrupamento for temporal ou tiver até 20 linhas.
+   - Exportação completa para CSV formatado com metadados e impressão padronizada com cabeçalho formal do ERP.
+
+---
+
 **Versão 0.0.107** — Etapa 8 Relatórios e Painel (Prompt 8.0b: Catálogo Completo de Filtros, Formato Único, Motor Comum no Backend e Filtros Salvos):
 
 1. **Catálogo Completo de Filtros nos Relatórios (`FiltrosRelatorio.tsx` e `MultiSelectFiltro.tsx`):**

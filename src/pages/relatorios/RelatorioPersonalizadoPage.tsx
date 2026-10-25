@@ -1,25 +1,70 @@
+/**
+ * Tela de Relatório Personalizado (Montador) - Prompt 8.6 & 8.7
+ * Rota: /relatorios/personalizado
+ *
+ * Bases suportadas:
+ * 1) Itens vendidos (8.6)
+ * 2) Itens comprados (8.6)
+ * 3) Estoque em uma data (8.7)
+ * 4) Movimentações de estoque (8.7)
+ * 5) Contas a pagar (8.7)
+ * 6) Contas a receber (8.7)
+ * 7) Movimentações financeiras (8.7)
+ *
+ * Recursos:
+ * - 4 passos visuais na mesma tela
+ * - Até 3 níveis hierárquicos de agrupamento com ordenação e subtotais
+ * - Métricas selecionáveis com controle de sigilo de custos
+ * - Gráfico comparativo interativo (barras/linhas/oculto)
+ * - Tabela com cabeçalho ordenável, recuo visual, subtotais e rodapé totalizador
+ * - Exportação para CSV completo formatado
+ * - Impressão estilizada no padrão formal do ERP
+ * - Salvamento de modelos na tabela relatorios_salvos (privado ou compartilhado)
+ */
+
 import React, { useState, useEffect, useMemo } from 'react'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useToast } from '@/hooks/use-toast'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import {
   SlidersHorizontal,
-  Layers,
-  CheckSquare,
-  BarChart2,
-  LineChart as LineChartIcon,
   Download,
   Printer,
-  BookmarkPlus,
   RefreshCw,
-  AlertCircle,
-  HelpCircle,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  ChevronRight,
-  Database,
-  Eye,
   Plus,
   X,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  BarChart2,
+  LineChart as LineChartIcon,
+  ChevronRight,
+  BookmarkPlus,
+  Layers,
   Lock,
+  AlertCircle,
+  Package,
+  ShoppingCart,
+  Boxes,
+  ArrowLeftRight,
+  TrendingDown,
+  TrendingUp,
+  Landmark,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -31,57 +76,51 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
-  Legend,
 } from 'recharts'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog'
-import { usePermissoes } from '@/contexts/PermissoesContext'
-import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
-import { useToast } from '@/hooks/use-toast'
 import { FiltrosRelatorio } from '@/components/relatorios/FiltrosRelatorio'
 import {
   ObjetoFiltrosRelatorio,
   ChaveFiltroDeclaravel,
+  formatarDataIso,
   gerarCsvRelatorio,
   fazerDownloadCsv,
   dispararImpressaoRelatorio,
   formatarLinhaLegivelFiltros,
-  formatarDataIso,
 } from '@/services/relatorios'
 import {
   BaseRelatorioPersonalizado,
   AgrupamentoPersonalizado,
   ValorMetricaPersonalizado,
   RespostaRelatorioPersonalizado,
-  LinhaRelatorioPersonalizado,
   consultarRelatorioPersonalizado,
   salvarRelatorioPersonalizado,
   DICIONARIO_AGRUPAMENTOS_VENDAS,
   DICIONARIO_AGRUPAMENTOS_COMPRAS,
+  DICIONARIO_AGRUPAMENTOS_ESTOQUE_DATA,
+  DICIONARIO_AGRUPAMENTOS_ESTOQUE_MOVIMENTOS,
+  DICIONARIO_AGRUPAMENTOS_CONTAS_PAGAR,
+  DICIONARIO_AGRUPAMENTOS_CONTAS_RECEBER,
+  DICIONARIO_AGRUPAMENTOS_MOVIMENTACOES_FINANCEIRAS,
   DICIONARIO_VALORES_VENDAS,
   DICIONARIO_VALORES_COMPRAS,
+  DICIONARIO_VALORES_ESTOQUE_DATA,
+  DICIONARIO_VALORES_ESTOQUE_MOVIMENTOS,
+  DICIONARIO_VALORES_CONTAS_PAGAR,
+  DICIONARIO_VALORES_CONTAS_RECEBER,
+  DICIONARIO_VALORES_MOVIMENTACOES_FINANCEIRAS,
 } from '@/services/relatorioPersonalizado'
 
-export const RelatorioPersonalizadoPage: React.FC = () => {
+export function RelatorioPersonalizadoPage() {
   const { pode, administrador } = usePermissoes()
   const { empresaAtiva } = useEmpresaAtiva()
   const { toast } = useToast()
 
   const podeVerProdutos = pode('produtos', 'ver') || administrador
   const podeVerCompras = pode('compras', 'ver') || administrador
+  const podeVerEstoque = pode('estoque', 'ver') || administrador
+  const podeVerFinanceiroPagar = pode('financeiro_pagar', 'ver') || administrador
+  const podeVerFinanceiroReceber = pode('financeiro_receber', 'ver') || administrador
+  const podeVerFinanceiroBancos = pode('financeiro_bancos', 'ver') || administrador
 
   // Estado dos 4 passos do Montador
   // Passo 1: Base de dados
@@ -113,6 +152,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
       dataFim: dataHojeStr,
     },
     atalho_periodo: 'personalizado',
+    tipo_data: 'vencimento',
   })
 
   // Sincroniza empresa ativa caso filtros não tenham empresas
@@ -125,21 +165,123 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
     }
   }, [empresaAtiva?.id])
 
+  // Obter dicionário de agrupamentos para a base atual
+  const dicionarioAgrupamentosAtivo = useMemo(() => {
+    switch (base) {
+      case 'itens_vendidos':
+        return DICIONARIO_AGRUPAMENTOS_VENDAS
+      case 'itens_comprados':
+        return DICIONARIO_AGRUPAMENTOS_COMPRAS
+      case 'estoque_data':
+        return DICIONARIO_AGRUPAMENTOS_ESTOQUE_DATA
+      case 'estoque_movimentos':
+        return DICIONARIO_AGRUPAMENTOS_ESTOQUE_MOVIMENTOS
+      case 'contas_pagar':
+        return DICIONARIO_AGRUPAMENTOS_CONTAS_PAGAR
+      case 'contas_receber':
+        return DICIONARIO_AGRUPAMENTOS_CONTAS_RECEBER
+      case 'movimentacoes_financeiras':
+        return DICIONARIO_AGRUPAMENTOS_MOVIMENTACOES_FINANCEIRAS
+      default:
+        return {}
+    }
+  }, [base])
+
+  // Obter dicionário de valores para a base atual
+  const dicionarioValoresAtivo = useMemo(() => {
+    switch (base) {
+      case 'itens_vendidos':
+        return DICIONARIO_VALORES_VENDAS
+      case 'itens_comprados':
+        return DICIONARIO_VALORES_COMPRAS
+      case 'estoque_data':
+        return DICIONARIO_VALORES_ESTOQUE_DATA
+      case 'estoque_movimentos':
+        return DICIONARIO_VALORES_ESTOQUE_MOVIMENTOS
+      case 'contas_pagar':
+        return DICIONARIO_VALORES_CONTAS_PAGAR
+      case 'contas_receber':
+        return DICIONARIO_VALORES_CONTAS_RECEBER
+      case 'movimentacoes_financeiras':
+        return DICIONARIO_VALORES_MOVIMENTACOES_FINANCEIRAS
+      default:
+        return {}
+    }
+  }, [base])
+
   // Quando troca a base, ajusta agrupamentos e métricas padrão para evitar conflito
   const handleTrocarBase = (novaBase: BaseRelatorioPersonalizado) => {
     if (novaBase === 'itens_comprados' && !podeVerCompras) {
       toast({
-        title: 'Módulo de Compras restrito',
+        title: 'Módulo Compras restrito',
         description: 'Você não possui permissão para consultar a base de compras.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if ((novaBase === 'estoque_data' || novaBase === 'estoque_movimentos') && !podeVerEstoque) {
+      toast({
+        title: 'Módulo Estoque restrito',
+        description: 'Você não possui permissão para consultar bases de estoque.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (novaBase === 'contas_pagar' && !podeVerFinanceiroPagar) {
+      toast({
+        title: 'Módulo Contas a Pagar restrito',
+        description: 'Você não possui permissão para consultar Contas a Pagar.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (novaBase === 'contas_receber' && !podeVerFinanceiroReceber) {
+      toast({
+        title: 'Módulo Contas a Receber restrito',
+        description: 'Você não possui permissão para consultar Contas a Receber.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (
+      novaBase === 'movimentacoes_financeiras' &&
+      !podeVerFinanceiroReceber &&
+      !podeVerFinanceiroBancos
+    ) {
+      toast({
+        title: 'Módulo Financeiro restrito',
+        description: 'Você não possui permissão para consultar Movimentações Financeiras.',
         variant: 'destructive',
       })
       return
     }
 
     setBase(novaBase)
+
     if (novaBase === 'itens_comprados') {
       setAgrupamentos(['fornecedor_nota', 'marca'])
       setValores(['quantidade', 'valor_produtos', 'custo_total', 'percentual_total'])
+    } else if (novaBase === 'estoque_data') {
+      setAgrupamentos(['marca', 'produto'])
+      setValores(['quantidade', 'custo_medio', 'valor_estoque', 'percentual_total'])
+    } else if (novaBase === 'estoque_movimentos') {
+      setAgrupamentos(['origem', 'tipo'])
+      setValores(['quantidade', 'valor'])
+    } else if (novaBase === 'contas_pagar') {
+      setAgrupamentos(['plano_contas', 'mes_vencimento'])
+      setValores(['valor_original', 'valor_pago', 'saldo', 'quantidade_titulos', 'atraso_medio'])
+    } else if (novaBase === 'contas_receber') {
+      setAgrupamentos(['cliente', 'mes_vencimento'])
+      setValores([
+        'valor_original',
+        'valor_recebido',
+        'saldo',
+        'quantidade_titulos',
+        'atraso_medio',
+      ])
+    } else if (novaBase === 'movimentacoes_financeiras') {
+      setAgrupamentos(['conta_financeira', 'mes'])
+      setValores(['entradas', 'saidas', 'saldo_periodo'])
     } else {
       setAgrupamentos(['marca', 'mes'])
       setValores(['quantidade', 'valor_liquido', 'margem_valor', 'margem_percentual'])
@@ -166,39 +308,84 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
 
   // Filtros permitidos no componente FiltrosRelatorio conforme a base
   const filtrosPermitidosBase = useMemo<ChaveFiltroDeclaravel[]>(() => {
-    if (base === 'itens_vendidos') {
-      return [
-        'produto_grupos_categorias',
-        'produto_marcas',
-        'produto_produtos',
-        'produto_fornecedores',
-        'produto_ncms',
-        'produto_situacao',
-        'produto_so_fiscal_nao_revisado',
-        'pessoas_clientes',
-        'pessoas_vendedores',
-        'pessoas_operadores_caixa',
-        'pessoas_cliente_ufs',
-        'pessoas_cliente_cidades',
-        'vendas_tipos',
-        'vendas_formas_pagamento',
-        'vendas_terminais_pdv',
-        'vendas_intermediadores',
-        'vendas_com_sem_nota',
-        'fiscal_cfops',
-      ]
-    } else {
-      return [
-        'produto_grupos_categorias',
-        'produto_marcas',
-        'produto_produtos',
-        'produto_fornecedores',
-        'produto_ncms',
-        'produto_situacao',
-        'pessoas_fornecedores',
-        'fiscal_cfops',
-        'datas_tipo_data',
-      ]
+    switch (base) {
+      case 'itens_vendidos':
+        return [
+          'produto_grupos_categorias',
+          'produto_marcas',
+          'produto_produtos',
+          'produto_fornecedores',
+          'produto_ncms',
+          'produto_situacao',
+          'produto_so_fiscal_nao_revisado',
+          'pessoas_clientes',
+          'pessoas_vendedores',
+          'pessoas_operadores_caixa',
+          'pessoas_cliente_ufs',
+          'pessoas_cliente_cidades',
+          'vendas_tipos',
+          'vendas_formas_pagamento',
+          'vendas_terminais_pdv',
+          'vendas_intermediadores',
+          'vendas_com_sem_nota',
+          'fiscal_cfops',
+        ]
+      case 'itens_comprados':
+        return [
+          'produto_grupos_categorias',
+          'produto_marcas',
+          'produto_produtos',
+          'produto_fornecedores',
+          'produto_ncms',
+          'produto_situacao',
+          'pessoas_fornecedores',
+          'fiscal_cfops',
+          'datas_tipo_data',
+        ]
+      case 'estoque_data':
+        return [
+          'produto_grupos_categorias',
+          'produto_marcas',
+          'produto_produtos',
+          'produto_fornecedores',
+          'produto_ncms',
+          'produto_situacao',
+        ]
+      case 'estoque_movimentos':
+        return [
+          'produto_grupos_categorias',
+          'produto_marcas',
+          'produto_produtos',
+          'produto_fornecedores',
+          'produto_ncms',
+          'produto_situacao',
+        ]
+      case 'contas_pagar':
+        return [
+          'pessoas_fornecedores',
+          'financeiro_plano_contas',
+          'financeiro_centros_custo',
+          'financeiro_situacoes_titulo',
+          'financeiro_origens_titulo',
+          'datas_tipo_data',
+        ]
+      case 'contas_receber':
+        return [
+          'pessoas_clientes',
+          'financeiro_plano_contas',
+          'financeiro_centros_custo',
+          'financeiro_situacoes_titulo',
+          'financeiro_origens_titulo',
+          'datas_tipo_data',
+        ]
+      case 'movimentacoes_financeiras':
+        return [
+          'financeiro_contas_financeiras',
+          'financeiro_plano_contas',
+          'financeiro_centros_custo',
+        ]
+      default:
+        return []
     }
   }, [base])
 
@@ -251,7 +438,13 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
 
       if (podeGrafico && resp.dadosGrafico && resp.dadosGrafico.length > 0) {
         setTipoGrafico((prev) => (prev === 'nenhum' ? 'barras' : prev))
-        setMetricaGrafico(base === 'itens_vendidos' ? 'valor_liquido' : 'custo_total')
+        // Escolhe métrica padrão de gráfico conforme base
+        if (base === 'itens_vendidos') setMetricaGrafico('valor_liquido')
+        else if (base === 'itens_comprados') setMetricaGrafico('custo_total')
+        else if (base === 'estoque_data') setMetricaGrafico('valor_estoque')
+        else if (base === 'estoque_movimentos') setMetricaGrafico('quantidade')
+        else if (base === 'contas_pagar' || base === 'contas_receber') setMetricaGrafico('saldo')
+        else if (base === 'movimentacoes_financeiras') setMetricaGrafico('saldo_periodo')
       } else {
         setTipoGrafico('nenhum')
       }
@@ -344,9 +537,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
       return linhas
     }
 
-    // Se o usuário clicar em uma métrica para ordenar, ordena dentro do mesmo nível
     return linhas.sort((a, b) => {
-      // Subtotais sempre ficam após seus filhos ou respeitam o nível
       const valA = (a.metricas as Record<string, number | null | undefined>)[colunaOrdenada] ?? 0
       const valB = (b.metricas as Record<string, number | null | undefined>)[colunaOrdenada] ?? 0
 
@@ -372,16 +563,22 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
     return new Intl.NumberFormat('pt-BR').format(val)
   }
 
+  // Obter formato e rótulo de uma métrica qualquer
+  const getMetricaDef = (vKey: string) => {
+    const dict = dicionarioValoresAtivo as Record<
+      string,
+      { label: string; formato: 'moeda' | 'numero' | 'percentual'; sigilo?: boolean }
+    >
+    return dict[vKey]
+  }
+
   // Exportação CSV
   const handleExportarCsv = () => {
     if (!resultado) return
 
     const colunasCsv: string[] = ['Nível', 'Agrupamento / Descrição']
     resultado.valores.forEach((v) => {
-      const def =
-        base === 'itens_vendidos'
-          ? DICIONARIO_VALORES_VENDAS[v as keyof typeof DICIONARIO_VALORES_VENDAS]
-          : DICIONARIO_VALORES_COMPRAS[v as keyof typeof DICIONARIO_VALORES_COMPRAS]
+      const def = getMetricaDef(v)
       if (def) colunasCsv.push(def.label)
     })
 
@@ -407,8 +604,18 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
 
     const linhaFiltros = formatarLinhaLegivelFiltros({ filtros })
 
+    const rotulosBase: Record<BaseRelatorioPersonalizado, string> = {
+      itens_vendidos: 'Itens Vendidos',
+      itens_comprados: 'Itens Comprados',
+      estoque_data: 'Estoque em uma Data',
+      estoque_movimentos: 'Movimentações de Estoque',
+      contas_pagar: 'Contas a Pagar',
+      contas_receber: 'Contas a Receber',
+      movimentacoes_financeiras: 'Movimentações Financeiras',
+    }
+
     const csvConteudo = gerarCsvRelatorio({
-      titulo: `Relatório Personalizado - ${base === 'itens_vendidos' ? 'Itens Vendidos' : 'Itens Comprados'}`,
+      titulo: `Relatório Personalizado - ${rotulosBase[base]}`,
       empresaNome: empresaAtiva?.nome_fantasia || 'Empresas Consolidadas',
       periodo: filtros.periodo,
       linhaFiltros,
@@ -416,7 +623,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
       linhas: linhasCsv,
       totais: totalArr,
       metadadosExtras: {
-        'BASE DE DADOS': base === 'itens_vendidos' ? 'Vendas Finalizadas' : 'Compras Lançadas',
+        'BASE DE DADOS': rotulosBase[base],
         AGRUPAMENTOS: agrupamentos.join(' > '),
       },
     })
@@ -431,12 +638,19 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
 
   // Modal Salvar Relatório
   const handleAbrirModalSalvar = () => {
-    const nomePadrao = `${base === 'itens_vendidos' ? 'Vendas' : 'Compras'} por ${agrupamentos
-      .map((a) =>
-        base === 'itens_vendidos'
-          ? DICIONARIO_AGRUPAMENTOS_VENDAS[a as keyof typeof DICIONARIO_AGRUPAMENTOS_VENDAS]
-          : DICIONARIO_AGRUPAMENTOS_COMPRAS[a as keyof typeof DICIONARIO_AGRUPAMENTOS_COMPRAS],
-      )
+    const rotulosBase: Record<BaseRelatorioPersonalizado, string> = {
+      itens_vendidos: 'Vendas',
+      itens_comprados: 'Compras',
+      estoque_data: 'Estoque em Data',
+      estoque_movimentos: 'Movimentos de Estoque',
+      contas_pagar: 'Contas a Pagar',
+      contas_receber: 'Contas a Receber',
+      movimentacoes_financeiras: 'Movimentações Financeiras',
+    }
+
+    const dictAgrup = dicionarioAgrupamentosAtivo as Record<string, string>
+    const nomePadrao = `${rotulosBase[base]} por ${agrupamentos
+      .map((a) => dictAgrup[a] || a)
       .join(' e ')}`
 
     setNomeRelatorioSalvar(nomePadrao)
@@ -498,8 +712,8 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                 Relatório Personalizado (Montador)
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Monte seus próprios relatórios escolhendo a base de dados, agrupamentos, métricas e
-                filtros.
+                Monte seus próprios relatórios de Vendas, Compras, Estoque e Financeiro com total
+                flexibilidade.
               </p>
             </div>
           </div>
@@ -552,13 +766,13 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
               <span>Configuração do Relatório em 4 Passos</span>
             </CardTitle>
             <Badge variant="secondary" className="text-[10px] bg-indigo-50 text-indigo-700">
-              Parte 1: Vendas e Compras
+              Vendas · Compras · Estoque · Financeiro
             </Badge>
           </div>
         </CardHeader>
 
         <CardContent className="p-4 space-y-6">
-          {/* PASSO 1: BASE DE DADOS */}
+          {/* PASSO 1: BASE DE DADOS (7 BASES) */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[11px] font-bold flex items-center justify-center">
@@ -572,11 +786,11 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
             <RadioGroup
               value={base}
               onValueChange={(val) => handleTrocarBase(val as BaseRelatorioPersonalizado)}
-              className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 pt-1"
             >
-              {/* Opção Vendas */}
+              {/* 1) Itens Vendidos */}
               <label
-                className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-3 ${
+                className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-2.5 ${
                   base === 'itens_vendidos'
                     ? 'border-indigo-500 bg-indigo-50/60 ring-1 ring-indigo-500'
                     : 'border-slate-200 bg-white hover:border-slate-300'
@@ -585,24 +799,18 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                 <RadioGroupItem value="itens_vendidos" id="base_vendas" className="mt-0.5" />
                 <div className="space-y-0.5">
                   <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <ShoppingCart className="h-3.5 w-3.5 text-emerald-600" />
                     <span>Itens Vendidos</span>
-                    <Badge
-                      variant="outline"
-                      className="text-[9px] px-1 py-0 bg-white text-emerald-700 border-emerald-300"
-                    >
-                      Vendas
-                    </Badge>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Itens de vendas Finalizadas (`vendas_itens`), descontando automaticamente as
-                    devoluções de mercadoria registradas no período.
+                    Vendas Finalizadas (`vendas_itens`), abatendo devoluções de mercadoria.
                   </p>
                 </div>
               </label>
 
-              {/* Opção Compras */}
+              {/* 2) Itens Comprados */}
               <label
-                className={`p-3 rounded-lg border transition-all flex items-start gap-3 ${
+                className={`p-3 rounded-lg border transition-all flex items-start gap-2.5 ${
                   !podeVerCompras
                     ? 'opacity-60 cursor-not-allowed bg-slate-50 border-slate-200'
                     : base === 'itens_comprados'
@@ -618,22 +826,154 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                 />
                 <div className="space-y-0.5">
                   <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <Package className="h-3.5 w-3.5 text-blue-600" />
                     <span>Itens Comprados</span>
-                    <Badge
-                      variant="outline"
-                      className="text-[9px] px-1 py-0 bg-white text-blue-700 border-blue-300"
-                    >
-                      Compras
-                    </Badge>
-                    {!podeVerCompras && (
-                      <span className="text-[10px] text-rose-600 flex items-center gap-0.5">
-                        <Lock className="h-3 w-3" /> Exige compras
-                      </span>
+                    {!podeVerCompras && <Lock className="h-3 w-3 text-rose-500 ml-1" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Notas de entrada Lançadas (`notas_entrada_itens`), impostos e custos.
+                  </p>
+                </div>
+              </label>
+
+              {/* 3) Estoque em uma data */}
+              <label
+                className={`p-3 rounded-lg border transition-all flex items-start gap-2.5 ${
+                  !podeVerEstoque
+                    ? 'opacity-60 cursor-not-allowed bg-slate-50 border-slate-200'
+                    : base === 'estoque_data'
+                      ? 'border-indigo-500 bg-indigo-50/60 ring-1 ring-indigo-500 cursor-pointer'
+                      : 'border-slate-200 bg-white hover:border-slate-300 cursor-pointer'
+                }`}
+              >
+                <RadioGroupItem
+                  value="estoque_data"
+                  id="base_estoque_data"
+                  disabled={!podeVerEstoque}
+                  className="mt-0.5"
+                />
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <Boxes className="h-3.5 w-3.5 text-amber-600" />
+                    <span>Estoque em uma Data</span>
+                    {!podeVerEstoque && <Lock className="h-3 w-3 text-rose-500 ml-1" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Saldo e custo histórico ou atual por produto, marca e empresa.
+                  </p>
+                </div>
+              </label>
+
+              {/* 4) Movimentações de estoque */}
+              <label
+                className={`p-3 rounded-lg border transition-all flex items-start gap-2.5 ${
+                  !podeVerEstoque
+                    ? 'opacity-60 cursor-not-allowed bg-slate-50 border-slate-200'
+                    : base === 'estoque_movimentos'
+                      ? 'border-indigo-500 bg-indigo-50/60 ring-1 ring-indigo-500 cursor-pointer'
+                      : 'border-slate-200 bg-white hover:border-slate-300 cursor-pointer'
+                }`}
+              >
+                <RadioGroupItem
+                  value="estoque_movimentos"
+                  id="base_estoque_movimentos"
+                  disabled={!podeVerEstoque}
+                  className="mt-0.5"
+                />
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <ArrowLeftRight className="h-3.5 w-3.5 text-purple-600" />
+                    <span>Movimentos de Estoque</span>
+                    {!podeVerEstoque && <Lock className="h-3 w-3 text-rose-500 ml-1" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Movimentações por origem (venda, compra, ajuste, perda) e tipo.
+                  </p>
+                </div>
+              </label>
+
+              {/* 5) Contas a Pagar */}
+              <label
+                className={`p-3 rounded-lg border transition-all flex items-start gap-2.5 ${
+                  !podeVerFinanceiroPagar
+                    ? 'opacity-60 cursor-not-allowed bg-slate-50 border-slate-200'
+                    : base === 'contas_pagar'
+                      ? 'border-indigo-500 bg-indigo-50/60 ring-1 ring-indigo-500 cursor-pointer'
+                      : 'border-slate-200 bg-white hover:border-slate-300 cursor-pointer'
+                }`}
+              >
+                <RadioGroupItem
+                  value="contas_pagar"
+                  id="base_contas_pagar"
+                  disabled={!podeVerFinanceiroPagar}
+                  className="mt-0.5"
+                />
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <TrendingDown className="h-3.5 w-3.5 text-rose-600" />
+                    <span>Contas a Pagar</span>
+                    {!podeVerFinanceiroPagar && <Lock className="h-3 w-3 text-rose-500 ml-1" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Títulos a pagar por plano de contas, centro de custo, fornecedor e atraso.
+                  </p>
+                </div>
+              </label>
+
+              {/* 6) Contas a Receber */}
+              <label
+                className={`p-3 rounded-lg border transition-all flex items-start gap-2.5 ${
+                  !podeVerFinanceiroReceber
+                    ? 'opacity-60 cursor-not-allowed bg-slate-50 border-slate-200'
+                    : base === 'contas_receber'
+                      ? 'border-indigo-500 bg-indigo-50/60 ring-1 ring-indigo-500 cursor-pointer'
+                      : 'border-slate-200 bg-white hover:border-slate-300 cursor-pointer'
+                }`}
+              >
+                <RadioGroupItem
+                  value="contas_receber"
+                  id="base_contas_receber"
+                  disabled={!podeVerFinanceiroReceber}
+                  className="mt-0.5"
+                />
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Contas a Receber</span>
+                    {!podeVerFinanceiroReceber && <Lock className="h-3 w-3 text-rose-500 ml-1" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Títulos a receber por cliente, plano de contas, vencimento e faixa de atraso.
+                  </p>
+                </div>
+              </label>
+
+              {/* 7) Movimentações Financeiras */}
+              <label
+                className={`p-3 rounded-lg border transition-all flex items-start gap-2.5 ${
+                  !podeVerFinanceiroReceber && !podeVerFinanceiroBancos
+                    ? 'opacity-60 cursor-not-allowed bg-slate-50 border-slate-200'
+                    : base === 'movimentacoes_financeiras'
+                      ? 'border-indigo-500 bg-indigo-50/60 ring-1 ring-indigo-500 cursor-pointer'
+                      : 'border-slate-200 bg-white hover:border-slate-300 cursor-pointer'
+                }`}
+              >
+                <RadioGroupItem
+                  value="movimentacoes_financeiras"
+                  id="base_movimentacoes_fin"
+                  disabled={!podeVerFinanceiroReceber && !podeVerFinanceiroBancos}
+                  className="mt-0.5"
+                />
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <Landmark className="h-3.5 w-3.5 text-cyan-600" />
+                    <span>Movimentações Financeiras</span>
+                    {!podeVerFinanceiroReceber && !podeVerFinanceiroBancos && (
+                      <Lock className="h-3 w-3 text-rose-500 ml-1" />
                     )}
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Itens de notas fiscais de entrada Lançadas (`notas_entrada_itens`), incluindo
-                    impostos creditados e custos totais de aquisição.
+                    Extrato de movimentações por conta financeira, plano de contas e saldo.
                   </p>
                 </div>
               </label>
@@ -659,14 +999,8 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
             {/* Fila dos agrupamentos selecionados com botões de reordenar */}
             <div className="p-2.5 bg-slate-100/80 rounded-lg border border-slate-200 flex flex-wrap items-center gap-2 min-h-11">
               {agrupamentos.map((agrup, idx) => {
-                const label =
-                  base === 'itens_vendidos'
-                    ? DICIONARIO_AGRUPAMENTOS_VENDAS[
-                        agrup as keyof typeof DICIONARIO_AGRUPAMENTOS_VENDAS
-                      ]
-                    : DICIONARIO_AGRUPAMENTOS_COMPRAS[
-                        agrup as keyof typeof DICIONARIO_AGRUPAMENTOS_COMPRAS
-                      ]
+                const dict = dicionarioAgrupamentosAtivo as Record<string, string>
+                const label = dict[agrup] || agrup
 
                 return (
                   <div
@@ -674,7 +1008,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                     className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-indigo-200 text-indigo-900 rounded-md text-xs font-semibold shadow-2xs"
                   >
                     <span className="text-[10px] text-indigo-500 font-bold">{idx + 1}º</span>
-                    <span>{label || agrup}</span>
+                    <span>{label}</span>
 
                     <div className="flex items-center ml-1 border-l border-slate-200 pl-1">
                       {idx > 0 && (
@@ -719,36 +1053,34 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
 
             {/* Nuvem de opções de agrupamento disponíveis para clique */}
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {Object.entries(
-                base === 'itens_vendidos'
-                  ? DICIONARIO_AGRUPAMENTOS_VENDAS
-                  : DICIONARIO_AGRUPAMENTOS_COMPRAS,
-              ).map(([chave, rotulo]) => {
-                const ativo = agrupamentos.includes(chave as AgrupamentoPersonalizado)
-                const posicao = agrupamentos.indexOf(chave as AgrupamentoPersonalizado)
+              {Object.entries(dicionarioAgrupamentosAtivo as Record<string, string>).map(
+                ([chave, rotulo]) => {
+                  const ativo = agrupamentos.includes(chave as AgrupamentoPersonalizado)
+                  const posicao = agrupamentos.indexOf(chave as AgrupamentoPersonalizado)
 
-                return (
-                  <button
-                    key={chave}
-                    type="button"
-                    onClick={() => toggleAgrupamento(chave as AgrupamentoPersonalizado)}
-                    className={`px-2.5 py-1 rounded text-xs transition-colors flex items-center gap-1.5 ${
-                      ativo
-                        ? 'bg-indigo-600 text-white font-semibold shadow-2xs'
-                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {ativo ? (
-                      <span className="w-3.5 h-3.5 rounded-full bg-white text-indigo-700 text-[9px] font-bold flex items-center justify-center">
-                        {posicao + 1}
-                      </span>
-                    ) : (
-                      <Plus className="h-3 w-3 text-slate-400" />
-                    )}
-                    <span>{rotulo}</span>
-                  </button>
-                )
-              })}
+                  return (
+                    <button
+                      key={chave}
+                      type="button"
+                      onClick={() => toggleAgrupamento(chave as AgrupamentoPersonalizado)}
+                      className={`px-2.5 py-1 rounded text-xs transition-colors flex items-center gap-1.5 ${
+                        ativo
+                          ? 'bg-indigo-600 text-white font-semibold shadow-2xs'
+                          : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {ativo ? (
+                        <span className="w-3.5 h-3.5 rounded-full bg-white text-indigo-700 text-[9px] font-bold flex items-center justify-center">
+                          {posicao + 1}
+                        </span>
+                      ) : (
+                        <Plus className="h-3 w-3 text-slate-400" />
+                      )}
+                      <span>{rotulo}</span>
+                    </button>
+                  )
+                },
+              )}
             </div>
           </div>
 
@@ -763,9 +1095,12 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
               </Label>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 pt-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 pt-1">
               {Object.entries(
-                base === 'itens_vendidos' ? DICIONARIO_VALORES_VENDAS : DICIONARIO_VALORES_COMPRAS,
+                dicionarioValoresAtivo as Record<
+                  string,
+                  { label: string; formato: 'moeda' | 'numero' | 'percentual'; sigilo?: boolean }
+                >,
               ).map(([chave, meta]) => {
                 const checked = valores.includes(chave as ValorMetricaPersonalizado)
                 const isSigilo = 'sigilo' in meta && meta.sigilo
@@ -857,7 +1192,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-base font-bold text-slate-900">
-              RELATÓRIO PERSONALIZADO ({base === 'itens_vendidos' ? 'VENDAS' : 'COMPRAS'})
+              RELATÓRIO PERSONALIZADO ({base.toUpperCase()})
             </h1>
             <p className="text-slate-600">
               Empresa(s): {empresaAtiva?.razao_social || 'Consolidado Multiempresa'} · CNPJ:{' '}
@@ -940,20 +1275,15 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                     onChange={(e) => setMetricaGrafico(e.target.value)}
                     className="h-7 text-xs border border-slate-200 rounded px-2 bg-white text-slate-700"
                   >
-                    {base === 'itens_vendidos' ? (
-                      <>
-                        <option value="valor_liquido">Valor Líquido</option>
-                        <option value="quantidade">Quantidade</option>
-                        {podeVerProdutos && <option value="margem_valor">Margem Bruta (R$)</option>}
-                        <option value="ticket_medio">Ticket Médio</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="custo_total">Custo Total</option>
-                        <option value="valor_produtos">Valor dos Produtos</option>
-                        <option value="quantidade">Quantidade</option>
-                      </>
-                    )}
+                    {resultado.valores.map((vKey) => {
+                      const def = getMetricaDef(vKey)
+                      if (!def) return null
+                      return (
+                        <option key={vKey} value={vKey}>
+                          {def.label}
+                        </option>
+                      )
+                    })}
                   </select>
                 )}
               </div>
@@ -974,30 +1304,33 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                       />
                       <YAxis
                         tick={{ fontSize: 10, fill: '#64748b' }}
-                        tickFormatter={(v) =>
-                          metricaGrafico === 'quantidade'
-                            ? String(v)
-                            : `R$${(v / 1000).toFixed(0)}k`
-                        }
+                        tickFormatter={(v) => {
+                          const def = getMetricaDef(metricaGrafico)
+                          if (def?.formato === 'numero') return String(v)
+                          if (def?.formato === 'percentual') return `${v}%`
+                          return `R$${(v / 1000).toFixed(0)}k`
+                        }}
                       />
                       <RechartsTooltip
-                        formatter={(val: unknown) => [
-                          metricaGrafico === 'quantidade'
-                            ? String(val)
-                            : new Intl.NumberFormat('pt-BR', {
-                                style: 'currency',
-                                currency: 'BRL',
-                              }).format(Number(val) || 0),
-                          metricaGrafico === 'valor_liquido'
-                            ? 'Faturamento'
-                            : metricaGrafico === 'custo_total'
-                              ? 'Custo Total'
-                              : metricaGrafico,
-                        ]}
+                        formatter={(val: unknown) => {
+                          const def = getMetricaDef(metricaGrafico)
+                          const num = Number(val) || 0
+                          if (def?.formato === 'numero')
+                            return [num.toLocaleString('pt-BR'), def.label]
+                          if (def?.formato === 'percentual')
+                            return [`${num.toFixed(2)}%`, def.label]
+                          return [
+                            new Intl.NumberFormat('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            }).format(num),
+                            def?.label || metricaGrafico,
+                          ]
+                        }}
                       />
                       <Bar
                         dataKey={metricaGrafico}
-                        name={metricaGrafico === 'valor_liquido' ? 'Faturamento Líquido' : 'Total'}
+                        name={getMetricaDef(metricaGrafico)?.label || 'Valor'}
                         fill="#4f46e5"
                         radius={[4, 4, 0, 0]}
                       />
@@ -1012,22 +1345,29 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                       />
                       <YAxis
                         tick={{ fontSize: 10, fill: '#64748b' }}
-                        tickFormatter={(v) =>
-                          metricaGrafico === 'quantidade'
-                            ? String(v)
-                            : `R$${(v / 1000).toFixed(0)}k`
-                        }
+                        tickFormatter={(v) => {
+                          const def = getMetricaDef(metricaGrafico)
+                          if (def?.formato === 'numero') return String(v)
+                          if (def?.formato === 'percentual') return `${v}%`
+                          return `R$${(v / 1000).toFixed(0)}k`
+                        }}
                       />
                       <RechartsTooltip
-                        formatter={(val: unknown) => [
-                          metricaGrafico === 'quantidade'
-                            ? String(val)
-                            : new Intl.NumberFormat('pt-BR', {
-                                style: 'currency',
-                                currency: 'BRL',
-                              }).format(Number(val) || 0),
-                          metricaGrafico,
-                        ]}
+                        formatter={(val: unknown) => {
+                          const def = getMetricaDef(metricaGrafico)
+                          const num = Number(val) || 0
+                          if (def?.formato === 'numero')
+                            return [num.toLocaleString('pt-BR'), def.label]
+                          if (def?.formato === 'percentual')
+                            return [`${num.toFixed(2)}%`, def.label]
+                          return [
+                            new Intl.NumberFormat('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            }).format(num),
+                            def?.label || metricaGrafico,
+                          ]
+                        }}
                       />
                       <Line
                         type="monotone"
@@ -1064,15 +1404,10 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
               <p className="text-xs text-slate-500 mt-0.5">
                 Agrupado por:{' '}
                 {agrupamentos
-                  .map((a) =>
-                    base === 'itens_vendidos'
-                      ? DICIONARIO_AGRUPAMENTOS_VENDAS[
-                          a as keyof typeof DICIONARIO_AGRUPAMENTOS_VENDAS
-                        ]
-                      : DICIONARIO_AGRUPAMENTOS_COMPRAS[
-                          a as keyof typeof DICIONARIO_AGRUPAMENTOS_COMPRAS
-                        ],
-                  )
+                  .map((a) => {
+                    const dict = dicionarioAgrupamentosAtivo as Record<string, string>
+                    return dict[a] || a
+                  })
                   .join(' → ')}
               </p>
             </div>
@@ -1116,14 +1451,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                     </th>
 
                     {resultado.valores.map((vKey) => {
-                      const def =
-                        base === 'itens_vendidos'
-                          ? DICIONARIO_VALORES_VENDAS[
-                              vKey as keyof typeof DICIONARIO_VALORES_VENDAS
-                            ]
-                          : DICIONARIO_VALORES_COMPRAS[
-                              vKey as keyof typeof DICIONARIO_VALORES_COMPRAS
-                            ]
+                      const def = getMetricaDef(vKey)
                       if (!def) return null
 
                       return (
@@ -1178,14 +1506,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                         </td>
 
                         {resultado.valores.map((vKey) => {
-                          const def =
-                            base === 'itens_vendidos'
-                              ? DICIONARIO_VALORES_VENDAS[
-                                  vKey as keyof typeof DICIONARIO_VALORES_VENDAS
-                                ]
-                              : DICIONARIO_VALORES_COMPRAS[
-                                  vKey as keyof typeof DICIONARIO_VALORES_COMPRAS
-                                ]
+                          const def = getMetricaDef(vKey)
                           if (!def) return null
 
                           const val = rec[vKey]
@@ -1213,14 +1534,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                       <td className="p-3 uppercase tracking-wider">TOTAL GERAL CONSOLIDADO</td>
 
                       {resultado.valores.map((vKey) => {
-                        const def =
-                          base === 'itens_vendidos'
-                            ? DICIONARIO_VALORES_VENDAS[
-                                vKey as keyof typeof DICIONARIO_VALORES_VENDAS
-                              ]
-                            : DICIONARIO_VALORES_COMPRAS[
-                                vKey as keyof typeof DICIONARIO_VALORES_COMPRAS
-                              ]
+                        const def = getMetricaDef(vKey)
                         if (!def) return null
 
                         const tot = (
@@ -1267,7 +1581,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                 type="text"
                 value={nomeRelatorioSalvar}
                 onChange={(e) => setNomeRelatorioSalvar(e.target.value)}
-                placeholder="Ex.: Vendas por Marca e Mês - SP"
+                placeholder="Ex.: Estoque valorizado por marca em 31/12"
                 className="h-8 text-xs bg-white"
                 autoFocus
               />
@@ -1279,7 +1593,7 @@ export const RelatorioPersonalizadoPage: React.FC = () => {
                 type="text"
                 value={descricaoRelatorioSalvar}
                 onChange={(e) => setDescricaoRelatorioSalvar(e.target.value)}
-                placeholder="Ex.: Acompanhamento mensal de marcas para a filial SP"
+                placeholder="Ex.: Auditoria contábil de final de ano"
                 className="h-8 text-xs bg-white"
               />
             </div>

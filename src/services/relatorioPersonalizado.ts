@@ -1,12 +1,26 @@
 /**
- * Serviço de Relatório Personalizado (Montador) - Prompt 8.6
- * Comunicação com o endpoint /backend/v1/relatorios/personalizado e gerenciamento de relatórios salvos.
+ * Serviço de Relatórios Personalizados (Montador) - Prompt 8.6 & 8.7
+ * Suporta 7 bases:
+ * - itens_vendidos (Prompt 8.6)
+ * - itens_comprados (Prompt 8.6)
+ * - estoque_data (Prompt 8.7)
+ * - estoque_movimentos (Prompt 8.7)
+ * - contas_pagar (Prompt 8.7)
+ * - contas_receber (Prompt 8.7)
+ * - movimentacoes_financeiras (Prompt 8.7)
  */
 
 import pb from '@/lib/pocketbase/client'
-import { ObjetoFiltrosRelatorio } from './relatorios'
+import { ObjetoFiltrosRelatorio } from '@/services/relatorios'
 
-export type BaseRelatorioPersonalizado = 'itens_vendidos' | 'itens_comprados'
+export type BaseRelatorioPersonalizado =
+  | 'itens_vendidos'
+  | 'itens_comprados'
+  | 'estoque_data'
+  | 'estoque_movimentos'
+  | 'contas_pagar'
+  | 'contas_receber'
+  | 'movimentacoes_financeiras'
 
 export type AgrupamentoVendas =
   | 'empresa'
@@ -45,7 +59,68 @@ export type AgrupamentoCompras =
   | 'tipo_entrada'
   | 'ncm'
 
-export type AgrupamentoPersonalizado = AgrupamentoVendas | AgrupamentoCompras
+export type AgrupamentoEstoqueData =
+  | 'empresa'
+  | 'grupo'
+  | 'categoria'
+  | 'marca'
+  | 'produto'
+  | 'fornecedor_produto'
+
+export type AgrupamentoEstoqueMovimentos =
+  | 'empresa'
+  | 'dia'
+  | 'semana'
+  | 'mes'
+  | 'ano'
+  | 'grupo'
+  | 'categoria'
+  | 'marca'
+  | 'produto'
+  | 'fornecedor_produto'
+  | 'origem'
+  | 'tipo'
+
+export type AgrupamentoContasPagar =
+  | 'empresa'
+  | 'fornecedor'
+  | 'plano_contas'
+  | 'centro_custo'
+  | 'situacao'
+  | 'origem'
+  | 'mes_vencimento'
+  | 'faixa_atraso'
+
+export type AgrupamentoContasReceber =
+  | 'empresa'
+  | 'cliente'
+  | 'plano_contas'
+  | 'centro_custo'
+  | 'situacao'
+  | 'origem'
+  | 'mes_vencimento'
+  | 'faixa_atraso'
+
+export type AgrupamentoMovimentacoesFinanceiras =
+  | 'empresa'
+  | 'dia'
+  | 'semana'
+  | 'mes'
+  | 'ano'
+  | 'conta_financeira'
+  | 'plano_contas'
+  | 'centro_custo'
+  | 'origem'
+  | 'tipo'
+
+export type AgrupamentoPersonalizado =
+  | AgrupamentoVendas
+  | AgrupamentoCompras
+  | AgrupamentoEstoqueData
+  | AgrupamentoEstoqueMovimentos
+  | AgrupamentoContasPagar
+  | AgrupamentoContasReceber
+  | AgrupamentoMovimentacoesFinanceiras
 
 export type ValorMetricaVendas =
   | 'quantidade'
@@ -72,7 +147,38 @@ export type ValorMetricaCompras =
   | 'preco_medio'
   | 'percentual_total'
 
-export type ValorMetricaPersonalizado = ValorMetricaVendas | ValorMetricaCompras
+export type ValorMetricaEstoqueData =
+  | 'quantidade'
+  | 'custo_medio'
+  | 'valor_estoque'
+  | 'percentual_total'
+
+export type ValorMetricaEstoqueMovimentos = 'quantidade' | 'valor'
+
+export type ValorMetricaContasPagar =
+  | 'valor_original'
+  | 'valor_pago'
+  | 'saldo'
+  | 'quantidade_titulos'
+  | 'atraso_medio'
+
+export type ValorMetricaContasReceber =
+  | 'valor_original'
+  | 'valor_recebido'
+  | 'saldo'
+  | 'quantidade_titulos'
+  | 'atraso_medio'
+
+export type ValorMetricaMovimentacoesFinanceiras = 'entradas' | 'saidas' | 'saldo_periodo'
+
+export type ValorMetricaPersonalizado =
+  | ValorMetricaVendas
+  | ValorMetricaCompras
+  | ValorMetricaEstoqueData
+  | ValorMetricaEstoqueMovimentos
+  | ValorMetricaContasPagar
+  | ValorMetricaContasReceber
+  | ValorMetricaMovimentacoesFinanceiras
 
 export interface MetricasLinhaPersonalizado {
   // Vendas
@@ -86,7 +192,7 @@ export interface MetricasLinhaPersonalizado {
   quantidade_vendas?: number
   ticket_medio?: number
   preco_medio?: number
-  percentual_total?: number
+  percentual_total?: number | null
 
   // Compras
   valor_produtos?: number
@@ -96,6 +202,26 @@ export interface MetricasLinhaPersonalizado {
   credito_icms?: number
   custo_total?: number
   quantidade_notas?: number
+
+  // Estoque em uma data
+  custo_medio?: number | null
+  valor_estoque?: number | null
+
+  // Estoque movimentos
+  valor?: number | null
+
+  // Financeiro títulos
+  valor_original?: number
+  valor_pago?: number
+  valor_recebido?: number
+  saldo?: number
+  quantidade_titulos?: number
+  atraso_medio?: number
+
+  // Financeiro movimentações
+  entradas?: number
+  saidas?: number
+  saldo_periodo?: number
 }
 
 export interface LinhaRelatorioPersonalizado {
@@ -111,11 +237,19 @@ export interface LinhaRelatorioPersonalizado {
 export interface DadoGraficoPersonalizado {
   rotulo: string
   valor_liquido?: number
-  custo_total?: number
-  valor_produtos?: number
   quantidade?: number
   margem_valor?: number | null
   ticket_medio?: number
+  custo_total?: number
+  valor_produtos?: number
+  valor_estoque?: number | null
+  valor?: number | null
+  saldo?: number
+  valor_original?: number
+  quantidade_titulos?: number
+  entradas?: number
+  saidas?: number
+  saldo_periodo?: number
 }
 
 export interface RespostaRelatorioPersonalizado {
@@ -379,6 +513,71 @@ export const DICIONARIO_AGRUPAMENTOS_COMPRAS: Record<AgrupamentoCompras, string>
   ncm: 'NCM',
 }
 
+export const DICIONARIO_AGRUPAMENTOS_ESTOQUE_DATA: Record<AgrupamentoEstoqueData, string> = {
+  empresa: 'Empresa / Loja',
+  grupo: 'Grupo de Produto',
+  categoria: 'Categoria de Produto',
+  marca: 'Marca',
+  produto: 'Produto',
+  fornecedor_produto: 'Fornecedor do Produto',
+}
+
+export const DICIONARIO_AGRUPAMENTOS_ESTOQUE_MOVIMENTOS: Record<
+  AgrupamentoEstoqueMovimentos,
+  string
+> = {
+  empresa: 'Empresa / Loja',
+  dia: 'Dia',
+  semana: 'Semana',
+  mes: 'Mês',
+  ano: 'Ano',
+  grupo: 'Grupo de Produto',
+  categoria: 'Categoria de Produto',
+  marca: 'Marca',
+  produto: 'Produto',
+  fornecedor_produto: 'Fornecedor do Produto',
+  origem: 'Origem do Movimento',
+  tipo: 'Tipo (Entrada ou Saída)',
+}
+
+export const DICIONARIO_AGRUPAMENTOS_CONTAS_PAGAR: Record<AgrupamentoContasPagar, string> = {
+  empresa: 'Empresa / Filial',
+  fornecedor: 'Fornecedor',
+  plano_contas: 'Plano de Contas',
+  centro_custo: 'Centro de Custo',
+  situacao: 'Situação (Status)',
+  origem: 'Origem do Título',
+  mes_vencimento: 'Mês de Vencimento',
+  faixa_atraso: 'Faixa de Atraso',
+}
+
+export const DICIONARIO_AGRUPAMENTOS_CONTAS_RECEBER: Record<AgrupamentoContasReceber, string> = {
+  empresa: 'Empresa / Filial',
+  cliente: 'Cliente',
+  plano_contas: 'Plano de Contas',
+  centro_custo: 'Centro de Custo',
+  situacao: 'Situação (Status)',
+  origem: 'Origem do Título',
+  mes_vencimento: 'Mês de Vencimento',
+  faixa_atraso: 'Faixa de Atraso',
+}
+
+export const DICIONARIO_AGRUPAMENTOS_MOVIMENTACOES_FINANCEIRAS: Record<
+  AgrupamentoMovimentacoesFinanceiras,
+  string
+> = {
+  empresa: 'Empresa / Filial',
+  dia: 'Dia',
+  semana: 'Semana',
+  mes: 'Mês',
+  ano: 'Ano',
+  conta_financeira: 'Conta Financeira',
+  plano_contas: 'Plano de Contas',
+  centro_custo: 'Centro de Custo',
+  origem: 'Origem do Movimento',
+  tipo: 'Tipo (Entrada ou Saída)',
+}
+
 export const DICIONARIO_VALORES_VENDAS: Record<
   ValorMetricaVendas,
   { label: string; formato: 'moeda' | 'numero' | 'percentual'; sigilo?: boolean }
@@ -410,4 +609,53 @@ export const DICIONARIO_VALORES_COMPRAS: Record<
   quantidade_notas: { label: 'Qtd. de Notas', formato: 'numero' },
   preco_medio: { label: 'Preço Médio Unitário', formato: 'moeda' },
   percentual_total: { label: '% sobre o Total', formato: 'percentual' },
+}
+
+export const DICIONARIO_VALORES_ESTOQUE_DATA: Record<
+  ValorMetricaEstoqueData,
+  { label: string; formato: 'moeda' | 'numero' | 'percentual'; sigilo?: boolean }
+> = {
+  quantidade: { label: 'Saldo em Estoque', formato: 'numero' },
+  custo_medio: { label: 'Custo Médio Unitário', formato: 'moeda', sigilo: true },
+  valor_estoque: { label: 'Valor do Estoque', formato: 'moeda', sigilo: true },
+  percentual_total: { label: '% sobre o Total', formato: 'percentual' },
+}
+
+export const DICIONARIO_VALORES_ESTOQUE_MOVIMENTOS: Record<
+  ValorMetricaEstoqueMovimentos,
+  { label: string; formato: 'moeda' | 'numero'; sigilo?: boolean }
+> = {
+  quantidade: { label: 'Quantidade Movimentada', formato: 'numero' },
+  valor: { label: 'Valor do Movimento', formato: 'moeda', sigilo: true },
+}
+
+export const DICIONARIO_VALORES_CONTAS_PAGAR: Record<
+  ValorMetricaContasPagar,
+  { label: string; formato: 'moeda' | 'numero' }
+> = {
+  valor_original: { label: 'Valor Original', formato: 'moeda' },
+  valor_pago: { label: 'Valor Pago', formato: 'moeda' },
+  saldo: { label: 'Saldo a Pagar', formato: 'moeda' },
+  quantidade_titulos: { label: 'Qtd. de Títulos', formato: 'numero' },
+  atraso_medio: { label: 'Atraso Médio (dias)', formato: 'numero' },
+}
+
+export const DICIONARIO_VALORES_CONTAS_RECEBER: Record<
+  ValorMetricaContasReceber,
+  { label: string; formato: 'moeda' | 'numero' }
+> = {
+  valor_original: { label: 'Valor Original', formato: 'moeda' },
+  valor_recebido: { label: 'Valor Recebido', formato: 'moeda' },
+  saldo: { label: 'Saldo a Receber', formato: 'moeda' },
+  quantidade_titulos: { label: 'Qtd. de Títulos', formato: 'numero' },
+  atraso_medio: { label: 'Atraso Médio (dias)', formato: 'numero' },
+}
+
+export const DICIONARIO_VALORES_MOVIMENTACOES_FINANCEIRAS: Record<
+  ValorMetricaMovimentacoesFinanceiras,
+  { label: string; formato: 'moeda' }
+> = {
+  entradas: { label: 'Entradas (Créditos)', formato: 'moeda' },
+  saidas: { label: 'Saídas (Débitos)', formato: 'moeda' },
+  saldo_periodo: { label: 'Saldo do Período', formato: 'moeda' },
 }
