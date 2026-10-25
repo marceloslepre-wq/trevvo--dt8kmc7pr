@@ -15,10 +15,17 @@ import {
   Scale,
   Store,
   CalendarClock,
+  Building,
 } from 'lucide-react'
 import { ModuloSistema } from '@/services/perfis'
 
-export type CategoriaRelatorio = 'Vendas' | 'Estoque' | 'Compras' | 'Financeiro' | 'Fiscal'
+export type CategoriaRelatorio =
+  | 'Grupo'
+  | 'Vendas'
+  | 'Estoque'
+  | 'Compras'
+  | 'Financeiro'
+  | 'Fiscal'
 
 import { ChaveFiltroDeclaravel } from '@/services/relatorios'
 
@@ -41,6 +48,19 @@ export interface ItemRelatorioCatalogo {
  * Permite que os próximos prompts da Etapa 8 acrescentem novos relatórios de forma declarativa.
  */
 export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
+  // ===================== PAINEL DO GRUPO (PROMPT 8.5 - DESTAQUE NO TOPO) =====================
+  {
+    id: 'painel_grupo',
+    nome: 'Painel do Grupo',
+    descricao:
+      'Visão executiva e comparativa de todas as empresas do grupo: faturamento diário, últimos 12 meses, margem bruta, vendas interestaduais, estoque e financeiro 30 dias.',
+    rota: '/painel-grupo',
+    modulo: 'relatorios',
+    categoria: 'Grupo',
+    icone: Building,
+    novo: true,
+  },
+
   // ===================== VENDAS =====================
   {
     id: 'vendas_canais',
@@ -344,6 +364,11 @@ export const CATEGORIAS_RELATORIOS: {
   label: string
   descricao: string
 }[] = [
+  {
+    id: 'Grupo',
+    label: 'Visão do Grupo',
+    descricao: 'Consolidação e análise comparativa entre as lojas e filiais do grupo empresarial.',
+  },
   {
     id: 'Vendas',
     label: 'Vendas e Comercial',

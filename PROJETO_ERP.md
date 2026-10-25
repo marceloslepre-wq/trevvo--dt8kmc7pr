@@ -3326,6 +3326,40 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 
 ---
 
+**Versão 0.0.112** — Etapa 8 Relatórios e Painel (Prompt 8.5: Painel do Grupo Multiempresa):
+
+1. **Endpoint Backend do Painel do Grupo (`POST /backend/v1/relatorios/painel-grupo`):**
+   - Implementado em `pocketbase/hooks/relatorio_painel_grupo.js` no Skip Cloud (PocketBase).
+   - Validações e multiempresa: autenticação obrigatória, identificação do usuário e conferência rigorosa de vínculo com empresas ativas (`usuarios_empresas` ou `perfis_acesso.administrador = true`).
+   - Parâmetro no corpo da requisição: `mes_referencia` no formato `YYYY-MM` (padrão: mês corrente no fuso de Brasília).
+   - Processamento de métricas para CADA empresa que o usuário acessa e para o TOTAL do grupo:
+     - **Faturamento e comparativos:** Faturamento do mês de referência do dia 1 até o dia atual (ou último dia se mês passado), comparado com o mesmo intervalo de dias do mês anterior (dia 1 a dia N) e do mesmo mês do ano anterior (dia 1 a dia N), com variações percentuais.
+     - **Margem bruta, vendas e ticket médio:** Vendas com `status = 'Finalizada'`, `ativo = true`, descarte de canceladas e abatimento de devoluções (`tipo = 'Devolução'`). Valor e percentual da margem bruta (`faturamento - CMV`), ticket médio e quantidade de vendas líquidas.
+     - **Vendas para outros estados:** Percentual sobre o faturamento e apuração das Top 5 UFs de destino (reutilizando a regra oficial da Etapa 8: UF do cliente ou destinatario_uf da nota quando houver; balcão sem cliente = UF da empresa emitente).
+     - **Estoque valorizado e parado:** Reutilização da regra do 8.3 / estoque-gerencial: saldo total valorizado atual por custo médio e valor de estoque parado há mais de 90 dias (sem movimentação de saída registrada ou última saída > 90 dias) e quantidade de itens parados.
+     - **Contas a receber e a pagar (30 dias):** Reutilização da regra do 8.4 e do /painel: a receber e a pagar nos próximos 30 dias (`data_vencimento` entre hoje e hoje + 30 dias) e vencidos (`data_vencimento < hoje`).
+     - **Saldo de contas financeiras:** Totalização dos saldos atuais das contas financeiras da empresa (`contas_financeiras.saldo_atual`).
+     - **Alertas fiscais e SPED:** Contagem de documentos fiscais com pendência (status Rejeitada e Processando) e diagnóstico da situação do SPED Fiscal do mês anterior para empresas obrigadas (não gerado, gerado com erros, gerado, entregue, não se aplica).
+     - **Séries para gráficos no servidor:** Série de faturamento diário do mês por empresa (dia 1 ao dia de corte) e evolução mensal histórica dos últimos 12 meses por empresa.
+
+2. **Tela Painel do Grupo (`/painel-grupo` - `src/pages/relatorios/PainelGrupoPage.tsx`):**
+   - Rota protegida por `PermissaoGuard modulo="relatorios" acao="ver"`.
+   - Regra de visibilidade multiempresa: disponível e visível no menu apenas para usuários com permissão no módulo `relatorios` E acesso a mais de 1 empresa (`empresas.length > 1`). Se possuir acesso a apenas 1 empresa, exibe card explicativo e redirecionamento.
+   - **Layout e Seções:**
+     - **Topo executivo:** 4 cartões consolidados do GRUPO no topo com comparativos com períodos anteriores, margem bruta, vendas, ticket médio, financeiro (30 dias, saldo e vencidos), estoque valorizado e alertas fiscais, com links diretos para os relatórios analíticos (`/relatorios/vendas-canais`, `/relatorios/estoque-gerencial`, `/relatorios/contas-pagar`).
+     - **Gráficos por empresa:** Gráfico de barras do faturamento diário do mês por empresa (empilhado por filial) e gráfico de linhas da evolução dos últimos 12 meses por empresa com legenda interativa.
+     - **Destino interestadual:** Quadro com Top 5 UFs que mais compraram do grupo e percentual de vendas para outros estados.
+     - **Linha de cartões por empresa:** Quadro loja a loja para cada filial acessível com seus respectivos indicadores (faturamento, comparativos vs mês/ano anterior, ticket, margem, estoque parado, financeiro 30 dias e badge do status do SPED).
+   - **Sigilo de Custos:** Valores e percentuais de margem bruta e estoques restritos aos usuários com permissão no módulo `produtos` (`pode('produtos', 'ver')` ou `administrador`).
+
+3. **Menu Lateral e Central de Relatórios:**
+   - Adicionado item "Painel do Grupo" no `Sidebar.tsx` posicionado logo abaixo do item "Painel", visível condicionalmente para quem possui `pode('relatorios', 'ver')` e acesso a mais de 1 empresa.
+   - Adicionado banner estilizado em destaque no topo da Central de Relatórios (`/relatorios` - `CentralRelatoriosPage.tsx`) acima dos grupos de relatórios.
+   - Adicionado item "Painel do Grupo" na categoria "Grupo" em `src/config/relatoriosCatalogo.ts`.
+   - A tela `/painel` e os endpoints existentes foram preservados rigorosamente intactos.
+
+---
+
 **Versão 0.0.111** — Etapa 8 Relatórios e Painel (Prompt 8.4: Financeiro Gerencial — Contas a Pagar por Vencimento e DRE Comparativa por Empresa/Meses):
 
 1. **Endpoint Backend de Contas a Pagar por Vencimento (`POST /backend/v1/relatorios/contas-pagar`):**

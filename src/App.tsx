@@ -108,6 +108,7 @@ import ResumoIcmsPage from '@/pages/fiscal/ResumoIcmsPage'
 
 // Páginas de Relatórios (Etapa 8)
 import CentralRelatoriosPage from '@/pages/relatorios/CentralRelatoriosPage'
+import PainelGrupoPage from '@/pages/relatorios/PainelGrupoPage'
 import VendasCanaisPage from '@/pages/relatorios/VendasCanaisPage'
 import EstoqueGerencialPage from '@/pages/relatorios/EstoqueGerencialPage'
 import ContasPagarPorVencimentoPage from '@/pages/relatorios/ContasPagarVencimentoPage'
@@ -167,6 +168,14 @@ const App = () => (
                   {/* Rota raiz redireciona para /painel */}
                   <Route path="/" element={<Navigate to="/painel" replace />} />
                   <Route path="/painel" element={<Index />} />
+                  <Route
+                    path="/painel-grupo"
+                    element={
+                      <PermissaoGuard modulo="relatorios" acao="ver">
+                        <PainelGrupoPage />
+                      </PermissaoGuard>
+                    }
+                  />
                   {/* Cadastros */}
                   <Route
                     path="/cadastros/empresas"

@@ -8,11 +8,15 @@ import {
   ShieldCheck,
   ExternalLink,
   Sparkles,
+  Building,
+  ChevronRight,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import {
   CATALOGO_RELATORIOS,
   CATEGORIAS_RELATORIOS,
@@ -22,16 +26,26 @@ import {
 
 export const CentralRelatoriosPage: React.FC = () => {
   const { pode, administrador } = usePermissoes()
+  const { empresas } = useEmpresaAtiva()
+  const temMultiplasEmpresas = empresas.length > 1
+  const podeVerRelatorios = pode('relatorios', 'ver') || administrador
+
   const [busca, setBusca] = useState('')
   const [categoriaAtiva, setCategoriaAtiva] = useState<CategoriaRelatorio | 'todos'>('todos')
 
   // Filtra relatórios aos quais o usuário tem permissão de visualização
   const relatoriosAutorizados = useMemo(() => {
     return CATALOGO_RELATORIOS.filter((item) => {
+      // Regra 8.5: Painel do grupo exige acesso a mais de 1 empresa e permissão relatorios
+      if (item.id === 'painel_grupo') {
+        if (!temMultiplasEmpresas) return false
+        if (!podeVerRelatorios) return false
+        return true
+      }
       if (administrador) return true
       return pode(item.modulo, 'ver')
     })
-  }, [pode, administrador])
+  }, [pode, administrador, temMultiplasEmpresas, podeVerRelatorios])
 
   // Aplica filtro de busca por texto e categoria
   const relatoriosFiltrados = useMemo(() => {
@@ -99,6 +113,45 @@ export const CentralRelatoriosPage: React.FC = () => {
           </Badge>
         </div>
       </div>
+
+      {/* Card de Destaque no Topo: Painel do Grupo (Prompt 8.5) */}
+      {temMultiplasEmpresas && podeVerRelatorios && (
+        <Card className="border-indigo-200 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white shadow-md relative overflow-hidden">
+          <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-10 flex items-center justify-center pointer-events-none">
+            <Building className="w-64 h-64 text-white" />
+          </div>
+          <CardHeader className="p-5 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1.5 z-10">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-indigo-500 text-white text-[10px] uppercase font-bold tracking-wider px-2 py-0.5">
+                    Visão Consolidada Multiempresa
+                  </Badge>
+                  <span className="text-xs text-indigo-200">{empresas.length} filiais ativas</span>
+                </div>
+                <CardTitle className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                  <Building className="h-5 w-5 text-indigo-300" />
+                  <span>Painel do Grupo</span>
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm text-indigo-100 max-w-2xl leading-relaxed">
+                  Acompanhe em tempo real o faturamento consolidado e comparativo loja a loja (mês
+                  atual, mês anterior e mesmo mês do ano anterior), margem bruta, vendas
+                  interestaduais, estoque e financeiro dos próximos 30 dias.
+                </CardDescription>
+              </div>
+
+              <div className="z-10 shrink-0">
+                <Link to="/painel-grupo">
+                  <Button className="bg-white text-indigo-900 hover:bg-indigo-50 shadow-sm font-semibold text-xs gap-1.5 h-9">
+                    <span>Acessar Painel do Grupo</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+      )}
 
       {/* Barra de Filtros e Busca Rápida */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">

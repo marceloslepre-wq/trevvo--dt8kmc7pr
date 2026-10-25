@@ -45,6 +45,7 @@ import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Badge } from '@/components/ui/badge'
 import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { ModuloSistema } from '@/services/perfis'
 
 interface SidebarProps {
@@ -81,6 +82,14 @@ const navItems: NavGroupItem[] = [
     icon: LayoutDashboard,
     status: 'active',
     modulo: 'painel',
+  },
+  {
+    id: 'painel-grupo',
+    title: 'Painel do Grupo',
+    path: '/painel-grupo',
+    icon: Building,
+    status: 'active',
+    modulo: 'relatorios',
   },
   {
     id: 'cadastros',
@@ -547,9 +556,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [configuracoesOpen, setConfiguracoesOpen] = useState(true)
 
   const { pode, administrador } = usePermissoes()
+  const { empresas } = useEmpresaAtiva()
+  const temMultiplasEmpresas = empresas.length > 1
 
   // Filtra itens visíveis conforme permissão
   const itensVisiveis = navItems
+    .filter((group) => {
+      // Regra 8.5: Painel do Grupo só aparece se tiver permissão relatorios pode_ver E acesso a mais de 1 empresa
+      if (group.id === 'painel-grupo') {
+        if (!temMultiplasEmpresas) return false
+        if (!pode('relatorios', 'ver') && !administrador) return false
+      }
+      return true
+    })
     .map((group) => {
       // Se tiver subitens
       if (group.items) {
