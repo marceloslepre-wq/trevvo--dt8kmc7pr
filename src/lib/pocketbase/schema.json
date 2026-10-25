@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-25T18:10:03.276Z",
+  "generatedAt": "2026-10-25T18:29:46.365Z",
   "collections": [
     {
       "name": "users",
@@ -4060,7 +4060,8 @@
         "CREATE INDEX idx_mov_origem ON estoque_movimentos (origem)",
         "CREATE INDEX idx_mov_doc ON estoque_movimentos (documento_tipo, documento_id)",
         "CREATE INDEX idx_mov_estornado ON estoque_movimentos (estornado)",
-        "CREATE INDEX idx_mov_ativo ON estoque_movimentos (ativo)"
+        "CREATE INDEX idx_mov_ativo ON estoque_movimentos (ativo)",
+        "CREATE INDEX idx_est_mov_empresa_data ON estoque_movimentos (empresa_id, data_movimento)"
       ]
     },
     {
@@ -7116,7 +7117,9 @@
         "CREATE INDEX idx_contas_pagar_origem ON contas_pagar (origem, origem_id)",
         "CREATE INDEX idx_contas_pagar_recorrencia ON contas_pagar (recorrencia_id)",
         "CREATE INDEX idx_contas_pagar_doc ON contas_pagar (numero_documento)",
-        "CREATE INDEX idx_contas_pagar_ativo ON contas_pagar (ativo)"
+        "CREATE INDEX idx_contas_pagar_ativo ON contas_pagar (ativo)",
+        "CREATE INDEX idx_cp_empresa_vencimento ON contas_pagar (empresa_id, data_vencimento)",
+        "CREATE INDEX idx_cp_empresa_emissao ON contas_pagar (empresa_id, data_emissao)"
       ]
     },
     {
@@ -7718,7 +7721,9 @@
         "CREATE INDEX idx_contas_receber_origem ON contas_receber (origem, origem_id)",
         "CREATE INDEX idx_contas_receber_recorrencia ON contas_receber (recorrencia_id)",
         "CREATE INDEX idx_contas_receber_doc ON contas_receber (numero_documento)",
-        "CREATE INDEX idx_contas_receber_ativo ON contas_receber (ativo)"
+        "CREATE INDEX idx_contas_receber_ativo ON contas_receber (ativo)",
+        "CREATE INDEX idx_cr_empresa_vencimento ON contas_receber (empresa_id, data_vencimento)",
+        "CREATE INDEX idx_cr_empresa_emissao ON contas_receber (empresa_id, data_emissao)"
       ]
     },
     {
@@ -8403,7 +8408,8 @@
         "CREATE INDEX idx_vendas_vendedor ON vendas (vendedor_id)",
         "CREATE INDEX idx_vendas_operador ON vendas (operador_id)",
         "CREATE INDEX idx_vendas_terminal ON vendas (pdv_terminal_id)",
-        "CREATE INDEX idx_vendas_ativo ON vendas (ativo)"
+        "CREATE INDEX idx_vendas_ativo ON vendas (ativo)",
+        "CREATE INDEX idx_vendas_empresa_data_emissao ON vendas (empresa_id, data_emissao)"
       ]
     },
     {
@@ -9752,7 +9758,8 @@
         "CREATE INDEX idx_documentos_fiscais_empresa ON documentos_fiscais (empresa_id)",
         "CREATE INDEX idx_documentos_fiscais_modelo_status ON documentos_fiscais (modelo, status)",
         "CREATE INDEX idx_documentos_fiscais_venda ON documentos_fiscais (venda_id)",
-        "CREATE INDEX idx_documentos_fiscais_chave ON documentos_fiscais (chave_acesso)"
+        "CREATE INDEX idx_documentos_fiscais_chave ON documentos_fiscais (chave_acesso)",
+        "CREATE INDEX idx_doc_fiscais_empresa_emissao ON documentos_fiscais (empresa_id, data_emissao)"
       ]
     },
     {

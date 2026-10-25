@@ -53,8 +53,27 @@ routerAdd('POST', '/backend/v1/relatorios/estoque-gerencial', (c) => {
 
     if (callerUser && callerUser.getBool('ativo')) {
       const perfilRec = $app.findRecordById('perfis_acesso', callerUser.getString('perfil_id'))
-      if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
-        isAdmin = true
+      if (perfilRec && perfilRec.getBool('ativo')) {
+        if (perfilRec.getBool('administrador')) {
+          isAdmin = true
+        } else {
+          // Checar permissão estoque
+          const perms = $app.findRecordsByFilter(
+            'permissoes',
+            "perfil_id = '" + perfilRec.id + "' && modulo = 'estoque'",
+            '',
+            1,
+            0,
+          )
+          if (perms.length > 0 && perms[0].getBool('pode_ver')) {
+            // tem permissão estoque
+          } else {
+            return c.json(403, {
+              sucesso: false,
+              message: 'Acesso negado: módulo Estoque é obrigatório para este relatório.',
+            })
+          }
+        }
       }
     }
   } catch (_) {}
@@ -148,7 +167,12 @@ routerAdd('POST', '/backend/v1/relatorios/estoque-gerencial', (c) => {
   // dias_analise: padrão 90 (limite 366)
   let diasAnalise = parseInt(String(body.dias_analise || f.dias_analise || 90), 10)
   if (isNaN(diasAnalise) || diasAnalise <= 0) diasAnalise = 90
-  if (diasAnalise > 366) diasAnalise = 366
+  if (diasAnalise > 366) {
+    return c.json(400, {
+      sucesso: false,
+      message: 'O período solicitado excede o limite máximo permitido de 366 dias.',
+    })
+  }
 
   // dias_cobertura_alvo: padrão 30
   let diasCoberturaAlvo = parseInt(

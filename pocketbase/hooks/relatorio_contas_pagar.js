@@ -75,8 +75,28 @@ routerAdd('POST', '/backend/v1/relatorios/contas-pagar', (c) => {
 
     if (callerUser && callerUser.getBool('ativo')) {
       const perfilRec = $app.findRecordById('perfis_acesso', callerUser.getString('perfil_id'))
-      if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
-        isAdmin = true
+      if (perfilRec && perfilRec.getBool('ativo')) {
+        if (perfilRec.getBool('administrador')) {
+          isAdmin = true
+        } else {
+          // Checar permissão financeiro_pagar
+          const perms = $app.findRecordsByFilter(
+            'permissoes',
+            "perfil_id = '" + perfilRec.id + "' && modulo = 'financeiro_pagar'",
+            '',
+            1,
+            0,
+          )
+          if (perms.length > 0 && perms[0].getBool('pode_ver')) {
+            // tem permissão financeiro_pagar
+          } else {
+            return c.json(403, {
+              sucesso: false,
+              message:
+                'Acesso negado: módulo Contas a Pagar (Financeiro) é obrigatório para este relatório.',
+            })
+          }
+        }
       }
     }
   } catch (_) {}
