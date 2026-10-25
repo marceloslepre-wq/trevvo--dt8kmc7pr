@@ -3437,6 +3437,77 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.122** — Etapa 9 Multi-tenant (Prompt 9.2b: Conferência no Banco Vivo, Testes de CRUD com Master e Documentação Oficial do 9.2):
+
+1. **Conferência Completa no Banco Vivo (PocketBase):**
+   - Executada a conferência sistemática de registros em todas as 18 coleções (as 15 coleções de cadastros compartilhados mais as 3 coleções de base: `empresas`, `usuarios` e `perfis_acesso`).
+   - Todos os registros existentes estão 100% vinculados ao assinante `HOSPITAL HOME` (`id: wqxiw7olvkup3sm`, licença `HH-RFR8HF`), com zero registros órfãos ou sem `assinante_id` e zero registros com assinante divergente.
+   - Aplicada a Migration 0071 de forma estritamente idempotente garantindo a integridade dos vínculos no banco.
+
+2. **Testes de Gravação, Leitura e Exclusão com Usuário Master (`marceloslepre@gmail.com`):**
+   - Criação, edição e exclusão de registros de teste em:
+     - `marcas`: criada com `TESTE 9.2B MARCA`, editada com sucesso, nascendo com `assinante_id = wqxiw7olvkup3sm` mantido imutável na edição, e excluída.
+     - `clientes`: criado com `TESTE 9.2B CLIENTE`, editado com sucesso, nascendo com `assinante_id = wqxiw7olvkup3sm` mantido imutável na edição, e excluído.
+     - `formas_pagamento`: criada com `TESTE 9.2B FORMA`, editada com sucesso, nascendo com `assinante_id = wqxiw7olvkup3sm` mantido imutável na edição, e excluída.
+     - `produtos`: criado com `TESTE 9.2B PRODUTO SABONETE` (vinculado à marca de teste), editado com sucesso, nascendo com `assinante_id = wqxiw7olvkup3sm` mantido imutável na edição, e excluído.
+   - **Busca de produtos do PDV:** Confirmado que o serviço de busca e leitura do catálogo do PDV (`carregarCatalogoProdutosPDV` / `interpretarEntradaPDV`) localizou e retornou com sucesso o produto ativo cadastrado.
+   - **Logs do backend:** Conferência dos logs do backend (`list_logs`), sem erros registrados nos testes de CRUD e busca.
+   - Todos os registros de teste foram devidamente removidos da base de dados no término do teste.
+
+---
+
+**Versão 0.0.121** — Etapa 9 Multi-tenant (Prompt 9.2: Cadastros Compartilhados, Hooks de Tenancy e useAssinanteId):
+
+1. **Adição do Campo `assinante_id` nas 15 Coleções de Cadastros Compartilhados:**
+   - Adicionado o campo `assinante_id` (relação obrigatória com a coleção `assinantes`) nas 15 coleções compartilhadas: `produtos`, `clientes`, `fornecedores`, `marcas`, `grupos`, `categorias`, `condicoes_pagamento`, `plano_contas`, `centros_custo`, `formas_pagamento`, `perfis_tributarios`, `regras_fiscais_ncm`, `configuracoes`, `relatorios_filtros_salvos` e `relatorios_salvos`.
+   - Backfill idempotente executado vinculando todos os registros existentes ao assinante de origem `HOSPITAL HOME` (`id: wqxiw7olvkup3sm`, licença `HH-RFR8HF`).
+   - Somado às 3 coleções de base migradas no 9.1 (`empresas`, `usuarios`, `perfis_acesso`), totalizam 18 coleções com tenancy corporativo direto por `assinante_id`.
+
+2. **Coleções Filhas Protegidas pelo Registro Pai:**
+   - As seguintes coleções filhas não possuem campo `assinante_id` direto, sendo segregadas e protegidas automaticamente pela relação mandatória com seu registro pai (que possui `assinante_id`):
+     - `produtos_kit_itens` (protegida por `produto_kit_id` e `produto_item_id` em `produtos`).
+     - `produtos_fornecedores` (protegida por `produto_id` em `produtos` e `fornecedor_id` em `fornecedores`, com hook validando mesmo assinante).
+     - `produtos_conversoes_unidade` (protegida por `produto_id` em `produtos`).
+     - `produtos_historico` (protegida por `produto_id` em `produtos`).
+     - `formas_pagamento_taxas` (protegida por `forma_pagamento_id` em `formas_pagamento`).
+     - `perfis_tributarios_regras` (protegida por `perfil_id` em `perfis_tributarios`).
+     - `permissoes` (protegida por `perfil_id` em `perfis_acesso`).
+
+3. **Hook do Backend `pocketbase/hooks/cadastros_compartilhados_tenancy.js`:**
+   - **Preenchimento automático pelo backend (`onRecordCreate`):** O backend identifica o usuário autenticado no token JWT, busca seu registro na coleção `usuarios` e preenche `record.set('assinante_id', assinanteId)`. Se a requisição não tiver auth (processo interno/migration), aplica fallback seguro para o assinante `HOSPITAL HOME`.
+   - **Recusa de valor divergente:** Se a requisição enviar explicitamente um `assinante_id` diferente do assinante do usuário autenticado, a operação é sumariamente rejeitada com erro 400 (`BadRequestError`).
+   - **Imutabilidade na edição (`onRecordUpdate`):** O hook recupera o valor original gravado via `record.original().getString('assinante_id')` e restaura no registro (`record.set('assinante_id', origAssinante)`), impedindo que qualquer usuário ou tela altere o assinante de um registro existente.
+
+4. **Validações de Relações Cruzadas no Mesmo Assinante:**
+   - Hooks de create/update impedem que um registro aponte para relacionamentos pertencentes a outro assinante:
+     - `produtos`: valida se `marca_id`, `grupo_id`, `categoria_id`, `fornecedor_principal_id` e `perfil_tributario_id` pertencem ao mesmo `assinante_id`.
+     - `clientes`: valida se `condicao_pagamento_id` pertence ao mesmo `assinante_id`.
+     - `fornecedores`: valida se `condicao_pagamento_id` pertence ao mesmo `assinante_id`.
+     - `formas_pagamento`: valida se a empresa da `conta_financeira_padrao_id` pertence ao mesmo `assinante_id`.
+     - `vendas`: valida se o cliente e a condição de pagamento pertencem ao mesmo `assinante_id` da empresa emitente.
+     - `produtos_fornecedores`: valida se o produto e o fornecedor vinculados pertencem estritamente ao mesmo `assinante_id`.
+     - `config_financeira_empresa`: valida se as contas contábeis de `plano_contas` e o `centro_custo_padrao_id` pertencem ao mesmo assinante da empresa.
+
+5. **Índices Únicos por Assinante (Escopo de Tenancy):**
+   - Índices combinando o `assinante_id` criados no SQLite para permitir unicidade apenas dentro do mesmo assinante:
+     - `marcas`: `CREATE UNIQUE INDEX idx_marcas_assinante_nome ON marcas (assinante_id, nome)`
+     - `grupos`: `CREATE UNIQUE INDEX idx_grupos_assinante_codigo ON grupos (assinante_id, codigo)` e `idx_grupos_assinante_nome ON grupos (assinante_id, nome)`
+     - `categorias`: `CREATE UNIQUE INDEX idx_categorias_assinante_grupo_nome ON categorias (assinante_id, grupo_id, nome)`
+     - `clientes`: `CREATE UNIQUE INDEX idx_clientes_assinante_codigo ON clientes (assinante_id, codigo)` e `idx_clientes_assinante_cpf_cnpj ON clientes (assinante_id, cpf_cnpj)`
+     - `fornecedores`: `CREATE UNIQUE INDEX idx_fornecedores_assinante_codigo ON fornecedores (assinante_id, codigo)` e `idx_fornecedores_assinante_cpf_cnpj ON fornecedores (assinante_id, cpf_cnpj)`
+     - `perfis_tributarios`: `CREATE UNIQUE INDEX idx_perfis_tributarios_assinante_nome ON perfis_tributarios (assinante_id, nome)`
+     - `produtos`: `CREATE UNIQUE INDEX idx_produtos_assinante_codigo ON produtos (assinante_id, codigo)` e `idx_produtos_assinante_gtin ON produtos (assinante_id, gtin)`
+     - `condicoes_pagamento`: `CREATE UNIQUE INDEX idx_condicoes_pagamento_assinante_nome ON condicoes_pagamento (assinante_id, nome)`
+     - `plano_contas`: `CREATE UNIQUE INDEX idx_plano_contas_assinante_codigo ON plano_contas (assinante_id, codigo)`
+     - `centros_custo`: `CREATE UNIQUE INDEX idx_centros_custo_assinante_codigo ON centros_custo (assinante_id, codigo)`
+     - `perfis_acesso`: `CREATE UNIQUE INDEX idx_perfis_acesso_assinante_nome ON perfis_acesso (assinante_id, nome)`
+
+6. **Frontend: Hook `useAssinanteId` (`src/hooks/useAssinanteId.ts`):**
+   - Hook utilitário no frontend que extrai o `assinante_id` a partir da `empresaAtiva` do `EmpresaContext`.
+   - Permite que formulários e componentes leiam o assinante ativo caso necessitem para diagnósticos ou filtros complementares de interface.
+
+---
+
 **Versão 0.0.119** — Etapa 9 Multi-tenant (Prompt 9.1: Conclusão da Base Multi-tenant, EmpresaContext e Documentação):
 
 1. **Conexão de EmpresaContext ao Endpoint Multi-tenant (`src/contexts/EmpresaContext.tsx`):**
