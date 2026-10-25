@@ -3437,6 +3437,63 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.123** — Etapa 9 Multi-tenant (Prompt 9.3: Regras de Acesso no Banco, Coleções com assinante_id, Coleções Filhas, users e Tabelas Globais):
+
+1. **Regras de Acesso (API Rules) nas 18 Coleções com `assinante_id` (Migration 0068):**
+   - **Empresas, Usuários e Perfis de Acesso (`empresas`, `usuarios`, `perfis_acesso`):**
+     - Leitura (`listRule` / `viewRule`): restrita a usuários logados do mesmo assinante (`assinante_id = @request.auth.assinante_id`).
+     - Criação (`createRule`) e Exclusão (`deleteRule`): restritas ao administrador do assinante (`@request.auth.tipo = 'master' || @request.auth.is_admin = true`) dentro do seu próprio assinante (`assinante_id = @request.auth.assinante_id`).
+     - Edição (`updateRule`): restrita ao administrador do assinante, com bloqueio estrito para alteração do campo `assinante_id` (`@request.body.assinante_id:isset = false`).
+   - **Vínculos de Usuários e Empresas (`usuarios_empresas`):**
+     - Regras de list, view, create, update e delete validando que tanto o usuário quanto a empresa vinculados pertençam ao mesmo assinante do chamador (`usuario_id.assinante_id = @request.auth.assinante_id && empresa_id.assinante_id = @request.auth.assinante_id`), com permissão de escrita restrita aos administradores.
+   - **15 Coleções Compartilhadas de Cadastros e Configurações:**
+     - Coleções: `produtos`, `clientes`, `fornecedores`, `marcas`, `grupos`, `categorias`, `condicoes_pagamento`, `plano_contas`, `centros_custo`, `formas_pagamento`, `perfis_tributarios`, `regras_fiscais_ncm`, `configuracoes`, `relatorios_filtros_salvos` e `relatorios_salvos`.
+     - Regras de acesso exigindo `@request.auth.id != '' && assinante_id = @request.auth.assinante_id`.
+     - `updateRule` com `@request.body.assinante_id:isset = false`, garantindo a imutabilidade do assinante.
+     - Em `relatorios_filtros_salvos` e `relatorios_salvos`, preservadas as regras de privacidade do usuário autor (`usuario_id = @request.auth.id || compartilhado = true`).
+
+2. **Coleções Filhas Segregadas pelo Registro Pai (PocketBase Join Resolution):**
+   - Regras configuradas para resolver o `assinante_id` a partir do registro pai:
+     - `produtos_kit_itens`: `produto_kit_id.assinante_id = @request.auth.assinante_id`
+     - `produtos_fornecedores`: `produto_id.assinante_id = @request.auth.assinante_id`
+     - `produtos_conversoes_unidade`: `produto_id.assinante_id = @request.auth.assinante_id`
+     - `produtos_historico`: `produto_id.assinante_id = @request.auth.assinante_id`
+     - `formas_pagamento_taxas`: `forma_pagamento_id.assinante_id = @request.auth.assinante_id`
+     - `perfis_tributarios_regras`: `perfil_id.assinante_id = @request.auth.assinante_id`
+     - `permissoes`: `perfil_id.assinante_id = @request.auth.assinante_id` (com escrita restrita a admins)
+
+3. **Tabelas Globais do ERP (Regras de Segurança):**
+   - Coleções: `ncm`, `cest`, `cfop`, `cfop_conversao_entrada`, `icms_aliquotas_uf`, `icms_interestadual`, `tabelas_fiscais_codigos`, `unidades_medida`, `intermediadores`.
+   - `listRule` e `viewRule`: `@request.auth.id != ''` (leitura permitida para qualquer usuário autenticado de qualquer assinante).
+   - `createRule`, `updateRule` e `deleteRule`: `@request.auth.id != '' && @request.auth.tipo = 'master'` (criação, edição e exclusão restritas unicamente ao usuário master da plataforma SaaS).
+
+4. **Autenticação e Coleção `users` (`_pb_users_auth_`):**
+   - `listRule` e `viewRule`: `id = @request.auth.id` (cada usuário logado só enxerga o seu próprio registro auth).
+   - `updateRule`: `@request.auth.id = id && @request.body.tipo:isset = false && @request.body.assinante_id:isset = false && @request.body.is_admin:isset = false && (@request.auth.tipo != 'master' || @request.body.email:isset = false || @request.body.email = email)`.
+   - Proteção adicional no hook `pocketbase/hooks/cadastros_compartilhados_tenancy.js` impedindo alteração de `tipo`, `assinante_id` e `is_admin` via requisições HTTP do cliente.
+
+5. **Proteção e Isolamento dos Endpoints de Usuários (`/backend/v1/usuarios-admin/*`):**
+   - Endpoint `/backend/v1/usuarios-admin/criar` atualizado em `pocketbase/hooks/usuario_criar.js`:
+     - Identifica o assinante do chamador e grava `assinante_id` no `usuarios` e no `_pb_users_auth_`.
+     - Valida que `perfil_id`, `empresa_padrao_id` e `empresas_ids` pertençam estritamente ao mesmo assinante do chamador, rejeitando qualquer tentativa com 403 Forbidden.
+   - Endpoint `/backend/v1/usuarios-admin/redefinir-senha` atualizado em `pocketbase/hooks/usuario_redefinir_senha.js`:
+     - Bloqueia expressamente qualquer tentativa de redefinir senha de usuário pertencente a outro assinante com erro 403 claro.
+   - Hook `pocketbase/hooks/usuario_bloquear_login.js`:
+     - Bloqueio imediato do login do usuário em caso de inativação mantido e compatibilizado.
+
+6. **Validação Prática com Assinante 'TESTE B' (Migrations 0069 e 0070):**
+   - Criado e mantido no banco vivo o assinante `TESTE B` (licença única `TB-*`, status `Ativa`).
+   - Criada empresa Matriz (`TESTE B COMERCIO E SERVICOS LTDA`, código 1001, CNPJ 11.222.333/0001-99).
+   - Criado perfil de Administrador exclusivo do `TESTE B` com permissões em todos os módulos.
+   - Criado usuário administrador (`admin@testeb.com`, `is_admin = true`, vinculado à matriz do TESTE B).
+   - Criado produto de teste pertencente exclusivamente ao `TESTE B` (`PRODUTO EXCLUSIVO TESTE B`, código 9001).
+   - **Resultado do Teste de Isolamento:**
+     - Consultas como usuário/escopo do `TESTE B` retornam estritamente registros do `TESTE B` e zero registros da `HOSPITAL HOME`.
+     - Consultas como usuário da `HOSPITAL HOME` retornam estritamente registros da `HOSPITAL HOME` e zero registros do `TESTE B`.
+     - Assinante e dados de teste B mantidos íntegros no banco de dados para os próximos testes da etapa 9.
+
+---
+
 **Versão 0.0.122** — Etapa 9 Multi-tenant (Prompt 9.2b: Conferência no Banco Vivo, Testes de CRUD com Master e Documentação Oficial do 9.2):
 
 1. **Conferência Completa no Banco Vivo (PocketBase):**

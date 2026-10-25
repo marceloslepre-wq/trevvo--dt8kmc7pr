@@ -56,11 +56,41 @@ routerAdd(
       return e.json(400, { error: 'Usuário e nova senha (mínimo 8 caracteres) são obrigatórios.' })
     }
 
+    // Obter assinante do chamador para validar mesmo tenant
+    let callerAssinanteId = ''
+    try {
+      if (callerUser) {
+        callerAssinanteId = callerUser.getString('assinante_id')
+      }
+      if (!callerAssinanteId && authRecord.getString) {
+        callerAssinanteId = authRecord.getString('assinante_id')
+      }
+    } catch (_) {}
+
     let usuarioRec
     try {
       usuarioRec = $app.findFirstRecordByData('usuarios', 'id', usuario_id)
     } catch (_) {
       return e.json(404, { error: 'Usuário não encontrado.' })
+    }
+
+    if (!usuarioRec) {
+      return e.json(404, { error: 'Usuário não encontrado.' })
+    }
+
+    // Isolar por assinante: impedir redefinir senha de usuário de outro assinante
+    const targetAssinanteId = usuarioRec.getString('assinante_id')
+    const ehMasterCaller = authRecord.getString && authRecord.getString('tipo') === 'master'
+    if (
+      !ehMasterCaller &&
+      callerAssinanteId &&
+      targetAssinanteId &&
+      targetAssinanteId !== callerAssinanteId
+    ) {
+      return e.json(403, {
+        error:
+          'Acesso negado: você não pode redefinir a senha de um usuário pertencente a outro assinante.',
+      })
     }
 
     let authRec = null

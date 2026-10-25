@@ -115,6 +115,99 @@ for (let i = 0; i < COLS_15.length; i++) {
 }
 
 // -----------------------------------------------------------------------------
+// 1b. Proteção de Tenancy para Coleções Estruturais: empresas, usuarios, perfis_acesso
+// -----------------------------------------------------------------------------
+const COLS_ESTRUTURAIS = ['empresas', 'usuarios', 'perfis_acesso']
+
+for (let i = 0; i < COLS_ESTRUTURAIS.length; i++) {
+  const nomeCol = COLS_ESTRUTURAIS[i]
+
+  // onRecordCreate: preenche assinante_id se vier vazio do contexto auth
+  onRecordCreate((e) => {
+    const record = e.record
+    if (!record) return e.next()
+
+    const auth = e.httpContext ? e.httpContext.auth || e.httpContext.get('authRecord') : null
+    if (auth) {
+      let assinanteId = ''
+      if (auth.getString) {
+        assinanteId = auth.getString('assinante_id')
+      }
+      if (!assinanteId) {
+        try {
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (uRecs && uRecs.length > 0) assinanteId = uRecs[0].getString('assinante_id')
+        } catch (_) {}
+      }
+
+      if (assinanteId) {
+        const enviado = record.getString('assinante_id')
+        if (enviado && enviado !== assinanteId) {
+          throw new BadRequestError(
+            'Operação rejeitada: assinante informado diverge do usuário autenticado.',
+          )
+        }
+        record.set('assinante_id', assinanteId)
+      }
+    }
+
+    return e.next()
+  }, nomeCol)
+
+  // onRecordUpdate: assinante_id é imutável
+  onRecordUpdate((e) => {
+    const record = e.record
+    if (!record) return e.next()
+
+    const original = record.original()
+    if (original) {
+      const origAssinante = original.getString('assinante_id')
+      if (origAssinante) {
+        record.set('assinante_id', origAssinante)
+      }
+    }
+
+    return e.next()
+  }, nomeCol)
+}
+
+// -----------------------------------------------------------------------------
+// 1c. Proteção de users (_pb_users_auth_): impedir tocar em 'tipo', 'assinante_id' e 'is_admin' pelo navegador
+// -----------------------------------------------------------------------------
+onRecordUpdate((e) => {
+  const record = e.record
+  if (!record) return e.next()
+
+  const httpContext = e.httpContext
+  if (httpContext) {
+    const original = record.original()
+    if (original) {
+      const origTipo = original.getString('tipo')
+      const origAssinante = original.getString('assinante_id')
+      const origAdmin = original.getBool('is_admin')
+
+      if (origTipo && record.getString('tipo') !== origTipo) {
+        record.set('tipo', origTipo)
+      }
+      if (origAssinante && record.getString('assinante_id') !== origAssinante) {
+        record.set('assinante_id', origAssinante)
+      }
+      if (record.getBool('is_admin') !== origAdmin) {
+        record.set('is_admin', origAdmin)
+      }
+    }
+  }
+
+  return e.next()
+}, '_pb_users_auth_')
+
+// -----------------------------------------------------------------------------
 // 3. Validações de Relações Cruzadas no Mesmo Assinante
 // -----------------------------------------------------------------------------
 

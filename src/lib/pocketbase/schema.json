@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-25T21:01:35.453Z",
+  "generatedAt": "2026-10-25T21:18:10.212Z",
   "collections": [
     {
       "name": "users",
@@ -7,9 +7,9 @@
       "apiRules": {
         "list": "id = @request.auth.id",
         "view": "id = @request.auth.id",
-        "create": "",
-        "update": "@request.auth.id = id && @request.body.tipo:isset = false && (@request.auth.tipo != 'master' || @request.body.email:isset = false || @request.body.email = email)",
-        "delete": "id = @request.auth.id"
+        "create": null,
+        "update": "@request.auth.id = id && @request.body.tipo:isset = false && @request.body.assinante_id:isset = false && @request.body.is_admin:isset = false && (@request.auth.tipo != 'master' || @request.body.email:isset = false || @request.body.email = email)",
+        "delete": "id = @request.auth.id && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -44,6 +44,19 @@
           "required": false,
           "system": false,
           "selectValues": ["master", "usuario"]
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "assinantes"
+        },
+        {
+          "name": "is_admin",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -137,11 +150,11 @@
       "name": "empresas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)"
       },
       "fields": [
         {
@@ -514,11 +527,11 @@
       "name": "perfis_acesso",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)"
       },
       "fields": [
         {
@@ -591,11 +604,11 @@
       "name": "permissoes",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "update": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "delete": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)"
       },
       "fields": [
         {
@@ -706,11 +719,11 @@
       "name": "usuarios",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)"
       },
       "fields": [
         {
@@ -848,11 +861,11 @@
       "name": "usuarios_empresas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && usuario_id.assinante_id = @request.auth.assinante_id && empresa_id.assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && usuario_id.assinante_id = @request.auth.assinante_id && empresa_id.assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && usuario_id.assinante_id = @request.auth.assinante_id && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "update": "@request.auth.id != '' && usuario_id.assinante_id = @request.auth.assinante_id && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)",
+        "delete": "@request.auth.id != '' && usuario_id.assinante_id = @request.auth.assinante_id && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)"
       },
       "fields": [
         {
@@ -916,9 +929,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": "@request.auth.id != '' && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -985,9 +998,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": "@request.auth.id != '' && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -1061,9 +1074,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": "@request.auth.id != '' && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -1154,9 +1167,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": "@request.auth.id != '' && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -1235,9 +1248,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": "@request.auth.id != '' && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -1336,11 +1349,11 @@
       "name": "marcas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -1412,11 +1425,11 @@
       "name": "grupos",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -1495,11 +1508,11 @@
       "name": "categorias",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -1579,11 +1592,11 @@
       "name": "clientes",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -1942,11 +1955,11 @@
       "name": "fornecedores",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -2300,11 +2313,11 @@
       "name": "perfis_tributarios",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -2396,11 +2409,11 @@
       "name": "perfis_tributarios_regras",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id",
+        "delete": "@request.auth.id != '' && perfil_id.assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -2647,11 +2660,11 @@
       "name": "produtos",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -3309,11 +3322,11 @@
       "name": "produtos_kit_itens",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && produto_kit_id.assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && produto_kit_id.assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && produto_kit_id.assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && produto_kit_id.assinante_id = @request.auth.assinante_id",
+        "delete": "@request.auth.id != '' && produto_kit_id.assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -3381,11 +3394,11 @@
       "name": "produtos_fornecedores",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "delete": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -3483,11 +3496,11 @@
       "name": "produtos_conversoes_unidade",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "delete": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -3561,11 +3574,11 @@
       "name": "produtos_historico",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id",
+        "delete": "@request.auth.id != '' && produto_id.assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -3645,11 +3658,11 @@
       "name": "configuracoes",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -3727,11 +3740,11 @@
       "name": "condicoes_pagamento",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -5019,9 +5032,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": "@request.auth.id != '' && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -6040,11 +6053,11 @@
       "name": "regras_fiscais_ncm",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -6166,9 +6179,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": "@request.auth.id != '' && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -6247,9 +6260,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": "@request.auth.id != '' && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -6316,11 +6329,11 @@
       "name": "plano_contas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -6423,11 +6436,11 @@
       "name": "centros_custo",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -6648,11 +6661,11 @@
       "name": "formas_pagamento",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -7969,11 +7982,11 @@
       "name": "formas_pagamento_taxas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && forma_pagamento_id.assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && forma_pagamento_id.assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && forma_pagamento_id.assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && forma_pagamento_id.assinante_id = @request.auth.assinante_id",
+        "delete": "@request.auth.id != '' && forma_pagamento_id.assinante_id = @request.auth.assinante_id"
       },
       "fields": [
         {
@@ -10319,9 +10332,9 @@
       "apiRules": {
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "create": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "update": "@request.auth.id != '' && @request.auth.tipo = 'master'",
+        "delete": "@request.auth.id != '' && @request.auth.tipo = 'master'"
       },
       "fields": [
         {
@@ -10901,11 +10914,11 @@
       "name": "relatorios_filtros_salvos",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)",
-        "view": "@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)",
-        "create": "@request.auth.id != '' && usuario_id = @request.auth.id",
-        "update": "@request.auth.id != '' && usuario_id = @request.auth.id",
-        "delete": "@request.auth.id != '' && usuario_id = @request.auth.id"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (usuario_id = @request.auth.id || compartilhado = true)",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (usuario_id = @request.auth.id || compartilhado = true)",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && usuario_id = @request.auth.id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && usuario_id = @request.auth.id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && usuario_id = @request.auth.id"
       },
       "fields": [
         {
@@ -10972,11 +10985,11 @@
       "name": "relatorios_salvos",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)",
-        "view": "@request.auth.id != '' && (usuario_id = @request.auth.id || compartilhado = true)",
-        "create": "@request.auth.id != '' && usuario_id = @request.auth.id",
-        "update": "@request.auth.id != '' && usuario_id = @request.auth.id",
-        "delete": "@request.auth.id != '' && usuario_id = @request.auth.id"
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (usuario_id = @request.auth.id || compartilhado = true)",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (usuario_id = @request.auth.id || compartilhado = true)",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && usuario_id = @request.auth.id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && usuario_id = @request.auth.id && @request.body.assinante_id:isset = false",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && usuario_id = @request.auth.id"
       },
       "fields": [
         {

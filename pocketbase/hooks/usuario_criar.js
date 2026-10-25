@@ -95,12 +95,84 @@ routerAdd(
       return e.json(400, { error: 'Já existe um cadastro de usuário com este e-mail.' })
     }
 
-    // Criar auth record
+    // Obter assinante do chamador para isolamento rigoroso
+    let assinanteId = ''
+    try {
+      if (callerUser) {
+        assinanteId = callerUser.getString('assinante_id')
+      }
+      if (!assinanteId && authRecord.getString) {
+        assinanteId = authRecord.getString('assinante_id')
+      }
+    } catch (_) {}
+
+    if (!assinanteId) {
+      return e.json(400, {
+        error: 'Não foi possível identificar o assinante do usuário autenticado.',
+      })
+    }
+
+    // Validar se o perfil pertence ao mesmo assinante
+    try {
+      const pAlvo = $app.findRecordById('perfis_acesso', perfil_id)
+      if (!pAlvo || pAlvo.getString('assinante_id') !== assinanteId) {
+        return e.json(403, {
+          error: 'Operação rejeitada: o perfil selecionado pertence a outro assinante.',
+        })
+      }
+    } catch (errP) {
+      return e.json(400, { error: 'Perfil inválido ou não encontrado.' })
+    }
+
+    // Validar empresa padrão se informada
+    if (empresa_padrao_id) {
+      try {
+        const empAlvo = $app.findRecordById('empresas', empresa_padrao_id)
+        if (!empAlvo || empAlvo.getString('assinante_id') !== assinanteId) {
+          return e.json(403, {
+            error: 'Operação rejeitada: a empresa padrão informada pertence a outro assinante.',
+          })
+        }
+      } catch (errE) {
+        return e.json(400, { error: 'Empresa padrão inválida ou não encontrada.' })
+      }
+    }
+
+    // Validar empresas_ids: nenhuma pode pertencer a outro assinante
+    for (let i = 0; i < empresas_ids.length; i++) {
+      const empId = empresas_ids[i]
+      if (empId) {
+        try {
+          const empAlvo = $app.findRecordById('empresas', empId)
+          if (!empAlvo || empAlvo.getString('assinante_id') !== assinanteId) {
+            return e.json(403, {
+              error: `Operação rejeitada: a empresa vinculada (${empId}) pertence a outro assinante.`,
+            })
+          }
+        } catch (_) {
+          return e.json(400, { error: `Empresa vinculada (${empId}) inválida.` })
+        }
+      }
+    }
+
+    // Checar se perfil alvo é admin para setar is_admin no users
+    let isTargetAdmin = false
+    try {
+      const pAlvo = $app.findRecordById('perfis_acesso', perfil_id)
+      if (pAlvo && pAlvo.getBool('administrador')) {
+        isTargetAdmin = true
+      }
+    } catch (_) {}
+
+    // Criar auth record (_pb_users_auth_) com assinante_id e is_admin e tipo='usuario'
     const authRec = new Record(usersAuthCol)
     authRec.setEmail(email)
     authRec.setPassword(password)
     authRec.setVerified(true)
     authRec.set('name', nome)
+    authRec.set('tipo', 'usuario')
+    authRec.set('assinante_id', assinanteId)
+    authRec.set('is_admin', isTargetAdmin)
     $app.save(authRec)
 
     // Criar usuarios record
@@ -112,6 +184,7 @@ routerAdd(
     usuarioRec.set('cpf', cpf)
     usuarioRec.set('telefone', telefone)
     usuarioRec.set('perfil_id', perfil_id)
+    usuarioRec.set('assinante_id', assinanteId)
     if (empresa_padrao_id) {
       usuarioRec.set('empresa_padrao_id', empresa_padrao_id)
     }

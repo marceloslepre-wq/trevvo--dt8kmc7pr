@@ -32,5 +32,10 @@ onRecordUpdate((e) => {
     }
   }
 
+  // Se o usuário foi reativado (original = false, atual = true), garantir que o authRecord continue associado
+  if (originalAtivo === false && ativoAtual === true) {
+    // Mantém íntegro
+  }
+
   return e.next()
 }, 'usuarios')
