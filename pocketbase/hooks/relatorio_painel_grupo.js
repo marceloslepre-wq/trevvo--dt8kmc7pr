@@ -73,19 +73,31 @@ routerAdd('POST', '/backend/v1/relatorios/painel-grupo', (c) => {
     }
   } catch (_) {}
 
-  // 2. Determinar as empresas que o usuário acessa
+  // 2. Determinar as empresas que o usuário acessa (Etapa 9 Multi-tenant)
+  if (!callerUser) {
+    return c.json(403, { sucesso: false, message: 'Usuário não localizado no ERP.' })
+  }
+  const assinanteId = callerUser.getString('assinante_id')
+  if (!assinanteId) {
+    return c.json(403, { sucesso: false, message: 'Usuário não vinculado a um assinante.' })
+  }
+
   const empresasIdsPermitidas = []
   if (isAdmin) {
+    // Administrador do assinante: apenas empresas ativas do PRÓPRIO assinante
     try {
-      const todasEmp = $app.findRecordsByFilter('empresas', 'ativo = true', 'codigo', 500, 0)
-      for (let i = 0; i < todasEmp.length; i++) {
-        empresasIdsPermitidas.push(todasEmp[i].id)
+      const empsAssinante = $app.findRecordsByFilter(
+        'empresas',
+        "assinante_id = '" + assinanteId + "' && ativo = true",
+        'codigo',
+        500,
+        0,
+      )
+      for (let i = 0; i < empsAssinante.length; i++) {
+        empresasIdsPermitidas.push(empsAssinante[i].id)
       }
     } catch (_) {}
   } else {
-    if (!callerUser) {
-      return c.json(403, { sucesso: false, message: 'Usuário não localizado no ERP.' })
-    }
     const empSet = new Set()
     const padraoId = callerUser.getString('empresa_padrao_id')
     if (padraoId) empSet.add(padraoId)
@@ -107,7 +119,7 @@ routerAdd('POST', '/backend/v1/relatorios/painel-grupo', (c) => {
     empSet.forEach((id) => {
       try {
         const empRec = $app.findRecordById('empresas', id)
-        if (empRec && empRec.getBool('ativo')) {
+        if (empRec && empRec.getBool('ativo') && empRec.getString('assinante_id') === assinanteId) {
           empresasIdsPermitidas.push(id)
         }
       } catch (_) {}

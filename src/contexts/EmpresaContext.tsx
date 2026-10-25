@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { Empresa, listarEmpresasAtivas } from '@/services/empresas'
+import { Empresa, listarEmpresasAcessiveis, listarEmpresasAtivas } from '@/services/empresas'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { obterEmpresasDoUsuario } from '@/services/usuarios'
@@ -37,20 +37,29 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     try {
       setCarregando(true)
-      const todasAtivas = await listarEmpresasAtivas()
 
+      // Etapa 9 (Multi-tenant): Consome o endpoint backend /backend/v1/empresas/acessiveis,
+      // onde o backend já aplica a governança estrita de assinante (empresasDoUsuario):
+      // - Administrador vê apenas as empresas ativas do PRÓPRIO assinante;
+      // - Demais usuários veem apenas as empresas vinculadas e ativas do mesmo assinante.
       let listaFiltrada: Empresa[] = []
-
-      // Se for administrador, vê todas as empresas
-      if (administrador) {
-        listaFiltrada = todasAtivas
-      } else if (usuarioERP) {
-        // Obter empresas autorizadas para o usuário em usuarios_empresas
-        const permitidas = await obterEmpresasDoUsuario(usuarioERP.id)
-        const permitidasIds = new Set(permitidas.filter((p) => p.ativo).map((p) => p.empresa_id))
-        listaFiltrada = todasAtivas.filter((e) => permitidasIds.has(e.id))
-      } else {
-        listaFiltrada = todasAtivas
+      try {
+        listaFiltrada = await listarEmpresasAcessiveis()
+      } catch (errAcessiveis) {
+        console.warn(
+          'Falha em listarEmpresasAcessiveis, aplicando fallback resiliente:',
+          errAcessiveis,
+        )
+        const todasAtivas = await listarEmpresasAtivas()
+        if (administrador) {
+          listaFiltrada = todasAtivas
+        } else if (usuarioERP) {
+          const permitidas = await obterEmpresasDoUsuario(usuarioERP.id)
+          const permitidasIds = new Set(permitidas.filter((p) => p.ativo).map((p) => p.empresa_id))
+          listaFiltrada = todasAtivas.filter((e) => permitidasIds.has(e.id))
+        } else {
+          listaFiltrada = todasAtivas
+        }
       }
 
       setEmpresas(listaFiltrada)

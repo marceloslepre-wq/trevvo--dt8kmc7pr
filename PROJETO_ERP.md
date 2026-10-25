@@ -284,6 +284,31 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### assinantes
+
+Tabela de registro e controle de assinantes do ERP SaaS (Etapa 9 Multi-tenant, Migration 0061/0062). O assinante é o cliente do SaaS — representa a conta corporativa que agrupa as empresas (matriz e filiais) do cliente. Todas as coleções de cadastro possuem `assinante_id` e todas as coleções de movimento continuam com `empresa_id` (onde cada empresa pertence a um `assinante_id`). O campo chama-se `assinante_id`, nunca `cliente_id` (pois `cliente_id` é o cliente de venda do ERP). Acesso restrito ao backend e ao usuário com `users.tipo = 'master'`: leitura/visualização e atualização restritas a master (`@request.auth.tipo = 'master'`); criação e exclusão bloqueadas via SDK do navegador (`createRule: null`, `deleteRule: null`), operadas exclusivamente pelo backend.
+
+- id (text, PK)
+- numero_licenca (text, identificador legível exclusivo da licença do assinante, ex.: "HH-RFR8HF", obrigatório, índice único)
+- nome (text, razão social ou denominação do assinante do SaaS, obrigatório)
+- documento (text, CNPJ ou CPF do titular da conta SaaS)
+- email_contato (text, e-mail administrativo/financeiro principal do assinante)
+- telefone (text, telefone principal de contato)
+- whatsapp_contato (text, celular/WhatsApp para comunicações operacionais)
+- status (select: "Trial", "Ativa", "Pausada", "Expirada", "Cancelada", obrigatório, índice)
+- origem (bool, identifica o assinante de origem do dono do SaaS, ex.: HOSPITAL HOME, índice)
+- plano_id (text, identificador de plano de contratação SaaS)
+- data_inicio (text, data ISO de início da vigência da assinatura)
+- data_expiracao (text, data ISO de expiração da assinatura)
+- limites_personalizados (bool, indica se o assinante possui limites customizados além do plano)
+- limite_usuarios (number, quantidade máxima permitida de colaboradores ativos)
+- limite_empresas (number, quantidade máxima permitida de filiais/empresas cadastradas)
+- observacoes (text, anotações de implantação e governança da conta SaaS)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `numero_licenca` (único: `idx_assinantes_licenca`), `status` (`idx_assinantes_status`), `origem` (`idx_assinantes_origem`).
+
 ### relatorios_salvos
 
 Tabela de registro e controle de relatórios personalizados completos montados pelo usuário (Prompt 8.6). Guarda a definição completa da consulta: base de dados selecionada (`itens_vendidos` ou `itens_comprados`), array ordenado de agrupamentos (até 3 níveis hierárquicos), array de valores e métricas selecionadas, objeto completo de filtros aplicados (`ObjetoFiltrosRelatorio`) e tipo de gráfico configurado. Suporta compartilhamento com a empresa (`compartilhado = true`), sendo exibidos na Central de Relatórios divididos entre "Meus relatórios salvos" e "Relatórios da empresa". Regras de acesso estritas na collection: leitura permitida para o próprio autor ou quando compartilhado (`usuario_id = @request.auth.id || compartilhado = true`); criação, atualização e exclusão restritas unicamente ao proprietário do relatório (`usuario_id = @request.auth.id`). Criada na Migration 0059.
@@ -3379,7 +3404,62 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 
 ---
 
+## Etapa 9 Multi-tenant
+
+A Etapa 9 transforma o ERP em uma plataforma SaaS multi-tenant verdadeira, garantindo segregação total entre assinantes e mantendo a flexibilidade de grupo de empresas (matriz e filiais) por assinante.
+
+### Regras de Ouro do Multi-tenant (Mandatórias para todos os prompts)
+
+1. **Assinante é o cliente do SaaS:** O assinante representa a conta do cliente que contrata a plataforma SaaS — um grupo empresarial composto por matriz e filiais. O campo chama-se obrigatoriamente `assinante_id`, nunca `cliente_id` (o campo `cliente_id` continua existindo para representar o cliente de venda/faturamento do ERP).
+2. **Separação Cadastros vs. Movimentos:** Toda coleção de cadastro tem `assinante_id`; toda coleção de movimento continua com `empresa_id` (onde cada empresa pertence a um `assinante_id`).
+3. **Preenchimento sempre pelo backend:** O campo `assinante_id` é SEMPRE resolvido e gravado pelo backend a partir do usuário autenticado no token JWT. O backend NUNCA aceita nem confia em `assinante_id` vindo do corpo da requisição do navegador.
+4. **Isolamento obrigatório no backend:** O isolamento de dados entre assinantes é executado e garantido no backend (regras de acesso das coleções no PocketBase e lógica dos endpoints nos `pb_hooks`), NUNCA apenas filtrando na tela.
+5. **Tabelas globais compartilhadas (iguais para todos):** `ncm`, `cest`, `cfop`, `cfop_conversao_entrada`, `icms_aliquotas_uf`, `icms_interestadual`, `tabelas_fiscais_codigos`, `unidades_medida` e `intermediadores`. Todos os assinantes e usuários têm permissão de leitura; apenas o usuário master tem permissão de alteração.
+6. **Um login só para o dono do SaaS:** O usuário `master` é o proprietário da plataforma SaaS, pertence ao assinante de origem (`HOSPITAL HOME`), utiliza o ERP normalmente em suas operações diárias e tem também acesso exclusivo ao item "Painel Master" no menu (etapa futura).
+7. **Privilégio master definido exclusivamente pelo backend:** Apenas o backend define e valida quem é master (`users.tipo = 'master'`). Nenhuma tela, endpoint público ou cadastro de usuário pode criar, remover ou alterar o privilégio de master. O navegador é bloqueado de alterar o campo `tipo` de `users` e de alterar o e-mail do master.
+8. **Situações da Licença:** Os status válidos da assinatura são: `Trial`, `Ativa`, `Pausada`, `Expirada`, `Cancelada`.
+9. **Novas coleções:** Toda coleção nova criada a partir da Etapa 9 já deve nascer com `assinante_id` (se for tabela de cadastro/configuração) ou com `empresa_id` (se for tabela de movimento/operacional vinculada a estabelecimento).
+
+### Módulo Backend `tenancy.js` e Endpoints de Multi-tenant
+
+O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e endpoints centrais de governança multi-tenant:
+
+1. **`assinanteDoUsuario(c)`:** Identifica o registro de `usuarios` associado ao token de autenticação atual e retorna o seu `assinante_id`. Lança erro 403 se o usuário não pertencer a nenhum assinante ativo.
+2. **`eMaster(c)`:** Retorna booleano indicando se o usuário autenticado possui `tipo === 'master'` na coleção `users`.
+3. **`empresasDoUsuario(c)`:** Retorna a lista de IDs de empresas ativas que o usuário logado tem permissão de acessar:
+   - Se for Administrador (`perfis_acesso.administrador = true`): retorna todas as empresas ativas pertencentes ao PRÓPRIO `assinante_id` do usuário.
+   - Demais usuários: retorna apenas as empresas ativas vinculadas expressamente em `usuarios_empresas` que pertençam ao mesmo `assinante_id`.
+4. **`exigirEmpresaDoUsuario(c, empresaId)`:** Valida se a empresa informada está autorizada para o usuário autenticado dentro do escopo do seu assinante, lançando 403 em caso negativo.
+5. **`GET /backend/v1/empresas/acessiveis`:** Endpoint que retorna as empresas ativas acessíveis para o usuário logado, filtrando rigorosamente pelo assinante no backend e alimentando o `EmpresaContext` (`useEmpresaAtiva`) com fallback resiliente.
+6. **`GET /backend/v1/tenancy/me`:** Endpoint de diagnóstico e sessão que retorna o status do assinante, licença, plano, se o usuário logado é master, total de empresas e de usuários do assinante.
+
+---
+
 ## Versão Atual do Projeto
+
+**Versão 0.0.119** — Etapa 9 Multi-tenant (Prompt 9.1: Conclusão da Base Multi-tenant, EmpresaContext e Documentação):
+
+1. **Conexão de EmpresaContext ao Endpoint Multi-tenant (`src/contexts/EmpresaContext.tsx`):**
+   - O hook `useEmpresaAtiva` e a função `recarregarEmpresas` agora consomem prioritariamente `listarEmpresasAcessiveis()` (`GET /backend/v1/empresas/acessiveis`), garantindo que administradores visualizem unicamente as empresas do seu próprio assinante.
+   - Mantido fallback resiliente para `listarEmpresasAtivas()` com filtro em memória caso o endpoint encontre indisponibilidade momentânea, assegurando que `/painel` e todo o ERP continuem funcionando ininterruptamente.
+2. **Ajuste de Escopo Multi-tenant nos Hooks de Relatórios (`relatorios_base.js` e `relatorio_painel_grupo.js`):**
+   - Confirmado e reforçado o escopo de multi-tenant em `relatorios_base.js` e `relatorio_painel_grupo.js`, restringindo a listagem de empresas do administrador estritamente ao `assinante_id` do usuário solicitante.
+3. **Base de Dados e Migrations 0061 e 0062 Aplicadas no Skip Cloud:**
+   - Criada a coleção `assinantes` (número da licença único, nome, status, documento, limites e datas de vigência).
+   - Inserido e vinculado o assinante de origem `HOSPITAL HOME` (licença única gerada, `origem = true`, status `Ativa`).
+   - Adicionado o campo `assinante_id` nas coleções `empresas`, `usuarios` e `perfis_acesso`, com todos os registros existentes vinculados ao assinante `HOSPITAL HOME`.
+   - Adicionado o campo `tipo` (`master` | `usuario`) na coleção `users`, configurado o master `marceloslepre@gmail.com` com `tipo = 'master'` e perfil de administrador, e bloqueada a alteração de `tipo` pelo navegador nas regras de segurança.
+4. **Registro das Regras de Ouro e Documentação:**
+   - Seção "Etapa 9 Multi-tenant" criada no `PROJETO_ERP.md` com as 9 regras de ouro, documentação da tabela `assinantes`, endpoints `/backend/v1/empresas/acessiveis` e `/backend/v1/tenancy/me`, funções de `tenancy.js` e registro da versão 0.0.119.
+
+---
+
+**Versão 0.0.118** — Etapa 9 Multi-tenant (Início do Prompt 9.1):
+
+- Criação das migrations base 0061 e 0062 de multi-tenant no PocketBase.
+- Implementação inicial do módulo `pocketbase/hooks/tenancy.js` e serviço `src/services/empresas.ts` (`listarEmpresasAcessiveis`).
+
+---
 
 **Versão 0.0.117** — Fechamento Oficial da Etapa 8 (Relatórios e Painel) e Conclusão do Roteiro Geral do ERP:
 
