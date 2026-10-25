@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-25T21:18:10.212Z",
+  "generatedAt": "2026-10-25T21:50:09.341Z",
   "collections": [
     {
       "name": "users",
@@ -68,9 +68,9 @@
       "name": "logs_auditoria",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && (empresa_id = '' || (@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
+        "view": "@request.auth.id != '' && (empresa_id = '' || (@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
+        "create": "@request.auth.id != '' && (empresa_id = '' || (@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
         "update": null,
         "delete": null
       },
@@ -915,6 +915,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "auth_user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         }
       ],
       "indexes": [
@@ -3869,8 +3876,8 @@
       "name": "estoque_saldos",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -3966,8 +3973,8 @@
       "name": "estoque_movimentos",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -4179,8 +4186,8 @@
       "name": "lotes",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -4275,11 +4282,11 @@
       "name": "transferencias",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && ((empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))) || (empresa_destino_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_destino_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
+        "view": "@request.auth.id != '' && ((empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))) || (empresa_destino_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_destino_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
+        "create": "@request.auth.id != '' && empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && ((empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))) || (empresa_destino_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_destino_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
+        "delete": "@request.auth.id != '' && empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -4400,11 +4407,11 @@
       "name": "transferencias_itens",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && ((transferencia_id.empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))) || (transferencia_id.empresa_destino_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_destino_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
+        "view": "@request.auth.id != '' && ((transferencia_id.empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))) || (transferencia_id.empresa_destino_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_destino_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
+        "create": "@request.auth.id != '' && ((transferencia_id.empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))) || (transferencia_id.empresa_destino_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_destino_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
+        "update": "@request.auth.id != '' && ((transferencia_id.empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))) || (transferencia_id.empresa_destino_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_destino_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))",
+        "delete": "@request.auth.id != '' && ((transferencia_id.empresa_origem_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_origem_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))) || (transferencia_id.empresa_destino_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= transferencia_id.empresa_destino_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))))"
       },
       "fields": [
         {
@@ -4498,11 +4505,11 @@
       "name": "inventarios",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -4637,11 +4644,11 @@
       "name": "inventarios_itens",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && inventario_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= inventario_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && inventario_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= inventario_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && inventario_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= inventario_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && inventario_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= inventario_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && inventario_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= inventario_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -4754,11 +4761,11 @@
       "name": "pedidos_compra",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -4916,11 +4923,11 @@
       "name": "pedidos_compra_itens",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && pedido_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= pedido_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && pedido_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= pedido_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && pedido_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= pedido_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && pedido_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= pedido_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && pedido_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= pedido_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -5114,11 +5121,11 @@
       "name": "notas_entrada",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != '' && status = 'Em conferência'",
-        "delete": "@request.auth.id != '' && status = 'Em conferência'"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true)) && status != 'Lançada'",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true)) && status != 'Lançada'"
       },
       "fields": [
         {
@@ -5470,11 +5477,11 @@
       "name": "notas_entrada_itens",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'",
-        "update": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'",
-        "delete": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'"
+        "list": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -5860,11 +5867,11 @@
       "name": "notas_entrada_parcelas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'",
-        "update": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'",
-        "delete": "@request.auth.id != '' && @collection.notas_entrada.id = nota_id && @collection.notas_entrada.status = 'Em conferência'"
+        "list": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && nota_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= nota_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -5943,11 +5950,11 @@
       "name": "config_fiscal_empresa",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -6506,11 +6513,11 @@
       "name": "contas_financeiras",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -6781,11 +6788,11 @@
       "name": "config_financeira_empresa",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -6947,8 +6954,8 @@
       "name": "pagamentos_lotes",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != \"\"",
-        "view": "@request.auth.id != \"\"",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -7045,10 +7052,10 @@
       "name": "contas_pagar",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "delete": null
       },
       "fields": [
@@ -7267,8 +7274,8 @@
       "name": "pagamentos_baixas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != \"\"",
-        "view": "@request.auth.id != \"\"",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -7452,8 +7459,8 @@
       "name": "movimentacoes_financeiras",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -7649,10 +7656,10 @@
       "name": "contas_receber",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "delete": null
       },
       "fields": [
@@ -7871,8 +7878,8 @@
       "name": "extratos_linhas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -8064,11 +8071,11 @@
       "name": "config_vendas_empresa",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -8230,11 +8237,11 @@
       "name": "pdv_terminais",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -8308,11 +8315,11 @@
       "name": "vendas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != '' && status != 'Finalizada' && status != 'Cancelada' && (@request.body.status = '' || (@request.body.status != 'Finalizada' && @request.body.status != 'Cancelada')) && @request.body.documento_fiscal_status = '' && @request.body.custo_total = '' && @request.body.data_finalizacao = '' && @request.body.caixa_sessao_id = ''",
-        "delete": "@request.auth.id != '' && status != 'Finalizada' && status != 'Cancelada'"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true)) && @request.body.status:isset = false && @request.body.documento_fiscal_status:isset = false && @request.body.custo_total:isset = false && @request.body.data_finalizacao:isset = false && @request.body.caixa_sessao_id:isset = false",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -8557,11 +8564,11 @@
       "name": "vendas_itens",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != '' && @collection.vendas.id = venda_id && @collection.vendas.status != 'Finalizada' && @collection.vendas.status != 'Cancelada'",
-        "update": "@request.auth.id != '' && @collection.vendas.id = venda_id && @collection.vendas.status != 'Finalizada' && @collection.vendas.status != 'Cancelada'",
-        "delete": "@request.auth.id != '' && @collection.vendas.id = venda_id && @collection.vendas.status != 'Finalizada' && @collection.vendas.status != 'Cancelada'"
+        "list": "@request.auth.id != '' && venda_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= venda_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && venda_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= venda_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && venda_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= venda_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && venda_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= venda_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && venda_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= venda_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -8764,8 +8771,8 @@
       "name": "vendas_pagamentos",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && venda_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= venda_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && venda_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= venda_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -8892,8 +8899,8 @@
       "name": "caixa_sessoes",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -9065,8 +9072,8 @@
       "name": "caixa_sessoes_movimentos",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -9176,11 +9183,11 @@
       "name": "vales_troca",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "delete": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
       },
       "fields": [
         {
@@ -9288,10 +9295,10 @@
       "name": "config_emissao_fiscal",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "delete": null
       },
       "fields": [
@@ -9492,8 +9499,8 @@
       "name": "documentos_fiscais",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -9907,8 +9914,8 @@
       "name": "documentos_fiscais_itens",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && documento_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= documento_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && documento_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= documento_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -10394,8 +10401,8 @@
       "name": "documentos_fiscais_cartas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && documento_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= documento_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && documento_id.empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= documento_id.empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -10493,8 +10500,8 @@
       "name": "inutilizacoes",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -10606,10 +10613,10 @@
       "name": "config_sped_empresa",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "create": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "update": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "delete": null
       },
       "fields": [
@@ -10697,8 +10704,8 @@
       "name": "sped_arquivos",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null
@@ -10844,8 +10851,8 @@
       "name": "sped_ajustes_apuracao",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
+        "view": "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))",
         "create": null,
         "update": null,
         "delete": null

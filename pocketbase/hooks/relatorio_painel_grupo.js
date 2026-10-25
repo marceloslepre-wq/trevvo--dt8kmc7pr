@@ -82,49 +82,8 @@ routerAdd('POST', '/backend/v1/relatorios/painel-grupo', (c) => {
     return c.json(403, { sucesso: false, message: 'Usuário não vinculado a um assinante.' })
   }
 
-  const empresasIdsPermitidas = []
-  if (isAdmin) {
-    // Administrador do assinante: apenas empresas ativas do PRÓPRIO assinante
-    try {
-      const empsAssinante = $app.findRecordsByFilter(
-        'empresas',
-        "assinante_id = '" + assinanteId + "' && ativo = true",
-        'codigo',
-        500,
-        0,
-      )
-      for (let i = 0; i < empsAssinante.length; i++) {
-        empresasIdsPermitidas.push(empsAssinante[i].id)
-      }
-    } catch (_) {}
-  } else {
-    const empSet = new Set()
-    const padraoId = callerUser.getString('empresa_padrao_id')
-    if (padraoId) empSet.add(padraoId)
-
-    try {
-      const vinculos = $app.findRecordsByFilter(
-        'usuarios_empresas',
-        "usuario_id = '" + callerUser.id + "' && ativo = true",
-        '',
-        500,
-        0,
-      )
-      for (let i = 0; i < vinculos.length; i++) {
-        const eId = vinculos[i].getString('empresa_id')
-        if (eId) empSet.add(eId)
-      }
-    } catch (_) {}
-
-    empSet.forEach((id) => {
-      try {
-        const empRec = $app.findRecordById('empresas', id)
-        if (empRec && empRec.getBool('ativo') && empRec.getString('assinante_id') === assinanteId) {
-          empresasIdsPermitidas.push(id)
-        }
-      } catch (_) {}
-    })
-  }
+  const empsAcessiveis = empresasDoUsuario(auth)
+  const empresasIdsPermitidas = empsAcessiveis.map((e) => e.id)
 
   if (empresasIdsPermitidas.length === 0) {
     return c.json(400, {
@@ -170,6 +129,21 @@ routerAdd('POST', '/backend/v1/relatorios/painel-grupo', (c) => {
 
   // Mes de referência do payload ou mês corrente
   const body = c.requestInfo().body || {}
+
+  // Se o frontend/caller passar empresa_id (filtro por empresa específica), valida com exigirEmpresaDoUsuario
+  const empresaIdParam = (body.empresa_id || c.requestInfo().query['empresa_id'] || '').trim()
+  if (empresaIdParam) {
+    try {
+      exigirEmpresaDoUsuario(auth, empresaIdParam)
+    } catch (errEmp) {
+      return c.json(403, {
+        sucesso: false,
+        message:
+          errEmp && errEmp.message ? errEmp.message : 'Acesso negado à empresa especificada.',
+      })
+    }
+  }
+
   let mesRefStr = String(body.mes_referencia || '').trim()
   if (!/^\d{4}-\d{2}$/.test(mesRefStr)) {
     mesRefStr = hojeAnoStr + '-' + hojeMesStr

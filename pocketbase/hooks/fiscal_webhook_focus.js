@@ -129,6 +129,15 @@ routerAdd('POST', '/backend/v1/fiscal/webhook-focus', (c) => {
     const empresaId = docRec.getString('empresa_id')
     const modelo = docRec.getString('modelo') || '55'
 
+    // Validar CNPJ do emissor da empresa vinculada ao documento
+    let cnpjEmpresa = ''
+    try {
+      const empRec = $app.findRecordById('empresas', empresaId)
+      if (empRec) {
+        cnpjEmpresa = (empRec.getString('cnpj') || '').replace(/\D/g, '')
+      }
+    } catch (_) {}
+
     // Carregar config fiscal
     const configs = $app.findRecordsByFilter(
       'config_emissao_fiscal',
@@ -137,6 +146,24 @@ routerAdd('POST', '/backend/v1/fiscal/webhook-focus', (c) => {
       1,
       0,
     )
+
+    if (!cnpjEmpresa && configs && configs.length > 0) {
+      // Tentar obter CNPJ via config_emissao_fiscal se houver campo correspondente
+      cnpjEmpresa = (configs[0].getString('cnpj') || '').replace(/\D/g, '')
+    }
+
+    // Conferir CNPJ do emissor no payload (se informado no webhook) ou na referência
+    const cnpjRecebido = (body.cnpj || body.cnpj_emitente || body.emitente_cnpj || '').replace(
+      /\D/g,
+      '',
+    )
+    if (cnpjRecebido && cnpjEmpresa && cnpjRecebido !== cnpjEmpresa) {
+      console.warn(
+        '[Webhook Focus] Tentativa com CNPJ divergente da empresa vinculada ao documento. Aviso ignorado.',
+      )
+      return c.json(200, { sucesso: true, message: 'Aviso ignorado por divergência de emissor.' })
+    }
+
     if (!configs || configs.length === 0) {
       console.error('[Webhook Focus] Config fiscal não encontrada para empresa:', empresaId)
       return c.json(200, { sucesso: true, message: 'Configuração da empresa ausente.' })
@@ -203,6 +230,23 @@ routerAdd('POST', '/backend/v1/fiscal/webhook-focus', (c) => {
     if (statusCode === 404) {
       console.warn('[Webhook Focus] Nota não encontrada na Focus NFe:', ref)
       return c.json(200, { sucesso: true, message: 'Nota não encontrada na Focus.' })
+    }
+
+    // Validação estrita do CNPJ do emissor retornado pela Focus
+    const cnpjEmitenteFocus = (
+      respJson?.cnpj_emitente ||
+      respJson?.emitente?.cnpj ||
+      respJson?.emitente?.CNPJ ||
+      ''
+    ).replace(/\D/g, '')
+    if (cnpjEmitenteFocus && cnpjEmpresa && cnpjEmitenteFocus !== cnpjEmpresa) {
+      console.warn(
+        '[Webhook Focus] Consulta na Focus retornou CNPJ emissor divergente do cadastro da empresa. Processamento ignorado.',
+      )
+      return c.json(200, {
+        sucesso: true,
+        message: 'Aviso ignorado por divergência de CNPJ do emissor.',
+      })
     }
 
     const statusFocus = respJson?.status || ''
