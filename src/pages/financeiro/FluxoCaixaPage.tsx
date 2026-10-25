@@ -9,10 +9,11 @@ import {
   AgrupamentoFluxo,
 } from '@/services/fluxoCaixa'
 import { ContaFinanceira, listarContasFinanceiras } from '@/services/contasFinanceiras'
+import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
+import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import { toast } from '@/hooks/use-toast'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -55,18 +56,7 @@ import {
   CartesianGrid,
   ResponsiveContainer,
 } from 'recharts'
-import {
-  TrendingUp,
-  Download,
-  RotateCcw,
-  Calendar,
-  Wallet,
-  ArrowDownRight,
-  ArrowUpRight,
-  Layers,
-  Filter,
-  AlertTriangle,
-} from 'lucide-react'
+import { TrendingUp, Wallet, ArrowDownRight, ArrowUpRight, AlertTriangle } from 'lucide-react'
 
 const chartConfig: ChartConfig = {
   entradas: {
@@ -93,12 +83,31 @@ export const FluxoCaixaPage: React.FC = () => {
   d90.setDate(d90.getDate() + 90)
   const d90Iso = d90.toISOString().slice(0, 10)
 
-  const [dataInicio, setDataInicio] = useState<string>(hojeIso)
-  const [dataFim, setDataFim] = useState<string>(d90Iso)
+  // Estado FiltrosRelatorio (8.0b)
+  const [filtros, setFiltros] = useState<ObjetoFiltrosRelatorio>({
+    empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
+    atalho_periodo: 'personalizado',
+    periodo: {
+      dataInicio: hojeIso,
+      dataFim: d90Iso,
+    },
+    tipo_data: 'vencimento',
+    contas_bancarias_ids: [],
+  })
+
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(
+    () => ['financeiro_contas_bancarias', 'datas_tipo_data'],
+    [],
+  )
+
   const [agrupamento, setAgrupamento] = useState<AgrupamentoFluxo>('dia')
   const [incluirVencidos, setIncluirVencidos] = useState<boolean>(true)
-  const [contasSelecionadasIds, setContasSelecionadasIds] = useState<string[]>([])
   const [contasDisponiveis, setContasDisponiveis] = useState<ContaFinanceira[]>([])
+
+  const dataInicio = filtros.periodo?.dataInicio || hojeIso
+  const dataFim = filtros.periodo?.dataFim || d90Iso
+  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+  const contasSelecionadasIds = filtros.contas_bancarias_ids || []
 
   const [resumo, setResumo] = useState<ResumoFluxoCaixa | null>(null)
   const [carregando, setCarregando] = useState<boolean>(false)
@@ -110,28 +119,29 @@ export const FluxoCaixaPage: React.FC = () => {
 
   // Carregar contas financeiras da empresa
   useEffect(() => {
-    if (empresaAtiva?.id) {
-      listarContasFinanceiras({ empresa_id: empresaAtiva.id, situacao: 'ativos' }).then((res) => {
+    if (empresaIdEfetiva) {
+      listarContasFinanceiras({ empresa_id: empresaIdEfetiva, situacao: 'ativos' }).then((res) => {
         setContasDisponiveis(res)
-        // Padrão: todas selecionadas (array vazio no filtro significa todas)
-        setContasSelecionadasIds(res.map((c) => c.id))
       })
     }
-  }, [empresaAtiva?.id])
+  }, [empresaIdEfetiva])
 
   // Buscar apuração do fluxo
   const carregarFluxo = useCallback(async () => {
-    if (!empresaAtiva?.id) return
+    if (!empresaIdEfetiva) return
     try {
       setCarregando(true)
       const res = await apurarFluxoCaixa({
-        empresaId: empresaAtiva.id,
+        empresaId: empresaIdEfetiva,
         dataInicio,
         dataFim,
         agrupamento,
         incluirVencidos,
         contasIds:
-          contasSelecionadasIds.length === contasDisponiveis.length ? [] : contasSelecionadasIds,
+          contasSelecionadasIds.length === 0 ||
+          contasSelecionadasIds.length === contasDisponiveis.length
+            ? []
+            : contasSelecionadasIds,
       })
       setResumo(res)
     } catch (err: any) {
@@ -144,7 +154,7 @@ export const FluxoCaixaPage: React.FC = () => {
       setCarregando(false)
     }
   }, [
-    empresaAtiva?.id,
+    empresaIdEfetiva,
     dataInicio,
     dataFim,
     agrupamento,
@@ -157,34 +167,24 @@ export const FluxoCaixaPage: React.FC = () => {
     if (empresaAtiva?.id && contasDisponiveis.length > 0) {
       carregarFluxo()
     }
-  }, [carregarFluxo, contasDisponiveis.length, empresaAtiva?.id])
+  }, [carregarFluxo, contasDisponiveis.length, empresaIdEfetiva])
 
   // Toggle conta no filtro
   const handleToggleConta = (contaId: string) => {
-    setContasSelecionadasIds((prev) => {
-      if (prev.includes(contaId)) {
-        if (prev.length === 1) {
-          toast({
-            title: 'Atenção',
-            description: 'Ao menos uma conta deve estar selecionada.',
-          })
-          return prev
-        }
-        return prev.filter((id) => id !== contaId)
-      } else {
-        return [...prev, contaId]
-      }
+    setFiltros((prev) => {
+      const atuais = prev.contas_bancarias_ids || []
+      const novos = atuais.includes(contaId)
+        ? atuais.filter((id) => id !== contaId)
+        : [...atuais, contaId]
+      return { ...prev, contas_bancarias_ids: novos }
     })
   }
 
   const handleSelectTodasContas = (todas: boolean) => {
-    if (todas) {
-      setContasSelecionadasIds(contasDisponiveis.map((c) => c.id))
-    } else {
-      if (contasDisponiveis.length > 0) {
-        setContasSelecionadasIds([contasDisponiveis[0].id])
-      }
-    }
+    setFiltros((prev) => ({
+      ...prev,
+      contas_bancarias_ids: todas ? contasDisponiveis.map((c) => c.id) : [],
+    }))
   }
 
   // Dados para o Gráfico Recharts
@@ -256,77 +256,21 @@ export const FluxoCaixaPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Topo */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-blue-600" />
-            Fluxo de Caixa
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Acompanhe o saldo realizado e projete o saldo futuro com base nos títulos em aberto.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={carregarFluxo}
-            disabled={carregando}
-            className="text-xs h-9"
-          >
-            <RotateCcw className={`w-4 h-4 mr-1 ${carregando ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportarCSV}
-            disabled={!resumo || resumo.periodos.length === 0}
-            className="text-xs h-9"
-          >
-            <Download className="w-4 h-4 mr-1 text-slate-600" />
-            Exportar CSV
-          </Button>
-        </div>
-      </div>
-
-      {/* Painel de Filtros */}
-      <Card className="border-slate-200 shadow-sm bg-slate-50/60">
-        <CardContent className="p-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                Data Inicial
-              </Label>
-              <Input
-                type="date"
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-                className="text-xs h-9 bg-white"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                Data Final
-              </Label>
-              <Input
-                type="date"
-                value={dataFim}
-                onChange={(e) => setDataFim(e.target.value)}
-                className="text-xs h-9 bg-white"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                <Layers className="w-3.5 h-3.5 text-slate-500" />
-                Agrupamento
-              </Label>
+      {/* Componente Comum de Filtros 8.0b */}
+      <FiltrosRelatorio
+        relatorioId="financeiro_fluxo_caixa"
+        tituloRelatorio="Fluxo de Caixa"
+        subtituloRelatorio="Acompanhe o saldo realizado e projete o saldo futuro com base nos títulos em aberto."
+        filtrosDeclarados={filtrosDeclarados}
+        filtros={filtros}
+        onChange={setFiltros}
+        onFiltrar={carregarFluxo}
+        onExportarCsv={exportarCSV}
+        carregando={carregando}
+        filtrosExtras={
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="space-y-1 min-w-[140px]">
+              <label className="text-[11px] font-semibold text-slate-600 block">Agrupamento</label>
               <Select
                 value={agrupamento}
                 onValueChange={(val: AgrupamentoFluxo) => setAgrupamento(val)}
@@ -341,70 +285,18 @@ export const FluxoCaixaPage: React.FC = () => {
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="sm:col-span-2 flex items-center gap-2 pt-5">
-              <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-md border border-slate-200 text-xs text-slate-700 hover:bg-slate-50 select-none w-full">
+            <div className="flex items-center gap-2 pt-4">
+              <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-md border border-slate-200 text-xs text-slate-700 hover:bg-slate-50 select-none">
                 <Checkbox
                   checked={incluirVencidos}
                   onCheckedChange={(c) => setIncluirVencidos(Boolean(c))}
                 />
                 <span className="font-medium">Incluir títulos vencidos em aberto</span>
-                <span className="text-[11px] text-slate-400 ml-auto">(Somados no 1º período)</span>
               </label>
             </div>
           </div>
-
-          {/* Seleção de Contas Financeiras */}
-          <div className="pt-2 border-t border-slate-200/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <Wallet className="w-3.5 h-3.5 text-blue-600" />
-                Contas bancárias e caixas considerados:
-              </Label>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleSelectTodasContas(true)}
-                  className="text-[11px] text-blue-600 hover:underline"
-                >
-                  Todas
-                </button>
-                <span className="text-slate-300">•</span>
-                <button
-                  type="button"
-                  onClick={() => handleSelectTodasContas(false)}
-                  className="text-[11px] text-slate-500 hover:underline"
-                >
-                  Limpar
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {contasDisponiveis.map((c) => {
-                const ativa = contasSelecionadasIds.includes(c.id)
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => handleToggleConta(c.id)}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors border select-none ${
-                      ativa
-                        ? 'bg-blue-50 text-blue-800 border-blue-200 font-medium'
-                        : 'bg-white text-slate-500 border-slate-200 opacity-60 hover:opacity-100'
-                    }`}
-                  >
-                    <span>{c.nome}</span>
-                    <span className="text-[10px] text-slate-400">
-                      (R$ {Number(c.saldo_atual || 0).toFixed(2)})
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        }
+      />
 
       {/* Cartões de Indicadores Gerais */}
       {resumo && (

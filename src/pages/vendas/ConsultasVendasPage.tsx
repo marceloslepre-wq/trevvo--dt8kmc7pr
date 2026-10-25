@@ -16,8 +16,6 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -30,6 +28,8 @@ import {
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useToast } from '@/hooks/use-toast'
+import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
+import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import {
   consultarVendasPorPeriodo,
   consultarCurvaAbcProdutos,
@@ -56,8 +56,22 @@ export const ConsultasVendasPage: React.FC = () => {
   const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10)
   const hojeIso = hoje.toISOString().slice(0, 10)
 
-  const [dataInicio, setDataInicio] = useState(primeiroDiaMes)
-  const [dataFim, setDataFim] = useState(hojeIso)
+  // Estado do FiltrosRelatorio (8.0b)
+  const [filtros, setFiltros] = useState<ObjetoFiltrosRelatorio>({
+    empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
+    atalho_periodo: 'este_mes',
+    periodo: {
+      dataInicio: primeiroDiaMes,
+      dataFim: hojeIso,
+    },
+    tipo_data: 'emissao',
+  })
+
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(() => ['datas_tipo_data'], [])
+
+  const dataInicioEfetiva = filtros.periodo?.dataInicio || primeiroDiaMes
+  const dataFimEfetiva = filtros.periodo?.dataFim || hojeIso
+  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
 
   // Sub-aba dentro de período: 'resumo' | 'dia' | 'formas' | 'vendedores' | 'terminais'
   const [subAbaPeriodo, setSubAbaPeriodo] = useState<
@@ -75,31 +89,31 @@ export const ConsultasVendasPage: React.FC = () => {
 
   // Carregar dados de acordo com a aba ativa
   const carregarDados = useCallback(async () => {
-    if (!empresaAtiva?.id) return
+    if (!empresaIdEfetiva) return
     setCarregando(true)
 
     try {
       if (abaAtiva === 'periodo') {
         const res = await consultarVendasPorPeriodo({
-          empresa_id: empresaAtiva.id,
-          data_inicio: dataInicio,
-          data_fim: dataFim,
+          empresa_id: empresaIdEfetiva,
+          data_inicio: dataInicioEfetiva,
+          data_fim: dataFimEfetiva,
         })
         setDadosPeriodo(res)
       } else if (abaAtiva === 'abc') {
         const res = await consultarCurvaAbcProdutos({
-          empresa_id: empresaAtiva.id,
-          data_inicio: dataInicio,
-          data_fim: dataFim,
+          empresa_id: empresaIdEfetiva,
+          data_inicio: dataInicioEfetiva,
+          data_fim: dataFimEfetiva,
           criterio: criterioAbc,
         })
         setDadosAbc(res)
       } else if (abaAtiva === 'margem') {
         if (!podeVerMargem) return
         const res = await consultarMargemVendas({
-          empresa_id: empresaAtiva.id,
-          data_inicio: dataInicio,
-          data_fim: dataFim,
+          empresa_id: empresaIdEfetiva,
+          data_inicio: dataInicioEfetiva,
+          data_fim: dataFimEfetiva,
         })
         setDadosMargem(res)
       }
@@ -112,7 +126,15 @@ export const ConsultasVendasPage: React.FC = () => {
     } finally {
       setCarregando(false)
     }
-  }, [empresaAtiva?.id, abaAtiva, dataInicio, dataFim, criterioAbc, podeVerMargem, toast])
+  }, [
+    empresaIdEfetiva,
+    abaAtiva,
+    dataInicioEfetiva,
+    dataFimEfetiva,
+    criterioAbc,
+    podeVerMargem,
+    toast,
+  ])
 
   useEffect(() => {
     carregarDados()
@@ -168,7 +190,10 @@ export const ConsultasVendasPage: React.FC = () => {
       )
     }
 
-    fazerDownloadCsv(csv, `vendas_periodo_${subAbaPeriodo}_${dataInicio}_a_${dataFim}.csv`)
+    fazerDownloadCsv(
+      csv,
+      `vendas_periodo_${subAbaPeriodo}_${dataInicioEfetiva}_a_${dataFimEfetiva}.csv`,
+    )
   }
 
   const handleExportarCsvAbc = () => {
@@ -203,7 +228,10 @@ export const ConsultasVendasPage: React.FC = () => {
         i.classe_abc,
       ]),
     )
-    fazerDownloadCsv(csv, `curva_abc_produtos_${criterioAbc}_${dataInicio}_a_${dataFim}.csv`)
+    fazerDownloadCsv(
+      csv,
+      `curva_abc_produtos_${criterioAbc}_${dataInicioEfetiva}_a_${dataFimEfetiva}.csv`,
+    )
   }
 
   const handleExportarCsvMargem = () => {
@@ -231,7 +259,13 @@ export const ConsultasVendasPage: React.FC = () => {
         m.margem_lucro_percentual,
       ]),
     )
-    fazerDownloadCsv(csv, `margem_vendas_${dataInicio}_a_${dataFim}.csv`)
+    fazerDownloadCsv(csv, `margem_vendas_${dataInicioEfetiva}_a_${dataFimEfetiva}.csv`)
+  }
+
+  const handleExportarCsvAtual = () => {
+    if (abaAtiva === 'periodo') handleExportarCsvPeriodo()
+    else if (abaAtiva === 'abc') handleExportarCsvAbc()
+    else if (abaAtiva === 'margem') handleExportarCsvMargem()
   }
 
   const fazerDownloadCsv = (conteudo: string, nomeArquivo: string) => {
@@ -247,59 +281,35 @@ export const ConsultasVendasPage: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2.5">
-            <BarChart3 className="h-7 w-7 text-indigo-600" />
-            Consultas e Relatórios de Vendas
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Análise periódica de vendas, curva ABC de produtos e margem de contribuição.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {abaAtiva === 'periodo' && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportarCsvPeriodo}
-              disabled={!dadosPeriodo}
-              className="text-xs h-9"
-            >
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-              Exportar CSV
-            </Button>
-          )}
-
-          {abaAtiva === 'abc' && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportarCsvAbc}
-              disabled={!dadosAbc || dadosAbc.itens.length === 0}
-              className="text-xs h-9"
-            >
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-              Exportar CSV
-            </Button>
-          )}
-
-          {abaAtiva === 'margem' && podeVerMargem && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportarCsvMargem}
-              disabled={dadosMargem.length === 0}
-              className="text-xs h-9"
-            >
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-              Exportar CSV
-            </Button>
-          )}
-        </div>
-      </div>
+      {/* Componente Comum de Filtros 8.0b */}
+      <FiltrosRelatorio
+        relatorioId="vendas_consultas"
+        tituloRelatorio="Consultas e Relatórios de Vendas"
+        subtituloRelatorio="Análise periódica de vendas, curva ABC de produtos e margem de contribuição."
+        filtrosDeclarados={filtrosDeclarados}
+        filtros={filtros}
+        onChange={setFiltros}
+        onFiltrar={carregarDados}
+        onExportarCsv={handleExportarCsvAtual}
+        carregando={carregando}
+        filtrosExtras={
+          abaAtiva === 'abc' ? (
+            <div className="space-y-1 min-w-[220px]">
+              <label className="text-[11px] font-semibold text-slate-600 block">
+                Critério da Curva ABC
+              </label>
+              <select
+                value={criterioAbc}
+                onChange={(e) => setCriterioAbc(e.target.value as any)}
+                className="text-xs h-9 w-full bg-white border border-slate-200 rounded-md px-2"
+              >
+                <option value="valor">Por Valor Financeiro (Faturamento)</option>
+                <option value="quantidade">Por Quantidade de Itens Vendidos</option>
+              </select>
+            </div>
+          ) : undefined
+        }
+      />
 
       {/* Navegação entre Abas Principais */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
@@ -338,57 +348,6 @@ export const ConsultasVendasPage: React.FC = () => {
           Margem por Venda e Produto
         </Button>
       </div>
-
-      {/* Barra de Filtro de Datas Comum */}
-      <Card className="border-slate-200">
-        <CardContent className="p-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs font-medium text-slate-700">Data Inicial</Label>
-              <Input
-                type="date"
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-                className="text-xs h-8 bg-white"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-medium text-slate-700">Data Final</Label>
-              <Input
-                type="date"
-                value={dataFim}
-                onChange={(e) => setDataFim(e.target.value)}
-                className="text-xs h-8 bg-white"
-              />
-            </div>
-
-            {abaAtiva === 'abc' && (
-              <div className="space-y-1">
-                <Label className="text-xs font-medium text-slate-700">Critério da Curva ABC</Label>
-                <select
-                  value={criterioAbc}
-                  onChange={(e) => setCriterioAbc(e.target.value as any)}
-                  className="text-xs h-8 bg-white border border-slate-200 rounded px-2"
-                >
-                  <option value="valor">Por Valor Financeiro (Faturamento)</option>
-                  <option value="quantidade">Por Quantidade de Itens Vendidos</option>
-                </select>
-              </div>
-            )}
-
-            <Button
-              size="sm"
-              onClick={carregarDados}
-              disabled={carregando}
-              className="text-xs h-8 bg-indigo-600 hover:bg-indigo-700 text-white"
-            >
-              <Filter className="h-3.5 w-3.5 mr-1.5" />
-              {carregando ? 'Atualizando...' : 'Filtrar'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* CONTEÚDO DA ABA 1: Vendas por Período */}
       {abaAtiva === 'periodo' && dadosPeriodo && (

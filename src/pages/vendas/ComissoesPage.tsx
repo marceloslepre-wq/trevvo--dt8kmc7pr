@@ -1,12 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Award,
-  Filter,
-  Download,
-  DollarSign,
-  Calendar,
-  User,
   CheckCircle,
+  DollarSign,
+  User,
   FileText,
   ChevronDown,
   ChevronRight,
@@ -38,13 +35,14 @@ import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useToast } from '@/hooks/use-toast'
 import { AcessoNegado } from '@/components/AcessoNegado'
+import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
+import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import {
   apurarComissoes,
   gerarContaPagarComissao,
   exportarComissoesCsv,
   ItemComissaoVendedor,
 } from '@/services/comissoes'
-import pb from '@/lib/pocketbase/client'
 
 export const ComissoesPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
@@ -65,15 +63,34 @@ export const ComissoesPage: React.FC = () => {
   const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10)
   const hojeIso = hoje.toISOString().slice(0, 10)
 
-  const [dataInicio, setDataInicio] = useState(primeiroDiaMes)
-  const [dataFim, setDataFim] = useState(hojeIso)
-  const [vendedorId, setVendedorId] = useState('todos')
+  // Estado FiltrosRelatorio (8.0b)
+  const [filtros, setFiltros] = useState<ObjetoFiltrosRelatorio>({
+    empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
+    atalho_periodo: 'este_mes',
+    periodo: {
+      dataInicio: primeiroDiaMes,
+      dataFim: hojeIso,
+    },
+    tipo_data: 'emissao',
+    vendedores_ids: [],
+  })
+
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(
+    () => ['pessoas_vendedores', 'datas_tipo_data'],
+    [],
+  )
+
   const [baseCalculo, setBaseCalculo] = useState<'Venda finalizada' | 'Venda recebida'>(
     'Venda finalizada',
   )
 
-  // Lista de vendedores para o select
-  const [vendedores, setVendedores] = useState<Array<{ id: string; nome: string }>>([])
+  const dataInicioEfetiva = filtros.periodo?.dataInicio || primeiroDiaMes
+  const dataFimEfetiva = filtros.periodo?.dataFim || hojeIso
+  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+  const vendedorIdEfetivo =
+    filtros.vendedores_ids && filtros.vendedores_ids.length > 0
+      ? filtros.vendedores_ids[0]
+      : 'todos'
 
   // Dados apurados
   const [comissoes, setComissoes] = useState<ItemComissaoVendedor[]>([])
@@ -86,29 +103,16 @@ export const ComissoesPage: React.FC = () => {
   const [dataVencimentoTitulo, setDataVencimentoTitulo] = useState(hojeIso)
   const [gerandoTitulo, setGerandoTitulo] = useState(false)
 
-  // Carregar lista de usuários vendedores
-  useEffect(() => {
-    pb.collection('usuarios')
-      .getFullList({
-        filter: 'ativo = true',
-        sort: 'name',
-      })
-      .then((users) => {
-        setVendedores(users.map((u) => ({ id: u.id, nome: (u as any).name || (u as any).email })))
-      })
-      .catch(() => {})
-  }, [])
-
   // Buscar apuração de comissões
   const carregarApuracao = useCallback(async () => {
-    if (!empresaAtiva?.id) return
+    if (!empresaIdEfetiva) return
     setCarregando(true)
     try {
       const res = await apurarComissoes({
-        empresa_id: empresaAtiva.id,
-        data_inicio: dataInicio,
-        data_fim: dataFim,
-        vendedor_id: vendedorId,
+        empresa_id: empresaIdEfetiva,
+        data_inicio: dataInicioEfetiva,
+        data_fim: dataFimEfetiva,
+        vendedor_id: vendedorIdEfetivo,
         base_calculo: baseCalculo,
       })
       setComissoes(res)
@@ -121,7 +125,7 @@ export const ComissoesPage: React.FC = () => {
     } finally {
       setCarregando(false)
     }
-  }, [empresaAtiva?.id, dataInicio, dataFim, vendedorId, baseCalculo, toast])
+  }, [empresaIdEfetiva, dataInicioEfetiva, dataFimEfetiva, vendedorIdEfetivo, baseCalculo, toast])
 
   useEffect(() => {
     if (temAcesso) {
@@ -153,13 +157,13 @@ export const ComissoesPage: React.FC = () => {
   const handleExportarCsv = () => {
     const csvContent = exportarComissoesCsv(
       comissoes,
-      `${dataInicio.split('-').reverse().join('/')} até ${dataFim.split('-').reverse().join('/')}`,
+      `${dataInicioEfetiva.split('-').reverse().join('/')} até ${dataFimEfetiva.split('-').reverse().join('/')}`,
     )
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `comissoes_${dataInicio}_a_${dataFim}.csv`)
+    link.setAttribute('download', `comissoes_${dataInicioEfetiva}_a_${dataFimEfetiva}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -177,15 +181,15 @@ export const ComissoesPage: React.FC = () => {
 
   // Confirmar geração de conta a pagar
   const handleConfirmarGerarTitulo = async () => {
-    if (!empresaAtiva?.id || !vendedorSelecionado) return
+    if (!empresaIdEfetiva || !vendedorSelecionado) return
     setGerandoTitulo(true)
     try {
-      const periodoTexto = `${dataInicio.split('-').reverse().join('/')} a ${dataFim
+      const periodoTexto = `${dataInicioEfetiva.split('-').reverse().join('/')} a ${dataFimEfetiva
         .split('-')
         .reverse()
         .join('/')}`
       await gerarContaPagarComissao({
-        empresa_id: empresaAtiva.id,
+        empresa_id: empresaIdEfetiva,
         vendedor_id: vendedorSelecionado.vendedor_id,
         valor_comissao: vendedorSelecionado.valor_comissao,
         data_vencimento: dataVencimentoTitulo,
@@ -213,92 +217,33 @@ export const ComissoesPage: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2.5">
-            <Award className="h-7 w-7 text-amber-600" />
-            Comissões de Vendas
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Apuração por vendedor baseada no percentual cadastrado, deduzindo devoluções e trocas.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportarCsv}
-            disabled={comissoes.length === 0}
-            className="text-xs h-9"
-          >
-            <Download className="h-3.5 w-3.5 mr-1.5" />
-            Exportar CSV
-          </Button>
-        </div>
-      </div>
-
-      {/* Filtros de Apuração */}
-      <Card className="border-slate-200">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-            <Filter className="h-4 w-4 text-slate-600" />
-            Parâmetros de Apuração
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-            <div className="space-y-1">
-              <Label className="text-xs font-medium text-slate-700">Data Inicial</Label>
-              <Input
-                type="date"
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-                className="text-xs h-9 bg-white"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-medium text-slate-700">Data Final</Label>
-              <Input
-                type="date"
-                value={dataFim}
-                onChange={(e) => setDataFim(e.target.value)}
-                className="text-xs h-9 bg-white"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-medium text-slate-700">Vendedor</Label>
-              <select
-                value={vendedorId}
-                onChange={(e) => setVendedorId(e.target.value)}
-                className="text-xs h-9 w-full bg-white border border-slate-200 rounded px-2"
-              >
-                <option value="todos">Todos os vendedores</option>
-                {vendedores.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-medium text-slate-700">Base de Cálculo</Label>
-              <select
-                value={baseCalculo}
-                onChange={(e) => setBaseCalculo(e.target.value as any)}
-                className="text-xs h-9 w-full bg-white border border-slate-200 rounded px-2"
-              >
-                <option value="Venda finalizada">Venda finalizada (Emissão)</option>
-                <option value="Venda recebida">Venda recebida (Liquidação)</option>
-              </select>
-            </div>
+      {/* Componente Comum de Filtros 8.0b */}
+      <FiltrosRelatorio
+        relatorioId="vendas_comissoes"
+        tituloRelatorio="Comissões de Vendas"
+        subtituloRelatorio="Apuração por vendedor baseada no percentual cadastrado, deduzindo devoluções e trocas."
+        filtrosDeclarados={filtrosDeclarados}
+        filtros={filtros}
+        onChange={setFiltros}
+        onFiltrar={carregarApuracao}
+        onExportarCsv={handleExportarCsv}
+        carregando={carregando}
+        filtrosExtras={
+          <div className="space-y-1 min-w-[200px]">
+            <label className="text-[11px] font-semibold text-slate-600 block">
+              Base de Cálculo
+            </label>
+            <select
+              value={baseCalculo}
+              onChange={(e) => setBaseCalculo(e.target.value as any)}
+              className="text-xs h-9 w-full bg-white border border-slate-200 rounded-md px-2"
+            >
+              <option value="Venda finalizada">Venda finalizada (Emissão)</option>
+              <option value="Venda recebida">Venda recebida (Liquidação)</option>
+            </select>
           </div>
-        </CardContent>
-      </Card>
+        }
+      />
 
       {/* Cards de Resumo */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -590,8 +535,8 @@ export const ComissoesPage: React.FC = () => {
                 <div className="flex justify-between">
                   <span className="text-slate-500">Período:</span>
                   <span>
-                    {dataInicio.split('-').reverse().join('/')} a{' '}
-                    {dataFim.split('-').reverse().join('/')}
+                    {dataInicioEfetiva.split('-').reverse().join('/')} a{' '}
+                    {dataFimEfetiva.split('-').reverse().join('/')}
                   </span>
                 </div>
               </div>

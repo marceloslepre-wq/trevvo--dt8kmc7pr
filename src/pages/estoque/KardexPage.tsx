@@ -14,10 +14,8 @@ import {
   Building,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -30,6 +28,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
+import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
+import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import { saldoEmData, estornarMovimento, EstoqueMovimento } from '@/services/estoque'
 import { Produto } from '@/services/produtos'
 import { SelectProduto } from '@/components/SelectProduto'
@@ -53,8 +53,21 @@ export const KardexPage: React.FC = () => {
     .slice(0, 10)
   const hoje = agora.toISOString().slice(0, 10)
 
-  const [dataInicio, setDataInicio] = useState<string>(searchParams.get('inicio') || primeiroDiaMes)
-  const [dataFim, setDataFim] = useState<string>(searchParams.get('fim') || hoje)
+  // Estado FiltrosRelatorio (8.0b)
+  const [filtros, setFiltros] = useState<ObjetoFiltrosRelatorio>({
+    empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
+    atalho_periodo: 'este_mes',
+    periodo: {
+      dataInicio: searchParams.get('inicio') || primeiroDiaMes,
+      dataFim: searchParams.get('fim') || hoje,
+    },
+  })
+
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(() => ['datas_tipo_data'], [])
+
+  const dataInicio = filtros.periodo?.dataInicio || primeiroDiaMes
+  const dataFim = filtros.periodo?.dataFim || hoje
+  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
 
   // Estado de dados
   const [carregando, setCarregando] = useState(false)
@@ -98,17 +111,16 @@ export const KardexPage: React.FC = () => {
 
   // Busca saldo anterior e histórico de movimentos
   const carregarKardex = useCallback(async () => {
-    if (!empresaAtiva || !produtoId || !dataInicio) return
+    if (!empresaIdEfetiva || !produtoId || !dataInicio) return
 
     setCarregando(true)
     try {
       // 1. Saldo inicial retroativo até o dia anterior a dataInicio
-      // Para pegar o saldo no encerramento do dia anterior:
       const d = new Date(`${dataInicio}T00:00:00`)
       d.setDate(d.getDate() - 1)
       const dataAnteriorStr = d.toISOString().slice(0, 10)
 
-      const sIni = await saldoEmData(empresaAtiva.id, produtoId, dataAnteriorStr)
+      const sIni = await saldoEmData(empresaIdEfetiva, produtoId, dataAnteriorStr)
       setSaldoInicial(sIni)
 
       // 2. Movimentos no período em ordem cronológica CRESCENTE (Kardex físico-financeiro)
@@ -116,7 +128,7 @@ export const KardexPage: React.FC = () => {
       const dataFimIso = `${dataFim}T23:59:59.999Z`
 
       const res = await pb.collection('estoque_movimentos').getFullList<EstoqueMovimento>({
-        filter: `empresa_id = '${empresaAtiva.id}' && produto_id = '${produtoId}' && data_movimento >= '${dataInicioIso}' && data_movimento <= '${dataFimIso}'`,
+        filter: `empresa_id = '${empresaIdEfetiva}' && produto_id = '${produtoId}' && data_movimento >= '${dataInicioIso}' && data_movimento <= '${dataFimIso}'`,
         sort: 'data_movimento,created',
         expand: 'usuario_id,lote_id',
       })
@@ -132,7 +144,7 @@ export const KardexPage: React.FC = () => {
     } finally {
       setCarregando(false)
     }
-  }, [empresaAtiva, produtoId, dataInicio, dataFim])
+  }, [empresaIdEfetiva, produtoId, dataInicio, dataFim])
 
   useEffect(() => {
     if (produtoId && empresaAtiva) {
@@ -358,140 +370,65 @@ export const KardexPage: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-[1600px] mx-auto print:p-0 print:space-y-3">
-      {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
-        <div>
-          <div className="flex items-center gap-2">
-            <FileSpreadsheet className="h-6 w-6 text-blue-600" />
-            <h1 className="text-xl font-bold text-slate-900">Kardex de Estoque</h1>
-            <Badge variant="outline" className="text-xs border-slate-300">
-              Ficha Físico-Financeira
-            </Badge>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Rastreabilidade cronológica imutável de entradas, saídas, saldos e custo médio ponderado
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={carregarKardex}
-            disabled={carregando || !produtoId}
-            className="h-9 text-xs"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${carregando ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={exportarCSV}
-            disabled={!produto || movimentos.length === 0}
-            className="h-9 text-xs"
-          >
-            <Download className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
-            Exportar CSV
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={imprimirKardex}
-            disabled={!produto}
-            className="h-9 text-xs"
-          >
-            <Printer className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
-            Imprimir
-          </Button>
-
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => navigate('/estoque/lancamentos')}
-            className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Layers className="h-3.5 w-3.5 mr-1.5" />
-            Novo Lançamento
-          </Button>
-        </div>
-      </div>
-
-      {/* Cabeçalho exclusivo para impressão */}
-      <div className="hidden print:block border-b border-slate-400 pb-3 mb-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-lg font-bold text-slate-900">FICHA DE KARDEX DO PRODUTO</h1>
-            <p className="text-xs text-slate-600">
-              Empresa: {empresaAtiva?.razao_social} ({empresaAtiva?.cnpj})
-            </p>
-          </div>
-          <div className="text-right text-xs text-slate-500">
-            Período: {new Date(dataInicio).toLocaleDateString('pt-BR')} até{' '}
-            {new Date(dataFim).toLocaleDateString('pt-BR')}
-            <br />
-            Emissão: {new Date().toLocaleString('pt-BR')}
-          </div>
-        </div>
-      </div>
-
-      {/* Barra de Seleção de Produto e Período */}
-      <Card className="border-slate-200 bg-white print:border-none print:shadow-none">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-            <div className="md:col-span-6">
-              <Label className="text-xs font-semibold text-slate-700 mb-1 block">
-                Selecione o Produto *
-              </Label>
-              <SelectProduto
-                value={produtoId}
-                onChange={(id, p) => {
-                  setProdutoId(id)
-                  setProduto(p || null)
-                }}
-                placeholder="Busque por código, GTIN ou descrição do produto..."
-              />
-            </div>
-
-            <div className="md:col-span-3">
-              <Label className="text-xs font-semibold text-slate-700 mb-1 block">
-                Data Inicial *
-              </Label>
-              <div className="relative">
-                <Calendar className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-                <Input
-                  type="date"
-                  value={dataInicio}
-                  onChange={(e) => setDataInicio(e.target.value)}
-                  className="pl-8 h-10 text-xs"
+      {/* Componente Comum de Filtros 8.0b */}
+      <div className="print:hidden">
+        <FiltrosRelatorio
+          relatorioId="estoque_kardex"
+          tituloRelatorio="Kardex de Estoque"
+          subtituloRelatorio="Rastreabilidade cronológica imutável de entradas, saídas, saldos e custo médio ponderado."
+          filtrosDeclarados={filtrosDeclarados}
+          filtros={filtros}
+          onChange={setFiltros}
+          onFiltrar={carregarKardex}
+          onExportarCsv={exportarCSV}
+          carregando={carregando}
+          filtrosExtras={
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="space-y-1 min-w-[280px]">
+                <label className="text-[11px] font-semibold text-slate-600 block">
+                  Selecione o Produto *
+                </label>
+                <SelectProduto
+                  value={produtoId}
+                  onChange={(id, p) => {
+                    setProdutoId(id)
+                    setProduto(p || null)
+                  }}
+                  placeholder="Busque por código, GTIN ou descrição..."
                 />
               </div>
-            </div>
-
-            <div className="md:col-span-3">
-              <Label className="text-xs font-semibold text-slate-700 mb-1 block">
-                Data Final *
-              </Label>
-              <div className="relative">
-                <Calendar className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-                <Input
-                  type="date"
-                  value={dataFim}
-                  onChange={(e) => setDataFim(e.target.value)}
-                  className="pl-8 h-10 text-xs"
-                />
+              <div className="flex items-center gap-2 pt-4 ml-auto">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={imprimirKardex}
+                  disabled={!produto}
+                  className="h-9 text-xs"
+                >
+                  <Printer className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
+                  Imprimir
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => navigate('/estoque/lancamentos')}
+                  className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Layers className="h-3.5 w-3.5 mr-1.5" />
+                  Novo Lançamento
+                </Button>
               </div>
             </div>
-          </div>
+          }
+        />
+      </div>
 
-          {/* Dados do produto selecionado */}
-          {produto && (
-            <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs bg-slate-50 p-2.5 rounded-md">
+      {/* Dados do produto selecionado */}
+      {produto && (
+        <Card className="border-slate-200 bg-white print:border-none print:shadow-none">
+          <CardContent className="p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-slate-50 p-2.5 rounded-md">
               <div className="flex items-center gap-3">
                 <div className="font-mono font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-xs">
                   #{produto.codigo}
@@ -530,9 +467,27 @@ export const KardexPage: React.FC = () => {
                 </span>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cabeçalho exclusivo para impressão */}
+      <div className="hidden print:block border-b border-slate-400 pb-3 mb-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-lg font-bold text-slate-900">FICHA DE KARDEX DO PRODUTO</h1>
+            <p className="text-xs text-slate-600">
+              Empresa: {empresaAtiva?.razao_social} ({empresaAtiva?.cnpj})
+            </p>
+          </div>
+          <div className="text-right text-xs text-slate-500">
+            Período: {new Date(dataInicio).toLocaleDateString('pt-BR')} até{' '}
+            {new Date(dataFim).toLocaleDateString('pt-BR')}
+            <br />
+            Emissão: {new Date().toLocaleString('pt-BR')}
+          </div>
+        </div>
+      </div>
 
       {/* Cards de Saldo Inicial, Fluxo e Saldo Final */}
       {produto && (
@@ -895,9 +850,9 @@ export const KardexPage: React.FC = () => {
               </div>
 
               <div>
-                <Label className="text-xs font-semibold text-slate-800 mb-1 block">
+                <label className="text-xs font-semibold text-slate-800 mb-1 block">
                   Motivo do Estorno *
-                </Label>
+                </label>
                 <Textarea
                   value={motivoEstorno}
                   onChange={(e) => setMotivoEstorno(e.target.value)}

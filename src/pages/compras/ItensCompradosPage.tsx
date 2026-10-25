@@ -1,57 +1,56 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { listarItensComprados, ItemCompradoLinha } from '@/services/consultasCompras'
-import { listarGrupos, Grupo } from '@/services/gruposCategorias'
 import { listarCfop, Cfop } from '@/services/cfop'
-import SelectFornecedor from '@/components/SelectFornecedor'
-import SelectProduto from '@/components/SelectProduto'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
+import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Search,
-  Download,
-  Filter,
-  RefreshCw,
-  Calendar,
-  Layers,
-  ChevronLeft,
-  ChevronRight,
-  Package,
-  FileText,
-  DollarSign,
-} from 'lucide-react'
+import { Layers, ChevronLeft, ChevronRight, Package, FileText, DollarSign } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
 export const ItensCompradosPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
   const { toast } = useToast()
 
-  // Filtros
-  const [dataInicio, setDataInicio] = useState<string>(() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 30)
-    return d.toISOString().split('T')[0]
+  const hoje = new Date()
+  const trintaDiasAtras = new Date()
+  trintaDiasAtras.setDate(hoje.getDate() - 30)
+  const dataInicioPadrao = trintaDiasAtras.toISOString().split('T')[0]
+  const dataFimPadrao = hoje.toISOString().split('T')[0]
+
+  // Estado FiltrosRelatorio (8.0b)
+  const [filtros, setFiltros] = useState<ObjetoFiltrosRelatorio>({
+    empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
+    atalho_periodo: 'ultimos_30',
+    periodo: {
+      dataInicio: dataInicioPadrao,
+      dataFim: dataFimPadrao,
+    },
+    tipo_data: 'entrada',
+    fornecedores_ids: [],
+    produtos_ids: [],
+    grupos_ids: [],
   })
-  const [dataFim, setDataFim] = useState<string>(() => new Date().toISOString().split('T')[0])
-  const [fornecedorId, setFornecedorId] = useState<string>('todos')
-  const [produtoId, setProdutoId] = useState<string>('todos')
-  const [grupoId, setGrupoId] = useState<string>('todos')
+
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(
+    () => ['pessoas_fornecedores', 'produtos_especificos', 'produtos_grupos', 'datas_tipo_data'],
+    [],
+  )
+
   const [cfopEntrada, setCfopEntrada] = useState<string>('todos')
   const [busca, setBusca] = useState<string>('')
 
+  const dataInicio = filtros.periodo?.dataInicio || dataInicioPadrao
+  const dataFim = filtros.periodo?.dataFim || dataFimPadrao
+  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+  const fornecedorId = filtros.fornecedores_ids?.[0] || 'todos'
+  const produtoId = filtros.produtos_ids?.[0] || 'todos'
+  const grupoId = filtros.grupos_ids?.[0] || 'todos'
+
   // Listas auxiliares para selects
-  const [grupos, setGrupos] = useState<Grupo[]>([])
   const [cfopsEntrada, setCfopsEntrada] = useState<Cfop[]>([])
 
   // Estado dos dados
@@ -65,12 +64,8 @@ export const ItensCompradosPage: React.FC = () => {
     valorTotal: 0,
   })
 
-  // Carregar grupos e CFOPs no mount
+  // Carregar CFOPs no mount
   useEffect(() => {
-    listarGrupos({ situacao: 'ativos' })
-      .then((res) => setGrupos(res))
-      .catch((e) => console.warn('Erro ao carregar grupos:', e))
-
     listarCfop({ situacao: 'ativos', tipo_movimento: 'Entrada', perPage: 100 })
       .then((res) => setCfopsEntrada(res.items))
       .catch((e) => console.warn('Erro ao carregar CFOPs de entrada:', e))
@@ -79,11 +74,11 @@ export const ItensCompradosPage: React.FC = () => {
   // Buscar itens comprados
   const carregarDados = useCallback(
     async (pageToLoad = 1) => {
-      if (!empresaAtiva?.id) return
+      if (!empresaIdEfetiva) return
       setCarregando(true)
       try {
         const res = await listarItensComprados({
-          empresaId: empresaAtiva.id,
+          empresaId: empresaIdEfetiva,
           dataInicio,
           dataFim,
           fornecedorId,
@@ -112,7 +107,7 @@ export const ItensCompradosPage: React.FC = () => {
       }
     },
     [
-      empresaAtiva?.id,
+      empresaIdEfetiva,
       dataInicio,
       dataFim,
       fornecedorId,
@@ -212,43 +207,49 @@ export const ItensCompradosPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <Package className="h-6 w-6 text-blue-600" />
-            Itens Comprados
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Consulta consolidada de itens recebidos em notas fiscais de entrada lançadas no ERP.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleExportarCsv}
-            disabled={itens.length === 0}
-            className="h-9 gap-1.5 text-xs text-slate-700 hover:text-slate-900"
-          >
-            <Download className="h-4 w-4" />
-            Exportar CSV
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => carregarDados(pagina)}
-            className="h-9 gap-1.5 text-xs"
-          >
-            <RefreshCw className={`h-4 w-4 ${carregando ? 'animate-spin text-blue-600' : ''}`} />
-            Atualizar
-          </Button>
-        </div>
-      </div>
+      {/* Componente Comum de Filtros 8.0b */}
+      <FiltrosRelatorio
+        relatorioId="compras_itens_comprados"
+        tituloRelatorio="Itens Comprados"
+        subtituloRelatorio="Consulta consolidada de itens recebidos em notas fiscais de entrada lançadas no ERP."
+        filtrosDeclarados={filtrosDeclarados}
+        filtros={filtros}
+        onChange={setFiltros}
+        onFiltrar={() => carregarDados(1)}
+        onExportarCsv={handleExportarCsv}
+        carregando={carregando}
+        filtrosExtras={
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="space-y-1 min-w-[200px]">
+              <label className="text-[11px] font-semibold text-slate-600 block">
+                CFOP de Entrada
+              </label>
+              <select
+                value={cfopEntrada}
+                onChange={(e) => setCfopEntrada(e.target.value)}
+                className="text-xs h-9 w-full bg-white border border-slate-200 rounded-md px-2 font-mono"
+              >
+                <option value="todos">Todos os CFOPs</option>
+                {cfopsEntrada.map((c) => (
+                  <option key={c.codigo} value={c.codigo}>
+                    {c.codigo} — {c.descricao.slice(0, 35)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1 min-w-[200px]">
+              <label className="text-[11px] font-semibold text-slate-600 block">Busca Rápida</label>
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Descrição, número da nota..."
+                className="text-xs h-9 w-full bg-white border border-slate-200 rounded-md px-2"
+              />
+            </div>
+          </div>
+        }
+      />
 
       {/* Cartões de Indicadores do Resultado */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -307,147 +308,6 @@ export const ItensCompradosPage: React.FC = () => {
           </CardContent>
         </Card>
       </div>
-
-      {/* Painel de Filtros */}
-      <Card className="border-slate-200">
-        <CardHeader className="pb-3 border-b border-slate-100">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-blue-600" />
-              <CardTitle className="text-sm font-semibold text-slate-900">
-                Filtros de Pesquisa
-              </CardTitle>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleLimparFiltros}
-              className="h-7 text-xs text-slate-500 hover:text-slate-800"
-            >
-              Limpar Filtros
-            </Button>
-          </div>
-          <CardDescription className="text-xs text-slate-500">
-            Filtre por período de entrada, fornecedor, produto, grupo de cadastro ou CFOP de
-            escrituração.
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="pt-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-            {/* Período Data de Entrada */}
-            <div>
-              <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                Data Entrada De
-              </Label>
-              <div className="relative">
-                <Calendar className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                <Input
-                  type="date"
-                  value={dataInicio}
-                  onChange={(e) => setDataInicio(e.target.value)}
-                  className="pl-8 h-9 text-xs"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                Data Entrada Até
-              </Label>
-              <div className="relative">
-                <Calendar className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                <Input
-                  type="date"
-                  value={dataFim}
-                  onChange={(e) => setDataFim(e.target.value)}
-                  className="pl-8 h-9 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Fornecedor */}
-            <div>
-              <Label className="text-xs font-semibold text-slate-700 block mb-1">Fornecedor</Label>
-              <SelectFornecedor
-                value={fornecedorId === 'todos' ? '' : fornecedorId}
-                onChange={(val) => setFornecedorId(val || 'todos')}
-                placeholder="Todos os fornecedores"
-              />
-            </div>
-
-            {/* Produto */}
-            <div>
-              <Label className="text-xs font-semibold text-slate-700 block mb-1">Produto</Label>
-              <SelectProduto
-                value={produtoId === 'todos' ? '' : produtoId}
-                onChange={(val) => setProdutoId(val || 'todos')}
-                placeholder="Todos os produtos"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-2 border-t border-slate-100">
-            {/* Grupo */}
-            <div>
-              <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                Grupo do Produto
-              </Label>
-              <Select value={grupoId} onValueChange={setGrupoId}>
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="Todos os grupos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os grupos</SelectItem>
-                  {grupos.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* CFOP Entrada */}
-            <div>
-              <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                CFOP de Entrada
-              </Label>
-              <Select value={cfopEntrada} onValueChange={setCfopEntrada}>
-                <SelectTrigger className="h-9 text-xs font-mono">
-                  <SelectValue placeholder="Todos os CFOPs" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os CFOPs</SelectItem>
-                  {cfopsEntrada.map((c) => (
-                    <SelectItem key={c.codigo} value={c.codigo}>
-                      {c.codigo} — {c.descricao.slice(0, 35)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Busca livre */}
-            <div>
-              <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                Busca Rápida
-              </Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                <Input
-                  type="text"
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  placeholder="Descrição, número da nota, fornecedor..."
-                  className="pl-8 h-9 text-xs"
-                />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Tabela de Itens Comprados */}
       <Card className="border-slate-200 shadow-xs">

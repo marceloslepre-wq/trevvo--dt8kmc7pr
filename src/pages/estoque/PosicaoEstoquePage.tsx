@@ -20,26 +20,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
+import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import { EstoqueSaldo } from '@/services/estoque'
 import { Produto } from '@/services/produtos'
-import {
-  Grupo,
-  Categoria,
-  listarTodosGruposAtivos,
-  listarCategoriasPorGrupo,
-} from '@/services/gruposCategorias'
-import { Marca, listarTodasMarcasAtivas } from '@/services/marcas'
-import { Fornecedor, listarFornecedores } from '@/services/fornecedores'
 import { SaldoTodasFiliaisModal } from '@/components/SaldoTodasFiliaisModal'
 import pb from '@/lib/pocketbase/client'
 
@@ -61,20 +46,23 @@ export const PosicaoEstoquePage: React.FC = () => {
   const [carregando, setCarregando] = useState(true)
   const [itens, setItens] = useState<ItemPosicaoEstoque[]>([])
 
-  // Filtros
-  const [busca, setBusca] = useState('')
-  const [grupoFiltro, setGrupoFiltro] = useState<string>('todos')
-  const [categoriaFiltro, setCategoriaFiltro] = useState<string>('todos')
-  const [marcaFiltro, setMarcaFiltro] = useState<string>('todos')
-  const [fornecedorFiltro, setFornecedorFiltro] = useState<string>('todos')
-  const [situacaoFiltro, setSituacaoFiltro] = useState<string>('todos')
-  const [somenteComSaldo, setSomenteComSaldo] = useState(false)
+  // Estado FiltrosRelatorio (8.0b)
+  const [filtros, setFiltros] = useState<ObjetoFiltrosRelatorio>({
+    empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
+    grupos_ids: [],
+    categorias_ids: [],
+    marcas_ids: [],
+    fornecedores_ids: [],
+  })
 
-  // Dados auxiliares para combos
-  const [grupos, setGrupos] = useState<Grupo[]>([])
-  const [categorias, setCategorias] = useState<Categoria[]>([])
-  const [marcas, setMarcas] = useState<Marca[]>([])
-  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(
+    () => ['produto_grupos_categorias', 'produto_marcas', 'pessoas_fornecedores'],
+    [],
+  )
+
+  const [busca, setBusca] = useState('')
+  const [situacaoFiltro, setSituacaoFiltro] = useState<string>('todos')
+  const [somenteComSaldo, setSomenteComSaldo] = useState<boolean>(false)
 
   // Modal saldo em todas as filiais
   const [modalFiliaisAberto, setModalFiliaisAberto] = useState(false)
@@ -95,22 +83,8 @@ export const PosicaoEstoquePage: React.FC = () => {
 
   // Carrega listas para os filtros
   useEffect(() => {
-    listarTodosGruposAtivos().then(setGrupos).catch(console.error)
-    listarTodasMarcasAtivas().then(setMarcas).catch(console.error)
-    listarFornecedores({ situacao: 'ativos', porPagina: 100 })
-      .then((res) => setFornecedores(res.items))
-      .catch(console.error)
+    // Listas carregadas sob demanda se necessário
   }, [])
-
-  // Atualiza categorias quando muda o grupo
-  useEffect(() => {
-    if (grupoFiltro && grupoFiltro !== 'todos') {
-      listarCategoriasPorGrupo(grupoFiltro).then(setCategorias).catch(console.error)
-    } else {
-      setCategorias([])
-      setCategoriaFiltro('todos')
-    }
-  }, [grupoFiltro])
 
   // Carregar produtos e saldos da empresa ativa
   const carregarDados = useCallback(async () => {
@@ -193,19 +167,36 @@ export const PosicaoEstoquePage: React.FC = () => {
         return false
       }
 
-      if (grupoFiltro !== 'todos' && p.grupo_id !== grupoFiltro) {
+      if (
+        filtros.grupos_ids &&
+        filtros.grupos_ids.length > 0 &&
+        (!p.grupo_id || !filtros.grupos_ids.includes(p.grupo_id))
+      ) {
         return false
       }
 
-      if (categoriaFiltro !== 'todos' && p.categoria_id !== categoriaFiltro) {
+      if (
+        filtros.categorias_ids &&
+        filtros.categorias_ids.length > 0 &&
+        (!p.categoria_id || !filtros.categorias_ids.includes(p.categoria_id))
+      ) {
         return false
       }
 
-      if (marcaFiltro !== 'todos' && p.marca_id !== marcaFiltro) {
+      if (
+        filtros.marcas_ids &&
+        filtros.marcas_ids.length > 0 &&
+        (!p.marca_id || !filtros.marcas_ids.includes(p.marca_id))
+      ) {
         return false
       }
 
-      if (fornecedorFiltro !== 'todos' && p.fornecedor_principal_id !== fornecedorFiltro) {
+      if (
+        filtros.fornecedores_ids &&
+        filtros.fornecedores_ids.length > 0 &&
+        (!p.fornecedor_principal_id ||
+          !filtros.fornecedores_ids.includes(p.fornecedor_principal_id))
+      ) {
         return false
       }
 
@@ -229,16 +220,7 @@ export const PosicaoEstoquePage: React.FC = () => {
 
       return true
     })
-  }, [
-    itens,
-    busca,
-    grupoFiltro,
-    categoriaFiltro,
-    marcaFiltro,
-    fornecedorFiltro,
-    situacaoFiltro,
-    somenteComSaldo,
-  ])
+  }, [itens, busca, filtros, situacaoFiltro])
 
   // Ordenação
   const itensOrdenados = useMemo(() => {
@@ -393,63 +375,81 @@ export const PosicaoEstoquePage: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-[1600px] mx-auto">
-      {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Package className="h-6 w-6 text-blue-600" />
-            <h1 className="text-xl font-bold text-slate-900">Posição de Estoque</h1>
-            {empresaAtiva && (
-              <Badge
-                variant="outline"
-                className="text-xs font-normal border-slate-300 text-slate-700"
+      {/* Componente Comum de Filtros 8.0b */}
+      <FiltrosRelatorio
+        relatorioId="estoque_posicao"
+        tituloRelatorio="Posição de Estoque"
+        subtituloRelatorio="Visão consolidada do saldo físico e financeiro com indicadores de ponto de reposição."
+        filtrosDeclarados={filtrosDeclarados}
+        filtros={filtros}
+        onChange={setFiltros}
+        onFiltrar={carregarDados}
+        onExportarCsv={exportarCSV}
+        carregando={carregando}
+        filtrosExtras={
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="space-y-1 min-w-[200px]">
+              <label className="text-[11px] font-semibold text-slate-600 block">
+                Buscar Produto
+              </label>
+              <input
+                type="text"
+                placeholder="Código, descrição, GTIN..."
+                value={busca}
+                onChange={(e) => {
+                  setBusca(e.target.value)
+                  setPagina(1)
+                }}
+                className="text-xs h-9 w-full bg-white border border-slate-200 rounded-md px-2"
+              />
+            </div>
+            <div className="space-y-1 min-w-[160px]">
+              <label className="text-[11px] font-semibold text-slate-600 block">
+                Situação do Estoque
+              </label>
+              <select
+                value={situacaoFiltro}
+                onChange={(e) => {
+                  setSituacaoFiltro(e.target.value)
+                  setPagina(1)
+                }}
+                className="text-xs h-9 w-full bg-white border border-slate-200 rounded-md px-2"
               >
-                {empresaAtiva.nome_fantasia || empresaAtiva.razao_social}
-              </Badge>
-            )}
+                <option value="todos">Todas as situações</option>
+                <option value="Normal">Normal</option>
+                <option value="Abaixo do mínimo">Abaixo do mínimo</option>
+                <option value="Acima do máximo">Acima do máximo</option>
+                <option value="Zerado">Zerado</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2 pt-4">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700 select-none">
+                <input
+                  type="checkbox"
+                  checked={somenteComSaldo}
+                  onChange={(e) => {
+                    setSomenteComSaldo(e.target.checked)
+                    setPagina(1)
+                  }}
+                  className="rounded border-slate-300 text-blue-600"
+                />
+                <span>Somente com saldo &gt; 0</span>
+              </label>
+            </div>
+            <div className="pt-4 ml-auto">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => navigate('/estoque/lancamentos')}
+                className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Layers className="h-3.5 w-3.5 mr-1.5" />
+                Novo Lançamento
+              </Button>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Visão consolidada do saldo físico e financeiro com indicadores de ponto de reposição
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={carregarDados}
-            disabled={carregando}
-            className="h-9 text-xs"
-            title="Atualizar dados"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${carregando ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={exportarCSV}
-            disabled={itensFiltrados.length === 0}
-            className="h-9 text-xs text-slate-700"
-          >
-            <Download className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
-            Exportar CSV
-          </Button>
-
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => navigate('/estoque/lancamentos')}
-            className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Layers className="h-3.5 w-3.5 mr-1.5" />
-            Novo Lançamento
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Cards de Resumo Rápido no topo */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
@@ -512,204 +512,6 @@ export const PosicaoEstoquePage: React.FC = () => {
           </CardContent>
         </Card>
       </div>
-
-      {/* Barra de Filtros */}
-      <Card className="border-slate-200 bg-white">
-        <CardContent className="p-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {/* Busca textual */}
-            <div className="md:col-span-2">
-              <Label className="text-[11px] font-semibold text-slate-600 mb-1 block">
-                Buscar Produto
-              </Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                <Input
-                  type="text"
-                  placeholder="Código, descrição, GTIN, referência, localização..."
-                  value={busca}
-                  onChange={(e) => {
-                    setBusca(e.target.value)
-                    setPagina(1)
-                  }}
-                  className="pl-8 h-9 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Grupo */}
-            <div>
-              <Label className="text-[11px] font-semibold text-slate-600 mb-1 block">Grupo</Label>
-              <Select
-                value={grupoFiltro}
-                onValueChange={(val) => {
-                  setGrupoFiltro(val)
-                  setPagina(1)
-                }}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="Todos os grupos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os grupos</SelectItem>
-                  {grupos.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Categoria */}
-            <div>
-              <Label className="text-[11px] font-semibold text-slate-600 mb-1 block">
-                Categoria
-              </Label>
-              <Select
-                value={categoriaFiltro}
-                onValueChange={(val) => {
-                  setCategoriaFiltro(val)
-                  setPagina(1)
-                }}
-                disabled={grupoFiltro === 'todos'}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="Todas as categorias" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todas as categorias</SelectItem>
-                  {categorias.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Marca */}
-            <div>
-              <Label className="text-[11px] font-semibold text-slate-600 mb-1 block">Marca</Label>
-              <Select
-                value={marcaFiltro}
-                onValueChange={(val) => {
-                  setMarcaFiltro(val)
-                  setPagina(1)
-                }}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="Todas as marcas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todas as marcas</SelectItem>
-                  {marcas.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Situação */}
-            <div>
-              <Label className="text-[11px] font-semibold text-slate-600 mb-1 block">
-                Situação do Estoque
-              </Label>
-              <Select
-                value={situacaoFiltro}
-                onValueChange={(val) => {
-                  setSituacaoFiltro(val)
-                  setPagina(1)
-                }}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="Todas as situações" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todas as situações</SelectItem>
-                  <SelectItem value="Normal">Normal</SelectItem>
-                  <SelectItem value="Abaixo do mínimo">Abaixo do mínimo</SelectItem>
-                  <SelectItem value="Acima do máximo">Acima do máximo</SelectItem>
-                  <SelectItem value="Zerado">Zerado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
-            {/* Fornecedor principal e Checkbox de Somente com saldo */}
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="w-56">
-                <Select
-                  value={fornecedorFiltro}
-                  onValueChange={(val) => {
-                    setFornecedorFiltro(val)
-                    setPagina(1)
-                  }}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Fornecedor principal..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos os fornecedores</SelectItem>
-                    {fornecedores.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.razao_social}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="somente-saldo"
-                  checked={somenteComSaldo}
-                  onCheckedChange={(checked) => {
-                    setSomenteComSaldo(Boolean(checked))
-                    setPagina(1)
-                  }}
-                />
-                <Label
-                  htmlFor="somente-saldo"
-                  className="text-xs font-medium cursor-pointer text-slate-700"
-                >
-                  Somente com saldo &gt; 0
-                </Label>
-              </div>
-            </div>
-
-            {(busca ||
-              grupoFiltro !== 'todos' ||
-              categoriaFiltro !== 'todos' ||
-              marcaFiltro !== 'todos' ||
-              fornecedorFiltro !== 'todos' ||
-              situacaoFiltro !== 'todos' ||
-              somenteComSaldo) && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setBusca('')
-                  setGrupoFiltro('todos')
-                  setCategoriaFiltro('todos')
-                  setMarcaFiltro('todos')
-                  setFornecedorFiltro('todos')
-                  setSituacaoFiltro('todos')
-                  setSomenteComSaldo(false)
-                  setPagina(1)
-                }}
-                className="h-8 text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50"
-              >
-                Limpar Filtros
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Tabela de Posição de Estoque */}
       <div className="border border-slate-200 rounded-lg bg-white overflow-hidden shadow-xs">

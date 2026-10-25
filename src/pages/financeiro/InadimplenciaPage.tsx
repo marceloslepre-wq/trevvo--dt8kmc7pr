@@ -6,10 +6,11 @@ import {
   ResumoInadimplencia,
   InadimplenciaClienteItem,
 } from '@/services/inadimplencia'
+import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
+import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import { toast } from '@/hooks/use-toast'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -26,34 +27,32 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import {
-  AlertTriangle,
-  Download,
-  RotateCcw,
-  Search,
-  ExternalLink,
-  Phone,
-  Mail,
-  ChevronRight,
-  ShieldAlert,
-  Users,
-  Clock,
-} from 'lucide-react'
+import { AlertTriangle, ExternalLink, Phone, Mail, ShieldAlert, Clock } from 'lucide-react'
 
 export const InadimplenciaPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
   const navigate = useNavigate()
+
+  // Estado FiltrosRelatorio (8.0b)
+  const [filtros, setFiltros] = useState<ObjetoFiltrosRelatorio>({
+    empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
+    clientes_ids: [],
+  })
+
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(() => ['pessoas_clientes'], [])
 
   const [resumo, setResumo] = useState<ResumoInadimplencia | null>(null)
   const [carregando, setCarregando] = useState<boolean>(true)
   const [busca, setBusca] = useState<string>('')
   const [clienteDetalhe, setClienteDetalhe] = useState<InadimplenciaClienteItem | null>(null)
 
+  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+
   const carregarDados = useCallback(async () => {
-    if (!empresaAtiva?.id) return
+    if (!empresaIdEfetiva) return
     setCarregando(true)
     try {
-      const res = await apurarInadimplencia(empresaAtiva.id)
+      const res = await apurarInadimplencia(empresaIdEfetiva)
       setResumo(res)
     } catch (err: any) {
       toast({
@@ -64,18 +63,24 @@ export const InadimplenciaPage: React.FC = () => {
     } finally {
       setCarregando(false)
     }
-  }, [empresaAtiva?.id])
+  }, [empresaIdEfetiva])
 
   useEffect(() => {
     carregarDados()
   }, [carregarDados])
 
-  // Filtragem dos clientes por busca textual
+  // Filtragem dos clientes por busca textual e clientes selecionados no filtro comum
   const clientesFiltrados = useMemo(() => {
     if (!resumo) return []
-    if (!busca.trim()) return resumo.clientes
+    let lista = resumo.clientes
+
+    if (filtros.clientes_ids && filtros.clientes_ids.length > 0) {
+      lista = lista.filter((c) => filtros.clientes_ids!.includes(c.clienteId))
+    }
+
+    if (!busca.trim()) return lista
     const termo = busca.toLowerCase()
-    return resumo.clientes.filter(
+    return lista.filter(
       (c) =>
         c.nomeCliente.toLowerCase().includes(termo) ||
         (c.cpfCnpj && c.cpfCnpj.includes(termo)) ||
@@ -83,7 +88,7 @@ export const InadimplenciaPage: React.FC = () => {
         (c.telefone && c.telefone.includes(termo)) ||
         (c.celular && c.celular.includes(termo)),
     )
-  }, [resumo, busca])
+  }, [resumo, busca, filtros.clientes_ids])
 
   // Exportar CSV
   const exportarCSV = () => {
@@ -131,42 +136,30 @@ export const InadimplenciaPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Topo */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <AlertTriangle className="w-6 h-6 text-rose-600" />
-            Relatório de Inadimplência
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Acompanhe títulos a receber vencidos em aberto por cliente e faixas de atraso (aging
-            list).
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={carregarDados}
-            disabled={carregando}
-            className="text-xs h-9"
-          >
-            <RotateCcw className={`w-4 h-4 mr-1 ${carregando ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportarCSV}
-            disabled={!resumo || resumo.clientes.length === 0}
-            className="text-xs h-9"
-          >
-            <Download className="w-4 h-4 mr-1 text-slate-600" />
-            Exportar CSV
-          </Button>
-        </div>
-      </div>
+      {/* Componente Comum de Filtros 8.0b */}
+      <FiltrosRelatorio
+        relatorioId="financeiro_inadimplencia"
+        tituloRelatorio="Relatório de Inadimplência"
+        subtituloRelatorio="Acompanhe títulos a receber vencidos em aberto por cliente e faixas de atraso (aging list)."
+        filtrosDeclarados={filtrosDeclarados}
+        filtros={filtros}
+        onChange={setFiltros}
+        onFiltrar={carregarDados}
+        onExportarCsv={exportarCSV}
+        carregando={carregando}
+        filtrosExtras={
+          <div className="space-y-1 min-w-[240px]">
+            <label className="text-[11px] font-semibold text-slate-600 block">Busca Rápida</label>
+            <input
+              type="text"
+              placeholder="Nome, CPF/CNPJ, telefone ou e-mail..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="text-xs h-9 w-full bg-white border border-slate-200 rounded-md px-2"
+            />
+          </div>
+        }
+      />
 
       {/* Cartões com Totais por Faixas */}
       {resumo && (
@@ -251,19 +244,11 @@ export const InadimplenciaPage: React.FC = () => {
         </div>
       )}
 
-      {/* Barra de Busca */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <Input
-            placeholder="Buscar por nome, CPF/CNPJ, telefone ou e-mail..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            className="pl-9 text-xs h-9"
-          />
-        </div>
-        <span className="text-xs text-slate-500">
-          Mostrando {clientesFiltrados.length} de {resumo?.clientes.length || 0} clientes
+      {/* Contador de Clientes */}
+      <div className="flex items-center justify-between text-xs text-slate-500">
+        <span>
+          Mostrando <strong>{clientesFiltrados.length}</strong> de{' '}
+          <strong>{resumo?.clientes.length || 0}</strong> clientes inadimplentes
         </span>
       </div>
 

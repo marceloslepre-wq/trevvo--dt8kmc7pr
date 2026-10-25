@@ -3276,6 +3276,65 @@ Regras gerais para todos os relatórios desta etapa:
   - Área expansível de filtros extras (`children` / `filtrosExtras`) preparada para receber os filtros específicos de produtos, pessoas, vendas, fiscal e financeiro do próximo prompt (8.0b).
 - **Tela Central de Relatórios (`src/pages/relatorios/CentralRelatoriosPage.tsx` - `/relatorios`):** Painel da Central de Relatórios no menu principal, protegido pelo módulo `relatorios` (`pode('relatorios', 'ver')`). Cartões agrupados por assunto, com nome, resumo do que mostram e link de acesso rápido, filtrados dinamicamente pelas permissões do usuário em cada módulo correspondente.
 
+### Etapa 8 concluída
+
+A Etapa 8 (Relatórios e Painel) foi integralmente concluída, consolidando a inteligência gerencial, relatórios fiscais, painel executivo do grupo e o montador de relatórios personalizados, operando com soma no backend, limite estrito de período e governança multiempresa:
+
+1. **Endpoints Backend Seguros sob `/backend/v1/relatorios/*`:**
+   - `POST /backend/v1/relatorios/validar-filtros` (`pocketbase/hooks/relatorios_base.js`): validação de autorização de acesso às empresas consultadas (`usuarios_empresas` ou admin) e período máximo de 366 dias.
+   - `POST /backend/v1/relatorios/livro-saidas` (`pocketbase/hooks/fiscal_relatorio_livro_saidas.js`): agregação das notas de saída (modelos 55 e 65) autorizadas, denegadas, canceladas e inutilizações, com resumo analítico por CFOP/CST/alíquota e resumo por UF de destino.
+   - `POST /backend/v1/relatorios/vendas-canais` (`pocketbase/hooks/relatorio_vendas_canais.js`): faturamento líquido, vendas, ticket médio, CMV e margem bruta por filial, canal de venda, UF de destino, forma de pagamento com taxas e categorias, com comparativo com período anterior e ano anterior.
+   - `POST /backend/v1/relatorios/estoque-gerencial` (`pocketbase/hooks/relatorio_estoque_gerencial.js`): saldo e valorização por data base retroativa ou atual, giro, cobertura de estoque em dias, produtos sem giro/parados (> 90 dias) e sugestão automática de compra.
+   - `POST /backend/v1/relatorios/contas-pagar` (`pocketbase/hooks/relatorio_contas_pagar.js`): aging list de contas a pagar por faixas de vencimento, totalizadores por fornecedor, plano de contas e relação analítica de títulos em aberto.
+   - `POST /backend/v1/relatorios/painel-grupo` (`pocketbase/hooks/relatorio_painel_grupo.js`): consolidado executivo do grupo multiempresa com faturamento comparativo (vs mês e ano anterior), margem, ticket, vendas interestaduais, estoque valorizado e parado, contas a receber e pagar (30 dias) e status do SPED.
+   - `POST /backend/v1/relatorios/personalizado` (`pocketbase/hooks/relatorio_personalizado.js`): montador de relatórios analíticos cobrindo 7 bases de dados (`itens_vendidos`, `itens_comprados`, `estoque_data`, `estoque_movimentos`, `contas_pagar`, `contas_receber`, `movimentacoes_financeiras`) com agrupamentos até 3 níveis, métricas agregadas, totais gerais e gráficos (limite de 5.000 linhas).
+   - Endpoints de filtros salvos (`relatorios_filtros_salvos`) e relatórios personalizados salvos (`relatorios_salvos`).
+
+2. **Telas e Recursos na Interface:**
+   - `/relatorios`: Central de Relatórios com catálogo unificado por assunto (Vendas, Estoque, Compras, Financeiro, Fiscal, Grupo), atalho para relatórios salvos e novo relatório personalizado.
+   - `/fiscal/livro-saidas`: Livro de Registro de Saídas fiscal oficial com detalhamento de documentos, analítico por CFOP/CST/alíquota e mapa por UF.
+   - `/fiscal/resumo-icms`: Resumo mensal da apuração do ICMS agregando Débitos (Livro de Saídas) vs Créditos (Livro de Entradas e transferências) e confronto automatizado com o Registro E110 do SPED Fiscal.
+   - `/relatorios/vendas-canais`: Relatório gerencial de vendas por filial e canal, comparativos com períodos anteriores e UFs de destino.
+   - `/relatorios/estoque-gerencial`: Relatório gerencial de estoque em 4 abas (Valorizado, Giro e Cobertura, Parados e Sugestão de Compra com exportação CSV para fornecedor).
+   - `/relatorios/contas-pagar`: Relatório gerencial de contas a pagar por vencimento com aging list em 7 faixas, agrupamento por fornecedor e plano de contas.
+   - `/painel-grupo`: Dashboard executivo multiempresa acessível a usuários com acesso a mais de uma empresa, com comparativos históricos, gráficos de série temporal e raio-x por filial.
+   - `/relatorios/personalizado`: Montador interativo de relatórios em 4 passos com agrupamentos hierárquicos, subtotais, gráficos interativos e exportação CSV/impressão.
+   - **Filtros nas Telas Existentes:** Inclusão do componente comum `FiltrosRelatorio` (apenas os filtros pertinentes, preservando intactos os cálculos internos) em:
+     - `/vendas/consultas`: Período e tipo de data com atalhos, exportação CSV e critério ABC.
+     - `/vendas/comissoes`: Período, vendedor e base de cálculo (emissão vs liquidação).
+     - `/estoque/posicao`: Grupos, categorias, marcas, fornecedores e flags de saldo/mínimo.
+     - `/estoque/kardex`: Período e tipo de data de movimentação com seleção de produto.
+     - `/compras/itens-comprados`: Período, fornecedor, produto, grupo de produto e CFOP.
+     - `/financeiro/inadimplencia`: Seleção multiempresa, cliente e busca textual no aging list.
+     - `/financeiro/fluxo-caixa`: Período, contas bancárias selecionadas, agrupamento e inclusão de vencidos.
+
+3. **Regras Mandatórias da Etapa 8:**
+   - **Soma e agregação no backend:** Nenhum cálculo pesado é executado no navegador; as somas são feitas no banco/servidor.
+   - **Período máximo de 366 dias:** Validação mandatória no backend e frontend para resguardar performance.
+   - **Somente leitura:** Nenhuma tela ou endpoint de relatório mutaciona registros operacionais.
+   - **Multiempresa com validação no backend:** Permissão checada no servidor em `usuarios_empresas` (ou administrador).
+   - **Homologação fora dos relatórios fiscais:** Documentos em homologação são excluídos, exceto com opção explícita com faixa de aviso.
+   - **Cancelados nunca nos totais:** Vendas e títulos cancelados nunca compõem métricas de faturamento ou saldo.
+   - **Sigilo de custos e margens:** Valores de CMV, custos médios e margens são omitidos para usuários sem permissão no módulo `produtos` (`pode('produtos', 'ver')`).
+   - **Migration 0060 de Índices de Performance:** Índices combinados `empresa_id + data` nas tabelas `vendas`, `documentos_fiscais`, `estoque_movimentos`, `contas_pagar` e `contas_receber`.
+
+---
+
+## Roteiro concluído
+
+O roteiro de desenvolvimento do ERP foi concluído com sucesso em todas as suas 8 etapas planejadas:
+
+- **Etapa 1: Estrutura Base e Autenticação** — Versão de fechamento: **0.0.14** (Scaffolding, multiempresa, RBAC, auditoria, banco de dados e perfis).
+- **Etapa 2: Produtos e Estoque** — Versão de fechamento: **0.0.23** (Catálogo de produtos, unidades, marcas, grupos/categorias, saldo de estoque, movimentações Kardex e integridade).
+- **Etapa 3: Compras e Entrada de Notas** — Versão de fechamento: **0.0.39** (Pedidos de compra, importação de XML de NF-e, conferência tributária, conversão de CFOP e manifesto).
+- **Etapa 4: Financeiro** — Versão de fechamento: **0.0.53** (Plano de contas, centros de custo, contas financeiras, contas a pagar, contas a receber, fluxo de caixa, DRE gerencial e conciliação).
+- **Etapa 5: Vendas e PDV** — Versão de fechamento: **0.0.71** (Orçamentos, pedidos de venda, controle de sessões de caixa às cegas, frente de caixa PDV, trocas/devoluções e comissões).
+- **Etapa 6: Emissão Fiscal** — Versão de fechamento: **0.0.91** (Motor fiscal de tributação, emissão de NF-e 55 e NFC-e 65, cancelamentos, cartas de correção CC-e, inutilizações e exportação de XMLs).
+- **Etapa 7: SPED Fiscal (EFD ICMS/IPI)** — Versão de fechamento: **0.0.105** (Geração dos Blocos 0, C, E, H, K, 1 e 9, apuração de ICMS Próprio e DIFAL, validações pré-PVA e relatório de conferência).
+- **Etapa 8: Relatórios e Painel** — Versão de fechamento: **0.0.115** (Central de relatórios, filtros comuns 8.0b, livro de saídas, resumo de ICMS, vendas por canal, estoque gerencial, contas a pagar, painel do grupo, relatório personalizado com 7 bases, filtros salvos, filtros nas telas existentes e migration 0060 de índices).
+
+---
+
 ### Catálogo de Filtros e Formato Único de Filtros no Prompt 8.0b
 
 No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e o motor comum de aplicação no frontend e backend:
@@ -3321,6 +3380,25 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.115** — Fechamento Oficial da Etapa 8 (Relatórios e Painel) e Conclusão do Roteiro Geral do ERP:
+
+1. **Filtros nas Telas Existentes com o Componente Comum 8.0b (`FiltrosRelatorio`):**
+   - Integrado o componente unificado de filtros do 8.0b nas 7 telas consolidadas de vendas, estoque, compras e financeiro, preservando 100% de seus cálculos internos e regras de negócio:
+     - `/vendas/consultas`: Período com atalhos, exportação CSV e critério da curva ABC.
+     - `/vendas/comissoes`: Período com atalhos, vendedor e seletor da base de cálculo (emissão vs liquidação).
+     - `/estoque/posicao`: Multiempresa, grupos, categorias, marcas, fornecedores e flags de saldo e abaixo do mínimo.
+     - `/estoque/kardex`: Período com atalhos, tipo de data e seleção de produto.
+     - `/compras/itens-comprados`: Período com atalhos, fornecedores, produtos, grupos de produto e CFOP de entrada.
+     - `/financeiro/inadimplencia`: Multiempresa, seleção de clientes e busca de texto integrada.
+     - `/financeiro/fluxo-caixa`: Período, contas financeiras selecionadas, agrupamento temporal e inclusão de vencidos.
+2. **Revisão de Backend e Performance (Migration 0060):**
+   - Criação de índices combinados de alta performance `empresa_id + data` nas tabelas centrais: `vendas`, `documentos_fiscais`, `estoque_movimentos`, `contas_pagar` e `contas_receber`.
+   - Revisão integral dos hooks de relatórios com conferência rigorosa de período máximo de 366 dias, permissões por módulo e validação multiempresa no servidor.
+3. **Consolidação Documental:**
+   - Registro da seção "Etapa 8 concluída" e da seção "Roteiro concluído" (com o fechamento das 8 etapas do ERP) no `PROJETO_ERP.md`.
+
+---
 
 **Versão 0.0.114** — Etapa 8 Relatórios e Painel (Prompt 8.7: Relatório Personalizado - Parte 2: Estoque e Financeiro):
 
