@@ -3326,6 +3326,51 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 
 ---
 
+**Versão 0.0.111** — Etapa 8 Relatórios e Painel (Prompt 8.4: Financeiro Gerencial — Contas a Pagar por Vencimento e DRE Comparativa por Empresa/Meses):
+
+1. **Endpoint Backend de Contas a Pagar por Vencimento (`POST /backend/v1/relatorios/contas-pagar`):**
+   - Implementado em `pocketbase/hooks/relatorio_contas_pagar.js` no Skip Cloud (PocketBase).
+   - Validações e multiempresa: autenticação obrigatória, validação rigorosa de acesso às empresas marcadas (`usuarios_empresas` ou admin), limite de período de até 366 dias, modo estritamente somente leitura.
+   - Filtros do catálogo 8.0b aceitos: `empresas_ids`, `periodo` (`dataInicio`, `dataFim`), `tipo_data` (`vencimento`, `emissao` ou `competencia`), `fornecedores_ids`, `plano_contas_ids`, `centros_custo_ids` e `origens_titulo`.
+   - Regras de corte e negócio: títulos de `contas_pagar` com `ativo = true`, `saldo > 0` e status "Em aberto" ou "Pago parcial".
+   - Faixas de vencimento estruturadas (Aging) com base na data atual (horário de Brasília):
+     1. Vencidas há mais de 30 dias (`diff < -30 dias`)
+     2. Vencidas até 30 dias (`-30 <= diff < 0`)
+     3. Vence hoje (`diff == 0`)
+     4. Próximos 7 dias (`1 <= diff <= 7`)
+     5. 8 a 30 dias (`8 <= diff <= 30`)
+     6. 31 a 60 dias (`31 <= diff <= 60`)
+     7. Acima de 60 dias (`diff > 60`)
+   - Respostas agregadas no servidor:
+     - Totais por faixa de vencimento (quantidade, saldo e percentual de participação).
+     - Totais por fornecedor (quantidade, saldo vencido, vence hoje, a vencer, saldo total ordenado de forma decrescente).
+     - Totais por conta do plano de contas (código, descrição, quantidade e saldo total ordenado pelo código contábil).
+     - Relação analítica de títulos com fornecedor, documento, parcela, descrição, vencimento, situação/faixa, plano de contas, centro de custo, valores (original, pago, saldo), origem e link para a nota de entrada (`/compras/notas-entrada/:id/conferencia`) quando a origem for `NF Entrada` ou `NF_ENTRADA`.
+
+2. **Tela Relatórios > Contas a Pagar por Vencimento (`/relatorios/contas-pagar` - `src/pages/relatorios/ContasPagarVencimentoPage.tsx`):**
+   - Integrada ao componente unificado de filtros `FiltrosRelatorio.tsx` (8.0b).
+   - Quadro de indicadores consolidados (Saldo total, Total vencido, Vence hoje e A vencer).
+   - Cards clicáveis das 7 faixas de vencimento para filtragem imediata da lista analítica.
+   - Abas: 1) Relação de Títulos (com busca textual e badges coloridos de vencimento); 2) Totais por Fornecedor; 3) Totais por Plano de Contas.
+   - Permissão de acesso: governada pelo módulo `financeiro_pagar` (`pode('financeiro_pagar', 'ver')`).
+   - Exportação completa para CSV nos padrões da Etapa 8 (BOM UTF-8, ponto e vírgula, vírgula decimal) contendo as 4 seções analíticas.
+
+3. **DRE Comparativa (`/financeiro/dre` - `src/pages/financeiro/DrePage.tsx`):**
+   - Reutilização estrita do motor e cálculo existente de `obterDreGerencial` (`src/services/dre.ts`) sem qualquer alteração na lógica contábil/financeira (mantendo regimes Competência e Caixa, e a opção "Custo das mercadorias pelo estoque").
+   - Seletor de visualização com 3 modos sem alterar o comportamento do modo normal:
+     1. **DRE Normal:** visão padrão detalhada com período atual vs. anterior e drill-down em dois níveis.
+     2. **Comparar Empresas:** condicionado a usuários com acesso a mais de uma empresa (`empresas.length > 1`); exibe checkboxes para marcar as empresas desejadas, renderiza uma coluna por empresa marcada com valor e % vertical, coluna de Total Geral consolidado e % vertical consolidado.
+     3. **Comparar Meses:** analisa os últimos 12 meses cronológicos lado a lado para a empresa selecionada (empresa ativa ou selecionada via seletor).
+   - Exportação de CSV ajustada dinamicamente conforme o modo de visualização selecionado (CSV da DRE normal ou matriz comparativa das empresas/meses).
+   - As telas `/financeiro/fluxo-caixa` e `/financeiro/inadimplencia` foram rigorosamente mantidas sem alteração.
+
+4. **Central de Relatórios e Rotas:**
+   - Adicionada rota `/relatorios/contas-pagar` em `src/App.tsx` com `PermissaoGuard modulo="financeiro_pagar" acao="ver"`.
+   - Adicionado item "Contas a Pagar por Vencimento" no catálogo `src/config/relatoriosCatalogo.ts` na categoria "Financeiro" com o módulo `financeiro_pagar`.
+   - Atualizada a descrição do card da DRE no catálogo para citar os novos modos: "DRE Normal, Comparar Empresas (com % vertical e total) e Comparar Meses (últimos 12m)".
+
+---
+
 **Versão 0.0.110** — Etapa 8 Relatórios e Painel (Prompt 8.3: Estoque Gerencial — Valorizado, Giro, Parados e Sugestão de Compra):
 
 1. **Endpoint Backend de Estoque Gerencial (`POST /backend/v1/relatorios/estoque-gerencial`):**

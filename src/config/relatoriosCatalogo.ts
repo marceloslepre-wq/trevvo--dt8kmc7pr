@@ -14,6 +14,7 @@ import {
   FileText,
   Scale,
   Store,
+  CalendarClock,
 } from 'lucide-react'
 import { ModuloSistema } from '@/services/perfis'
 
@@ -223,9 +224,28 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
 
   // ===================== FINANCEIRO =====================
   {
+    id: 'financeiro_contas_pagar_vencimento',
+    nome: 'Contas a Pagar por Vencimento',
+    descricao:
+      'Gestão do aging de contas a pagar: faixas de vencimento (<30d até >60d), totais por fornecedor e plano de contas.',
+    rota: '/relatorios/contas-pagar',
+    modulo: 'financeiro_pagar',
+    categoria: 'Financeiro',
+    icone: CalendarClock,
+    novo: true,
+    filtrosPermitidos: [
+      'pessoas_fornecedores',
+      'financeiro_plano_contas',
+      'financeiro_centros_custo',
+      'financeiro_origens_titulo',
+      'datas_tipo_data',
+    ],
+  },
+  {
     id: 'financeiro_dre',
     nome: 'Demonstrativo do Resultado (DRE)',
-    descricao: 'Resultado econômico por competência com receita bruta, deduções, CMV e despesas.',
+    descricao:
+      'Resultado econômico por competência ou caixa, com modos DRE Normal, Comparar Empresas (com % vertical e total) e Comparar Meses (últimos 12m).',
     rota: '/financeiro/dre',
     modulo: 'financeiro_bancos',
     categoria: 'Financeiro',

@@ -110,6 +110,7 @@ import ResumoIcmsPage from '@/pages/fiscal/ResumoIcmsPage'
 import CentralRelatoriosPage from '@/pages/relatorios/CentralRelatoriosPage'
 import VendasCanaisPage from '@/pages/relatorios/VendasCanaisPage'
 import EstoqueGerencialPage from '@/pages/relatorios/EstoqueGerencialPage'
+import ContasPagarPorVencimentoPage from '@/pages/relatorios/ContasPagarVencimentoPage'
 
 const App = () => (
   <BrowserRouter>
@@ -887,6 +888,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="estoque" acao="ver">
                         <EstoqueGerencialPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/relatorios/contas-pagar"
+                    element={
+                      <PermissaoGuard modulo="financeiro_pagar" acao="ver">
+                        <ContasPagarPorVencimentoPage />
                       </PermissaoGuard>
                     }
                   />
