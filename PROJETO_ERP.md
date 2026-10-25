@@ -3437,6 +3437,33 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.126** — Etapa 9 Multi-tenant (Prompt 9.4 + 9.4b + 9.4c: Proteção Integral por Tenancy em Coleções com Empresa e Todos os Hooks):
+
+1. **Prompt 9.4 (Regras de Acesso nas Coleções com `empresa_id` - Migration 0075):**
+   - Criação do campo `auth_user_id` na coleção `usuarios_empresas` com backfill automático para joins diretos e rápidos nas API Rules.
+   - Aplicação de regras de isolamento em todas as coleções de movimentação e operacionais vinculadas a `empresa_id`:
+     - Regra base: `@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))`.
+     - Coleções com empresa direta: `estoque_saldos`, `estoque_movimentos`, `lotes`, `contas_financeiras`, `contas_pagar`, `contas_receber`, `pagamentos_lotes`, `pagamentos_baixas`, `movimentacoes_financeiras`, `extratos_linhas`, `caixa_sessoes`, `caixa_sessoes_movimentos`, `documentos_fiscais`, `inutilizacoes`, `sped_arquivos`, `sped_ajustes_apuracao`, `vendas`, `pdv_terminais`, `vales_troca`, `inventarios`, `pedidos_compra`, `notas_entrada`, configurações por empresa (`config_fiscal_empresa`, `config_financeira_empresa`, `config_vendas_empresa`, `config_emissao_fiscal`, `config_sped_empresa`) e `logs_auditoria`.
+     - Coleções filhas protegidas pelo pai (`pai.empresa_id.assinante_id = @request.auth.assinante_id`): `pedidos_compra_itens`, `notas_entrada_itens`, `notas_entrada_parcelas`, `vendas_itens`, `vendas_pagamentos`, `documentos_fiscais_itens`, `documentos_fiscais_cartas`, `inventarios_itens`.
+     - Transferências entre empresas: protegidas avaliando `empresa_origem_id` OU `empresa_destino_id` (`transferencias` e `transferencias_itens`).
+
+2. **Prompt 9.4b (Correção e Compatibilização dos Hooks com PocketBase v0.23+):**
+   - Adequação completa dos 7 hooks de movimentação para uso de `c.requestInfo().body` e `c.auth || c.get('authRecord')`, integrando com `exigirEmpresaDoUsuario`: `estoque_movimentar.js`, `estoque_estornar.js`, `nota_entrada_lancar.js`, `nota_entrada_cancelar.js`, `financeiro_pagar_baixar.js`, `financeiro_pagar_estornar.js`, `financeiro_gerar_retroativos.js`.
+
+3. **Prompt 9.4c (Deploy do Backend, Testes de Isolamento e Validação da Plataforma):**
+   - Deploy do backend executado no Skip Cloud (`deploy_backend`) com sucesso total para todos os 16 hooks protegidos com `exigirEmpresaDoUsuario` e 34 funções ativas.
+   - Logs de hooks do PocketBase verificados e limpos (`list_logs` stream `hooks`), sem erros de compilação ou rejeição.
+   - **Bateria de Testes de Isolamento Multi-tenant (Migration 0076):**
+     - Usuário do assinante TESTE B (`admin@testeb.com`, assinante `l6vfd1p688j2y9a`):
+       - Leituras em `vendas`, `estoque_saldos`, `contas_pagar`, `documentos_fiscais` e `sped_arquivos` com filtro na empresa da HOSPITAL HOME retornam 0 registros (isolamento total garantido pelas API rules da Migration 0075).
+       - Chamadas aos endpoints protegidos (`/backend/v1/relatorios/painel-grupo`, `/backend/v1/vendas/finalizar` e `/backend/v1/fiscal/exportar-xmls`) informando empresa da HOSPITAL HOME retornam **HTTP 403 Forbidden** imediato via `exigirEmpresaDoUsuario`.
+     - Usuário Master (`marceloslepre@gmail.com`, HOSPITAL HOME `wqxiw7olvkup3sm`):
+       - Acesso operacional mantido com sucesso nas 3 empresas ativas da HOSPITAL HOME (`/backend/v1/empresas/acessiveis`).
+       - Consolidação do `/backend/v1/relatorios/painel-grupo` e `/backend/v1/tenancy/me` executando normalmente (`is_master: true`, assinante `HOSPITAL HOME`).
+     - Nenhum dado de teste residual foi mantido no banco de dados.
+
+---
+
 **Versão 0.0.125** — Etapa 9 Multi-tenant (Prompt 9.4b: Correção e Compatibilização dos 7 Hooks de Movimentação com PocketBase v0.23+):
 
 1. **Correção de API e Compatibilização com PocketBase v0.23+ nos 7 Hooks do Backend:**
