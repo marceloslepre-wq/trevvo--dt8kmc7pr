@@ -3326,6 +3326,39 @@ No Prompt 8.0b, foi implementado o catálogo completo de filtros declaráveis e 
 
 ---
 
+**Versão 0.0.108** — Etapa 8 Relatórios e Painel (Prompt 8.1: Livro de Registro de Saídas e Resumo da Apuração do ICMS do Mês):
+
+1. **Endpoint Backend de Alta Precisão Fiscal (`POST /backend/v1/relatorios/livro-saidas`):**
+   - Implementado em `pocketbase/hooks/fiscal_relatorio_livro_saidas.js` agregando no servidor as regras tributárias da escrituração das saídas (limite 366 dias, filtro por empresa e verificação de permissão).
+   - Coleta de `documentos_fiscais` com `tipo_documento = 1` (saída) com `data_emissao` no período no fuso horário de Brasília (UTC-3), com status Autorizada, Cancelada e Denegada, respeitando ambiente Produção/Homologação (`incluirTeste`).
+   - Coleta e desdobramento das faixas da tabela `inutilizacoes` homologadas no período com `situacao = "inutilizada"`.
+   - Regra fiscal estrita: documentos autorizados apresentam valores normais; documentos cancelados, denegados e inutilizados possuem valores contábeis e impostos rigorosamente zerados.
+   - Três estruturas de dados retornadas pelo endpoint:
+     1. Linhas por documento/inutilização: data, modelo, série, número, chave, destinatário (nome, CNPJ/CPF, UF), CFOP principal, valor contábil, base e valor do ICMS, base e valor do ICMS ST, IPI, DIFAL destino e situação.
+     2. Resumo analítico por CFOP, CST/CSOSN e alíquota somando `documentos_fiscais_itens`: valor contábil, base ICMS, valor ICMS, base ICMS ST, valor ICMS ST, IPI, isentas ou não tributadas e outras.
+     3. Resumo por UF de destino (focado nas operações interestaduais e internas) com quantidade de documentos, valor contábil, ICMS próprio e DIFAL destino (EC 87/2015).
+     4. Totalizadores gerais consolidados para batimento contábil.
+
+2. **Tela Fiscal > Livro de Saídas (`/fiscal/livro-saidas` - `src/pages/fiscal/LivroSaidasPage.tsx`):**
+   - Padrão visual idêntico ao `/compras/livro-entradas`, com cartões de indicadores (Documentos/linhas, Valor Contábil, ICMS Débito, ST+IPI+DIFAL).
+   - Filtro comum de período e gaveta com filtros fiscais do 8.0b: Modelo (55 / 65), CFOP, CST/CSOSN, Situação (normal, cancelada, denegada, inutilizada), UF de destino, Cliente (via componente `SelectCliente`) e switch para notas em homologação.
+   - Três quadros completos na tela e na impressão: 1) Relação de Documentos e Inutilizações; 2) Resumo por CFOP, CST e Alíquota; 3) Resumo por UF de Destino.
+   - Exportação para CSV completa nos padrões da Etapa 8 (BOM UTF-8, separador `;`, vírgula decimal, seções bem identificadas) e impressão formatada via CSS `@media print`.
+   - Permissão de acesso governada pelo módulo `notas_saida` (`pode('notas_saida', 'ver')`).
+
+3. **Tela Fiscal > Resumo do ICMS do Mês (`/fiscal/resumo-icms` - `src/pages/fiscal/ResumoIcmsPage.tsx`):**
+   - Conferência gerencial mês a mês de Débitos (ICMS destacado no Livro de Saídas) versus Créditos (ICMS aproveitado no Livro de Entradas e transferências recebidas entre filiais).
+   - Apuração do saldo do mês em destaque: a recolher ou saldo credor para o mês seguinte.
+   - Aviso regulamentar mandatório: _"conferência gerencial; a apuração oficial é a do SPED"_.
+   - Confronto automatizado com o arquivo do SPED Fiscal do mês (`sped_arquivos`): se existir, lê o Registro E110 oficial, confronta Débitos, Créditos e Valor a Recolher, indicando divergências ou batimentos conferidos com link direto para o Relatório do SPED.
+   - Permissão de acesso governada pelo módulo `notas_saida` (`pode('notas_saida', 'ver')`).
+
+4. **Navegação e Central de Relatórios:**
+   - Rotas `/fiscal/livro-saidas` e `/fiscal/resumo-icms` registradas no `App.tsx` e no menu lateral Fiscal do `Sidebar.tsx`.
+   - Inclusão dos relatórios no catálogo central `src/config/relatoriosCatalogo.ts` dentro do grupo Fiscal com selo de novo e filtros permitidos.
+
+---
+
 **Versão 0.0.106** — Etapa 8 Relatórios e Painel (Prompt 8.0: Central de Relatórios e Padrão Comum dos Relatórios):
 
 1. **Regras da Etapa 8 Documentadas:**

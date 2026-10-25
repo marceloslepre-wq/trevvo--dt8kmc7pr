@@ -12,6 +12,7 @@ import {
   FileSpreadsheet,
   BarChart3,
   FileText,
+  Scale,
 } from 'lucide-react'
 import { ModuloSistema } from '@/services/perfis'
 
@@ -215,6 +216,38 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
   },
 
   // ===================== FISCAL =====================
+  {
+    id: 'fiscal_livro_saidas',
+    nome: 'Livro de Registro de Saídas',
+    descricao:
+      'Escrituração das saídas, modelo P2/A, inutilizações, apuração por CFOP/CST e resumo interestadual por UF com CSV e impressão.',
+    rota: '/fiscal/livro-saidas',
+    modulo: 'notas_saida',
+    categoria: 'Fiscal',
+    icone: BookOpen,
+    novo: true,
+    filtrosPermitidos: [
+      'fiscal_modelos',
+      'fiscal_cfops',
+      'fiscal_csts_csosns',
+      'fiscal_situacoes_nota',
+      'fiscal_ufs_destino',
+      'pessoas_clientes',
+      'datas_tipo_data',
+    ],
+  },
+  {
+    id: 'fiscal_resumo_icms',
+    nome: 'Resumo da Apuração do ICMS do Mês',
+    descricao:
+      'Conferência gerencial de débitos das saídas contra créditos aproveitados das entradas/transferências e confronto com o Registro E110 do SPED.',
+    rota: '/fiscal/resumo-icms',
+    modulo: 'notas_saida',
+    categoria: 'Fiscal',
+    icone: Scale,
+    novo: true,
+    filtrosPermitidos: ['datas_tipo_data'],
+  },
   {
     id: 'fiscal_sped',
     nome: 'SPED Fiscal (EFD ICMS/IPI)',

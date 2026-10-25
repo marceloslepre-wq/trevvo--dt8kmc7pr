@@ -39,6 +39,7 @@ import {
   Store,
   FileX2,
   FileArchive,
+  Scale,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -450,6 +451,18 @@ const navItems: NavGroupItem[] = [
         title: 'Configuração do SPED',
         path: '/fiscal/sped/configuracoes',
         icon: Settings,
+        modulo: 'notas_saida',
+      },
+      {
+        title: 'Livro de saídas',
+        path: '/fiscal/livro-saidas',
+        icon: BookOpen,
+        modulo: 'notas_saida',
+      },
+      {
+        title: 'Resumo do ICMS do mês',
+        path: '/fiscal/resumo-icms',
+        icon: Scale,
         modulo: 'notas_saida',
       },
     ],

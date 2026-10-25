@@ -103,6 +103,8 @@ import ExportarXmlsPage from '@/pages/fiscal/ExportarXmlsPage'
 import ConfiguracaoSpedPage from '@/pages/fiscal/ConfiguracaoSpedPage'
 import SpedFiscalPage from '@/pages/fiscal/SpedFiscalPage'
 import SpedRelatorioConferenciaPage from '@/pages/fiscal/SpedRelatorioConferenciaPage'
+import LivroSaidasPage from '@/pages/fiscal/LivroSaidasPage'
+import ResumoIcmsPage from '@/pages/fiscal/ResumoIcmsPage'
 
 // Páginas de Relatórios (Etapa 8)
 import CentralRelatoriosPage from '@/pages/relatorios/CentralRelatoriosPage'
@@ -842,6 +844,22 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="notas_saida" acao="ver">
                         <SpedRelatorioConferenciaPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/fiscal/livro-saidas"
+                    element={
+                      <PermissaoGuard modulo="notas_saida" acao="ver">
+                        <LivroSaidasPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/fiscal/resumo-icms"
+                    element={
+                      <PermissaoGuard modulo="notas_saida" acao="ver">
+                        <ResumoIcmsPage />
                       </PermissaoGuard>
                     }
                   />
