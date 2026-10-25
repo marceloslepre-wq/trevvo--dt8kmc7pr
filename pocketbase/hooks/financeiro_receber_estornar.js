@@ -37,6 +37,15 @@ routerAdd('POST', '/financeiro/receber/estornar-recebimento', (c) => {
     return c.json(400, { message: 'Motivo do estorno é obrigatório.' })
   }
 
+  // Validação multi-tenant: o usuário precisa ter vínculo com a empresa
+  try {
+    exigirEmpresaDoUsuario(authRecord, empresa_id)
+  } catch (errTenancy) {
+    return c.json(403, {
+      message: errTenancy && errTenancy.message ? errTenancy.message : 'Acesso negado à empresa.',
+    })
+  }
+
   let totalEstornado = 0
   let baixasEstornadas = []
 

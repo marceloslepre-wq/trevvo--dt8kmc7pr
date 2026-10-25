@@ -50,6 +50,15 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
     return c.json(400, { message: 'Ao menos um título deve ser informado para baixa.' })
   }
 
+  // Validação multi-tenant: o usuário precisa ter vínculo com a empresa
+  try {
+    exigirEmpresaDoUsuario(authRecord, empresa_id)
+  } catch (errTenancy) {
+    return c.json(403, {
+      message: errTenancy && errTenancy.message ? errTenancy.message : 'Acesso negado à empresa.',
+    })
+  }
+
   let resultLoteId = null
   let baixasCriadas = []
   let valorTotalLote = 0

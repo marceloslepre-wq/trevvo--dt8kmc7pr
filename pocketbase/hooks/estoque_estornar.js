@@ -14,14 +14,14 @@
  */
 
 routerAdd('POST', '/estoque/estornar', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    body = c.requestInfo().body || {}
   } catch (err) {
     return c.json(400, { sucesso: false, message: 'Corpo da requisição inválido.' })
   }
@@ -37,8 +37,23 @@ routerAdd('POST', '/estoque/estornar', (c) => {
   let novoMovimentoId = ''
 
   try {
+    // 1. Buscar movimento original para validar vínculo multi-tenant com a empresa gravada
+    const movOrigCheck = $app.findRecordById('estoque_movimentos', movimentoId)
+    if (!movOrigCheck) {
+      return c.json(404, { sucesso: false, message: 'Movimento de estoque não encontrado.' })
+    }
+    const empresaIdGravada = movOrigCheck.getString('empresa_id')
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaIdGravada)
+    } catch (errTenancy) {
+      return c.json(403, {
+        sucesso: false,
+        message: errTenancy && errTenancy.message ? errTenancy.message : 'Acesso negado à empresa.',
+      })
+    }
+
     $app.runInTransaction((txApp) => {
-      // 1. Buscar movimento original
+      // 1. Buscar movimento original dentro da transação
       const movOrig = txApp.findRecordById('estoque_movimentos', movimentoId)
       if (!movOrig) {
         throw new Error('Movimento de estoque não encontrado.')

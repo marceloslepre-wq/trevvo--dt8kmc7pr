@@ -10,14 +10,14 @@
  */
 
 routerAdd('POST', '/financeiro/pagar/gerar-titulos-retroativos', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    body = c.requestInfo().body || {}
   } catch (_) {
     body = {}
   }
@@ -25,6 +25,16 @@ routerAdd('POST', '/financeiro/pagar/gerar-titulos-retroativos', (c) => {
   const empresaId = body.empresa_id
   if (!empresaId) {
     return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
+  }
+
+  // Validação multi-tenant central: o admin do assinante só vale dentro do próprio assinante
+  try {
+    exigirEmpresaDoUsuario(authRecord, empresaId)
+  } catch (errTenancy) {
+    return c.json(403, {
+      sucesso: false,
+      message: errTenancy && errTenancy.message ? errTenancy.message : 'Acesso negado à empresa.',
+    })
   }
 
   const userId = authRecord.id

@@ -15,14 +15,14 @@
  */
 
 routerAdd('POST', '/financeiro/pagar/baixar', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    body = c.requestInfo().body || {}
   } catch (err) {
     return c.json(400, { sucesso: false, message: 'Corpo da requisição inválido.' })
   }
@@ -42,6 +42,16 @@ routerAdd('POST', '/financeiro/pagar/baixar', (c) => {
   }
   if (!Array.isArray(itens) || itens.length === 0) {
     return c.json(400, { sucesso: false, message: 'Lista de títulos (itens) vazia.' })
+  }
+
+  // Validação multi-tenant: o usuário precisa pertencer à empresa do pagamento
+  try {
+    exigirEmpresaDoUsuario(authRecord, empresaId)
+  } catch (errTenancy) {
+    return c.json(403, {
+      sucesso: false,
+      message: errTenancy && errTenancy.message ? errTenancy.message : 'Acesso negado à empresa.',
+    })
   }
 
   const userId = authRecord.id

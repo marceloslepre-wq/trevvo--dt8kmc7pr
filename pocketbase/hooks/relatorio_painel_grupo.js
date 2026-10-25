@@ -27,6 +27,7 @@
 
 routerAdd('POST', '/backend/v1/relatorios/painel-grupo', (c) => {
   const authRecord = c.auth || c.get('authRecord')
+  const auth = authRecord
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Autenticação necessária.' })
   }

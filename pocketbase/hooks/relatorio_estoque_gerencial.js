@@ -78,37 +78,18 @@ routerAdd('POST', '/backend/v1/relatorios/estoque-gerencial', (c) => {
     }
   } catch (_) {}
 
-  if (!isAdmin) {
-    if (!callerUser) {
-      return c.json(403, { sucesso: false, message: 'Usuário não localizado no ERP.' })
-    }
-    const empresasPermitidas = new Set()
-    const padraoId = callerUser.getString('empresa_padrao_id')
-    if (padraoId) empresasPermitidas.add(padraoId)
-
-    try {
-      const vinculos = $app.findRecordsByFilter(
-        'usuarios_empresas',
-        "usuario_id = '" + callerUser.id + "' && ativo = true",
-        '',
-        500,
-        0,
-      )
-      for (let i = 0; i < vinculos.length; i++) {
-        const eId = vinculos[i].getString('empresa_id')
-        if (eId) empresasPermitidas.add(eId)
-      }
-    } catch (_) {}
-
+  try {
     for (let j = 0; j < empresasIds.length; j++) {
-      const id = empresasIds[j]
-      if (!empresasPermitidas.has(id)) {
-        return c.json(403, {
-          sucesso: false,
-          message: 'Acesso negado: você não tem permissão para consultar a empresa ID ' + id + '.',
-        })
-      }
+      exigirEmpresaDoUsuario(authRecord, empresasIds[j])
     }
+  } catch (errEmp) {
+    return c.json(403, {
+      sucesso: false,
+      message:
+        errEmp && errEmp.message
+          ? errEmp.message
+          : 'Acesso negado: você não tem permissão para consultar as empresas selecionadas.',
+    })
   }
 
   // Helper para extrair data ISO (YYYY-MM-DD) no fuso de Brasília

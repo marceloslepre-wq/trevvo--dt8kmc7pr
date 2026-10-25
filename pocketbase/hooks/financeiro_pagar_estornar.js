@@ -15,14 +15,14 @@
  */
 
 routerAdd('POST', '/financeiro/pagar/estornar-baixa', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    body = c.requestInfo().body || {}
   } catch (err) {
     return c.json(400, { sucesso: false, message: 'Corpo da requisição inválido.' })
   }
@@ -41,6 +41,24 @@ routerAdd('POST', '/financeiro/pagar/estornar-baixa', (c) => {
   let resultadoEstorno = null
 
   try {
+    // Validação multi-tenant com a empresa gravada na baixa
+    const baixaCheck = $app.findRecordById('pagamentos_baixas', baixaId)
+    if (!baixaCheck || !baixaCheck.getBool('ativo')) {
+      return c.json(404, {
+        sucesso: false,
+        message: 'Registro de baixa não encontrado ou inativo.',
+      })
+    }
+    const empresaIdGravada = baixaCheck.getString('empresa_id')
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaIdGravada)
+    } catch (errTenancy) {
+      return c.json(403, {
+        sucesso: false,
+        message: errTenancy && errTenancy.message ? errTenancy.message : 'Acesso negado à empresa.',
+      })
+    }
+
     $app.runInTransaction((txApp) => {
       // 1. Carregar baixa
       const baixaRec = txApp.findRecordById('pagamentos_baixas', baixaId)

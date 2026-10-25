@@ -104,34 +104,16 @@ routerAdd('POST', '/backend/v1/relatorios/livro-saidas', (c) => {
     }
   } catch (_) {}
 
-  if (!isAdmin) {
-    if (!callerUser) {
-      return c.json(403, { sucesso: false, message: 'Usuário não localizado no ERP.' })
-    }
-    const empresasPermitidas = new Set()
-    const padraoId = callerUser.getString('empresa_padrao_id')
-    if (padraoId) empresasPermitidas.add(padraoId)
-
-    try {
-      const vinculos = $app.findRecordsByFilter(
-        'usuarios_empresas',
-        "usuario_id = '" + callerUser.id + "' && ativo = true",
-        '',
-        500,
-        0,
-      )
-      for (let i = 0; i < vinculos.length; i++) {
-        const eId = vinculos[i].getString('empresa_id')
-        if (eId) empresasPermitidas.add(eId)
-      }
-    } catch (_) {}
-
-    if (!empresasPermitidas.has(empresaId)) {
-      return c.json(403, {
-        sucesso: false,
-        message: 'Acesso negado: você não tem permissão para consultar esta empresa.',
-      })
-    }
+  try {
+    exigirEmpresaDoUsuario(authRecord, empresaId)
+  } catch (errEmp) {
+    return c.json(403, {
+      sucesso: false,
+      message:
+        errEmp && errEmp.message
+          ? errEmp.message
+          : 'Acesso negado: você não tem permissão para consultar esta empresa.',
+    })
   }
 
   // Dados da empresa

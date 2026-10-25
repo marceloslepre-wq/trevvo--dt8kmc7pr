@@ -4,14 +4,14 @@
  */
 
 routerAdd('POST', '/notas-entrada/cancelar', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    body = c.requestInfo().body || {}
   } catch (err) {
     return c.json(400, { sucesso: false, message: 'Corpo da requisição inválido.' })
   }
@@ -29,6 +29,21 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
   const userId = authRecord.id
 
   try {
+    // Validação multi-tenant com a empresa gravada na nota
+    const notaCheck = $app.findRecordById('notas_entrada', notaId)
+    if (!notaCheck) {
+      return c.json(404, { sucesso: false, message: 'Nota de entrada não encontrada.' })
+    }
+    const empresaIdNota = notaCheck.getString('empresa_id')
+    try {
+      exigirEmpresaDoUsuario(authRecord, empresaIdNota)
+    } catch (errTenancy) {
+      return c.json(403, {
+        sucesso: false,
+        message: errTenancy && errTenancy.message ? errTenancy.message : 'Acesso negado à empresa.',
+      })
+    }
+
     $app.runInTransaction((txApp) => {
       // 1. Carregar nota
       const nota = txApp.findRecordById('notas_entrada', notaId)

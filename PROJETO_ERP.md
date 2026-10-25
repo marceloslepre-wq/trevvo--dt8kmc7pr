@@ -3437,6 +3437,35 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.125** — Etapa 9 Multi-tenant (Prompt 9.4b: Correção e Compatibilização dos 7 Hooks de Movimentação com PocketBase v0.23+):
+
+1. **Correção de API e Compatibilização com PocketBase v0.23+ nos 7 Hooks do Backend:**
+   - Substituído qualquer uso da API legada/inexistente `$apis.requestInfo(c)` por `c.requestInfo().body` em todos os 7 hooks identificados no escopo estrito:
+     1. `pocketbase/hooks/estoque_movimentar.js` (`POST /estoque/movimentar`): movimentação de estoque com entrada, saída, balanço e validação multi-tenant.
+     2. `pocketbase/hooks/estoque_estornar.js` (`POST /estoque/estornar`): estorno de movimentação de estoque com validação multi-tenant.
+     3. `pocketbase/hooks/nota_entrada_lancar.js` (`POST /notas-entrada/lancar`): lançamento e conferência de notas fiscais de entrada e integração com estoque/financeiro.
+     4. `pocketbase/hooks/nota_entrada_cancelar.js` (`POST /notas-entrada/cancelar`): cancelamento de notas fiscais de entrada lançadas e estorno automático.
+     5. `pocketbase/hooks/financeiro_pagar_baixar.js` (`POST /financeiro/pagar/baixar`): baixa simples e em lote de títulos a pagar, com movimentação bancária e baixa de parcelas.
+     6. `pocketbase/hooks/financeiro_pagar_estornar.js` (`POST /financeiro/pagar/estornar-baixa`): estorno de baixa de contas a pagar e reversão financeira.
+     7. `pocketbase/hooks/financeiro_gerar_retroativos.js` (`POST /financeiro/pagar/gerar-titulos-retroativos`): geração em lote de títulos a pagar retroativos para notas fiscais de entrada.
+   - Resolução do usuário autenticado atualizada para `c.auth || c.get('authRecord')`, integrando perfeitamente com a checagem `exigirEmpresaDoUsuario(authRecord, empresaId)` do módulo `pocketbase/hooks/tenancy.js`.
+   - Rotas, caminhos, nomes, respostas e regras de negócio rigorosamente preservadas sem alterações.
+
+2. **Deploy dos Hooks e Validação da Plataforma:**
+   - Deploy executado no backend Skip Cloud (PocketBase) com **sucesso total** (`deploy_backend`).
+   - Todos os 7 hooks foram aceitos e compilados sem erros na plataforma (confirmado via logs do backend).
+
+3. **Validação e Testes Práticos de Funcionamento e Isolamento Tenancy:**
+   - **Usuário Master (`marceloslepre@gmail.com`):**
+     - Estoque: executada com sucesso a movimentação de entrada (`/estoque/movimentar`) e o estorno imediato (`/estoque/estornar`), com atualização correta de saldos e kardex.
+     - Financeiro: executada com sucesso a baixa de título de contas a pagar (`/financeiro/pagar/baixar`) e o estorno da baixa (`/financeiro/pagar/estornar-baixa`), com atualização correta de saldo do título e movimentações financeiras.
+     - Limpeza: todos os registros de teste foram removidos da base no encerramento.
+   - **Assinante TESTE B (`admin@testeb.com`, assinante id `l6vfd1p688j2y9a`):**
+     - Tentativa de chamada de movimentação de estoque (`/estoque/movimentar`) informando empresa pertencente à `HOSPITAL HOME` (`jy1d6k2u5j66h1o`).
+     - **Resultado:** Rejeição imediata com código **403 Forbidden** (`exigirEmpresaDoUsuario`: empresa não pertence ao assinante do usuário autenticado).
+
+---
+
 **Versão 0.0.123** — Etapa 9 Multi-tenant (Prompt 9.3: Regras de Acesso no Banco, Coleções com assinante_id, Coleções Filhas, users e Tabelas Globais):
 
 1. **Regras de Acesso (API Rules) nas 18 Coleções com `assinante_id` (Migration 0068):**

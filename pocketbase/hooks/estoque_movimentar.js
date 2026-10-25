@@ -19,14 +19,14 @@
  */
 
 routerAdd('POST', '/estoque/movimentar', (c) => {
-  const authRecord = c.get('authRecord')
+  const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
   }
 
   let body = {}
   try {
-    body = $apis.requestInfo(c).data || {}
+    body = c.requestInfo().body || {}
   } catch (err) {
     return c.json(400, { sucesso: false, message: 'Corpo da requisição inválido.' })
   }
@@ -36,6 +36,20 @@ routerAdd('POST', '/estoque/movimentar', (c) => {
     return c.json(400, {
       sucesso: false,
       message: 'Lista de itens vazia. Envie ao menos um item em "itens".',
+    })
+  }
+
+  // Validação de governança multi-tenant: o usuário deve ter vínculo com todas as empresas movimentadas
+  try {
+    for (let i = 0; i < rawItens.length; i++) {
+      if (rawItens[i] && rawItens[i].empresa_id) {
+        exigirEmpresaDoUsuario(authRecord, rawItens[i].empresa_id)
+      }
+    }
+  } catch (errTenancy) {
+    return c.json(403, {
+      sucesso: false,
+      message: errTenancy && errTenancy.message ? errTenancy.message : 'Acesso negado à empresa.',
     })
   }
 
