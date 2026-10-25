@@ -898,7 +898,7 @@ export const VendaFormPage: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold tracking-tight text-slate-900">
-                {ehEdicao ? `${tipo} #${numero}` : 'Novo Orçamento ou Pedido de Venda'}
+                {ehEdicao ? `${tipo} #${numero}` : `${tipo} (número será gerado ao salvar)`}
               </h1>
               {ehEdicao && (
                 <div className="flex items-center gap-1.5">

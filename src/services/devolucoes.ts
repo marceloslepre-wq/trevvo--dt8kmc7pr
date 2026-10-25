@@ -2,7 +2,7 @@ import pb from '@/lib/pocketbase/client'
 import { movimentarEstoque } from './estoque'
 import { lancarAvulso } from './movimentacoesExtratos'
 import { receberTitulos } from './contasReceber'
-import { obterProximoNumeroVenda, obterVendaCompleta } from './vendas'
+import { obterVendaCompleta } from './vendas'
 
 export interface ValeTroca {
   id: string
@@ -253,11 +253,9 @@ export async function processarDevolucao(
   valorTotalDevolucao = Number(valorTotalDevolucao.toFixed(2))
   custoTotalDevolucao = Number(custoTotalDevolucao.toFixed(2))
 
-  // 3. Obter próximo número de venda para a devolução
-  const proximoNumero = await obterProximoNumeroVenda(empresa_id)
   const dataHojeIso = new Date().toISOString().slice(0, 10)
 
-  // 4. Criar registro de Venda do tipo "Devolução"
+  // 4. Criar registro de Venda do tipo "Devolução" (número atribuído pelo hook de numeração do backend)
   // Quando com_emissao_nfe for true, o status inicial é "Pendente de nota" e NÃO movimenta
   // estoque nem financeiro agora (espera a autorização da NF-e no backend).
   const authUserId = pb.authStore.record?.id || undefined
@@ -265,7 +263,6 @@ export async function processarDevolucao(
 
   const novaVendaDevolucao = await pb.collection('vendas').create({
     empresa_id,
-    numero: proximoNumero,
     tipo: 'Devolução',
     status: statusInicial,
     cliente_id: vendaOrig.cliente_id,
@@ -316,11 +313,13 @@ export async function processarDevolucao(
   // Se a devolução for com NF-e, encerra aqui sem tocar estoque nem financeiro.
   // O endpoint /backend/v1/fiscal/confirmar-autorizacao-devolucao-venda atualizará
   // estoque, financeiro e quantidade_devolvida assim que a SEFAZ autorizar.
+  const docNumero = Number(novaVendaDevolucao.numero || 0)
+
   if (input.com_emissao_nfe) {
     return {
       sucesso: true,
       venda_devolucao_id: novaVendaDevolucao.id,
-      numero_devolucao: proximoNumero,
+      numero_devolucao: docNumero,
       valor_total: valorTotalDevolucao,
       status: 'Pendente de nota',
     }
@@ -344,8 +343,8 @@ export async function processarDevolucao(
     data_movimento: dataHojeIso,
     documento_tipo: 'Devolução de Venda',
     documento_id: novaVendaDevolucao.id,
-    documento_numero: String(proximoNumero),
-    motivo: `Devolução de Venda #${proximoNumero} (Ref. Venda #${vendaOrig.numero})`,
+    documento_numero: String(docNumero),
+    motivo: `Devolução de Venda #${docNumero} (Ref. Venda #${vendaOrig.numero})`,
     lote_id: it.lote_id || undefined,
   }))
 
@@ -372,7 +371,7 @@ export async function processarDevolucao(
       validade: validadeIso,
       venda_origem_id: vendaOrig.id,
       status: 'Ativo',
-      observacao: `Gerado por Devolução #${proximoNumero} (Venda #${vendaOrig.numero})`,
+      observacao: `Gerado por Devolução #${docNumero} (Venda #${vendaOrig.numero})`,
       ativo: true,
     })
   } else if (destino === 'dinheiro_volta') {
@@ -412,7 +411,7 @@ export async function processarDevolucao(
       tipo: 'Saída',
       valor: valorTotalDevolucao,
       plano_conta_id: planoDevolucaoId,
-      historico: `Devolução em dinheiro - Venda #${vendaOrig.numero} (Devolução #${proximoNumero})`,
+      historico: `Devolução em dinheiro - Venda #${vendaOrig.numero} (Devolução #${docNumero})`,
     })
 
     movFinanceiroId = resAvulso.movimento.id
@@ -476,7 +475,7 @@ export async function processarDevolucao(
         forma_pagamento_id: formaPagId,
         data_pagamento: dataHojeIso,
         titulos: baixasParaProcessar,
-        observacao: `Abatimento por Devolução #${proximoNumero} (Venda #${vendaOrig.numero})`,
+        observacao: `Abatimento por Devolução #${docNumero} (Venda #${vendaOrig.numero})`,
         plano_desconto_id: planoDescontoId,
       })
 
@@ -487,7 +486,7 @@ export async function processarDevolucao(
   return {
     sucesso: true,
     venda_devolucao_id: novaVendaDevolucao.id,
-    numero_devolucao: proximoNumero,
+    numero_devolucao: docNumero,
     valor_total: valorTotalDevolucao,
     vale_troca: valeCriado,
     movimento_financeiro_id: movFinanceiroId,

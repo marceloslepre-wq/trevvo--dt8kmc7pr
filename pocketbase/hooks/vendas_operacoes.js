@@ -63,7 +63,35 @@ routerAdd(
         exigirEmpresaDoUsuario(authRecord, empresaId)
         const tipoVenda = venda.getString('tipo') || 'Venda'
         const caixaSessaoId = venda.getString('caixa_sessao_id') || ''
-        const docNumero = venda.getInt('numero') || venda.id
+        let docNumero = venda.getInt('numero') || 0
+        if (docNumero <= 0) {
+          let assinanteEmpresaId = ''
+          try {
+            const empRec = txApp.findRecordById('empresas', empresaId)
+            if (empRec) assinanteEmpresaId = empRec.getString('assinante_id')
+          } catch (_) {}
+
+          if (assinanteEmpresaId) {
+            const { proximoNumero } = require(`${__hooks}/numeracao_lib.js`)
+            docNumero = proximoNumero(assinanteEmpresaId, empresaId, 'vendas', txApp)
+          } else {
+            try {
+              const ultimas = txApp.findRecordsByFilter(
+                'vendas',
+                `empresa_id = '${empresaId}'`,
+                '-numero',
+                1,
+                0,
+              )
+              const maior = ultimas.length > 0 ? ultimas[0].getInt('numero') || 0 : 0
+              docNumero = maior + 1
+            } catch (_) {
+              docNumero = 1
+            }
+          }
+          venda.set('numero', docNumero)
+          txApp.save(venda)
+        }
         const valorTotalVenda = venda.getFloat('valor_total') || 0
         const dataVenda = (
           venda.getString('data_emissao') ||

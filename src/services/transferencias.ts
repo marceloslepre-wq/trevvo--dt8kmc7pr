@@ -102,25 +102,6 @@ export interface SalvarRascunhoTransferenciaInput {
 }
 
 /**
- * Obtém o próximo número sequencial de transferência para a empresa de origem
- */
-export async function obterProximoNumeroTransferencia(empresaOrigemId: string): Promise<number> {
-  try {
-    const res = await pb.collection('transferencias').getList<Transferencia>(1, 1, {
-      filter: `empresa_origem_id = '${empresaOrigemId}'`,
-      sort: '-numero',
-      fields: 'numero',
-    })
-    if (res.items.length > 0 && res.items[0].numero) {
-      return res.items[0].numero + 1
-    }
-  } catch (err) {
-    console.warn('Erro ao obter proximo numero de transferencia:', err)
-  }
-  return 1
-}
-
-/**
  * Conta quantas transferências estão Enviadas aguardando recebimento na empresa ativa
  */
 export async function contarTransferenciasAguardandoRecebimento(
@@ -248,9 +229,7 @@ export async function salvarRascunhoTransferencia(
   const isNovo = !transfId
 
   if (isNovo) {
-    numero = await obterProximoNumeroTransferencia(input.empresa_origem_id)
     const criada = await pb.collection('transferencias').create<Transferencia>({
-      numero,
       empresa_origem_id: input.empresa_origem_id,
       empresa_destino_id: input.empresa_destino_id,
       status: 'Rascunho',

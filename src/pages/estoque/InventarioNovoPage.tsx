@@ -178,7 +178,12 @@ export const InventarioNovoPage: React.FC = () => {
             Voltar
           </Button>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Novo Inventário de Estoque</h1>
+            <h1 className="text-xl font-bold text-slate-900">
+              Novo Inventário de Estoque{' '}
+              <span className="text-sm font-normal text-slate-500">
+                (número será gerado ao salvar)
+              </span>
+            </h1>
             <p className="text-xs text-slate-500">
               Congela o saldo do sistema na data de referência para contagem física
             </p>

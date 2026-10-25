@@ -634,7 +634,7 @@ export const TransferenciaFormPage: React.FC = () => {
               <h1 className="text-xl font-bold tracking-tight text-slate-900">
                 {isEdicao
                   ? `Transferência TR-${String(transferencia?.numero).padStart(4, '0')}`
-                  : 'Nova Transferência'}
+                  : 'Nova Transferência (número será gerado ao salvar)'}
               </h1>
               {transferencia && (
                 <Badge

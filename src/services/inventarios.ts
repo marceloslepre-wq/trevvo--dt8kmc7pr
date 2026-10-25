@@ -112,24 +112,6 @@ export interface RegistroH005Totais {
 }
 
 /**
- * Obtém o próximo número sequencial de inventário para a empresa
- */
-export async function obterProximoNumeroInventario(empresaId: string): Promise<number> {
-  try {
-    const ultimo = await pb.collection('inventarios').getList<Inventario>(1, 1, {
-      filter: `empresa_id = '${empresaId}'`,
-      sort: '-numero',
-    })
-    if (ultimo.items.length > 0) {
-      return (ultimo.items[0].numero || 0) + 1
-    }
-    return 1
-  } catch {
-    return 1
-  }
-}
-
-/**
  * Lista inventários da empresa ativa com filtros
  */
 export async function listarInventarios(params: {
@@ -190,17 +172,14 @@ export async function listarItensInventario(inventarioId: string): Promise<Inven
  * - Insere as linhas em inventarios_itens
  */
 export async function abrirInventario(input: AbrirInventarioInput): Promise<Inventario> {
-  const numero = await obterProximoNumeroInventario(input.empresa_id)
-
   const motivoBlocoH =
     input.tipo === 'Anual (Bloco H)'
       ? input.motivo_bloco_h || '01 No final do período'
       : input.motivo_bloco_h || '01 No final do período'
 
-  // 1. Criar o cabeçalho do inventário
+  // 1. Criar o cabeçalho do inventário (número gerado no backend pelo hook onRecordCreate)
   const novoInventario = await pb.collection('inventarios').create<Inventario>({
     empresa_id: input.empresa_id,
-    numero,
     descricao: input.descricao.trim(),
     data_referencia: input.data_referencia,
     tipo: input.tipo,

@@ -120,25 +120,6 @@ export interface SalvarPedidoCompraInput {
 }
 
 /**
- * Obtém o próximo número sequencial de pedido de compra para a empresa
- */
-export async function obterProximoNumeroPedidoCompra(empresaId: string): Promise<number> {
-  try {
-    const res = await pb.collection('pedidos_compra').getList<PedidoCompra>(1, 1, {
-      filter: `empresa_id = '${empresaId}'`,
-      sort: '-numero',
-      fields: 'numero',
-    })
-    if (res.items.length > 0 && res.items[0].numero) {
-      return res.items[0].numero + 1
-    }
-  } catch (err) {
-    console.warn('Erro ao obter proximo numero de pedido de compra:', err)
-  }
-  return 1
-}
-
-/**
  * Sugere o custo unitário do produto para um determinado fornecedor:
  * 1) Busca em produtos_fornecedores pelo ultimo_preco_compra do produto com esse fornecedor
  * 2) Se não houver, fallback para o preco_custo do cadastro do produto
@@ -357,10 +338,8 @@ export async function salvarPedidoCompra(
   let antes: PedidoCompra | null = null
 
   if (isNovo) {
-    numero = await obterProximoNumeroPedidoCompra(input.empresa_id)
     const criada = await pb.collection('pedidos_compra').create<PedidoCompra>({
       empresa_id: input.empresa_id,
-      numero,
       fornecedor_id: input.fornecedor_id,
       comprador_id: input.comprador_id || null,
       data_emissao: input.data_emissao || new Date().toISOString().slice(0, 10),
@@ -615,13 +594,11 @@ export async function duplicarPedidoCompra(
   empresaAtivaId: string,
 ): Promise<PedidoCompraCompleto> {
   const pedido = await obterPedidoCompraPorId(pedidoId)
-  const novoNumero = await obterProximoNumeroPedidoCompra(empresaAtivaId)
 
   const novaDataEmissao = new Date().toISOString().slice(0, 10)
 
   const novoPedido = await pb.collection('pedidos_compra').create<PedidoCompra>({
     empresa_id: empresaAtivaId,
-    numero: novoNumero,
     fornecedor_id: pedido.fornecedor_id,
     comprador_id: pedido.comprador_id || null,
     data_emissao: novaDataEmissao,
@@ -671,7 +648,7 @@ export async function duplicarPedidoCompra(
       acao_fluxo: 'DUPLICACAO',
       pedido_origem_id: pedido.id,
       pedido_origem_numero: pedido.numero,
-      novo_numero: novoNumero,
+      novo_numero: novoPedido.numero,
     },
   })
 

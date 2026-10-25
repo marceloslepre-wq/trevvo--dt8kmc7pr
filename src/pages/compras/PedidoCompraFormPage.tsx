@@ -674,7 +674,7 @@ export const PedidoCompraFormPage: React.FC = () => {
               <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                 {isEdicao
                   ? `Pedido de Compra #${pedidoOriginal?.numero || ''}`
-                  : 'Novo Pedido de Compra'}
+                  : 'Novo Pedido de Compra (número será gerado ao salvar)'}
               </h1>
               {isEdicao && (
                 <Badge

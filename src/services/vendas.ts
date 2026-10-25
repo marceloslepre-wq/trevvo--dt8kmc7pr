@@ -298,27 +298,8 @@ export interface ListagemVendasPaginada {
 // ============================================================================
 
 /**
- * Obtém o próximo número sequencial da venda para a empresa.
- */
-export async function obterProximoNumeroVenda(empresaId: string): Promise<number> {
-  if (!empresaId) return 1
-  try {
-    const ultimas = await pb.collection('vendas').getList<Venda>(1, 1, {
-      filter: `empresa_id = '${empresaId}'`,
-      sort: '-numero',
-      requestKey: null,
-    })
-    if (ultimas.items.length > 0 && ultimas.items[0].numero) {
-      return Number(ultimas.items[0].numero) + 1
-    }
-  } catch {
-    /* intentionally ignored */
-  }
-  return 1
-}
-
-/**
  * Cria ou salva (edita) uma venda / orçamento / pedido em aberto e sincroniza seus itens.
+ * O número sequencial é atribuído de forma atômica e exclusiva pelo backend.
  */
 export async function salvarVenda(input: SalvarVendaInput): Promise<Venda> {
   if (!input.empresa_id) {
@@ -423,12 +404,9 @@ export async function salvarVenda(input: SalvarVendaInput): Promise<Venda> {
       await pb.collection('vendas_itens').delete(it.id, { requestKey: null })
     }
   } else {
-    // Criar nova venda
-    const proximoNumero = await obterProximoNumeroVenda(input.empresa_id)
-
+    // Criar nova venda (número gerado no backend pelo hook onRecordCreate)
     const payloadCreate: Partial<Venda> = {
       empresa_id: input.empresa_id,
-      numero: proximoNumero,
       tipo: input.tipo,
       status: statusDefinido,
       cliente_id: input.cliente_id,
