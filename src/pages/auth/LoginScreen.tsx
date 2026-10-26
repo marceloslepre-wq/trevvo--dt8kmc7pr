@@ -50,11 +50,17 @@ export default function LoginScreen() {
         description: 'Bem-vindo ao sistema de gestão comercial.',
       })
       navigate('/painel', { replace: true })
-    } catch {
+    } catch (err: any) {
+      const errMsg = err?.message || ''
+      const ehLicencaBloqueada =
+        errMsg.includes('Licença pausada ou vencida') || errMsg.includes('Fale com o suporte')
+
       toast({
         variant: 'destructive',
-        title: 'Falha no login',
-        description: 'E-mail ou senha incorretos.',
+        title: ehLicencaBloqueada ? 'Acesso bloqueado' : 'Falha no login',
+        description: ehLicencaBloqueada
+          ? 'Licença pausada ou vencida. Fale com o suporte.'
+          : 'E-mail ou senha incorretos.',
       })
     } finally {
       setIsSubmitting(false)

@@ -11,6 +11,19 @@ export interface MasterResumo {
   dias_trial_padrao: number
 }
 
+export interface MasterSuporteResponse {
+  sucesso: boolean
+  message: string
+  modo_master: boolean
+  assinante?: {
+    id: string
+    nome: string
+    numero_licenca: string
+    status?: string
+    origem?: boolean
+  }
+}
+
 export interface MasterPlano {
   id: string
   nome: string
@@ -366,6 +379,51 @@ export async function excluirLicencaCascata(
  */
 export async function executarTesteCompleto97b(): Promise<any> {
   const res = await pb.send<any>('/backend/v1/master/executar-teste-completo-97b', {
+    method: 'POST',
+  })
+  return res
+}
+
+/**
+ * Entra no ERP do cliente em modo master (Prompt 9.7b2 - Requisito 1)
+ */
+export async function entrarPainelClienteMaster(
+  assinanteId: string,
+): Promise<MasterSuporteResponse> {
+  const res = await pb.send<MasterSuporteResponse>('/backend/v1/master/suporte/entrar', {
+    method: 'POST',
+    body: { assinante_id: assinanteId },
+  })
+  return res
+}
+
+/**
+ * Sai do modo de suporte do cliente e volta para a HOSPITAL HOME (Prompt 9.7b2 - Requisito 1)
+ */
+export async function sairPainelClienteMaster(): Promise<MasterSuporteResponse> {
+  const res = await pb.send<MasterSuporteResponse>('/backend/v1/master/suporte/sair', {
+    method: 'POST',
+  })
+  return res
+}
+
+/**
+ * Executa o trabalho de expiração sob demanda (Prompt 9.7b2 - Requisito 3)
+ */
+export async function executarTrabalhoExpiracao(): Promise<{
+  sucesso: boolean
+  resultado: {
+    total_processadas: number
+    expiradas: Array<{ id: string; nome: string; licenca: string }>
+  }
+}> {
+  const res = await pb.send<{
+    sucesso: boolean
+    resultado: {
+      total_processadas: number
+      expiradas: Array<{ id: string; nome: string; licenca: string }>
+    }
+  }>('/backend/v1/master/executar-trabalho-expiracao', {
     method: 'POST',
   })
   return res

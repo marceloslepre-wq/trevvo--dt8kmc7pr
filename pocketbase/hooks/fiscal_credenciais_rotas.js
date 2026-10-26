@@ -127,6 +127,18 @@ routerAdd(
       })
     }
 
+    // Prompt 9.7b2 - Requisito 1: As credenciais fiscais do cliente continuam ocultas para o master
+    let ehModoMaster = false
+    try {
+      const masterLib = require(`${__hooks}/master_lib.js`)
+      if (
+        masterLib.checarSeMaster(authRecord, $app) &&
+        masterLib.obterAssinanteImpersonado(authRecord.id, $app)
+      ) {
+        ehModoMaster = true
+      }
+    } catch (_) {}
+
     const tHomolog = (cred.getString('token_homologacao') || '').trim()
     const tProd = (cred.getString('token_producao') || '').trim()
     const wSec = (cred.getString('webhook_secret') || '').trim()
@@ -138,9 +150,22 @@ routerAdd(
       ambiente: tokenInfo.ambiente,
       tem_homologacao: Boolean(tHomolog.length > 0),
       tem_producao: Boolean(tProd.length > 0),
-      token_final_homologacao: tHomolog.length >= 4 ? tHomolog.slice(-4) : tHomolog ? '****' : '',
-      token_final_producao: tProd.length >= 4 ? tProd.slice(-4) : tProd ? '****' : '',
+      token_final_homologacao: ehModoMaster
+        ? '••••'
+        : tHomolog.length >= 4
+          ? tHomolog.slice(-4)
+          : tHomolog
+            ? '****'
+            : '',
+      token_final_producao: ehModoMaster
+        ? '••••'
+        : tProd.length >= 4
+          ? tProd.slice(-4)
+          : tProd
+            ? '****'
+            : '',
       webhook_registrado: Boolean(wSec.length > 0),
+      modo_master_oculto: ehModoMaster,
       atualizado_em: cred.getString('atualizado_em') || cred.getString('updated'),
     })
   },

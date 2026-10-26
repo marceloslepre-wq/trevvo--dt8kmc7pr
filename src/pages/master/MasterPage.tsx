@@ -91,6 +91,7 @@ import {
   alterarStatusLicenca,
   editarDadosGeraisLicenca,
   excluirLicencaCascata,
+  entrarPainelClienteMaster,
   MasterResumo,
   MasterPlano,
   MasterPlanoFormData,
@@ -199,6 +200,37 @@ export const MasterPage: React.FC = () => {
 
   // Estado de renovação rápida (+30d)
   const [renovandoId, setRenovandoId] = useState<string | null>(null)
+
+  // Estado de suporte / Acessar painel (Prompt 9.7b2 - Requisito 1)
+  const [acessandoPainelId, setAcessandoPainelId] = useState<string | null>(null)
+
+  const handleAcessarPainelCliente = async (lic: MasterLicencaItem) => {
+    try {
+      setAcessandoPainelId(lic.id)
+      const res = await entrarPainelClienteMaster(lic.id)
+      if (res && res.sucesso) {
+        toast({
+          title: 'Modo master ativado',
+          description: `Você entrou no painel de ${lic.nome}.`,
+        })
+        window.location.href = '/'
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao acessar painel',
+          description: res?.message || 'Não foi possível acessar o painel do cliente.',
+        })
+      }
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao acessar painel',
+        description: err?.message || 'Falha ao conectar com o backend.',
+      })
+    } finally {
+      setAcessandoPainelId(null)
+    }
+  }
 
   // Quadro 1: Gerador de Link de Primeiro Cadastro
   const [diasTrialInput, setDiasTrialInput] = useState<number>(15)
@@ -1716,16 +1748,27 @@ export const MasterPage: React.FC = () => {
 
                                     <DropdownMenuSeparator />
 
-                                    {/* Acessar painel (desativado até o 9.7b2) */}
+                                    {/* Acessar painel do assinante (Prompt 9.7b2 - Requisito 1) */}
                                     <DropdownMenuItem
-                                      disabled
-                                      className="gap-2 text-slate-400 cursor-not-allowed"
-                                      title="Disponível no Prompt 9.7b2 (Login Como)"
+                                      onClick={() => handleAcessarPainelCliente(lic)}
+                                      disabled={acessandoPainelId === lic.id || ehHospitalHome}
+                                      className="gap-2 cursor-pointer font-medium text-slate-800 hover:text-blue-600 focus:text-blue-600 focus:bg-blue-50"
+                                      title={
+                                        ehHospitalHome
+                                          ? 'Você já é o assinante de origem'
+                                          : 'Entrar no ERP deste assinante em modo suporte master'
+                                      }
                                     >
-                                      <LayoutDashboard size={14} className="text-slate-400" />
-                                      <span className="flex-1">Acessar painel</span>
-                                      <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded">
-                                        9.7b2
+                                      <LayoutDashboard size={14} className="text-blue-600" />
+                                      <span className="flex-1">
+                                        {acessandoPainelId === lic.id
+                                          ? 'Acessando painel...'
+                                          : ehHospitalHome
+                                            ? 'Painel de Origem'
+                                            : 'Acessar painel'}
+                                      </span>
+                                      <span className="text-[9px] bg-blue-100 text-blue-700 font-bold px-1 py-0.5 rounded">
+                                        Suporte
                                       </span>
                                     </DropdownMenuItem>
 

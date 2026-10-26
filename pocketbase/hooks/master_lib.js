@@ -106,9 +106,198 @@ function registrarEventoLicenca(app, dados) {
   }
 }
 
+/**
+ * Retorna o ID do assinante ativo em modo de suporte (impersonação) para um usuário master, se houver.
+ * Retorna null se não houver impersonação ativa.
+ * @param {string} userId
+ * @param {any} [appInstance]
+ * @returns {string|null}
+ */
+function obterAssinanteImpersonado(userId, appInstance) {
+  const app = appInstance || $app
+  if (!userId) return null
+  try {
+    if (!app.hasTable('master_impersonacoes')) return null
+    const recs = app.findRecordsByFilter(
+      'master_impersonacoes',
+      "user_id = '" + userId + "'",
+      '-created',
+      1,
+      0,
+    )
+    if (recs && recs.length > 0) {
+      return recs[0].getString('assinante_id') || null
+    }
+  } catch (_) {}
+  return null
+}
+
+/**
+ * Ativa o modo de suporte para o usuário master no assinante informado.
+ * @param {string} userId
+ * @param {string} assinanteId
+ * @param {any} [appInstance]
+ */
+function definirAssinanteImpersonado(userId, assinanteId, appInstance) {
+  const app = appInstance || $app
+  if (!userId || !assinanteId) return
+
+  try {
+    const col = app.findCollectionByNameOrId('master_impersonacoes')
+    let rec = null
+    try {
+      const recs = app.findRecordsByFilter(
+        'master_impersonacoes',
+        "user_id = '" + userId + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (recs && recs.length > 0) {
+        rec = recs[0]
+      }
+    } catch (_) {}
+
+    if (!rec) {
+      rec = new Record(col)
+      rec.set('user_id', userId)
+    }
+    rec.set('assinante_id', assinanteId)
+    app.save(rec)
+  } catch (err) {
+    console.error('[master_lib] Erro ao definir assinante impersonado:', err)
+    throw err
+  }
+}
+
+/**
+ * Limpa a impersonação do usuário master, voltando para o assinante de origem.
+ * @param {string} userId
+ * @param {any} [appInstance]
+ */
+function limparAssinanteImpersonado(userId, appInstance) {
+  const app = appInstance || $app
+  if (!userId) return
+
+  try {
+    if (!app.hasTable('master_impersonacoes')) return
+    const recs = app.findRecordsByFilter(
+      'master_impersonacoes',
+      "user_id = '" + userId + "'",
+      '',
+      10,
+      0,
+    )
+    for (let i = 0; i < recs.length; i++) {
+      app.delete(recs[i])
+    }
+  } catch (err) {
+    console.error('[master_lib] Erro ao limpar impersonacao:', err)
+  }
+}
+
+/**
+ * Valida a situação da licença do assinante.
+ * Bloqueia se Pausada, Expirada ou Cancelada, a menos que:
+ * - O usuário autenticado seja Master;
+ * - O assinante seja o assinante de origem (origem = true ou HH-RFR8HF).
+ *
+ * Lança ForbiddenError com a mensagem padrão: "Licença pausada ou vencida. Fale com o suporte."
+ *
+ * @param {any} assinanteRec
+ * @param {any} authRecord
+ */
+function validarLicencaAtivaOuBloquear(assinanteRec, authRecord) {
+  if (!assinanteRec) return
+
+  // Assinante de origem NUNCA é bloqueado
+  if (assinanteRec.getBool('origem') || assinanteRec.getString('numero_licenca') === 'HH-RFR8HF') {
+    return
+  }
+
+  // O master NUNCA é bloqueado
+  if (authRecord && checarSeMaster(authRecord)) {
+    return
+  }
+
+  const status = assinanteRec.getString('status')
+  if (status === 'Pausada' || status === 'Expirada' || status === 'Cancelada') {
+    throw new ForbiddenError('Licença pausada ou vencida. Fale com o suporte.')
+  }
+}
+
+/**
+ * Executa a rotina diária de expiração:
+ * Passa para 'Expirada' as licenças 'Trial' e 'Ativa' cuja data_expiracao seja anterior ao dia de hoje (YYYY-MM-DD).
+ * Grava o evento 'Expiração' em licencas_eventos.
+ * O assinante de origem NUNCA expira.
+ *
+ * @param {any} [appInstance]
+ * @returns {{ total_processadas: number, expiradas: Array<{ id: string, nome: string, licenca: string }> }}
+ */
+function processarExpiracaoLicencas(appInstance) {
+  const app = appInstance || $app
+  const hojeStr = new Date().toISOString().slice(0, 10)
+  const expiradas = []
+
+  try {
+    const assinantes = app.findRecordsByFilter(
+      'assinantes',
+      "(status = 'Trial' || status = 'Ativa') && data_expiracao != '' && data_expiracao < '" +
+        hojeStr +
+        "'",
+      'created',
+      500,
+      0,
+    )
+
+    for (let i = 0; i < assinantes.length; i++) {
+      const ass = assinantes[i]
+      // Assinante de origem nunca expira
+      if (ass.getBool('origem') || ass.getString('numero_licenca') === 'HH-RFR8HF') {
+        continue
+      }
+
+      const statusAntes = ass.getString('status')
+      const expData = ass.getString('data_expiracao')
+      ass.set('status', 'Expirada')
+      app.save(ass)
+
+      registrarEventoLicenca(app, {
+        assinante_id: ass.id,
+        numero_licenca: ass.getString('numero_licenca'),
+        tipo: 'Expiração',
+        plano_id: ass.getString('plano_id'),
+        validade_ate: expData,
+        descricao: `Licença expirada automaticamente pelo trabalho agendado. Status anterior: ${statusAntes} -> Expirada. Vencimento: ${expData}.`,
+        criado_por: '',
+      })
+
+      expiradas.push({
+        id: ass.id,
+        nome: ass.getString('nome'),
+        licenca: ass.getString('numero_licenca'),
+      })
+    }
+  } catch (err) {
+    console.error('[master_lib] Erro ao processar expiração de licenças:', err)
+    throw err
+  }
+
+  return {
+    total_processadas: expiradas.length,
+    expiradas: expiradas,
+  }
+}
+
 module.exports = {
   exigirMaster: exigirMaster,
   checarSeMaster: checarSeMaster,
   obterConfigMaster: obterConfigMaster,
   registrarEventoLicenca: registrarEventoLicenca,
+  obterAssinanteImpersonado: obterAssinanteImpersonado,
+  definirAssinanteImpersonado: definirAssinanteImpersonado,
+  limparAssinanteImpersonado: limparAssinanteImpersonado,
+  validarLicencaAtivaOuBloquear: validarLicencaAtivaOuBloquear,
+  processarExpiracaoLicencas: processarExpiracaoLicencas,
 }

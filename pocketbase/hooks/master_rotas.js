@@ -77,6 +77,201 @@ routerAdd(
   $apis.requireAuth(),
 )
 
+// ============================================================================
+// ROTAS DE SUPORTE MASTER E IMPERSONAÇÃO (Prompt 9.7b2 - Requisito 1)
+// ============================================================================
+
+// POST /backend/v1/master/suporte/entrar
+// Ativa o modo de suporte para o master no assinante especificado.
+// Valida se o chamador é master, salva a impersonação no servidor e retorna dados do cliente.
+routerAdd(
+  'POST',
+  '/backend/v1/master/suporte/entrar',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      const userMaster = masterLib.exigirMaster(auth, $app)
+
+      let reqData = {}
+      try {
+        reqData = c.requestInfo().body || {}
+      } catch (_) {}
+
+      const assinanteId = (reqData.assinante_id || '').toString().trim()
+      if (!assinanteId) {
+        return c.json(400, { sucesso: false, message: 'ID do assinante é obrigatório.' })
+      }
+
+      let ass = null
+      try {
+        ass = $app.findRecordById('assinantes', assinanteId)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Assinante não encontrado.' })
+      }
+
+      // Salva a impersonação no servidor vinculada ao ID do master
+      masterLib.definirAssinanteImpersonado(userMaster.id, ass.id, $app)
+
+      // Grava log de auditoria registrando o início do suporte em modo master
+      try {
+        const laCol = $app.findCollectionByNameOrId('logs_auditoria')
+        const logRec = new Record(laCol)
+        logRec.set('usuario_id', userMaster.id)
+        logRec.set(
+          'usuario_nome',
+          (userMaster.getString('name') || userMaster.getString('email')) + ' (modo master)',
+        )
+        logRec.set('tabela', 'assinantes')
+        logRec.set('registro_id', ass.id)
+        logRec.set('acao', 'alteracao')
+        logRec.set('modo_master', true)
+        logRec.set('valores_depois', {
+          evento: 'Inicio de suporte modo master',
+          assinante_id: ass.id,
+          assinante_nome: ass.getString('nome'),
+          numero_licenca: ass.getString('numero_licenca'),
+        })
+        $app.save(logRec)
+      } catch (errLog) {
+        console.warn('[master/suporte/entrar] Erro ao gravar log de auditoria:', errLog)
+      }
+
+      return c.json(200, {
+        sucesso: true,
+        message: `Modo master ativado no painel de ${ass.getString('nome')}.`,
+        modo_master: true,
+        assinante: {
+          id: ass.id,
+          nome: ass.getString('nome'),
+          numero_licenca: ass.getString('numero_licenca'),
+          status: ass.getString('status'),
+          origem: ass.getBool('origem'),
+        },
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao ativar modo de suporte do master.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// POST /backend/v1/master/suporte/sair
+// Desativa o modo de suporte do master e retorna para o assinante de origem (HOSPITAL HOME).
+routerAdd(
+  'POST',
+  '/backend/v1/master/suporte/sair',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      const userMaster = masterLib.exigirMaster(auth, $app)
+
+      const assIdAntes = masterLib.obterAssinanteImpersonado(userMaster.id, $app)
+
+      // Limpa no servidor
+      masterLib.limparAssinanteImpersonado(userMaster.id, $app)
+
+      // Grava log de auditoria registrando o término do suporte
+      try {
+        const laCol = $app.findCollectionByNameOrId('logs_auditoria')
+        const logRec = new Record(laCol)
+        logRec.set('usuario_id', userMaster.id)
+        logRec.set(
+          'usuario_nome',
+          (userMaster.getString('name') || userMaster.getString('email')) + ' (modo master)',
+        )
+        logRec.set('tabela', 'assinantes')
+        logRec.set('registro_id', assIdAntes || userMaster.id)
+        logRec.set('acao', 'alteracao')
+        logRec.set('modo_master', true)
+        logRec.set('valores_depois', {
+          evento: 'Encerramento de suporte modo master',
+          assinante_atendido: assIdAntes || 'nenhum',
+        })
+        $app.save(logRec)
+      } catch (errLog) {}
+
+      // Retorna dados do assinante de origem (HOSPITAL HOME)
+      let assOrigem = null
+      try {
+        const assRecs = $app.findRecordsByFilter('assinantes', 'origem = true', '-created', 1, 0)
+        if (assRecs && assRecs.length > 0) {
+          assOrigem = {
+            id: assRecs[0].id,
+            nome: assRecs[0].getString('nome'),
+            numero_licenca: assRecs[0].getString('numero_licenca'),
+          }
+        }
+      } catch (_) {}
+
+      return c.json(200, {
+        sucesso: true,
+        message: 'Modo master desativado. Retornado para a conta de origem.',
+        modo_master: false,
+        assinante: assOrigem,
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao sair do modo de suporte.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// POST /backend/v1/master/executar-trabalho-expiracao
+// Executa sob demanda o trabalho diário de expiração (para testes ou execução manual pelo master)
+routerAdd(
+  'POST',
+  '/backend/v1/master/executar-trabalho-expiracao',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      masterLib.exigirMaster(auth, $app)
+
+      const resultado = masterLib.processarExpiracaoLicencas($app)
+
+      return c.json(200, {
+        sucesso: true,
+        resultado: resultado,
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao processar trabalho de expiração.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
 // POST /backend/v1/master/executar-teste-completo-97a
 // Rota utilitária de teste que executa chamadas HTTP internas autenticadas tanto
 // como Master quanto como Teste B para comprovar 200 vs 403 em endpoints reais

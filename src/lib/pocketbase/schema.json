@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-26T02:27:50.886Z",
+  "generatedAt": "2026-10-26T02:45:27.591Z",
   "collections": [
     {
       "name": "users",
@@ -139,6 +139,12 @@
           "required": false,
           "system": false,
           "collectionRef": "empresas"
+        },
+        {
+          "name": "modo_master",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -11554,6 +11560,50 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "master_impersonacoes",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "assinantes"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_master_impersonacoes_user ON master_impersonacoes (user_id)"
+      ]
     }
   ]
 }

@@ -23,6 +23,7 @@ interface EmpresaContextType {
   assinante: AssinanteTenancy | null
   carregando: boolean
   isMaster: boolean
+  modoMaster: boolean
   selecionarEmpresa: (empresaId: string) => void
   recarregarEmpresas: () => Promise<void>
 }
@@ -39,6 +40,7 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isMaster, setIsMaster] = useState<boolean>(() => {
     return Boolean(pb.authStore.record && (pb.authStore.record as any).tipo === 'master')
   })
+  const [modoMaster, setModoMaster] = useState<boolean>(false)
   const [carregando, setCarregando] = useState(false)
 
   const { usuarioERP, administrador, carregando: carregandoPerms } = usePermissoes()
@@ -67,12 +69,18 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (typeof respTenancy.is_master === 'boolean') {
             setIsMaster(respTenancy.is_master)
           }
+          if (typeof respTenancy.modo_master === 'boolean') {
+            setModoMaster(respTenancy.modo_master)
+          } else {
+            setModoMaster(false)
+          }
         }
       } catch (errTen) {
         console.warn('Não foi possível obter dados de tenancy/me:', errTen)
         if (pb.authStore.record) {
           setIsMaster((pb.authStore.record as any).tipo === 'master')
         }
+        setModoMaster(false)
       }
 
       // Etapa 9 (Multi-tenant): Consome o endpoint backend /backend/v1/empresas/acessiveis,
@@ -167,6 +175,7 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
         assinante,
         carregando,
         isMaster,
+        modoMaster,
         selecionarEmpresa,
         recarregarEmpresas,
       }}

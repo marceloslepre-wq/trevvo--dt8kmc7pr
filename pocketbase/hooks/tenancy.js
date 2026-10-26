@@ -70,14 +70,34 @@ function assinanteDoUsuario(auth) {
     throw new BadRequestError('Registro de usuário ERP não encontrado.')
   }
 
-  const assinanteId = usuarioRec.getString('assinante_id')
+  let assinanteId = usuarioRec.getString('assinante_id')
   if (!assinanteId) {
     throw new BadRequestError('Usuário não possui vínculo com nenhum assinante cadastrado.')
+  }
+
+  // Prompt 9.7b2: Se for Master e estiver com modo master (impersonação) ligado no servidor,
+  // tenancy.js passa a usar o assinante do cliente que o master está atendendo
+  if (eMaster(auth)) {
+    try {
+      const masterLib = require(`${__hooks}/master_lib.js`)
+      const impersonadoId = masterLib.obterAssinanteImpersonado(auth.id, $app)
+      if (impersonadoId) {
+        assinanteId = impersonadoId
+      }
+    } catch (_) {}
   }
 
   const assinante = $app.findRecordById('assinantes', assinanteId)
   if (!assinante) {
     throw new BadRequestError('Assinante não encontrado.')
+  }
+
+  // Prompt 9.7b2: Bloqueio de licença Pausada, Expirada ou Cancelada
+  try {
+    const masterLib = require(`${__hooks}/master_lib.js`)
+    masterLib.validarLicencaAtivaOuBloquear(assinante, auth)
+  } catch (errBloq) {
+    throw errBloq
   }
 
   return assinante
@@ -137,8 +157,21 @@ function empresasDoUsuario(auth) {
 
   if (!usuarioRec) return []
 
-  const assinanteId = usuarioRec.getString('assinante_id')
+  let assinanteId = usuarioRec.getString('assinante_id')
   if (!assinanteId) return []
+
+  // Prompt 9.7b2: Se o usuário autenticado for Master em modo de suporte,
+  // usa o assinante impersonado para consultar empresas
+  const ehMasterUser = eMaster(auth)
+  if (ehMasterUser) {
+    try {
+      const masterLib = require(`${__hooks}/master_lib.js`)
+      const impersonadoId = masterLib.obterAssinanteImpersonado(auth.id, $app)
+      if (impersonadoId) {
+        assinanteId = impersonadoId
+      }
+    } catch (_) {}
+  }
 
   let isAdmin = false
   const perfilId = usuarioRec.getString('perfil_id')
@@ -151,15 +184,17 @@ function empresasDoUsuario(auth) {
     } catch (_) {}
   }
 
-  if (isAdmin) {
+  // Se for admin do assinante OU for Master, vê todas as empresas ativas do assinante
+  if (isAdmin || ehMasterUser) {
     try {
-      return $app.findRecordsByFilter(
+      const empresas = $app.findRecordsByFilter(
         'empresas',
         "assinante_id = '" + assinanteId + "' && ativo = true",
         'codigo',
         500,
         0,
       )
+      return empresas
     } catch (_) {
       return []
     }
@@ -215,6 +250,13 @@ function exigirEmpresaDoUsuario(auth, empresaId) {
   return encontrada
 }
 
+module.exports = {
+  assinanteDoUsuario: assinanteDoUsuario,
+  eMaster: eMaster,
+  empresasDoUsuario: empresasDoUsuario,
+  exigirEmpresaDoUsuario: exigirEmpresaDoUsuario,
+}
+
 routerAdd(
   'GET',
   '/backend/v1/empresas/acessiveis',
@@ -259,9 +301,38 @@ routerAdd(
         return c.json(200, { sucesso: true, empresas: [] })
       }
 
-      const assinanteId = usuarioRec.getString('assinante_id')
+      let assinanteId = usuarioRec.getString('assinante_id')
       if (!assinanteId) {
         return c.json(200, { sucesso: true, empresas: [] })
+      }
+
+      // Checar se é master lido no banco
+      let ehMaster = false
+      try {
+        const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+        ehMaster = !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {}
+
+      if (ehMaster) {
+        try {
+          const masterLib = require(`${__hooks}/master_lib.js`)
+          const impId = masterLib.obterAssinanteImpersonado(auth.id, $app)
+          if (impId) {
+            assinanteId = impId
+          }
+        } catch (_) {}
+      }
+
+      // Validar se a licença do assinante está bloqueada
+      try {
+        const assRec = $app.findRecordById('assinantes', assinanteId)
+        const masterLib = require(`${__hooks}/master_lib.js`)
+        masterLib.validarLicencaAtivaOuBloquear(assRec, auth)
+      } catch (errBloq) {
+        return c.json(403, {
+          sucesso: false,
+          message: errBloq.message || 'Licença pausada ou vencida. Fale com o suporte.',
+        })
       }
 
       // Checar se é administrador via perfis_acesso
@@ -277,8 +348,8 @@ routerAdd(
       }
 
       let empresas = []
-      if (isAdmin) {
-        // Administrador vê todas as empresas do PRÓPRIO assinante
+      if (isAdmin || ehMaster) {
+        // Administrador (ou Master) vê todas as empresas ativas do assinante em foco
         try {
           empresas = $app.findRecordsByFilter(
             'empresas',
@@ -404,12 +475,38 @@ routerAdd(
       }
 
       let assinante = null
+      let modoMasterAtivo = false
+      let assinanteOrigem = null
+
       if (usuarioRec) {
-        const assId = usuarioRec.getString('assinante_id')
+        let assId = usuarioRec.getString('assinante_id')
+
+        if (ehMaster) {
+          try {
+            const masterLib = require(`${__hooks}/master_lib.js`)
+            const impId = masterLib.obterAssinanteImpersonado(auth.id, $app)
+            if (impId) {
+              modoMasterAtivo = true
+              assId = impId
+            }
+          } catch (_) {}
+        }
+
         if (assId) {
           try {
             const assRec = $app.findRecordById('assinantes', assId)
             if (assRec) {
+              // Validar bloqueio de licença se não for master
+              try {
+                const masterLib = require(`${__hooks}/master_lib.js`)
+                masterLib.validarLicencaAtivaOuBloquear(assRec, auth)
+              } catch (errBloq) {
+                return c.json(403, {
+                  sucesso: false,
+                  message: errBloq.message || 'Licença pausada ou vencida. Fale com o suporte.',
+                })
+              }
+
               assinante = {
                 id: assRec.id,
                 numero_licenca: assRec.getString('numero_licenca'),
@@ -429,11 +526,27 @@ routerAdd(
             }
           } catch (_) {}
         }
+
+        // Se modo master estiver ativo, carrega também os dados do assinante de origem para facilitar o retorno
+        if (modoMasterAtivo && usuarioRec.getString('assinante_id')) {
+          try {
+            const oRec = $app.findRecordById('assinantes', usuarioRec.getString('assinante_id'))
+            if (oRec) {
+              assinanteOrigem = {
+                id: oRec.id,
+                nome: oRec.getString('nome'),
+                numero_licenca: oRec.getString('numero_licenca'),
+              }
+            }
+          } catch (_) {}
+        }
       }
 
       return c.json(200, {
         sucesso: true,
         is_master: ehMaster,
+        modo_master: modoMasterAtivo,
+        assinante_origem: assinanteOrigem,
         assinante,
       })
     } catch (err) {
