@@ -8,6 +8,11 @@
  *
  * Agendado para rodar diariamente à meia-noite (0 0 * * *).
  */
+// Remoção de segurança para limpar resíduo de teste anterior que possa ter persistido no agendador em runtime
+try {
+  cronRemove('teste97b_runner')
+} catch (_) {}
+
 cronAdd('expiracao_diaria_licencas', '0 0 * * *', () => {
   try {
     const masterLib = require(`${__hooks}/master_lib.js`)
