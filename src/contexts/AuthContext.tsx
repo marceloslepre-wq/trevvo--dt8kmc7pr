@@ -8,6 +8,7 @@ export interface UserProfile {
   name: string
   avatar?: string
   verified: boolean
+  tipo?: string
 }
 
 interface AuthContextType {
@@ -38,6 +39,7 @@ function mapRecordToUser(record: AuthRecord | null): UserProfile | null {
     name: (record.name as string) || (record.email?.split('@')[0] ?? 'Usuário'),
     avatar: (record.avatar as string) || undefined,
     verified: Boolean(record.verified),
+    tipo: (record as any).tipo || '',
   }
 }
 

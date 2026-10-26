@@ -284,6 +284,53 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### config_master
+
+Tabela de parametrização e configuração do Painel Master Multi-tenant (Etapa 9 Multi-tenant - Prompt 9.7a, Migration 0081). Registro único gerenciado exclusivamente pelo usuário master do SaaS (`users.tipo = 'master'`). Define regras globais de governança, período padrão de trial e limites padrão de novos clientes. Acesso à coleção totalmente restrito ao usuário master tanto para leitura quanto para gravação (`listRule`, `viewRule`, `createRule`, `updateRule` com `@request.auth.id != '' && @request.auth.tipo = 'master'`; `deleteRule: null`).
+
+- id (text, PK)
+- dias_trial (number, quantidade de dias corridos concedidos por padrão a novos assinantes em período de teste, padrão 15)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+### licencas_eventos
+
+Tabela de auditoria e linha do tempo de eventos de ciclo de vida das licenças dos clientes do SaaS (Etapa 9 Multi-tenant - Prompt 9.7a, Migration 0081). Registra criação, ativação de trial, renovações de prazo (+30 dias), reativações, mudanças de plano comercial, pausas temporárias, expirações e edições manuais de vigência/limites. Regras de segurança estritas: leitura liberada para o usuário master ou para o próprio assinante titular da licença (`@request.auth.id != '' && (@request.auth.tipo = 'master' || assinante_id = @request.auth.assinante_id)`); criação, edição e exclusão 100% restritas ao backend (`createRule: null`, `updateRule: null`, `deleteRule: null`), gravadas exclusivamente pelos endpoints de gestão do Master (`/backend/v1/master/*`).
+
+- id (text, PK)
+- assinante_id (relation -> assinantes, obrigatório, cascadeDelete: false)
+- numero_licenca (text, identificador legível da licença, ex.: "HH-RFR8HF", obrigatório)
+- tipo (select: "Criação" | "Trial" | "Renovação +30d" | "Reativação" | "Mudança de plano" | "Pausa" | "Expiração" | "Edição", obrigatório)
+- plano_id (relation -> planos_catalogo, opcional)
+- validade_ate (text, data ISO de validade da licença após o evento)
+- descricao (text, histórico detalhado, justificativa ou notas do evento)
+- criado_por (relation -> users, usuário responsável pelo evento ou nulo para rotinas automáticas)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `assinante_id` (`idx_licencas_eventos_ass`), `numero_licenca` (`idx_licencas_eventos_lic`), `tipo` (`idx_licencas_eventos_tipo`).
+
+### planos_catalogo
+
+Tabela de catálogo comercial de planos de assinatura do ERP SaaS (Etapa 9 Multi-tenant - Prompt 9.7a, Migration 0081). Define as faixas de precificação, capacidades estruturais (limite de empresas filiais e limite de usuários), recursos fiscais autorizados (NF-e mod 55, NFC-e mod 65 e EFD SPED Fiscal) e planos especiais (ex: "Plano Master", isento e ilimitado para o proprietário do SaaS). Regras de segurança globais: leitura liberada para planos ativos e não exclusivos do master para todos os usuários autenticados, ou visualização irrestrita pelo master (`@request.auth.id != '' && ((exclusivo_master = false && ativo = true) || @request.auth.tipo = 'master')`); criação, alteração e exclusão exclusivas do usuário master (`@request.auth.id != '' && @request.auth.tipo = 'master'`).
+
+- id (text, PK)
+- nome (text, nome do plano comercial, ex.: "Básico", "Profissional", "Completo", "Plano Master", obrigatório)
+- etiqueta (text, badge de destaque, ex.: "Essencial", "Recomendado", "Enterprise", "Exclusivo Master")
+- descricao (text, apresentação comercial e escopo do plano)
+- valor_mensal (number, mensalidade em R$; 0 = isento/gratuito)
+- limite_empresas (number, quantidade máxima de empresas/filiais permitidas; 0 = ilimitado)
+- limite_usuarios (number, quantidade máxima de usuários ativos permitidos; 0/vazio = ilimitado)
+- permite_nfe (bool, habilita emissão de NF-e modelo 55)
+- permite_nfce (bool, habilita emissão de NFC-e modelo 65 no PDV)
+- permite_sped (bool, habilita geração do SPED Fiscal ICMS/IPI)
+- exclusivo_master (bool, flag que restringe a visibilidade e uso exclusivamente ao dono do SaaS)
+- ativo (bool, indicador de disponibilidade comercial do plano)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `ativo` (`idx_planos_catalogo_ativo`), `exclusivo_master` (`idx_planos_catalogo_exclusivo`).
+
 ### credenciais_fiscais
 
 Tabela de armazenamento seguro de credenciais fiscais da Focus NFe por empresa emissora (Etapa 9 Multi-tenant - 9.6, Migration 0080). Permite que cada filial/matriz ou assinante configure tokens próprios da Focus NFe (`token_homologacao` e `token_producao`) e mantenha um segredo aleatório exclusivo de webhook (`webhook_secret`) para validação criptográfica HMAC/Bearer de callbacks recebidos por empresa. Acesso totalmente bloqueado para a API do navegador (`listRule: null`, `viewRule: null`, `createRule: null`, `updateRule: null`, `deleteRule: null`), operada exclusivamente pelo backend via pb_hooks (`fiscal_credenciais_rotas.js`, `fiscal_token_lib.js`, `fiscal_webhook_focus.js`). As rotas públicas e autenticadas nunca expõem os tokens completos (somente os 4 últimos dígitos ou status booleano). Possui fallback automático para segredos de ambiente do Skip Cloud ($os.getenv) caso nenhum token esteja gravado na coleção. Possui índice único por `empresa_id`.
@@ -327,7 +374,7 @@ Tabela de registro e controle de assinantes do ERP SaaS (Etapa 9 Multi-tenant, M
 - whatsapp_contato (text, celular/WhatsApp para comunicações operacionais)
 - status (select: "Trial", "Ativa", "Pausada", "Expirada", "Cancelada", obrigatório, índice)
 - origem (bool, identifica o assinante de origem do dono do SaaS, ex.: HOSPITAL HOME, índice)
-- plano_id (text, identificador de plano de contratação SaaS)
+- plano_id (relation -> planos_catalogo, identificador do plano de contratação comercial no catálogo)
 - data_inicio (text, data ISO de início da vigência da assinatura)
 - data_expiracao (text, data ISO de expiração da assinatura)
 - limites_personalizados (bool, indica se o assinante possui limites customizados além do plano)
@@ -3467,6 +3514,43 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.137** — Etapa 9 Multi-tenant (Prompt 9.7a: Painel Master - Parte 1: Tabelas, Planos Iniciais, Acesso e Topo):
+
+1. **Modelagem de Dados e Migrations (Migration 0081):**
+   - **`planos_catalogo`:** Coleção de planos com `nome`, `etiqueta`, `descricao`, `valor_mensal`, `limite_empresas`, `limite_usuarios`, `permite_nfe`, `permite_nfce`, `permite_sped`, `exclusivo_master`, `ativo`. Regras: leitura para planos ativos e não exclusivos por todos os usuários autenticados, ou visão irrestrita para o usuário master; criação/edição/exclusão exclusivas do master (`@request.auth.tipo = 'master'`).
+   - **`assinantes` (campo `plano_id`):** Campo transformado em relação formal (`RelationField`) com a coleção `planos_catalogo`.
+   - **`licencas_eventos`:** Linha do tempo de ciclo de vida com `assinante_id`, `numero_licenca`, `tipo` (Criação, Trial, Renovação +30d, Reativação, Mudança de plano, Pausa, Expiração, Edição), `plano_id`, `validade_ate`, `descricao`, `criado_por`. Leitura restrita ao próprio assinante ou ao master; gravação 100% restrita ao backend (`createRule: null`, `updateRule: null`, `deleteRule: null`).
+   - **`config_master`:** Tabela de configuração global do SaaS com registro único (`dias_trial: 15`), gerenciada exclusivamente pelo master.
+
+2. **Carga Inicial de Planos e Eventos de Criação:**
+   - Cadastrado o **"Plano Master"** (exclusivo master, valor mensal R$ 0, empresas e usuários ilimitados, NF-e, NFC-e e SPED ativos) vinculado à `HOSPITAL HOME`.
+   - Cadastrados os 3 planos de exemplo editáveis:
+     - **Básico:** Etiqueta "Essencial", R$ 149/mês, 1 empresa, 3 usuários, NF-e + NFC-e.
+     - **Profissional:** Etiqueta "Recomendado", R$ 299/mês, 3 empresas, 10 usuários, NF-e + NFC-e + SPED.
+     - **Completo:** Etiqueta "Enterprise", R$ 599/mês, 10 empresas, usuários ilimitados, NF-e + NFC-e + SPED.
+   - Assinante `TESTE B` vinculado ao plano Básico.
+   - Registrados na tabela `licencas_eventos` os eventos de "Criação" para a `HOSPITAL HOME` e para o `TESTE B`.
+
+3. **Arquitetura de Segurança no Backend (`master_lib.js` e `master_rotas.js`):**
+   - Módulo compartilhado `pocketbase/hooks/master_lib.js` com as funções `exigirMaster`, `checarSeMaster` e `obterConfigMaster`. Respeitada rigorosamente a regra de escopo da JSVM goja (require dinâmico dentro dos callbacks, sem funções top-level nos hooks).
+   - Endpoints sob `/backend/v1/master/*` (`/status`, `/planos`, `/test-acesso`, `/executar-teste-completo-97a`) validam privilégio master via `exigirMaster` e retornam código HTTP 403 Forbidden imediato para qualquer outro usuário (incluindo o admin do TESTE B).
+
+4. **Acesso e Interface do Usuário Master no Frontend:**
+   - **Menu Lateral (`Sidebar.tsx`):** Adicionado o item "Painel Master" (rota `/master`, ícone `Crown`), condicionado a `group.masterOnly && !isMaster` (visível estritamente para o master; invisível para usuários normais e administradores de filiais).
+   - **Guarda de Rotas (`MasterRoute` em `RouteGuards.tsx`):** Proteção no roteador da aplicação contra acesso direto à URL `/master`, redirecionando para `/login` se não autenticado ou exibindo componente amigável `AcessoNegado` para usuários não-master.
+   - **Topo do `/master` (`MasterPage.tsx`):**
+     - Nome do sistema com selo visual em gradiente `"MASTER MULTI-TENANT"` e subtítulo `"Painel de Administração Global"`.
+     - Botão destacado `"Ir ao Painel Gerencial"` que navega de volta para `/painel` no ERP.
+     - Identificação de perfil `"Admin Master"` com e-mail do usuário autenticado.
+     - Botões de ação no topo: `"Guia de Uso"`, `"Atualizar"` e `"Sair"` (logout com limpeza de sessão).
+     - Abas inferiores estruturadas: `"Licenças de clientes"` (com aviso de em construção para o Prompt 9.7a2) e `"Catálogo de planos"` (com aviso de em construção para o Prompt 9.7b).
+
+5. **Testes de Acesso e Isolamento Multi-tenant (Validação Real no Backend):**
+   - Logado como master (`marceloslepre@gmail.com`): item "Painel Master" visível, acesso liberado à rota `/master` e respostas HTTP 200 em `/backend/v1/master/*`.
+   - Logado como TESTE B (`admin@testeb.com`): item "Painel Master" oculto no menu, rota `/master` bloqueada por `MasterRoute`, e chamadas a `/backend/v1/master/*` rejeitadas com **HTTP 403 Forbidden**.
+
+---
 
 **Versão 0.0.136** — Etapa 9 Multi-tenant (Prompt 9.6c: Tela de Credenciais da Focus por Empresa, Fechamento do 9.6 e Correção de Inutilizações):
 

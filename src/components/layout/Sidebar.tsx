@@ -41,6 +41,7 @@ import {
   FileArchive,
   Scale,
   SlidersHorizontal,
+  Crown,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -72,10 +73,19 @@ interface NavGroupItem {
   status?: 'active' | 'soon'
   modulo?: ModuloSistema
   adminOnly?: boolean
+  masterOnly?: boolean
   items?: NavSubItem[]
 }
 
 const navItems: NavGroupItem[] = [
+  {
+    id: 'master-panel',
+    title: 'Painel Master',
+    icon: Crown,
+    path: '/master',
+    status: 'active',
+    masterOnly: true,
+  },
   {
     id: 'painel',
     title: 'Painel',
@@ -571,13 +581,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [relatoriosOpen, setRelatoriosOpen] = useState(true)
   const [configuracoesOpen, setConfiguracoesOpen] = useState(true)
 
-  const { pode, administrador } = usePermissoes()
+  const { pode, administrador, isMaster } = usePermissoes()
   const { empresas } = useEmpresaAtiva()
   const temMultiplasEmpresas = empresas.length > 1
 
   // Filtra itens visíveis conforme permissão
   const itensVisiveis = navItems
     .filter((group) => {
+      // Regra 9.7a: Painel Master aparece EXCLUSIVAMENTE para o usuário master
+      if (group.masterOnly && !isMaster) {
+        return false
+      }
       // Regra 8.5: Painel do Grupo só aparece se tiver permissão relatorios pode_ver E acesso a mais de 1 empresa
       if (group.id === 'painel-grupo') {
         if (!temMultiplasEmpresas) return false
@@ -602,6 +616,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
 
       // Item raiz direto
+      if (group.masterOnly && !isMaster) return null
       if (group.adminOnly && !administrador) return null
       if (group.modulo && !pode(group.modulo, 'ver')) return null
       return group

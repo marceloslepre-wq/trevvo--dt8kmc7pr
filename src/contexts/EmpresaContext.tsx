@@ -22,6 +22,7 @@ interface EmpresaContextType {
   assinanteId: string | null
   assinante: AssinanteTenancy | null
   carregando: boolean
+  isMaster: boolean
   selecionarEmpresa: (empresaId: string) => void
   recarregarEmpresas: () => Promise<void>
 }
@@ -35,6 +36,9 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [empresaAtiva, setEmpresaAtiva] = useState<Empresa | null>(null)
   const [assinante, setAssinante] = useState<AssinanteTenancy | null>(null)
+  const [isMaster, setIsMaster] = useState<boolean>(() => {
+    return Boolean(pb.authStore.record && (pb.authStore.record as any).tipo === 'master')
+  })
   const [carregando, setCarregando] = useState(false)
 
   const { usuarioERP, administrador, carregando: carregandoPerms } = usePermissoes()
@@ -56,11 +60,19 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Obter dados de tenancy se ainda não carregados
       try {
         const respTenancy = await pb.send('/backend/v1/tenancy/me', { method: 'GET' })
-        if (respTenancy && respTenancy.assinante) {
-          setAssinante(respTenancy.assinante)
+        if (respTenancy) {
+          if (respTenancy.assinante) {
+            setAssinante(respTenancy.assinante)
+          }
+          if (typeof respTenancy.is_master === 'boolean') {
+            setIsMaster(respTenancy.is_master)
+          }
         }
       } catch (errTen) {
         console.warn('Não foi possível obter dados de tenancy/me:', errTen)
+        if (pb.authStore.record) {
+          setIsMaster((pb.authStore.record as any).tipo === 'master')
+        }
       }
 
       // Etapa 9 (Multi-tenant): Consome o endpoint backend /backend/v1/empresas/acessiveis,
@@ -154,6 +166,7 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
         assinanteId: assinanteIdCalculado,
         assinante,
         carregando,
+        isMaster,
         selecionarEmpresa,
         recarregarEmpresas,
       }}

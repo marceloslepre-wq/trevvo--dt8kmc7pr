@@ -6,7 +6,8 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import { ConfiguracoesProvider } from '@/contexts/ConfiguracoesContext'
 import { PermissoesProvider } from '@/contexts/PermissoesContext'
 import { EmpresaProvider } from '@/contexts/EmpresaContext'
-import { ProtectedRoute, PublicOnlyRoute } from '@/components/RouteGuards'
+import { ProtectedRoute, PublicOnlyRoute, MasterRoute } from '@/components/RouteGuards'
+import MasterPage from '@/pages/master/MasterPage'
 import Layout from '@/components/Layout'
 import PermissaoGuard from '@/components/PermissaoGuard'
 
@@ -149,6 +150,16 @@ const App = () => (
                     </PublicOnlyRoute>
                   }
                 />
+                {/* Rota Protegida Exclusiva do Painel Master (Prompt 9.7a) */}
+                <Route
+                  path="/master"
+                  element={
+                    <MasterRoute>
+                      <MasterPage />
+                    </MasterRoute>
+                  }
+                />
+
                 {/* Compatibilidade com rota inglesa caso chegue por links legados */}
                 <Route path="/forgot-password" element={<Navigate to="/esqueci-senha" replace />} />
                 <Route

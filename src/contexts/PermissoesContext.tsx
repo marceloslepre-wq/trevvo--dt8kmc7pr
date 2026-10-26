@@ -22,6 +22,7 @@ interface PermissoesContextType {
   permissoes: Record<string, PermissaoModulo>
   carregando: boolean
   administrador: boolean
+  isMaster: boolean
   pode: (modulo: ModuloSistema | string, acao?: AcaoPermissao | string) => boolean
   podeGravar: (modulo: ModuloSistema | string) => boolean
   recarregarPermissoes: () => Promise<void>
@@ -138,9 +139,16 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Reconhecimento de administrador EXCLUSIVAMENTE pelo vínculo:
   // registro em `usuarios` ligado ao login cujo perfil (`perfis_acesso`) tenha `administrador = true`.
   // Sem nenhum e-mail escrito no código.
+  const isMaster = useMemo(() => {
+    return (
+      user?.tipo === 'master' ||
+      Boolean(pb.authStore.record && (pb.authStore.record as any).tipo === 'master')
+    )
+  }, [user?.tipo])
+
   const administrador = useMemo(() => {
-    return Boolean(perfil?.administrador)
-  }, [perfil?.administrador])
+    return isMaster || Boolean(perfil?.administrador)
+  }, [isMaster, perfil?.administrador])
 
   // Se já resolveu uma vez ou se temos cache / admin / token válido, nunca bloqueia como 'carregando'
   // Carregando: se pb.authStore.isValid ou se temos usuário ERP (ou cache), administrador,
@@ -212,6 +220,7 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         permissoes,
         carregando,
         administrador,
+        isMaster,
         pode,
         podeGravar,
         recarregarPermissoes,
