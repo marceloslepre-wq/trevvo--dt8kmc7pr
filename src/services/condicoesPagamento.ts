@@ -327,26 +327,6 @@ export function validarDadosCondicao(dados: Partial<CondicaoPagamento>): {
 }
 
 /**
- * Retorna o próximo código sequencial para condicao_pagamento
- */
-export async function obterProximoCodigoCondicao(assinanteId?: string): Promise<number> {
-  try {
-    const filter = assinanteId ? `assinante_id = '${assinanteId}'` : undefined
-    const res = await pb.collection('condicoes_pagamento').getList(1, 1, {
-      filter,
-      sort: '-codigo',
-    })
-    if (res.items.length > 0) {
-      const maior = (res.items[0] as unknown as { codigo?: number }).codigo || 0
-      return Number(maior) + 1
-    }
-    return 1
-  } catch (_) {
-    return 1
-  }
-}
-
-/**
  * Lista condições de pagamento com filtros, busca e paginação
  */
 export async function listarCondicoesPagamento(
@@ -459,14 +439,10 @@ export async function salvarCondicaoPagamento(
     throw new Error(primeiroErro)
   }
 
-  let codigo = dados.codigo
-  if (ehNovo && !codigo) {
-    codigo = await obterProximoCodigoCondicao()
-  }
-
+  // Código sequencial gerado pelo backend se não informado
   const payload: Record<string, unknown> = {
     ...dados,
-    codigo,
+    codigo: dados.codigo || null,
     nome: (dados.nome || '').trim(),
     ativo: dados.ativo !== undefined ? dados.ativo : true,
     updated_by: user?.id || null,

@@ -5,7 +5,6 @@ import {
   UnidadeMedida,
 } from '@/services/unidadesMedida'
 import {
-  obterProximoCodigoProduto,
   validarGTIN,
   salvarProdutoFornecedor,
   sugerirPrecoVenda,
@@ -257,10 +256,7 @@ export async function processarCadastroAutomaticoProdutos(params: {
       const codAnpXml = itemNota.dados_adicionais_xml?.codigo_anp || ''
       const descAnpXml = itemNota.dados_adicionais_xml?.descricao_anp || ''
 
-      const proximoCodigo = await obterProximoCodigoProduto()
-
       const payloadProduto: Record<string, unknown> = {
-        codigo: proximoCodigo,
         tipo: 'Produto',
         descricao: desc120,
         descricao_reduzida: descReduzida,

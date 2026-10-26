@@ -285,29 +285,6 @@ export function calcularMarkup(precoVenda: number, custoFinal: number): number {
 }
 
 // -------------------------------------------------------------
-// OBTENÇÃO DO PRÓXIMO CÓDIGO SEQUENCIAL
-// -------------------------------------------------------------
-export async function obterProximoCodigoProduto(assinanteId?: string): Promise<number> {
-  try {
-    const filter = assinanteId ? `assinante_id = '${assinanteId}'` : undefined
-    const registros = await pb.collection('produtos').getList<Produto>(1, 1, {
-      filter,
-      sort: '-codigo',
-      fields: 'codigo',
-    })
-
-    if (registros.items.length === 0 || !registros.items[0].codigo) {
-      return 1
-    }
-
-    return Number(registros.items[0].codigo) + 1
-  } catch (err) {
-    console.error('Erro ao buscar próximo código de produto:', err)
-    return 1
-  }
-}
-
-// -------------------------------------------------------------
 // CRUD PRODUTOS
 // -------------------------------------------------------------
 export async function listarProdutos(
@@ -917,10 +894,7 @@ export async function salvarProduto(
     produtoAntes = await obterProdutoPorId(dados.id)
   }
 
-  let codigoFinal = dados.codigo
-  if (!ehEdicao && (!codigoFinal || codigoFinal <= 0)) {
-    codigoFinal = await obterProximoCodigoProduto()
-  }
+  let codigoFinal = dados.codigo ? Number(dados.codigo) : null
 
   // Preenchimento automático do código gênero a partir dos 2 primeiros dígitos do NCM
   let codigoGeneroFinal = dados.codigo_genero
@@ -1263,12 +1237,11 @@ export async function ativarProduto(id: string): Promise<void> {
 // -------------------------------------------------------------
 export async function duplicarProduto(produtoIdOrigem: string): Promise<Produto> {
   const origem = await obterProdutoPorId(produtoIdOrigem)
-  const novoCodigo = await obterProximoCodigoProduto()
 
   const clonePayload: Partial<Produto> = {
     ...origem,
     id: undefined,
-    codigo: novoCodigo,
+    codigo: undefined,
     descricao: `${origem.descricao} (Cópia)`.slice(0, 120),
     descricao_reduzida: origem.descricao_reduzida
       ? `${origem.descricao_reduzida} (Cópia)`.slice(0, 40)
@@ -1859,8 +1832,6 @@ export async function processarImportacaoCSVProdutos(
   let importados = 0
   let falhas = 0
 
-  let proximoCodigo = await obterProximoCodigoProduto()
-
   for (const l of linhasValidas) {
     if (!l.dadosResolvidos) {
       falhas++
@@ -1874,7 +1845,6 @@ export async function processarImportacaoCSVProdutos(
 
       await salvarProduto({
         tipo: 'Produto',
-        codigo: proximoCodigo++,
         descricao: l.descricao,
         gtin: l.gtin,
         referencia: l.referencia,

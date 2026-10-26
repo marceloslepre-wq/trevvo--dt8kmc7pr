@@ -53,7 +53,6 @@ import {
   TipoProduto,
   salvarProduto,
   obterProdutoPorId,
-  obterProximoCodigoProduto,
   validarDadosProduto,
   duplicarProduto,
   calcularCustoFinal,
@@ -239,12 +238,6 @@ export const ProdutoForm: React.FC = () => {
         }
       })
       .catch(console.error)
-
-    if (!ehEdicao) {
-      obterProximoCodigoProduto().then((cod) => {
-        setFormData((prev) => ({ ...prev, codigo: cod }))
-      })
-    }
   }, [ehEdicao])
 
   // Carregar dados do produto em edição
@@ -822,12 +815,16 @@ export const ProdutoForm: React.FC = () => {
                     Código Interno (COD_ITEM)
                   </Label>
                   <Input
-                    type="number"
+                    type="text"
                     value={formData.codigo || ''}
                     disabled
+                    readOnly
+                    placeholder="será gerado ao salvar"
                     className="h-9 bg-slate-50 font-mono font-bold text-slate-700"
                   />
-                  <span className="text-[10px] text-slate-400">Sequencial automático</span>
+                  <span className="text-[10px] text-slate-400">
+                    Sequencial automático por assinante
+                  </span>
                 </div>
 
                 {/* Tipo */}

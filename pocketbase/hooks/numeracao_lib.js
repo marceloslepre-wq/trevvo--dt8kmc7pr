@@ -86,21 +86,28 @@ function proximoNumero(assinanteId, empresaId, tipo, txApp) {
           0,
         )
         if (ult && ult.length > 0) seed = ult[0].getInt('numero') || 0
-      } else if (
-        tipo === 'produtos' ||
-        tipo === 'clientes' ||
-        tipo === 'fornecedores' ||
-        tipo === 'condicoes_pagamento' ||
-        tipo === 'empresas'
-      ) {
-        const ult = tx.findRecordsByFilter(
-          tipo,
-          "assinante_id = '" + assinanteId + "'",
-          '-codigo',
-          1,
-          0,
-        )
-        if (ult && ult.length > 0) seed = ult[0].getInt('codigo') || 0
+      } else {
+        // Cadastros por assinante (tipo "codigo_produtos", "codigo_clientes", etc. ou nome direto da coleção)
+        let colecaoDestino = tipo
+        if (tipo.startsWith('codigo_')) {
+          colecaoDestino = tipo.replace('codigo_', '')
+        }
+        if (
+          colecaoDestino === 'produtos' ||
+          colecaoDestino === 'clientes' ||
+          colecaoDestino === 'fornecedores' ||
+          colecaoDestino === 'condicoes_pagamento' ||
+          colecaoDestino === 'empresas'
+        ) {
+          const ult = tx.findRecordsByFilter(
+            colecaoDestino,
+            "assinante_id = '" + assinanteId + "'",
+            '-codigo',
+            1,
+            0,
+          )
+          if (ult && ult.length > 0) seed = ult[0].getInt('codigo') || 0
+        }
       }
     } catch (errSeed) {
       console.log('[numeracao_lib] Aviso ao buscar seed para ' + tipo + ': ' + errSeed.message)

@@ -20,12 +20,7 @@ import {
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
-import {
-  Produto,
-  obterProximoCodigoProduto,
-  salvarProduto,
-  salvarProdutoFornecedor,
-} from '@/services/produtos'
+import { salvarProduto, salvarProdutoFornecedor, Produto } from '@/services/produtos'
 import { listarTodasUnidadesMedidaAtivas, UnidadeMedida } from '@/services/unidadesMedida'
 import { SelectNcm } from '@/components/SelectNcm'
 import { SelectCest } from '@/components/SelectCest'
@@ -57,7 +52,7 @@ export const ProdutoCadastroRapido: React.FC<ProdutoCadastroRapidoProps> = ({
   const [salvando, setSalvando] = useState(false)
   const [unidades, setUnidades] = useState<UnidadeMedida[]>([])
 
-  const [codigo, setCodigo] = useState<number>(1)
+  const [codigo, setCodigo] = useState<number | undefined>(undefined)
   const [descricao, setDescricao] = useState('')
   const [gtin, setGtin] = useState('')
   const [ncm, setNcm] = useState('')
@@ -76,14 +71,10 @@ export const ProdutoCadastroRapido: React.FC<ProdutoCadastroRapidoProps> = ({
 
     async function init() {
       try {
-        const [listaUn, proxCod] = await Promise.all([
-          listarTodasUnidadesMedidaAtivas(),
-          obterProximoCodigoProduto(),
-        ])
+        const listaUn = await listarTodasUnidadesMedidaAtivas()
         if (!ativo) return
 
         setUnidades(listaUn)
-        setCodigo(proxCod)
 
         // Resolução da unidade inicial
         let unPadrao = ''
@@ -222,8 +213,10 @@ export const ProdutoCadastroRapido: React.FC<ProdutoCadastroRapidoProps> = ({
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Código</Label>
               <Input
-                value={codigo}
+                value={codigo ?? ''}
                 disabled
+                readOnly
+                placeholder="será gerado ao salvar"
                 className="bg-slate-100 font-mono text-xs font-bold text-slate-700"
               />
             </div>

@@ -115,26 +115,6 @@ export function normalizarCpfCnpj(valor?: string): string {
 }
 
 /**
- * Retorna o próximo código sequencial para fornecedor
- */
-export async function obterProximoCodigoFornecedor(assinanteId?: string): Promise<number> {
-  try {
-    const filter = assinanteId ? `assinante_id = '${assinanteId}'` : undefined
-    const res = await pb.collection('fornecedores').getList(1, 1, {
-      filter,
-      sort: '-codigo',
-    })
-    if (res.items.length > 0) {
-      const maior = (res.items[0] as unknown as { codigo?: number }).codigo || 0
-      return Number(maior) + 1
-    }
-    return 1
-  } catch (_) {
-    return 1
-  }
-}
-
-/**
  * Valida dados obrigatórios e regras tributárias de um fornecedor
  */
 export function validarDadosFornecedor(dados: Partial<Fornecedor>): {
@@ -379,14 +359,10 @@ export async function salvarFornecedor(dados: Partial<Fornecedor>): Promise<Forn
     }
   }
 
-  let codigo = dados.codigo
-  if (ehNovo && !codigo) {
-    codigo = await obterProximoCodigoFornecedor()
-  }
-
+  // Código sequencial gerado pelo backend se não informado
   const payload: Record<string, unknown> = {
     ...dados,
-    codigo,
+    codigo: dados.codigo || null,
     cpf_cnpj: docLimpo || dados.cpf_cnpj || null,
     ativo: dados.ativo !== undefined ? dados.ativo : true,
     updated_by: user?.id || null,

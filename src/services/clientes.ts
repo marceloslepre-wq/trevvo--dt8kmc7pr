@@ -111,26 +111,6 @@ export interface ResultadoPaginado<T> {
 }
 
 /**
- * Retorna o próximo código sequencial para novo cliente
- */
-export async function obterProximoCodigoCliente(assinanteId?: string): Promise<number> {
-  try {
-    const filter = assinanteId ? `assinante_id = '${assinanteId}'` : undefined
-    const records = await pb.collection('clientes').getList<Cliente>(1, 1, {
-      filter,
-      sort: '-codigo',
-    })
-    if (records.items.length > 0) {
-      const maior = (records.items[0] as unknown as { codigo?: number }).codigo || 0
-      return Number(maior) + 1
-    }
-    return 1
-  } catch (_) {
-    return 1
-  }
-}
-
-/**
  * Normaliza CPF/CNPJ para busca e validação (apenas caracteres alfanuméricos em caixa alta)
  */
 export function normalizarCpfCnpj(valor?: string): string {
@@ -393,15 +373,10 @@ export async function salvarCliente(dados: Partial<Cliente>): Promise<Cliente> {
     }
   }
 
-  // Preencher código sequencial automático se novo
-  let codigo = dados.codigo
-  if (ehNovo && !codigo) {
-    codigo = await obterProximoCodigoCliente()
-  }
-
+  // Código sequencial gerado pelo backend se não informado
   const payload: Record<string, unknown> = {
     ...dados,
-    codigo,
+    codigo: dados.codigo || null,
     cpf_cnpj: docLimpo || dados.cpf_cnpj || null,
     ativo: dados.ativo !== undefined ? dados.ativo : true,
     updated_by: user?.id || null,

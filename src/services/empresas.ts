@@ -153,24 +153,6 @@ export async function contarFiliaisAtivas(matrizId?: string): Promise<number> {
 }
 
 /**
- * Retorna o próximo código sequencial para novas empresas (1, 2, 3...)
- */
-export async function obterProximoCodigo(): Promise<number> {
-  try {
-    const res = await pb.collection('empresas').getList(1, 1, {
-      sort: '-codigo',
-    })
-    if (res.items.length > 0) {
-      const maior = (res.items[0] as unknown as { codigo?: number }).codigo || 0
-      return Number(maior) + 1
-    }
-    return 1
-  } catch (_) {
-    return 1
-  }
-}
-
-/**
  * Lista todas as empresas ativas para o seletor global do cabeçalho.
  */
 export async function listarEmpresasAtivas(): Promise<Empresa[]> {
@@ -273,13 +255,10 @@ export async function criarEmpresa(
     dados.matriz_id = matrizExistente.id
   }
 
-  // Preencher código se não informado
-  if (!dados.codigo) {
-    dados.codigo = await obterProximoCodigo()
-  }
-
+  // Código sequencial gerado pelo backend se não informado
   const payload: Record<string, unknown> = {
     ...dados,
+    codigo: dados.codigo || null,
     ativo: dados.ativo !== undefined ? dados.ativo : true,
     created_by: user?.id || null,
     updated_by: user?.id || null,
