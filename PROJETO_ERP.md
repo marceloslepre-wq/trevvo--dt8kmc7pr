@@ -291,8 +291,8 @@ Tabela central de controle de numeração atômica sequencial por assinante e em
 - id (text, PK)
 - assinante_id (relation -> assinantes, obrigatório, cascadeDelete: false)
 - empresa_id (relation -> empresas, opcional — preenchido para numeração por empresa e nulo/vazio para cadastros globais do assinante)
-- tipo (text, obrigatório: "vendas" | "inventarios" | "pedidos_compra" | "transferencias" | "produtos" | "clientes" | "fornecedores" | "condicoes_pagamento" | "empresas")
-- ultimo_numero (number, obrigatório, último número gerado e consumido)
+- tipo (text, obrigatório: "vendas" | "inventarios" | "pedidos_compra" | "transferencias" | "codigo_produtos" | "codigo_clientes" | "codigo_fornecedores" | "codigo_condicoes_pagamento" | "codigo_empresas")
+- ultimo_numero (number, último número gerado e consumido; required: false para permitir o valor 0 inicial)
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
 
@@ -3451,6 +3451,50 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.133** — Etapa 9 Multi-tenant (Prompt 9.5c2: Fechamento do 9.5c, Recálculo de Contadores e Testes de Numeração por Assinante):
+
+1. **Recálculo e Alinhamento dos Contadores da Coleção `sequencias` (Migration 0079):**
+   - Ajustado o campo `ultimo_numero` para `required: false` na coleção `sequencias`, permitindo o armazenamento de 0 (zero) sem rejeição de validação do PocketBase v0.23+.
+   - Recalculados idempotentemente os contadores da `HOSPITAL HOME` (`wqxiw7olvkup3sm`) para os 9 tipos a partir dos dados que REALMENTE existem no banco:
+     - **Tipos por Empresa (Matriz HH `jy1d6k2u5j66h1o`):**
+       - `vendas`: antes = 0, maior real = 0, depois = 0
+       - `inventarios`: antes = 0, maior real = 0, depois = 0
+       - `pedidos_compra`: antes = 0, maior real = 0, depois = 0
+       - `transferencias`: antes = 0, maior real = 0, depois = 0
+     - **Tipos por Assinante (empresa_id nulo/vazio):**
+       - `codigo_produtos`: antes = 0, maior real = 0, depois = 0
+       - `codigo_clientes`: antes = 0, maior real = 0, depois = 0
+       - `codigo_fornecedores`: antes = 0, maior real = 0, depois = 0
+       - `codigo_condicoes_pagamento`: antes = 1, maior real = 5, depois = 5 (alinhado com as 5 condições pré-existentes para não colidir com unicidade do 9.2)
+       - `codigo_empresas`: antes = 1, maior real = 1, depois = 1 (empresa matriz HH código 1)
+   - Contadores do assinante `TESTE B` mantidos estritamente intocados.
+
+2. **Validação e Teste de Numeração Independente por Assinante:**
+   - **Assinante TESTE B (`l6vfd1p688j2y9a`):** Criação de produto sem código informado. O backend gerou automaticamente o código **1** via contador sequencial do TESTE B (independente da HOSPITAL HOME). Produto mantido no banco para continuidade dos testes da Etapa 9.
+   - **HOSPITAL HOME (`wqxiw7olvkup3sm`):** Criação de produto sem código informado. O backend gerou automaticamente o código **1** (seguindo a sequência da HH com contador inicial 0). Em seguida, o produto de teste da HOSPITAL HOME foi excluído e o contador `codigo_produtos` da HH foi mantido em 0 (sem produtos cadastrados).
+   - Testes executados no backend sem deixar arquivos de teste em `pocketbase/migrations/` ou `pocketbase/hooks/` (Regra de Ouro nº 10).
+
+3. **Conclusão Integral do Prompt 9.5 (Numeração no Backend):**
+   - Coleção `sequencias` documentada com todos os seus campos e índices na seção "Tabelas" do `PROJETO_ERP.md`.
+   - Módulos `numeracao_lib.js` e `numeracao_cadastros.js` operando com `require` interno nos callbacks, cumprindo a regra permanente de escopo da JSVM goja do PocketBase.
+
+---
+
+**Versão 0.0.132** — Etapa 9 Multi-tenant (Prompt 9.5c: Numeração de Cadastros no Backend por Assinante):
+
+1. **Numeração Atômica de Cadastros por Assinante (`numeracao_cadastros.js`):**
+   - Implementado hook no servidor (`pocketbase/hooks/numeracao_cadastros.js`) acionado em `onRecordCreate` para os 5 cadastros com numeração no escopo do assinante: `produtos`, `clientes`, `fornecedores`, `condicoes_pagamento` e `empresas`.
+   - Se o campo `codigo` não for informado (`codigo <= 0`), o backend aloca automaticamente o próximo número atômico via `proximoNumero(assinanteId, null, 'codigo_' + colecao, txApp)` da `numeracao_lib.js`.
+   - Se o operador preencher manualmente o código na tela, o valor é respeitado e mantido (não sobrescreve).
+
+2. **Regra Permanente de Escopo JSVM:**
+   - Funções auxiliares nunca são declaradas no topo dos arquivos de hooks (evitando o erro `Hook scoping error` da goja). Todo módulo auxiliar é carregado via `require` dentro do corpo de cada callback.
+
+3. **Frontend com Indicativo Visual:**
+   - Formulários de cadastro (`ProdutoForm`, `ClienteForm`, `FornecedorForm`, `CondicoesPagamentoPage`, `EmpresaForm`) atualizados para exibir "Será gerado ao salvar" como placeholder ou campo desabilitado quando em modo de criação, delegando a geração ao backend.
+
+---
 
 **Versão 0.0.130** — Etapa 9 Multi-tenant (Prompt 9.5b2: Fechamento do 9.5b, Limpeza de Testes, Ajuste de Sequências e Regra de Testes):
 

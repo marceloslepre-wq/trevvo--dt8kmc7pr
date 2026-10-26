@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-26T00:10:34.268Z",
+  "generatedAt": "2026-10-26T00:45:06.141Z",
   "collections": [
     {
       "name": "users",
@@ -11246,7 +11246,7 @@
         {
           "name": "ultimo_numero",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
