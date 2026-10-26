@@ -3515,6 +3515,57 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.139** — Etapa 9 Multi-tenant (Prompt 9.7b: Painel Master - Aba Licenças de Clientes, Poderes da Licença, Eventos e Exclusão em Cascata):
+
+1. **Aba "Licenças de clientes (N)" no Painel Master (`MasterPage.tsx`):**
+   - Contador dinâmico de clientes no título da aba (`Licenças de clientes (2)`).
+   - Barra de pesquisa e filtros operacionais em tempo real:
+     - **Busca rápida:** pesquisa textual sobre Nome do assinante, Número da Licença, Documento/CNPJ e E-mail.
+     - **Filtro por Situação da Licença:** Todos, Ativa, Trial, Pausada, Expirada ou Cancelada.
+     - **Filtro por Plano Comercial:** Todos ou filtrado por plano específico do catálogo.
+     - **Filtro de Vencimento:** Todos, Vencidas (data de expiração anterior a hoje) ou A vencer em até 7 dias.
+   - **Tabela Estruturada de Licenças:**
+     - Colunas informativas: Assinante (com identificação de conta de origem/matriz), Número da licença (com botão de cópia rápida), Plano / Valor (com badge de plano e indicação de Isento/Grátis), Situação (badges estilizados por status), Vigência / Expiração (com contagem regressiva de dias ou indicação de expirada há X dias), Capacidade / Uso (empresas cadastradas vs limite, usuários cadastrados vs limite, indicando limites personalizados), e Renovações (+30d acumulados).
+     - Menu de Ações por Licença ("..."):
+       - **Histórico:** abre modal com linha do tempo de eventos auditados da licença.
+       - **+30 dias:** renovação rápida somando 30 dias à maior data entre hoje e a expiração atual, ativando a licença e registrando evento em `licencas_eventos`.
+       - **Editar limites:** permite customizar limites de filiais e usuários individualmente (`limites_personalizados = true`) ou resetar para o padrão do plano.
+       - **Mudar plano:** altera o plano comercial do assinante com recálculo automático de capacidades.
+       - **Pausar / Reativar:** alterna a situação da licença entre Ativa e Pausada.
+       - **Excluir licença:** exclusão definitiva em cascata com exigência de confirmação digitada do nome exato do assinante.
+
+2. **Os Poderes da Licença e Regras de Negócio no Backend (`master_rotas.js`):**
+   - **Regra da Maior Data na Renovação (+30d):** Ao acionar `POST /backend/v1/master/licencas/{id}/renovar`, a nova data de expiração é calculada somando 30 dias à maior data entre o dia atual (`hoje`) e a expiração prévia (`data_expiracao`), evitando perda de dias já pagos pelo cliente ou garantindo 30 dias a partir de hoje caso a licença já esteja vencida. A situação é atualizada para `'Ativa'` e um evento com tipo `'Renovação +30d'` é persistido.
+   - **Histórico e Auditoria (`licencas_eventos`):** Todas as intervenções do Master geram eventos rastreados na tabela `licencas_eventos` com tipo, número da licença, plano, validade, autor (`criado_por`) e descrição textual detalhada. Endpoint: `GET /backend/v1/master/licencas/{id}/historico`.
+   - **Edição de Limites Personalizados (`PUT /backend/v1/master/licencas/{id}/limites`):** Permite desvincular limites do plano padrão, gravando `limites_personalizados = true` e limites próprios de filiais e usuários, com evento auditado `'Edição'`.
+   - **Alteração de Plano Comercial (`PUT /backend/v1/master/licencas/{id}/plano`):** Atualiza `plano_id` do assinante e opcionalmente sincroniza os limites estruturais com os padrões do novo plano, gerando evento `'Mudança de plano'`.
+   - **Pausa e Reativação (`PUT /backend/v1/master/licencas/{id}/status`):** Altera status para `'Pausada'` ou `'Ativa'`, gerando evento correspondente.
+   - **Proteção Absoluta da HOSPITAL HOME (`origem = true` ou licença `HH-RFR8HF`):**
+     - O backend bloqueia expressamente qualquer tentativa de pausar, alterar validade ou excluir o assinante de origem `HOSPITAL HOME`, retornando erro claro de segurança em conformidade com as regras do `PROJETO_ERP.md`.
+   - **Exclusão em Cascata com Confirmação Digitada (`DELETE /backend/v1/master/licencas/{id}`):**
+     - Exige envio no corpo da requisição do campo `confirmacao_nome` exatamente idêntico ao nome cadastrado do assinante.
+     - Executa deleção em cascata atômica e segura removendo em ordem reversa: registros filhas e operacionais vinculados ao assinante (vendas, notas de entrada, financeiro, estoque, documentos fiscais, credenciais, empresas, usuários em `usuarios` e `_pb_users_auth_`, eventos e o assinante).
+     - Tentativas contra a HOSPITAL HOME são terminantemente bloqueadas.
+
+3. **Endpoints de Produção do Master Mantidos e Intactos:**
+   - Todos os endpoints sob `/backend/v1/master/licencas/*` ativos e operantes:
+     - `GET /backend/v1/master/licencas`: listagem consolidada de clientes, planos, uso e vigência.
+     - `GET /backend/v1/master/licencas/{id}/historico`: linha do tempo de eventos de ciclo de vida.
+     - `POST /backend/v1/master/licencas/{id}/renovar`: renovação +30d pela regra da maior data.
+     - `PUT /backend/v1/master/licencas/{id}/limites`: alteração de limites e personalização.
+     - `PUT /backend/v1/master/licencas/{id}/plano`: troca de plano comercial.
+     - `PUT /backend/v1/master/licencas/{id}/status`: alternância entre Ativa e Pausada.
+     - `DELETE /backend/v1/master/licencas/{id}`: exclusão em cascata protegida com confirmação digitada.
+   - Demais endpoints master preservados: `/status`, `/resumo`, `/config` e CRUD `/planos`.
+
+4. **Sanitização do Repositório e Regra de Ouro Permanente:**
+   - Removida a rota de teste transitória `/backend/v1/master/executar-teste-completo-97b` de `pocketbase/hooks/master_rotas.js`.
+   - Removido o arquivo de teste `pocketbase/migrations/0082_executar_teste_item4_97b.js`.
+   - Diretórios `pocketbase/migrations/` e `pocketbase/hooks/` auditados e confirmados 100% limpos.
+   - Reforçada a **Regra de Ouro nº 10**: arquivos de teste NUNCA devem ser commitados no repositório em `pocketbase/migrations/` ou `pocketbase/hooks/`; testes automatizados rodam exclusivamente por chamadas contra a API viva.
+
+---
+
 **Versão 0.0.138** — Etapa 9 Multi-tenant (Prompt 9.7a2: Painel Master - Links de Cadastro, Painel de Operações, Resumo e CRUD do Catálogo de Planos):
 
 1. **Quadro "Gerador de Link de Primeiro Cadastro" (`MasterPage.tsx`):**
