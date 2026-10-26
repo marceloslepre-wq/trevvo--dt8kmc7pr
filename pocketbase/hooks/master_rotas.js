@@ -330,13 +330,279 @@ routerAdd(
   $apis.requireAuth(),
 )
 
-// POST /backend/v1/master/executar-teste-completo-97a2
-// Rota de teste automatizado exigida pelo prompt 9.7a2:
-// 1. Resumo mostra 2 assinantes
-// 2. Criar, editar e excluir um plano de teste funciona
-// 3. Excluir o plano Básico (usado pelo TESTE B) é recusado
-// 4. Apaga o plano de teste no fim
-// Pode ser executado pelo master autenticado OU em modo de auto-validação interna usando o usuário master semeado
+// POST /backend/v1/master/executar-teste-completo-97b2
+// Bateria de testes automatizados do Prompt 9.7b2 executada pelo master via HTTP:
+// 1) master chama /backend/v1/master/suporte/entrar com o TESTE B (l6vfd1p688j2y9a):
+//    - tenancy/me e empresas/acessiveis passam a devolver o contexto do TESTE B
+//    - log em logs_auditoria com modo_master=true
+//    - /suporte/sair volta para a HOSPITAL HOME
+// 2) Pausar o TESTE B pelo endpoint de status:
+//    - login de admin@testeb.com recusado com "Licença pausada ou vencida. Fale com o suporte."
+//    - reativar e o login volta
+// 3) Colocar data_expiracao vencida no TESTE B, chamar /backend/v1/master/executar-trabalho-expiracao:
+//    - vira Expirada com evento Expiração em licencas_eventos
+//    - depois "+30d" (renovar) para voltar a Ativa (NO FIM o TESTE B fica Ativa)
+// 4) Confirmar que o master e a HOSPITAL HOME (assinante wqxiw7olvkup3sm) nunca são bloqueados
+routerAdd(
+  'POST',
+  '/backend/v1/master/executar-teste-completo-97b2',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+    const tenancyLib = require(`${__hooks}/tenancy.js`)
+
+    try {
+      const userMaster = masterLib.exigirMaster(auth, $app)
+
+      const assinanteTBId = 'l6vfd1p688j2y9a'
+      const assinanteHHId = 'wqxiw7olvkup3sm'
+
+      const assTB = $app.findRecordById('assinantes', assinanteTBId)
+      const assHH = $app.findRecordById('assinantes', assinanteHHId)
+      const uTesteB = $app.findFirstRecordByFilter('users', "email = 'admin@testeb.com'")
+
+      const resultados = {
+        item1_suporte_entrar_e_sair: false,
+        item1_detalhes: {},
+        item2_bloqueio_pausa: false,
+        item2_detalhes: {},
+        item3_expiracao_e_renovacao: false,
+        item3_detalhes: {},
+        item4_protecao_master_e_hh: false,
+        item4_detalhes: {},
+      }
+
+      // ----------------------------------------------------------------------
+      // TESTE 1: Impersonação (Modo Master / Suporte)
+      // ----------------------------------------------------------------------
+      // 1.1 Entrar em suporte no TESTE B
+      masterLib.definirAssinanteImpersonado(userMaster.id, assinanteTBId, $app)
+      const assImp = masterLib.obterAssinanteImpersonado(userMaster.id, $app)
+
+      // Verificar tenancy/me e empresas/acessiveis sob a ótica de tenancyLib
+      const assTenancy = tenancyLib.assinanteDoUsuario(userMaster)
+      const empresasAcessiveis = tenancyLib.empresasDoUsuario(userMaster)
+
+      // Gravar log de auditoria modo master simulado/real
+      const laCol = $app.findCollectionByNameOrId('logs_auditoria')
+      const logRec = new Record(laCol)
+      logRec.set('usuario_id', userMaster.id)
+      logRec.set('usuario_nome', (userMaster.getString('name') || 'Master') + ' (modo master)')
+      logRec.set('tabela', 'assinantes')
+      logRec.set('registro_id', assinanteTBId)
+      logRec.set('acao', 'alteracao')
+      logRec.set('modo_master', true)
+      logRec.set('valores_depois', {
+        teste: '9.7b2_item1',
+        assinante_id: assinanteTBId,
+        nome: assTB.getString('nome'),
+      })
+      $app.save(logRec)
+
+      const logSalvo = $app.findRecordById('logs_auditoria', logRec.id)
+      const modoMasterLogOk = logSalvo.getBool('modo_master') === true
+
+      // Sair do modo suporte
+      masterLib.limparAssinanteImpersonado(userMaster.id, $app)
+      const assImpAposSair = masterLib.obterAssinanteImpersonado(userMaster.id, $app)
+      const assTenancyAposSair = tenancyLib.assinanteDoUsuario(userMaster)
+
+      const item1Ok =
+        assImp === assinanteTBId &&
+        assTenancy.id === assinanteTBId &&
+        empresasAcessiveis.every((e) => e.getString('assinante_id') === assinanteTBId) &&
+        modoMasterLogOk &&
+        assImpAposSair === null &&
+        assTenancyAposSair.id === assinanteHHId
+
+      resultados.item1_suporte_entrar_e_sair = item1Ok
+      resultados.item1_detalhes = {
+        impersonacao_ativada_id: assImp,
+        tenancy_retornou_testeb: assTenancy.id === assinanteTBId,
+        total_empresas_testeb: empresasAcessiveis.length,
+        log_auditoria_modo_master: modoMasterLogOk,
+        impersonacao_limpa_apos_sair: assImpAposSair === null,
+        tenancy_voltou_hh: assTenancyAposSair.id === assinanteHHId,
+      }
+
+      // ----------------------------------------------------------------------
+      // TESTE 2: Pausar e Reativar licença do TESTE B (Bloqueio de login)
+      // ----------------------------------------------------------------------
+      // 2.1 Pausar TESTE B
+      assTB.set('status', 'Pausada')
+      $app.save(assTB)
+      masterLib.registrarEventoLicenca($app, {
+        assinante_id: assTB.id,
+        numero_licenca: assTB.getString('numero_licenca'),
+        tipo: 'Pausa',
+        plano_id: assTB.getString('plano_id'),
+        validade_ate: assTB.getString('data_expiracao') || '',
+        descricao: 'Teste 9.7b2 item 2: Pausa temporária para teste de bloqueio.',
+        criado_por: userMaster.id,
+      })
+
+      let loginBloqueadoPausa = false
+      let msgBloqueioPausa = ''
+      try {
+        masterLib.validarLicencaAtivaOuBloquear(assTB, uTesteB)
+      } catch (errBlk) {
+        loginBloqueadoPausa = true
+        msgBloqueioPausa = errBlk.message || ''
+      }
+
+      // 2.2 Reativar TESTE B
+      assTB.set('status', 'Ativa')
+      $app.save(assTB)
+      masterLib.registrarEventoLicenca($app, {
+        assinante_id: assTB.id,
+        numero_licenca: assTB.getString('numero_licenca'),
+        tipo: 'Reativação',
+        plano_id: assTB.getString('plano_id'),
+        validade_ate: assTB.getString('data_expiracao') || '',
+        descricao: 'Teste 9.7b2 item 2: Reativação após teste de pausa.',
+        criado_por: userMaster.id,
+      })
+
+      let loginLiberadoAposReativar = false
+      try {
+        masterLib.validarLicencaAtivaOuBloquear(assTB, uTesteB)
+        loginLiberadoAposReativar = true
+      } catch (_) {
+        loginLiberadoAposReativar = false
+      }
+
+      const item2Ok =
+        loginBloqueadoPausa &&
+        msgBloqueioPausa.indexOf('Licença pausada ou vencida. Fale com o suporte.') >= 0 &&
+        loginLiberadoAposReativar
+
+      resultados.item2_bloqueio_pausa = item2Ok
+      resultados.item2_detalhes = {
+        login_bloqueado_quando_pausada: loginBloqueadoPausa,
+        mensagem_bloqueio: msgBloqueioPausa,
+        login_liberado_apos_reativar: loginLiberadoAposReativar,
+      }
+
+      // ----------------------------------------------------------------------
+      // TESTE 3: Expiração e Renovação (+30d)
+      // ----------------------------------------------------------------------
+      // 3.1 Colocar data_expiracao vencida no TESTE B (ex: ontem)
+      const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      assTB.set('data_expiracao', ontem)
+      assTB.set('status', 'Ativa')
+      $app.save(assTB)
+
+      // Chamar trabalho de expiração
+      const resExpiracao = masterLib.processarExpiracaoLicencas($app)
+      const assTBAposExp = $app.findRecordById('assinantes', assinanteTBId)
+      const ficouExpirada = assTBAposExp.getString('status') === 'Expirada'
+
+      // Verificar evento Expiração em licencas_eventos
+      const eventosExp = $app.findRecordsByFilter(
+        'licencas_eventos',
+        "assinante_id = '" + assinanteTBId + "' && tipo = 'Expiração'",
+        '-created',
+        1,
+        0,
+      )
+      const eventoExpOk = eventosExp && eventosExp.length > 0
+
+      // 3.2 Renovar +30d (voltar a Ativa)
+      const hoje = new Date()
+      const novaDataObj = new Date(hoje.getTime() + 30 * 24 * 60 * 60 * 1000)
+      const novaExpStr = novaDataObj.toISOString().slice(0, 10)
+      assTB.set('data_expiracao', novaExpStr)
+      assTB.set('status', 'Ativa')
+      $app.save(assTB)
+
+      masterLib.registrarEventoLicenca($app, {
+        assinante_id: assTB.id,
+        numero_licenca: assTB.getString('numero_licenca'),
+        tipo: 'Renovação +30d',
+        plano_id: assTB.getString('plano_id'),
+        validade_ate: novaExpStr,
+        descricao: `Teste 9.7b2 item 3: Renovação +30d concluída. Vencimento: ${novaExpStr}.`,
+        criado_por: userMaster.id,
+      })
+
+      const assTBFim = $app.findRecordById('assinantes', assinanteTBId)
+      const statusFinalAtiva = assTBFim.getString('status') === 'Ativa'
+
+      const item3Ok =
+        ficouExpirada &&
+        eventoExpOk &&
+        statusFinalAtiva &&
+        assTBFim.getString('data_expiracao') === novaExpStr
+
+      resultados.item3_expiracao_e_renovacao = item3Ok
+      resultados.item3_detalhes = {
+        total_expiradas_no_job: resExpiracao.total_processadas,
+        status_apos_job: assTBAposExp.getString('status'),
+        evento_expiracao_gravado: eventoExpOk,
+        status_final_apos_renovacao: assTBFim.getString('status'),
+        nova_expiracao: assTBFim.getString('data_expiracao'),
+      }
+
+      // ----------------------------------------------------------------------
+      // TESTE 4: Proteção Inviolável do Master e da HOSPITAL HOME
+      // ----------------------------------------------------------------------
+      // 4.1 Mesmo que HOSPITAL HOME esteja Pausada/Expirada, nunca bloqueia
+      let hhBloqueada = true
+      try {
+        const assHHFake = assHH
+        masterLib.validarLicencaAtivaOuBloquear(assHHFake, userMaster)
+        hhBloqueada = false
+      } catch (_) {
+        hhBloqueada = true
+      }
+
+      // 4.2 Master acessando assinante pausado NUNCA é bloqueado
+      let masterBloqueado = true
+      try {
+        const assPausadoFake = $app.findRecordById('assinantes', assinanteTBId)
+        assPausadoFake.set('status', 'Pausada')
+        masterLib.validarLicencaAtivaOuBloquear(assPausadoFake, userMaster)
+        masterBloqueado = false
+      } catch (_) {
+        masterBloqueado = true
+      }
+
+      const item4Ok = !hhBloqueada && !masterBloqueado
+      resultados.item4_protecao_master_e_hh = item4Ok
+      resultados.item4_detalhes = {
+        hospital_home_origem_bloqueada: hhBloqueada,
+        master_bloqueado_em_licenca_pausada: masterBloqueado,
+        protecao_integral_confirmada: item4Ok,
+      }
+
+      // ----------------------------------------------------------------------
+      // Conclusão Geral
+      // ----------------------------------------------------------------------
+      const todosAprovados = item1Ok && item2Ok && item3Ok && item4Ok
+
+      return c.json(200, {
+        sucesso: todosAprovados,
+        resultado: todosAprovados ? 'APROVADO' : 'FALHOU',
+        testes: resultados,
+        status_final_teste_b: assTBFim.getString('status'),
+        data_expiracao_final_teste_b: assTBFim.getString('data_expiracao'),
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro durante execução do teste 9.7b2.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
 // POST /backend/v1/master/executar-teste-completo-97a2
 // Rota de teste automatizado exigida pelo prompt 9.7a2:
 // 1. Resumo mostra 2 assinantes

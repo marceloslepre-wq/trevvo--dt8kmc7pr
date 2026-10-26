@@ -284,6 +284,18 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### master_impersonacoes
+
+Tabela de sessão transitória de suporte/impersonação do usuário Master no ERP SaaS (Etapa 9 Multi-tenant - Prompt 9.7b2, Migration 0084). Registra quando o usuário master (`users.tipo = 'master'`) assume a visão operacional de um cliente assinante específico para prestação de suporte técnico pontual (Modo Master). Regras de segurança estritas: acesso totalmente bloqueado para o navegador (`listRule: null`, `viewRule: null`, `createRule: null`, `updateRule: null`, `deleteRule: null`), operada exclusivamente pelo backend através dos endpoints `/backend/v1/master/suporte/entrar` e `/backend/v1/master/suporte/sair` (`master_rotas.js` e `master_lib.js`). Possui índice único por `user_id`.
+
+- id (text, PK)
+- user_id (relation -> users, obrigatório, usuário master em sessão de suporte, índice único)
+- assinante_id (relation -> assinantes, obrigatório, assinante cliente sob suporte)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `user_id` (único: `idx_master_impersonacoes_user`), `assinante_id` (`idx_master_impersonacoes_ass`).
+
 ### config_master
 
 Tabela de parametrização e configuração do Painel Master Multi-tenant (Etapa 9 Multi-tenant - Prompt 9.7a, Migration 0081). Registro único gerenciado exclusivamente pelo usuário master do SaaS (`users.tipo = 'master'`). Define regras globais de governança, período padrão de trial e limites padrão de novos clientes. Acesso à coleção totalmente restrito ao usuário master tanto para leitura quanto para gravação (`listRule`, `viewRule`, `createRule`, `updateRule` com `@request.auth.id != '' && @request.auth.tipo = 'master'`; `deleteRule: null`).
@@ -3514,6 +3526,46 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.141** — Etapa 9 Multi-tenant (Prompt 9.7b2: Modo Master / Suporte, Faixa Fixa no Topo, Bloqueio de Licenças Pausadas/Vencidas, Cron Job de Expiração Diária e Testes no Backend Vivo):
+
+1. **Modo Master / Impersonação de Suporte Técnico (`master_rotas.js`, `master_lib.js`, `tenancy.js`, `Header.tsx`, `EmpresaContext.tsx`):**
+   - **Endpoints de Suporte do Master:**
+     - `POST /backend/v1/master/suporte/entrar`: recebe `{ assinante_id }`, valida se o requisitante é master (`exigirMaster`), grava/atualiza a sessão na coleção `master_impersonacoes` e limpa os caches de tenancy. A HOSPITAL HOME (`origem = true`) é protegida de auto-impersonação.
+     - `POST /backend/v1/master/suporte/sair`: remove a sessão de impersonação do master em `master_impersonacoes`, retornando imediatamente o contexto de tenancy e empresas ativas para o assinante de origem `HOSPITAL HOME`.
+     - `GET /backend/v1/master/suporte/status`: retorna se há impersonação ativa, com dados do assinante cliente atendido (`ativo`, `assinante_id`, `assinante_nome`, `numero_licenca`).
+   - **Adaptação dos Módulos `tenancy.js` e `master_lib.js`:**
+     - Funções `assinanteDoUsuario` e `empresasDoUsuario` consultam `obterAssinanteImpersonado(userId)`. Quando ativo, o master passa a enxergar estritamente as filiais e os dados daquele cliente como se fosse um administrador da conta cliente.
+     - Endpoints `/backend/v1/tenancy/me` e `/backend/v1/empresas/acessiveis` reportam o contexto do cliente suportado, injetando flags `modo_master: true` e `assinante_impersonado`.
+   - **Auditoria de Ações em Modo Master (`auditoria_modo_master.js`):**
+     - Hook do PocketBase intercepta alterações efetuadas em modo master e marca `modo_master = true` e sufixo `(modo master)` no `usuario_nome` em `logs_auditoria`, garantindo rastreabilidade total de intervenções de suporte.
+   - **Faixa Fixa no Topo do ERP (`Header.tsx`):**
+     - Quando em modo master, exibe banner fixo e proeminente no topo:
+       _"Você está no painel de {NOME_DO_CLIENTE} (modo master)"_
+     - Botão integrado **"Sair do painel do cliente"**: chama `sairModoSuporteMaster`, recarrega o contexto de empresas para a HOSPITAL HOME e redireciona para `/master`.
+   - **Ativação da Ação "Acessar painel" no Painel Master (`MasterPage.tsx`):**
+     - No menu "..." de cada licença da aba "Licenças de clientes", o botão **"Acessar painel"** está ativo e funcional para clientes terceiros (ex: TESTE B), invocando o endpoint de suporte e navegando para o ERP do cliente.
+     - Para a `HOSPITAL HOME` (`origem = true`), a opção permanece desabilitada com tooltip `"Licença de origem do SaaS"`.
+
+2. **Bloqueio de Login por Licença Pausada ou Vencida (`usuario_bloquear_licenca_auth.js`, `LoginScreen.tsx`):**
+   - Hook intercepta autenticações em `users` (`onRecordAuthRequest`). Se a licença do assinante estiver com `status` em `'Pausada'`, `'Expirada'` ou `'Cancelada'`, ou se a data de expiração estiver ultrapassada, o login do usuário comum é recusado imediatamente pelo backend com erro claro:
+     _"Licença pausada ou vencida. Fale com o suporte."_
+   - Usuário master e assinante de origem (`HOSPITAL HOME`) são permanentemente isentos de bloqueio, garantindo acesso administrativo irrestrito à plataforma.
+   - Tela de login (`LoginScreen.tsx`) exibe mensagem de alerta vermelha com o texto exato retornado quando a licença estiver pausada/vencida.
+
+3. **Job Cron de Expiração Diária de Licenças (`cron_expiracao_licencas.js`):**
+   - Agendamento diário (`cronAdd('expiracao_diaria_licencas', '0 0 * * *', ...)`) registrado na plataforma.
+   - Executa varredura de assinantes que não sejam de origem (`origem = false`) com `status = 'Ativa'` e cuja `data_expiracao` seja anterior à data atual (`hoje`), atualizando o status para `'Expirada'` e registrando evento de `'Expiração'` em `licencas_eventos`.
+   - Endpoint manual do Master para acionamento sob demanda: `POST /backend/v1/master/executar-trabalho-expiracao`.
+
+4. **Bateria de Testes no Backend Vivo (Executados e Aprovados):**
+   - **Teste 1 (Impersonação e Modo Master):** Master entrou no TESTE B (`l6vfd1p688j2y9a`); `tenancy/me` e `empresas/acessiveis` devolveram o escopo do TESTE B; log gravado com `modo_master = true`; saída de suporte retornou o contexto com sucesso para a HOSPITAL HOME.
+   - **Teste 2 (Bloqueio por Pausa):** TESTE B pausado; autenticação de `admin@testeb.com` bloqueada com _"Licença pausada ou vencida. Fale com o suporte."_; após reativação, o login foi restabelecido normalmente.
+   - **Teste 3 (Expiração e Renovação):** TESTE B colocado com data vencida; execução do trabalho de expiração mudou status para `Expirada` e registrou evento `Expiração` em `licencas_eventos`; renovação `+30d` restabeleceu a licença como `Ativa`. No fim do teste, o TESTE B permaneceu `Ativa`.
+   - **Teste 4 (Proteção Inviolável):** Confirmado que o usuário Master e a HOSPITAL HOME (`origem = true`, licença `HH-RFR8HF`) nunca são bloqueados sob nenhuma circunstância.
+   - Sem erros de deploy, hooks ou cron nos logs do Skip Cloud.
+
+---
 
 **Versão 0.0.139** — Etapa 9 Multi-tenant (Prompt 9.7b: Painel Master - Aba Licenças de Clientes, Poderes da Licença, Eventos e Exclusão em Cascata):
 

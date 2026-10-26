@@ -378,7 +378,7 @@ export async function excluirLicencaCascata(
  * Executa bateria completa de testes automatizados do Prompt 9.7b
  */
 export async function executarTesteCompleto97b(): Promise<any> {
-  const res = await pb.send<any>('/backend/v1/master/executar-teste-completo-97b', {
+  const res = await pb.send<any>('/backend/v1/master/executar-teste-completo-97b2', {
     method: 'POST',
   })
   return res
