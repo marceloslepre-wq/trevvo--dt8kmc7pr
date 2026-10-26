@@ -1955,34 +1955,50 @@ routerAdd(
       masterLib.exigirMaster(auth, $app)
 
       const planosRecs = $app.findRecordsByFilter('planos_catalogo', '', 'valor_mensal', 200, 0)
-      const assinantes = $app.findRecordsByFilter('assinantes', '', '', 1000, 0)
+      const assinantes = $app.findRecordsByFilter('assinantes', '', 'nome', 1000, 0)
 
-      // Contagem de assinantes por plano
-      const contagemPorPlano = {}
+      // Contagem e lista de assinantes por plano
+      const assinantesPorPlano = {}
       for (let a = 0; a < assinantes.length; a++) {
-        const pId = assinantes[a].getString('plano_id')
+        const assItem = assinantes[a]
+        const pId = assItem.getString('plano_id')
         if (pId) {
-          contagemPorPlano[pId] = (contagemPorPlano[pId] || 0) + 1
+          if (!assinantesPorPlano[pId]) {
+            assinantesPorPlano[pId] = []
+          }
+          assinantesPorPlano[pId].push({
+            id: assItem.id,
+            nome: assItem.getString('nome'),
+            numero_licenca: assItem.getString('numero_licenca'),
+            status: assItem.getString('status'),
+            data_expiracao: assItem.getString('data_expiracao') || '',
+            origem: assItem.getBool('origem'),
+            created: assItem.getString('created'),
+          })
         }
       }
 
-      const planos = planosRecs.map((p) => ({
-        id: p.id,
-        nome: p.getString('nome'),
-        etiqueta: p.getString('etiqueta'),
-        descricao: p.getString('descricao'),
-        valor_mensal: p.getFloat('valor_mensal') || 0,
-        limite_empresas: p.getInt('limite_empresas') || 0,
-        limite_usuarios: p.getInt('limite_usuarios') || 0,
-        permite_nfe: p.getBool('permite_nfe'),
-        permite_nfce: p.getBool('permite_nfce'),
-        permite_sped: p.getBool('permite_sped'),
-        exclusivo_master: p.getBool('exclusivo_master'),
-        ativo: p.getBool('ativo'),
-        total_assinantes: contagemPorPlano[p.id] || 0,
-        created: p.getString('created'),
-        updated: p.getString('updated'),
-      }))
+      const planos = planosRecs.map((p) => {
+        const assList = assinantesPorPlano[p.id] || []
+        return {
+          id: p.id,
+          nome: p.getString('nome'),
+          etiqueta: p.getString('etiqueta'),
+          descricao: p.getString('descricao'),
+          valor_mensal: p.getFloat('valor_mensal') || 0,
+          limite_empresas: p.getInt('limite_empresas') || 0,
+          limite_usuarios: p.getInt('limite_usuarios') || 0,
+          permite_nfe: p.getBool('permite_nfe'),
+          permite_nfce: p.getBool('permite_nfce'),
+          permite_sped: p.getBool('permite_sped'),
+          exclusivo_master: p.getBool('exclusivo_master'),
+          ativo: p.getBool('ativo'),
+          total_assinantes: assList.length,
+          assinantes: assList,
+          created: p.getString('created'),
+          updated: p.getString('updated'),
+        }
+      })
 
       return c.json(200, {
         sucesso: true,

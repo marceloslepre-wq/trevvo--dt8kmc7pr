@@ -3527,6 +3527,39 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.146** — Etapa 9 Multi-tenant (Prompt 9.7c: Detalhes Completos de Planos de Licença e Assinantes Vinculados):
+
+1. **Extensão do Endpoint `/backend/v1/master/planos` (`pocketbase/hooks/master_rotas.js`):**
+   - Agrupamento em tempo real dos assinantes cadastrados no SaaS por `plano_id`.
+   - Cada plano devolve agora, além do totalizador `total_assinantes`, o array `assinantes` estruturado contendo: `id`, `nome`, `numero_licenca`, `status`, `data_expiracao`, `origem` e `created`.
+   - Mantida a exigência estrita de privilégio master via `exigirMaster` do módulo `master_lib.js` carregado dinamicamente via `require` dentro do callback (em conformidade permanente com as regras da JSVM do PocketBase).
+
+2. **Tipagem e Serviços no Frontend (`src/services/master.ts`):**
+   - Atualizada a interface `MasterPlano` para contemplar `assinantes?: MasterPlanoAssinante[]`.
+   - Criada a interface `MasterPlanoAssinante` tipando rigorosamente os dados da licença de cada assinante vinculado.
+
+3. **Diálogo de Detalhes de Plano no Painel Master (`MasterPage.tsx`):**
+   - **Botão "Detalhes" em cada Cartão do Catálogo de Planos:** Posicionado no rodapé à esquerda de cada cartão da aba "Catálogo de planos", abrindo o diálogo modal com os dados consolidados do plano.
+   - **Link Interativo na Tabela de Licenças de Clientes:** Na coluna "Plano contratado", o nome do plano comercial tornou-se um botão interativo com ícone discreto que abre o mesmo diálogo de detalhes diretamente a partir da linha do assinante.
+   - **Campos e Parâmetros Exibidos no Diálogo:**
+     - Nome do plano, etiqueta comercial e situação (Ativo / Inativo em badge).
+     - Descrição textual cadastrada.
+     - Nota em destaque para planos exclusivos do Master (ex: "Plano Master", isenção permanente, não elegível a novos cadastros de clientes e protegido de exclusão).
+     - Valor mensal formatado em R$ ou badge "Isento" quando R$ 0,00.
+     - Limite de empresas (ou "Ilimitado" se 0).
+     - Limite de usuários (ou "Ilimitado" se 0).
+     - Recursos fiscais autorizados: NF-e modelo 55, NFC-e modelo 65 e SPED Fiscal (com indicação visual clara de Habilitado ou Bloqueado).
+     - Datas de criação e de última atualização formatadas em data e hora brasileira.
+     - **Seção "Assinantes neste plano":** contador de assinantes vinculados e lista detalhada com nome do cliente, badge "ORIGEM" quando matriz, número da licença, situação da licença (Ativa, Trial, Pausada, Expirada) e validade/expiração (ou "Vitalícia" para a HOSPITAL HOME). Quando vazio, exibe o aviso amigável "Nenhum assinante neste plano".
+     - Botão de atalho para edição direta do plano via `abrirEditarPlano`.
+
+4. **Integridade das Regras e do Banco:**
+   - Nenhum plano comercial foi alterado ou excluído.
+   - Preservados intactos o modo master (impersonação de suporte), bloqueios de autenticação para licenças pausadas/expiradas, o trabalho cron diário oficial e as sequências de numeração.
+   - Nenhuma collection ou migration nova foi criada. Testes efetuados diretamente contra a API e backend vivo sem arquivos residuais (Regra de Ouro nº 10).
+
+---
+
 **Versão 0.0.143** — Etapa 9 Multi-tenant (Prompt 9.7b3: Saneamento do Agendador de Tarefas, Neutralização de Migrations de Teste e Regra Permanente Anti-Cron/Rotas de Teste):
 
 1. **Remoção do Cron Fantasma `teste97b_runner` (`cron_expiracao_licencas.js`):**

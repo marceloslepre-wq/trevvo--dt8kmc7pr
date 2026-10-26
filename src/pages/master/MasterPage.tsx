@@ -30,6 +30,8 @@ import {
   FileCheck2,
   Boxes,
   Sparkles,
+  Info,
+  Eye,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -237,6 +239,29 @@ export const MasterPage: React.FC = () => {
   const [salvandoDiasTrial, setSalvandoDiasTrial] = useState(false)
   const [planoSelecionadoLink, setPlanoSelecionadoLink] = useState<string>('nenhum')
   const [copiadoLink, setCopiadoLink] = useState(false)
+
+  // Diálogo de Detalhes de Plano (Prompt 9.7c)
+  const [modalDetalhesPlanoAberto, setModalDetalhesPlanoAberto] = useState(false)
+  const [planoDetalhes, setPlanoDetalhes] = useState<MasterPlano | null>(null)
+
+  const abrirDetalhesPlano = (planoOuId: MasterPlano | string) => {
+    if (typeof planoOuId === 'string') {
+      const encontrado = planos.find((p) => p.id === planoOuId)
+      if (encontrado) {
+        setPlanoDetalhes(encontrado)
+        setModalDetalhesPlanoAberto(true)
+      } else {
+        toast({
+          title: 'Plano não encontrado',
+          description: 'Não foi possível localizar os dados deste plano comercial.',
+          variant: 'destructive',
+        })
+      }
+    } else {
+      setPlanoDetalhes(planoOuId)
+      setModalDetalhesPlanoAberto(true)
+    }
+  }
 
   // Quadro 3: Modal de Plano (Criar / Editar)
   const [modalPlanoAberto, setModalPlanoAberto] = useState(false)
@@ -1486,12 +1511,21 @@ export const MasterPage: React.FC = () => {
                               </div>
                             </td>
 
-                            {/* Coluna 3: Plano Contratado (Selo Master no plano exclusivo_master) */}
+                            {/* Coluna 3: Plano Contratado (Selo Master no plano exclusivo_master e Link para Diálogo de Detalhes) */}
                             <td className="py-3 px-3.5 align-middle">
                               <div className="flex items-center gap-1.5">
-                                <span className="font-semibold text-slate-800">
-                                  {lic.plano_nome}
-                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => abrirDetalhesPlano(lic.plano_id)}
+                                  className="font-semibold text-indigo-700 hover:text-indigo-900 hover:underline text-left cursor-pointer transition-colors flex items-center gap-1 group"
+                                  title="Clique para ver os detalhes completos deste plano"
+                                >
+                                  <span>{lic.plano_nome}</span>
+                                  <Info
+                                    size={12}
+                                    className="text-indigo-400 group-hover:text-indigo-600"
+                                  />
+                                </button>
                                 {lic.plano_exclusivo_master && (
                                   <Badge className="bg-indigo-600 text-white font-bold text-[9px] px-1.5 py-0">
                                     Master
@@ -1975,31 +2009,44 @@ export const MasterPage: React.FC = () => {
                         )}
                       </CardContent>
 
-                      {/* Rodapé do Cartão com Botões Editar e Excluir */}
-                      <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-end gap-2">
+                      {/* Rodapé do Cartão com Botões Detalhes, Editar e Excluir */}
+                      <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => abrirEditarPlano(plano)}
-                          className="h-8 text-xs font-semibold gap-1 bg-white hover:bg-slate-100 text-slate-700"
+                          variant="secondary"
+                          onClick={() => abrirDetalhesPlano(plano)}
+                          className="h-8 text-xs font-semibold gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                          title="Ver detalhes completos e assinantes deste plano"
                         >
-                          <Pencil size={13} />
-                          Editar
+                          <Eye size={13} />
+                          Detalhes
                         </Button>
 
-                        {/* O Plano Master (exclusivo_master) NÃO tem botão de excluir */}
-                        {!ehMaster && (
+                        <div className="flex items-center gap-1.5">
                           <Button
                             size="sm"
-                            variant="ghost"
-                            onClick={() => setPlanoParaExcluir(plano)}
-                            className="h-8 text-xs font-semibold gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                            title="Excluir plano"
+                            variant="outline"
+                            onClick={() => abrirEditarPlano(plano)}
+                            className="h-8 text-xs font-semibold gap-1 bg-white hover:bg-slate-100 text-slate-700"
                           >
-                            <Trash2 size={13} />
-                            Excluir
+                            <Pencil size={13} />
+                            Editar
                           </Button>
-                        )}
+
+                          {/* O Plano Master (exclusivo_master) NÃO tem botão de excluir */}
+                          {!ehMaster && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setPlanoParaExcluir(plano)}
+                              className="h-8 text-xs font-semibold gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                              title="Excluir plano"
+                            >
+                              <Trash2 size={13} />
+                              Excluir
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </Card>
                   )
@@ -2009,6 +2056,292 @@ export const MasterPage: React.FC = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* DIÁLOGO DE DETALHES COMPLETOS DO PLANO DE LICENÇA (Prompt 9.7c) */}
+      <Dialog open={modalDetalhesPlanoAberto} onOpenChange={setModalDetalhesPlanoAberto}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3 pr-6">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                    <Layers size={18} />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                      {planoDetalhes?.nome}
+                      {planoDetalhes?.exclusivo_master && (
+                        <Badge className="bg-amber-400 text-slate-950 font-extrabold text-[10px] px-2 py-0 border-none">
+                          MASTER
+                        </Badge>
+                      )}
+                    </DialogTitle>
+                    {planoDetalhes?.etiqueta && (
+                      <span className="text-xs font-semibold text-indigo-600">
+                        {planoDetalhes.etiqueta}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <Badge
+                variant={planoDetalhes?.ativo ? 'default' : 'secondary'}
+                className={`text-[11px] font-bold px-2.5 py-0.5 ${
+                  planoDetalhes?.ativo ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {planoDetalhes?.ativo ? 'Ativo' : 'Inativo'}
+              </Badge>
+            </div>
+            <DialogDescription className="text-xs text-slate-600 pt-1">
+              {planoDetalhes?.descricao || 'Sem descrição cadastrada para este plano comercial.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {planoDetalhes && (
+            <div className="space-y-4 py-2">
+              {/* Aviso se Exclusivo Master */}
+              {planoDetalhes.exclusivo_master && (
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-2.5 text-xs text-amber-900">
+                  <ShieldCheck size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Plano Exclusivo do Usuário Master:</span>
+                    <p className="text-amber-800 text-[11px] mt-0.5 leading-relaxed">
+                      Este plano é reservado à conta master (HOSPITAL HOME) e não fica disponível
+                      para novos clientes no catálogo público de auto-cadastro. Possui isenção
+                      permanente de mensalidade e não pode ser excluído.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Grade de Parâmetros Principais */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                    Valor Mensal
+                  </span>
+                  <span className="text-base font-extrabold text-slate-900 mt-0.5 block">
+                    {planoDetalhes.valor_mensal === 0 ? (
+                      <Badge
+                        variant="secondary"
+                        className="bg-emerald-100 text-emerald-800 font-bold text-xs"
+                      >
+                        Isento
+                      </Badge>
+                    ) : (
+                      formatarMoeda(planoDetalhes.valor_mensal)
+                    )}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                    Limite Empresas
+                  </span>
+                  <span className="text-base font-extrabold text-slate-900 mt-0.5 block">
+                    {!planoDetalhes.limite_empresas || planoDetalhes.limite_empresas <= 0
+                      ? 'Ilimitado'
+                      : `${planoDetalhes.limite_empresas} empresa(s)`}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                    Limite Usuários
+                  </span>
+                  <span className="text-base font-extrabold text-slate-900 mt-0.5 block">
+                    {!planoDetalhes.limite_usuarios || planoDetalhes.limite_usuarios <= 0
+                      ? 'Ilimitado'
+                      : `${planoDetalhes.limite_usuarios} usuário(s)`}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                    Total Assinantes
+                  </span>
+                  <span className="text-base font-extrabold text-indigo-700 mt-0.5 block">
+                    {planoDetalhes.total_assinantes ?? (planoDetalhes.assinantes?.length || 0)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Recursos Fiscais Habilitados */}
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+                <span className="text-xs font-bold text-slate-800 block">
+                  Módulos e Recursos Fiscais Liberados:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div
+                    className={`flex items-center gap-2 p-2 rounded border text-xs font-semibold ${
+                      planoDetalhes.permite_nfe
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                    }`}
+                  >
+                    <FileText size={15} />
+                    <span>
+                      NF-e (modelo 55): {planoDetalhes.permite_nfe ? 'Habilitado' : 'Bloqueado'}
+                    </span>
+                  </div>
+
+                  <div
+                    className={`flex items-center gap-2 p-2 rounded border text-xs font-semibold ${
+                      planoDetalhes.permite_nfce
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                    }`}
+                  >
+                    <FileCheck2 size={15} />
+                    <span>
+                      NFC-e (modelo 65): {planoDetalhes.permite_nfce ? 'Habilitado' : 'Bloqueado'}
+                    </span>
+                  </div>
+
+                  <div
+                    className={`flex items-center gap-2 p-2 rounded border text-xs font-semibold ${
+                      planoDetalhes.permite_sped
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                    }`}
+                  >
+                    <Boxes size={15} />
+                    <span>
+                      SPED Fiscal: {planoDetalhes.permite_sped ? 'Habilitado' : 'Bloqueado'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Metadados: Datas de Criação e Atualização */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-500 bg-slate-50/50 p-2.5 rounded-lg border border-slate-100">
+                <div className="flex items-center gap-1.5">
+                  <Clock size={13} className="text-slate-400" />
+                  <span>
+                    Criado em:{' '}
+                    <strong className="text-slate-700">
+                      {planoDetalhes.created
+                        ? new Date(planoDetalhes.created).toLocaleString('pt-BR')
+                        : 'Não informado'}
+                    </strong>
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <RefreshCw size={13} className="text-slate-400" />
+                  <span>
+                    Última atualização:{' '}
+                    <strong className="text-slate-700">
+                      {planoDetalhes.updated
+                        ? new Date(planoDetalhes.updated).toLocaleString('pt-BR')
+                        : 'Não informado'}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* SEÇÃO: Assinantes neste Plano */}
+              <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                <div className="bg-slate-50 px-3.5 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users size={15} className="text-indigo-600" />
+                    <span className="text-xs font-bold text-slate-900">Assinantes neste plano</span>
+                    <Badge
+                      variant="outline"
+                      className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold"
+                    >
+                      {planoDetalhes.assinantes?.length || 0}
+                    </Badge>
+                  </div>
+                  <span className="text-[11px] text-slate-500">Base ativa vinculada</span>
+                </div>
+
+                <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                  {!planoDetalhes.assinantes || planoDetalhes.assinantes.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-slate-500">
+                      Nenhum assinante neste plano
+                    </div>
+                  ) : (
+                    planoDetalhes.assinantes.map((ass) => (
+                      <div
+                        key={ass.id}
+                        className="p-3 flex items-center justify-between hover:bg-slate-50/80 transition-colors text-xs"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900">{ass.nome}</span>
+                            {ass.origem && (
+                              <Badge className="bg-amber-500 text-slate-950 font-extrabold text-[9px] px-1.5 py-0 border-none">
+                                ORIGEM
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
+                            <span className="flex items-center gap-1">
+                              <KeyRound size={11} className="text-purple-600" />
+                              {ass.numero_licenca}
+                            </span>
+                            <span>•</span>
+                            <span>
+                              {ass.origem
+                                ? 'Vitalícia'
+                                : ass.data_expiracao
+                                  ? `Validade: ${ass.data_expiracao}`
+                                  : 'Sem expiração'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] font-bold px-2 py-0.5 ${
+                            ass.status === 'Ativa'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                              : ass.status === 'Trial'
+                                ? 'bg-purple-50 text-purple-800 border-purple-300'
+                                : ass.status === 'Pausada'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                  : 'bg-rose-50 text-rose-800 border-rose-300'
+                          }`}
+                        >
+                          {ass.status}
+                        </Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-slate-100">
+            {planoDetalhes && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setModalDetalhesPlanoAberto(false)
+                  abrirEditarPlano(planoDetalhes)
+                }}
+                className="gap-1.5 text-xs font-semibold mr-auto"
+              >
+                <Pencil size={13} />
+                Editar Plano
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={() => setModalDetalhesPlanoAberto(false)}
+              className="text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800"
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* MODAL DE CRIAR / EDITAR PLANO (com todos os campos da tabela planos_catalogo) */}
       <Dialog open={modalPlanoAberto} onOpenChange={setModalPlanoAberto}>

@@ -24,6 +24,16 @@ export interface MasterSuporteResponse {
   }
 }
 
+export interface MasterPlanoAssinante {
+  id: string
+  nome: string
+  numero_licenca: string
+  status: string
+  data_expiracao?: string
+  origem?: boolean
+  created?: string
+}
+
 export interface MasterPlano {
   id: string
   nome: string
@@ -38,6 +48,7 @@ export interface MasterPlano {
   exclusivo_master: boolean
   ativo: boolean
   total_assinantes?: number
+  assinantes?: MasterPlanoAssinante[]
   created?: string
   updated?: string
 }
