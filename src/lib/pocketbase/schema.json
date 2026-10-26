@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-26T00:45:06.141Z",
+  "generatedAt": "2026-10-26T00:58:12.492Z",
   "collections": [
     {
       "name": "users",
@@ -11266,6 +11266,74 @@
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_sequencias_chave ON sequencias (assinante_id, empresa_id, tipo)"
+      ]
+    },
+    {
+      "name": "credenciais_fiscais",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "empresa_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "empresas"
+        },
+        {
+          "name": "token_homologacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "token_producao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "webhook_secret",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "atualizado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "atualizado_em",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_credenciais_fiscais_empresa ON credenciais_fiscais (empresa_id)"
       ]
     }
   ]
