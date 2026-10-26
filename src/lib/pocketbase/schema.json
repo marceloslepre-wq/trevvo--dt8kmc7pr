@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-26T10:49:46.912Z",
+  "generatedAt": "2026-10-26T17:33:29.812Z",
   "collections": [
     {
       "name": "users",
@@ -11211,12 +11211,19 @@
           "required": false,
           "system": false,
           "collectionRef": "planos_catalogo"
+        },
+        {
+          "name": "ip_origem",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_assinantes_licenca ON assinantes (numero_licenca)",
         "CREATE INDEX idx_assinantes_status ON assinantes (status)",
-        "CREATE INDEX idx_assinantes_origem ON assinantes (origem)"
+        "CREATE INDEX idx_assinantes_origem ON assinantes (origem)",
+        "CREATE INDEX `idx_assinantes_ip_origem` ON `assinantes` (ip_origem)"
       ]
     },
     {
