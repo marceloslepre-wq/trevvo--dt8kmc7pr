@@ -284,6 +284,20 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### sequencias
+
+Tabela central de controle de numeração atômica sequencial por assinante e empresa (Etapa 9 Multi-tenant - 9.5b, Migration 0074/0077). Mantém os contadores sequenciais de movimentos (`vendas`, `inventarios`, `pedidos_compra`, `transferencias`) e cadastros (`produtos`, `clientes`, `fornecedores`, `condicoes_pagamento`, `empresas`). Acesso totalmente bloqueado para o navegador (`listRule: null`, `viewRule: null`, `createRule: null`, `updateRule: null`, `deleteRule: null`), sendo gerida e incrementada exclusivamente no servidor pelo backend (`pb_hooks`) através do módulo `numeracao_lib.js`. Possui índice único composto por `(assinante_id, empresa_id, tipo)`.
+
+- id (text, PK)
+- assinante_id (relation -> assinantes, obrigatório, cascadeDelete: false)
+- empresa_id (relation -> empresas, opcional — preenchido para numeração por empresa e nulo/vazio para cadastros globais do assinante)
+- tipo (text, obrigatório: "vendas" | "inventarios" | "pedidos_compra" | "transferencias" | "produtos" | "clientes" | "fornecedores" | "condicoes_pagamento" | "empresas")
+- ultimo_numero (number, obrigatório, último número gerado e consumido)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `(assinante_id, empresa_id, tipo)` (único: `idx_sequencias_chave`).
+
 ### assinantes
 
 Tabela de registro e controle de assinantes do ERP SaaS (Etapa 9 Multi-tenant, Migration 0061/0062). O assinante é o cliente do SaaS — representa a conta corporativa que agrupa as empresas (matriz e filiais) do cliente. Todas as coleções de cadastro possuem `assinante_id` e todas as coleções de movimento continuam com `empresa_id` (onde cada empresa pertence a um `assinante_id`). O campo chama-se `assinante_id`, nunca `cliente_id` (pois `cliente_id` é o cliente de venda do ERP). Acesso restrito ao backend e ao usuário com `users.tipo = 'master'`: leitura/visualização e atualização restritas a master (`@request.auth.tipo = 'master'`); criação e exclusão bloqueadas via SDK do navegador (`createRule: null`, `deleteRule: null`), operadas exclusivamente pelo backend.
@@ -3419,6 +3433,7 @@ A Etapa 9 transforma o ERP em uma plataforma SaaS multi-tenant verdadeira, garan
 7. **Privilégio master definido exclusivamente pelo backend:** Apenas o backend define e valida quem é master (`users.tipo = 'master'`). Nenhuma tela, endpoint público ou cadastro de usuário pode criar, remover ou alterar o privilégio de master. O navegador é bloqueado de alterar o campo `tipo` de `users` e de alterar o e-mail do master.
 8. **Situações da Licença:** Os status válidos da assinatura são: `Trial`, `Ativa`, `Pausada`, `Expirada`, `Cancelada`.
 9. **Novas coleções:** Toda coleção nova criada a partir da Etapa 9 já deve nascer com `assinante_id` (se for tabela de cadastro/configuração) ou com `empresa_id` (se for tabela de movimento/operacional vinculada a estabelecimento).
+10. **Testes de Backend sem Resíduos no Repositório (Regra Permanente):** Daqui para frente, testes de backend rodam via requisições ao backend vivo ou verificações pontuais, NUNCA deixando arquivos de teste soltos em `pocketbase/migrations/` ou `pocketbase/hooks/`. A runtime goja do PocketBase exige apenas `migrate()` no topo de migrations e rejeita arquivos de teste com "Invalid module" ou escopo corrompido.
 
 ### Módulo Backend `tenancy.js` e Endpoints de Multi-tenant
 
@@ -3436,6 +3451,53 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.130** — Etapa 9 Multi-tenant (Prompt 9.5b2: Fechamento do 9.5b, Limpeza de Testes, Ajuste de Sequências e Regra de Testes):
+
+1. **Remoção Definitiva de Arquivos de Teste Residuais:**
+   - Excluídos do repositório:
+     - `pocketbase/migrations/0078_testes_numeracao_95b.js`
+     - `pocketbase/hooks/testes_numeracao.js`
+   - Diretórios `pocketbase/migrations/` e `pocketbase/hooks/` auditados e confirmados 100% limpos, contendo unicamente migrations válidas e hooks oficiais.
+   - Estabelecida a **Regra de Ouro nº 10** permanente: testes de backend rodam via requisições contra o backend vivo, sem deixar arquivos de teste no repositório.
+
+2. **Ajuste Idempotente de Contadores da Coleção `sequencias` (Migration 0078):**
+   - Corrigidos os contadores da `HOSPITAL HOME` (`wqxiw7olvkup3sm`), que haviam sido incrementados em testes anteriores (`vendas` = 2 e `pedidos_compra` = 101), realinhando-os para o maior número que REALMENTE existe no banco naquela empresa e tipo (0 na ausência de registros reais).
+   - Contadores do assinante `TESTE B` mantidos estritamente intocados.
+   - Auditoria ANTES e DEPOIS no banco vivo:
+     - ANTES: `vendas` = 2, `pedidos_compra` = 101.
+     - DEPOIS: `vendas` = 0, `pedidos_compra` = 0.
+
+3. **Deploy do Backend e QA Verde:**
+   - Deploy aceito com sucesso pela plataforma Skip Cloud (`deploy_backend`), sem nenhum erro de módulo inválido ou rejeição nos logs.
+   - QA completo (lint, TypeScript e build) executado com 100% de sucesso.
+
+---
+
+**Versão 0.0.129** — Etapa 9 Multi-tenant (Prompt 9.5b: Numeração de Movimentos no Backend com Sequências Atômicas):
+
+1. **Arquitetura de Numeração Atômica no Backend (`numeracao_lib.js`):**
+   - Criação da biblioteca `pocketbase/hooks/numeracao_lib.js`, que exporta a função auxiliar `proximoNumero(assinanteId, empresaId, tipo, txApp)`.
+   - **Regra de Escopo do PocketBase JSVM (goja):** NUNCA declarar funções auxiliares no topo dos arquivos de hooks, pois a JSVM não enxerga funções top-level dentro de callbacks ("Hook scoping error"). Em vez disso, funções auxiliares são mantidas em biblioteca dedicada e carregadas com `require(`${\_\_hooks}/numeracao_lib.js`)` no corpo interno de cada callback.
+   - Execução atômica dentro de transação `$app.runInTransaction` com bloqueio e incremento em `sequencias`.
+   - **Seed Automático:** Caso a sequência ainda não exista na coleção `sequencias`, busca o maior número já existente no banco para aquela empresa e tipo e inicia a partir de `maior + 1`.
+
+2. **Hooks de Movimentação por Empresa (`numeracao_movimentos.js`):**
+   - Implementação de listeners `onRecordCreate` para os 4 tipos de movimentos que recebem numeração sequencial por empresa:
+     1. `vendas`: gera número sequencial automático por empresa emitente se `numero <= 0`.
+     2. `inventarios`: gera número sequencial automático por empresa se `numero <= 0`.
+     3. `pedidos_compra`: gera número sequencial automático por empresa se `numero <= 0`.
+     4. `transferencias`: gera número sequencial automático pela `empresa_origem_id` se `numero <= 0`.
+
+3. **Frontend Desacoplado da Numeração Prévia:**
+   - Telas de cadastro/criação de vendas, inventários, pedidos de compra e transferências deixam de tentar adivinhar ou reservar números previamente no frontend (eliminando chamadas cliente-side `obterProximoNumero*`).
+   - Telas exibem o indicativo amigável "Será gerado ao salvar", delegando a integridade numérica integralmente ao backend.
+
+4. **Coleção `sequencias` (Migration 0074/0077):**
+   - Tabela no banco de dados com índice único `CREATE UNIQUE INDEX idx_sequencias_chave ON sequencias (assinante_id, empresa_id, tipo)`.
+   - Todas as regras de API desabilitadas para o navegador (`null`), acessível unicamente pelos hooks do PocketBase.
+
+---
 
 **Versão 0.0.126** — Etapa 9 Multi-tenant (Prompt 9.4 + 9.4b + 9.4c: Proteção Integral por Tenancy em Coleções com Empresa e Todos os Hooks):
 
