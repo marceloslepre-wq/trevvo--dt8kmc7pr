@@ -53,7 +53,6 @@ import {
   TipoContaBancaria,
   TipoChavePix,
   obterFornecedorPorId,
-  obterProximoCodigoFornecedor,
   salvarFornecedor,
   ativarFornecedor,
   buscarFornecedorPorCpfCnpj,
@@ -366,19 +365,15 @@ export const FornecedorForm: React.FC = () => {
         })
         .finally(() => setCarregando(false))
     } else {
-      obterProximoCodigoFornecedor()
-        .then((cod) => {
-          setCodigo(cod)
-          setDadosIniciais(
-            JSON.stringify({
-              razaoSocial: '',
-              cpfCnpj: '',
-              tipoPessoa: 'Jurídica',
-              ativo: true,
-            }),
-          )
-        })
-        .catch(console.error)
+      // Inicia novo: código será gerado pelo backend ao salvar
+      setDadosIniciais(
+        JSON.stringify({
+          razaoSocial: '',
+          cpfCnpj: '',
+          tipoPessoa: 'Jurídica',
+          ativo: true,
+        }),
+      )
     }
   }, [ehEdicao, id, navigate, toast])
 
@@ -930,6 +925,7 @@ export const FornecedorForm: React.FC = () => {
                       value={codigo}
                       readOnly
                       disabled
+                      placeholder="será gerado ao salvar"
                       className="h-9 text-xs font-mono bg-slate-50 text-slate-500"
                     />
                   </div>

@@ -19,7 +19,6 @@ import {
   PerfilSped,
   obterEmpresaPorId,
   obterMatriz,
-  obterProximoCodigo,
   criarEmpresa,
   atualizarEmpresa,
   obterUrlLogo,
@@ -90,7 +89,7 @@ export const EmpresaForm: React.FC = () => {
   const [formData, setFormData] = useState<Partial<Empresa>>({
     ativo: true,
     tipo: 'Matriz',
-    codigo: 1,
+    codigo: undefined,
     razao_social: '',
     nome_fantasia: '',
     cnpj: '',
@@ -167,14 +166,13 @@ export const EmpresaForm: React.FC = () => {
             setLogoPreview(obterUrlLogo(emp))
           }
         } else {
-          // Novo registro: se já existir matriz, sugere "Filial" por padrão
-          const proximoCod = await obterProximoCodigo()
+          // Novo registro: se já existir matriz, sugere "Filial" por padrão (código gerado no backend ao salvar)
           if (matriz) {
             setFormData((prev) => ({
               ...prev,
               tipo: 'Filial',
               matriz_id: matriz.id,
-              codigo: proximoCod,
+              codigo: undefined,
               crt: matriz.crt || 1,
               regime_apuracao: matriz.regime_apuracao || 'Simples Nacional',
               obrigado_efd_icms_ipi: matriz.crt === 3,
@@ -183,7 +181,7 @@ export const EmpresaForm: React.FC = () => {
             setFormData((prev) => ({
               ...prev,
               tipo: 'Matriz',
-              codigo: proximoCod,
+              codigo: undefined,
             }))
           }
         }
@@ -445,7 +443,7 @@ export const EmpresaForm: React.FC = () => {
       novosErros.tipo = 'É necessário cadastrar uma Matriz antes da Filial'
     }
 
-    if (!formData.codigo || Number(formData.codigo) <= 0) {
+    if (isEdicao && (!formData.codigo || Number(formData.codigo) <= 0)) {
       novosErros.codigo = 'Código sequencial é obrigatório'
     }
 
@@ -562,7 +560,7 @@ export const EmpresaForm: React.FC = () => {
       setSalvando(true)
       const payloadLimpo = {
         ...formData,
-        codigo: Number(formData.codigo),
+        codigo: formData.codigo ? Number(formData.codigo) : undefined,
         crt: Number(formData.crt),
         aliquota_credito_simples:
           formData.aliquota_credito_simples !== undefined &&
@@ -757,15 +755,14 @@ export const EmpresaForm: React.FC = () => {
 
               {/* Código */}
               <div>
-                <Label className="text-xs font-semibold text-slate-700">
-                  Código Curto <span className="text-red-500">*</span>
-                </Label>
+                <Label className="text-xs font-semibold text-slate-700">Código Curto</Label>
                 <Input
-                  type="number"
+                  type="text"
                   value={formData.codigo || ''}
-                  onChange={(e) => setCampo('codigo', e.target.value)}
-                  className="mt-1 text-xs h-9 font-semibold text-slate-800"
-                  placeholder="1, 2, 3..."
+                  disabled
+                  readOnly
+                  placeholder="será gerado ao salvar"
+                  className="mt-1 text-xs h-9 font-semibold text-slate-800 bg-slate-50"
                 />
                 {erros.codigo && <span className="text-[11px] text-red-500">{erros.codigo}</span>}
               </div>

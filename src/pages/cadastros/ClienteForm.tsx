@@ -54,7 +54,6 @@ import {
   IndicadorIeCliente,
   RegimeTributarioCliente,
   obterClientePorId,
-  obterProximoCodigoCliente,
   salvarCliente,
   buscarClientePorCpfCnpj,
   ativarCliente,
@@ -387,20 +386,15 @@ export const ClienteForm: React.FC = () => {
         })
         .finally(() => setCarregando(false))
     } else {
-      // Inicia novo: obtém próximo código sequencial
-      obterProximoCodigoCliente()
-        .then((cod) => {
-          setCodigo(cod)
-          setDadosIniciais(
-            JSON.stringify({
-              nomeRazaoSocial: '',
-              cpfCnpj: '',
-              tipoPessoa: 'Física',
-              ativo: true,
-            }),
-          )
-        })
-        .catch(console.error)
+      // Inicia novo: código será gerado pelo backend ao salvar
+      setDadosIniciais(
+        JSON.stringify({
+          nomeRazaoSocial: '',
+          cpfCnpj: '',
+          tipoPessoa: 'Física',
+          ativo: true,
+        }),
+      )
     }
   }, [ehEdicao, id, navigate, toast])
 
@@ -1024,6 +1018,7 @@ export const ClienteForm: React.FC = () => {
                       value={codigo}
                       readOnly
                       disabled
+                      placeholder="será gerado ao salvar"
                       className="h-9 text-xs font-mono bg-slate-50 text-slate-500"
                     />
                   </div>
