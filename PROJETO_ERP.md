@@ -3468,6 +3468,38 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.136** — Etapa 9 Multi-tenant (Prompt 9.6c: Tela de Credenciais da Focus por Empresa, Fechamento do 9.6 e Correção de Inutilizações):
+
+1. **Seção "Credenciais da Focus NFe por Empresa" na Tela de Configuração de Emissão Fiscal (`ConfiguracaoEmissaoFiscalPage.tsx`):**
+   - Implementada seção dedicada e segura na rota `/fiscal/configuracao` exclusiva para administradores (`administrador = true`).
+   - Campos de token para **Homologação** e **Produção** com tipo senha (`type="password"`), permitindo informar novos tokens sem expor valores prévios.
+   - Indicação em tempo real do estado de cada token:
+     - `"não cadastrado"` (badge neutro)
+     - `"cadastrado (final XXXX)"` (badge verde exibindo os últimos 4 dígitos mascarados vindos do backend)
+     - `"usando o segredo do sistema"` (badge azul quando a empresa resolve o token via variáveis de ambiente/segredos do Skip Cloud)
+   - Badge com a **Origem em uso** no topo da seção: `Banco de Dados (Próprio)`, `Segredo do Sistema` ou `Não cadastrado`.
+   - Texto de esclarecimento obrigatório sobre segurança: cada empresa utiliza o token de sua conta própria na Focus NFe e a chave completa **nunca volta para o navegador**.
+   - Botão **"Salvar"**: grava de forma segura no backend através de `POST /backend/v1/fiscal/credenciais`.
+   - Botão **"Testar conexão"**: testa a comunicação com a API da Focus NFe utilizando o token em vigor sem trafegar a chave no corpo da requisição (`POST /backend/v1/fiscal/credenciais/testar-conexao`).
+   - Botão **"Registrar para todas as empresas"**: registra os webhooks na Focus NFe em lote para todas as filiais ativas do assinante (`POST /backend/v1/fiscal/registrar-webhook-assinante`), com URL e secret individuais.
+
+2. **Serviços Frontend Integrados (`src/services/fiscalIntegracao.ts`):**
+   - Criadas funções tipadas: `obterCredenciaisFiscais`, `salvarCredenciaisFiscais`, `testarConexaoCredenciaisFocus` e `registrarWebhookAssinante`.
+   - Contratos alinhados com as respostas mascaradas `{ sucesso, cadastrado, origem_efetiva, ambiente, token_final_homologacao, token_final_producao, webhook_registrado, atualizado_em }`.
+
+3. **Correção de Consulta de Inutilizações nos Relatórios Fiscais (`fiscal_relatorio_livro_saidas.js` e `sped/gerador.js`):**
+   - Corrigido o aviso que poluía os logs de runtime do PocketBase: a coleção `inutilizacoes` não possui o campo `ativo` em seu esquema.
+   - Removido o filtro inválido `&& ativo = true` nas consultas `$app.findRecordsByFilter('inutilizacoes', ...)` no Livro de Saídas (`fiscal_relatorio_livro_saidas.js`) e no gerador do SPED Fiscal (`sped/gerador.js`).
+   - Auditados todos os demais hooks e consultas: nenhuma outra consulta com filtro incorreto foi identificada.
+
+4. **Fechamento Completo do Prompt 9.6 (Multi-tenant - Credenciais Fiscais por Empresa):**
+   - **Coleção `credenciais_fiscais` (Migration 0080):** tabela segura com regras fechadas para o navegador (`listRule: null`, `viewRule: null`, `createRule: null`, `updateRule: null`, `deleteRule: null`), índice único por `empresa_id` e webhook_secret automático de 32 bytes hex.
+   - **Biblioteca `fiscal_token_lib.js`:** ordem de busca com prioridade 1 no banco (`credenciais_fiscais`) e fallback na prioridade 2 para segredos do Skip Cloud (`FOCUS_NFE_TOKEN_*`).
+   - **Webhooks por Empresa:** endpoint de callback `POST /backend/v1/fiscal/webhook-focus/{empresa_id}` com leitura de parâmetro via `e.request.pathValue("empresa_id")` no PocketBase v0.23+ e validação de HMAC/Bearer pelo secret exclusivo da empresa.
+   - **Isolamento Tenancy:** checagem rigorosa de acesso à empresa pelo assinante via `exigirEmpresaDoUsuario`.
+
+---
+
 **Versão 0.0.135** — Etapa 9 Multi-tenant (Prompt 9.6b: Backend de Credenciais Fiscais da Focus NFe por Empresa):
 
 1. **Correção de Leitura de Parâmetros de Rota no PocketBase v0.23+ (`fiscal_webhook_focus.js`):**

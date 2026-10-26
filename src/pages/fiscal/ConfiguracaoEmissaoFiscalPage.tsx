@@ -17,6 +17,11 @@ import {
   obterStatusSegredosFocus,
   registrarWebhookFocus,
   listarWebhooksFocus,
+  obterCredenciaisFiscais,
+  salvarCredenciaisFiscais,
+  testarConexaoCredenciaisFocus,
+  registrarWebhookAssinante,
+  CredenciaisFiscaisResponse,
   FocusHookItem,
 } from '@/services/fiscalIntegracao'
 import { listarEmpresasAtivas, Empresa } from '@/services/empresas'
@@ -58,6 +63,8 @@ import {
   RefreshCw,
   KeyRound,
   Calendar,
+  ShieldCheck,
+  Webhook,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -69,6 +76,14 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [testandoConexao, setTestandoConexao] = useState(false)
+
+  // Credenciais da Focus (Prompt 9.6)
+  const [credenciaisInfo, setCredenciaisInfo] = useState<CredenciaisFiscaisResponse | null>(null)
+  const [tokenHomologacaoInput, setTokenHomologacaoInput] = useState<string>('')
+  const [tokenProducaoInput, setTokenProducaoInput] = useState<string>('')
+  const [salvandoCredenciais, setSalvandoCredenciais] = useState(false)
+  const [testandoCredenciais, setTestandoCredenciais] = useState(false)
+  const [registrandoWebhookAssinanteState, setRegistrandoWebhookAssinanteState] = useState(false)
 
   // Configuração atual
   const [config, setConfig] = useState<ConfigEmissaoFiscal | null>(null)
@@ -135,8 +150,125 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
   useEffect(() => {
     if (empresaAtiva?.id && administrador) {
       carregarWebhooksFocus()
+      carregarCredenciaisFiscaisEmpresa()
     }
   }, [empresaAtiva?.id, administrador])
+
+  async function carregarCredenciaisFiscaisEmpresa() {
+    if (!empresaAtiva?.id) return
+    try {
+      const res = await obterCredenciaisFiscais(empresaAtiva.id)
+      setCredenciaisInfo(res)
+      setTokenHomologacaoInput('')
+      setTokenProducaoInput('')
+    } catch (err: any) {
+      console.warn('Erro ao carregar credenciais fiscais:', err)
+    }
+  }
+
+  async function handleSalvarCredenciais() {
+    if (!empresaAtiva?.id) return
+    if (!administrador) {
+      toast({
+        title: 'Acesso negado',
+        description: 'Apenas Administradores podem salvar credenciais fiscais.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSalvandoCredenciais(true)
+    try {
+      const payload: { empresa_id: string; token_homologacao?: string; token_producao?: string } = {
+        empresa_id: empresaAtiva.id,
+      }
+      if (tokenHomologacaoInput.trim()) {
+        payload.token_homologacao = tokenHomologacaoInput.trim()
+      }
+      if (tokenProducaoInput.trim()) {
+        payload.token_producao = tokenProducaoInput.trim()
+      }
+
+      const res = await salvarCredenciaisFiscais(payload)
+      setCredenciaisInfo(res)
+      setTokenHomologacaoInput('')
+      setTokenProducaoInput('')
+      toast({
+        title: 'Credenciais salvas com sucesso',
+        description: res.message || 'Tokens da Focus atualizados com segurança.',
+      })
+      await carregarQuadroGeralEmpresas()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar credenciais',
+        description: err?.data?.message || err?.message || 'Falha ao salvar tokens.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoCredenciais(false)
+    }
+  }
+
+  async function handleTestarCredenciais() {
+    if (!empresaAtiva?.id) return
+    setTestandoCredenciais(true)
+    try {
+      const res = await testarConexaoCredenciaisFocus(empresaAtiva.id)
+      setResultadoTeste(res)
+      if (res.sucesso) {
+        toast({
+          title: 'Conexão Focus estabelecida',
+          description: res.message,
+        })
+      } else {
+        toast({
+          title: 'Falha no teste de conexão',
+          description: res.message,
+          variant: 'destructive',
+        })
+      }
+      await carregarQuadroGeralEmpresas()
+    } catch (err: any) {
+      const msg = err?.data?.message || err?.message || 'Erro ao testar conexão.'
+      setResultadoTeste({ sucesso: false, message: msg })
+      toast({
+        title: 'Erro de conexão',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setTestandoCredenciais(false)
+    }
+  }
+
+  async function handleRegistrarWebhookAssinanteEmLote() {
+    setRegistrandoWebhookAssinanteState(true)
+    try {
+      const res = await registrarWebhookAssinante()
+      if (res.sucesso) {
+        toast({
+          title: 'Webhooks registrados',
+          description: res.message,
+        })
+      } else {
+        toast({
+          title: 'Aviso nos webhooks',
+          description: res.message,
+          variant: 'destructive',
+        })
+      }
+      await carregarWebhooksFocus()
+      await carregarCredenciaisFiscaisEmpresa()
+    } catch (err: any) {
+      toast({
+        title: 'Falha no registro de webhooks',
+        description: err?.data?.message || err?.message || 'Erro de comunicação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setRegistrandoWebhookAssinanteState(false)
+    }
+  }
 
   async function carregarWebhooksFocus() {
     if (!empresaAtiva?.id) return
@@ -657,7 +789,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Coluna 1 e 2: Parâmetros */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Bloco 1: Provedor e Integração de Tokens */}
+            {/* Bloco 1: Provedor e Parâmetros Gerais de Integração */}
             <Card className="border-slate-200 shadow-xs">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -665,7 +797,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
                   Parâmetros de Integração Focus NFe
                 </CardTitle>
                 <CardDescription>
-                  Configurações de ambiente, credenciais e ativação da emissora
+                  Configurações de ambiente e ativação da emissora para esta empresa
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -717,7 +849,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
 
                 <div className="space-y-1.5 pt-2 border-t">
                   <Label htmlFor="codigo_token">
-                    Código do Token da Empresa (Sufixo do Segredo)
+                    Código do Token da Empresa (Sufixo do Segredo de Fallback)
                   </Label>
                   <Input
                     id="codigo_token"
@@ -728,24 +860,249 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
                     }
                     disabled={!administrador}
                   />
-                  <div className="p-3 rounded-lg bg-slate-50 border text-xs text-slate-600 space-y-1">
-                    <p>
-                      <span className="font-semibold">Segredo lido no ambiente:</span>{' '}
-                      <code className="text-blue-700 font-mono">
-                        {codigoToken
-                          ? `FOCUS_NFE_TOKEN_${ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'}_${codigoToken}`
-                          : `FOCUS_NFE_TOKEN_${ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'}`}
-                      </code>
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      O valor do token é armazenado exclusivamente nos segredos do Skip Cloud e
-                      nunca vai para o navegador. Cada filial tem seu próprio token cadastrado na
-                      Focus NFe.
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Utilizado como fallback caso a empresa não cadastre token próprio no banco logo
+                    abaixo.
+                  </p>
                 </div>
               </CardContent>
             </Card>
+
+            {/* Bloco 1.1: Credenciais da Focus por Empresa (Prompt 9.6 - Administrador) */}
+            {administrador && (
+              <Card className="border-blue-200 bg-gradient-to-b from-blue-50/30 to-white shadow-xs">
+                <CardHeader className="pb-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-base flex items-center gap-2 text-blue-950">
+                        <KeyRound className="h-4 w-4 text-blue-600" />
+                        Credenciais da Focus NFe por Empresa
+                      </CardTitle>
+                      <CardDescription>
+                        Gerenciamento seguro de tokens da API Focus para{' '}
+                        <span className="font-semibold text-slate-800">
+                          {empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social}
+                        </span>
+                      </CardDescription>
+                    </div>
+
+                    {/* Origem efetiva */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">Origem em uso:</span>
+                      {credenciaisInfo?.origem_efetiva === 'banco' ? (
+                        <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Banco de Dados (Próprio)
+                        </Badge>
+                      ) : credenciaisInfo?.origem_efetiva === 'segredo' ? (
+                        <Badge className="bg-blue-600 text-white hover:bg-blue-700 text-xs gap-1">
+                          <ShieldCheck className="h-3 w-3" />
+                          Segredo do Sistema
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-amber-700 border-amber-300 bg-amber-50 text-xs gap-1"
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          Não cadastrado
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Texto explicativo obrigatório do item 1 */}
+                  <div className="p-3.5 rounded-lg bg-blue-50/70 border border-blue-200 text-xs text-blue-900 space-y-1">
+                    <p className="font-semibold flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-blue-700 flex-shrink-0" />
+                      Privacidade e Segurança das Credenciais
+                    </p>
+                    <p className="text-slate-700 leading-relaxed">
+                      Cada empresa usa o token da própria conta na Focus NFe. Por motivos de
+                      segurança, o token gravado <strong>nunca volta para a tela</strong> (apenas os
+                      últimos 4 dígitos são exibidos para conferência). Para alterar, digite uma
+                      nova chave e clique em Salvar.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Token de Homologação */}
+                    <div className="space-y-2 p-3.5 rounded-lg border bg-slate-50/50">
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor="token_homologacao"
+                          className="text-xs font-semibold text-slate-800"
+                        >
+                          Token de Homologação
+                        </Label>
+                        {/* Estado: não cadastrado, cadastrado (final XXXX) ou usando segredo */}
+                        {credenciaisInfo?.token_final_homologacao ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-emerald-50 text-emerald-800 border-emerald-300 font-mono text-[11px]"
+                          >
+                            cadastrado (final {credenciaisInfo.token_final_homologacao})
+                          </Badge>
+                        ) : credenciaisInfo?.origem_efetiva === 'segredo' &&
+                          ambiente === 'Homologação' ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-blue-50 text-blue-800 border-blue-300 text-[11px]"
+                          >
+                            usando o segredo do sistema
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="bg-slate-100 text-slate-600 border-slate-300 text-[11px]"
+                          >
+                            não cadastrado
+                          </Badge>
+                        )}
+                      </div>
+                      <Input
+                        id="token_homologacao"
+                        type="password"
+                        placeholder="Novo token de homologação..."
+                        value={tokenHomologacaoInput}
+                        onChange={(e) => setTokenHomologacaoInput(e.target.value)}
+                        className="bg-white font-mono text-xs"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Ambiente SEFAZ Homologação. Notas sem validade fiscal.
+                      </p>
+                    </div>
+
+                    {/* Token de Produção */}
+                    <div className="space-y-2 p-3.5 rounded-lg border bg-slate-50/50">
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor="token_producao"
+                          className="text-xs font-semibold text-slate-800"
+                        >
+                          Token de Produção
+                        </Label>
+                        {/* Estado: não cadastrado, cadastrado (final XXXX) ou usando segredo */}
+                        {credenciaisInfo?.token_final_producao ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-emerald-50 text-emerald-800 border-emerald-300 font-mono text-[11px]"
+                          >
+                            cadastrado (final {credenciaisInfo.token_final_producao})
+                          </Badge>
+                        ) : credenciaisInfo?.origem_efetiva === 'segredo' &&
+                          ambiente === 'Produção' ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-blue-50 text-blue-800 border-blue-300 text-[11px]"
+                          >
+                            usando o segredo do sistema
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="bg-slate-100 text-slate-600 border-slate-300 text-[11px]"
+                          >
+                            não cadastrado
+                          </Badge>
+                        )}
+                      </div>
+                      <Input
+                        id="token_producao"
+                        type="password"
+                        placeholder="Novo token de produção..."
+                        value={tokenProducaoInput}
+                        onChange={(e) => setTokenProducaoInput(e.target.value)}
+                        className="bg-white font-mono text-xs"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Ambiente SEFAZ Produção. Emissão com validade jurídica.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Informações de status do Webhook da empresa */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg border bg-white text-xs">
+                    <div className="flex items-center gap-2">
+                      <Webhook className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                      <span className="text-slate-700">Webhook nesta empresa:</span>
+                      {credenciaisInfo?.webhook_registrado ? (
+                        <Badge className="bg-emerald-600 text-white text-[11px]">
+                          Registrado na Focus
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-slate-600 border-slate-300 text-[11px]"
+                        >
+                          Pendente / Não registrado
+                        </Badge>
+                      )}
+                      {credenciaisInfo?.atualizado_em && (
+                        <span className="text-slate-400 text-[10px]">
+                          (Atualizado em:{' '}
+                          {new Date(credenciaisInfo.atualizado_em).toLocaleString('pt-BR')})
+                        </span>
+                      )}
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRegistrarWebhookAssinanteEmLote}
+                      disabled={registrandoWebhookAssinanteState}
+                      className="text-purple-700 border-purple-200 hover:bg-purple-50 text-xs h-8"
+                    >
+                      {registrandoWebhookAssinanteState ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      ) : (
+                        <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      )}
+                      Registrar para todas as empresas
+                    </Button>
+                  </div>
+
+                  {/* Botões de Ação do Bloco de Credenciais */}
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleTestarCredenciais}
+                      disabled={testandoCredenciais || carregando}
+                      className="text-blue-700 border-blue-200 hover:bg-blue-50 gap-1.5"
+                    >
+                      {testandoCredenciais ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                      ) : (
+                        <Activity className="h-4 w-4 text-blue-600" />
+                      )}
+                      Testar conexão
+                    </Button>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSalvarCredenciais}
+                      disabled={
+                        salvandoCredenciais ||
+                        (!tokenHomologacaoInput.trim() && !tokenProducaoInput.trim())
+                      }
+                      className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {salvandoCredenciais ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4" />
+                      )}
+                      Salvar
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Bloco 2: Séries e Regras Operacionais */}
             <Card className="border-slate-200 shadow-xs">

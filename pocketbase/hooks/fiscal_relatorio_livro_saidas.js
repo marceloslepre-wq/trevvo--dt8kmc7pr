@@ -199,7 +199,7 @@ routerAdd('POST', '/backend/v1/relatorios/livro-saidas', (c) => {
   try {
     inutsBrutas = $app.findRecordsByFilter(
       'inutilizacoes',
-      "empresa_id = '" + empresaId + "' && ativo = true",
+      "empresa_id = '" + empresaId + "'",
       'created',
       2000,
       0,

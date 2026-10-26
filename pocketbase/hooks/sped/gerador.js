@@ -292,7 +292,7 @@ var SpedGerador = (function () {
     try {
       var inutsBrutas = $app.findRecordsByFilter(
         'inutilizacoes',
-        "empresa_id = '" + empresaId + "' && ativo = true",
+        "empresa_id = '" + empresaId + "'",
         'created',
         1000,
         0,

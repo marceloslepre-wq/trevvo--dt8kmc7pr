@@ -52,7 +52,7 @@ function obterTokenFocus(empresaId, appInstance) {
 
   const ehProducao = ambiente === 'Produção'
   const sufixoAmbiente = ehProducao ? 'PRODUCAO' : 'HOMOLOGACAO'
-  const nomeSegredo = codigoToken
+  let nomeSegredo = codigoToken
     ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
     : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
 
@@ -88,9 +88,45 @@ function obterTokenFocus(empresaId, appInstance) {
   // 3) Fallback para segredos do Skip Cloud ($os.getenv)
   let tokenSegredo = ''
   try {
-    tokenSegredo = ($os.getenv(nomeSegredo) || '').trim()
+    if (codigoToken) {
+      tokenSegredo = ($os.getenv(nomeSegredo) || '').trim()
+    }
   } catch (_) {
     tokenSegredo = ''
+  }
+
+  // Se não achou com codigoToken ou não tinha codigoToken, tenta o segredo por código/id da empresa ou padrão
+  if (!tokenSegredo) {
+    try {
+      const empRec = app.findRecordById('empresas', empresaId)
+      const codEmp = empRec.getInt('codigo')
+      if (codEmp === 2) {
+        const segEcommerce = (
+          $os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}_ECOMMERCE`) || ''
+        ).trim()
+        if (segEcommerce) {
+          tokenSegredo = segEcommerce
+          nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}_ECOMMERCE`
+        }
+      } else if (codEmp === 3) {
+        const segFilial05 = ($os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}_FILIAL05`) || '').trim()
+        if (segFilial05) {
+          tokenSegredo = segFilial05
+          nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}_FILIAL05`
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Se ainda não achou, tenta o segredo padrão sem sufixo de empresa
+  if (!tokenSegredo) {
+    try {
+      const segPadrao = ($os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}`) || '').trim()
+      if (segPadrao) {
+        tokenSegredo = segPadrao
+        nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+      }
+    } catch (_) {}
   }
 
   if (tokenSegredo && tokenSegredo.length > 0) {

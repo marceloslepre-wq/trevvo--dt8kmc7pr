@@ -646,6 +646,90 @@ export interface FocusHookItem {
   status?: string
 }
 
+export interface CredenciaisFiscaisResponse {
+  sucesso: boolean
+  cadastrado: boolean
+  origem_efetiva: 'banco' | 'segredo' | 'nenhuma'
+  ambiente: 'Homologação' | 'Produção'
+  tem_homologacao?: boolean
+  tem_producao?: boolean
+  token_final_homologacao: string
+  token_final_producao: string
+  webhook_registrado: boolean
+  atualizado_em?: string | null
+  message?: string
+}
+
+export interface SalvarCredenciaisFiscaisParams {
+  empresa_id: string
+  token_homologacao?: string
+  token_producao?: string
+}
+
+export interface RegistrarWebhookAssinanteResponse {
+  sucesso: boolean
+  message: string
+  resultados?: Array<{
+    empresa_id: string
+    empresa_nome: string
+    sucesso: boolean
+    origem_token?: string
+    url?: string
+    mensagem: string
+  }>
+}
+
+/**
+ * Consulta as credenciais mascaradas da Focus para a empresa (Apenas Administrador)
+ * NUNCA retorna o token inteiro.
+ */
+export async function obterCredenciaisFiscais(
+  empresaId: string,
+): Promise<CredenciaisFiscaisResponse> {
+  return await pb.send<CredenciaisFiscaisResponse>(
+    `/backend/v1/fiscal/credenciais?empresa_id=${encodeURIComponent(empresaId)}`,
+    {
+      method: 'GET',
+    },
+  )
+}
+
+/**
+ * Salva as credenciais fiscais da empresa (Apenas Administrador)
+ */
+export async function salvarCredenciaisFiscais(
+  params: SalvarCredenciaisFiscaisParams,
+): Promise<CredenciaisFiscaisResponse> {
+  return await pb.send<CredenciaisFiscaisResponse>('/backend/v1/fiscal/credenciais', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+/**
+ * Testa a conexão fiscal usando o endpoint dedicado de credenciais da Focus
+ */
+export async function testarConexaoCredenciaisFocus(
+  empresaId: string,
+): Promise<TestarConexaoResponse> {
+  return await pb.send<TestarConexaoResponse>('/backend/v1/fiscal/credenciais/testar-conexao', {
+    method: 'POST',
+    body: { empresa_id: empresaId },
+  })
+}
+
+/**
+ * Registra o webhook para todas as empresas do assinante do usuário logado
+ */
+export async function registrarWebhookAssinante(): Promise<RegistrarWebhookAssinanteResponse> {
+  return await pb.send<RegistrarWebhookAssinanteResponse>(
+    '/backend/v1/fiscal/registrar-webhook-assinante',
+    {
+      method: 'POST',
+    },
+  )
+}
+
 /**
  * Registra o webhook na Focus NFe para uma ou todas as empresas (Apenas Administrador)
  */
