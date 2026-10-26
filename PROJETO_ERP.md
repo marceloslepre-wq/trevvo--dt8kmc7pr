@@ -3508,7 +3508,7 @@ A Etapa 9 transforma o ERP em uma plataforma SaaS multi-tenant verdadeira, garan
 7. **Privilégio master definido exclusivamente pelo backend:** Apenas o backend define e valida quem é master (`users.tipo = 'master'`). Nenhuma tela, endpoint público ou cadastro de usuário pode criar, remover ou alterar o privilégio de master. O navegador é bloqueado de alterar o campo `tipo` de `users` e de alterar o e-mail do master.
 8. **Situações da Licença:** Os status válidos da assinatura são: `Trial`, `Ativa`, `Pausada`, `Expirada`, `Cancelada`.
 9. **Novas coleções:** Toda coleção nova criada a partir da Etapa 9 já deve nascer com `assinante_id` (se for tabela de cadastro/configuração) ou com `empresa_id` (se for tabela de movimento/operacional vinculada a estabelecimento).
-10. **Testes de Backend sem Resíduos no Repositório (Regra Permanente):** Daqui para frente, testes de backend rodam via requisições ao backend vivo ou verificações pontuais, NUNCA deixando arquivos de teste soltos em `pocketbase/migrations/` ou `pocketbase/hooks/`. A runtime goja do PocketBase exige apenas `migrate()` no topo de migrations e rejeita arquivos de teste com "Invalid module" ou escopo corrompido.
+10. **Testes de Backend sem Resíduos no Repositório (Regra Permanente):** Daqui para frente, testes de backend rodam via requisições ao backend vivo ou verificações pontuais, NUNCA deixando arquivos de teste soltos em `pocketbase/migrations/` ou `pocketbase/hooks/`. Testes também NÃO podem registrar trabalhos agendados (`cronAdd`) nem rotas de teste no servidor. A runtime goja do PocketBase exige apenas `migrate()` no topo de migrations e rejeita arquivos de teste com "Invalid module" ou escopo corrompido.
 
 ### Módulo Backend `tenancy.js` e Endpoints de Multi-tenant
 
@@ -3526,6 +3526,21 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.143** — Etapa 9 Multi-tenant (Prompt 9.7b3: Saneamento do Agendador de Tarefas, Neutralização de Migrations de Teste e Regra Permanente Anti-Cron/Rotas de Teste):
+
+1. **Remoção do Cron Fantasma `teste97b_runner` (`cron_expiracao_licencas.js`):**
+   - Removido do agendador vivo do PocketBase o trabalho fantasma `teste97b_runner` via chamada `cronRemove('teste97b_runner')` na inicialização do hook `pocketbase/hooks/cron_expiracao_licencas.js`.
+   - O agendador agora mantém única e exclusivamente a tarefa oficial de produção `expiracao_diaria_licencas` (`0 0 * * *`), eliminando o disparo a cada minuto que registrava erros "Invalid module" nos logs do backend.
+   - Preservação estrita dos hooks oficiais sem alteração indevida de regras de negócio.
+
+2. **Neutralização da Migration de Teste 0085:**
+   - Registrada a neutralização de testes em migrations aplicadas (ex: 0082 e 0085), assegurando que o histórico de migrations permaneça íntegro sem resíduos operacionais de testes no repositório.
+
+3. **Reforço e Expansão da Regra de Ouro nº 10:**
+   - Adicionada proibição expressa de testes registrarem trabalhos agendados (`cronAdd`) ou criarem rotas de teste na API do servidor. Testes rodam unicamente via chamadas REST externas ou verificações seguras no backend vivo.
+
+---
 
 **Versão 0.0.141** — Etapa 9 Multi-tenant (Prompt 9.7b2: Modo Master / Suporte, Faixa Fixa no Topo, Bloqueio de Licenças Pausadas/Vencidas, Cron Job de Expiração Diária e Testes no Backend Vivo):
 
