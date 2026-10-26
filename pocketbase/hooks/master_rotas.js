@@ -765,15 +765,14 @@ routerAdd(
   'GET',
   '/backend/v1/master/resumo',
   (c) => {
-    const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
-
     try {
-      masterLib.exigirMaster(auth, $app)
+      const { exigirMaster, obterConfigMaster } = require(`${__hooks}/master_lib.js`)
+      const auth = c.auth || c.get('authRecord')
+      exigirMaster(auth, $app)
 
       const assinantes = $app.findRecordsByFilter('assinantes', '', '', 500, 0)
       const planos = $app.findRecordsByFilter('planos_catalogo', '', '', 200, 0)
-      const configMaster = masterLib.obterConfigMaster($app)
+      const configMaster = obterConfigMaster($app)
 
       // Mapa de planos por ID para cálculo rápido de MRR
       const mapaPlanos = {}
@@ -826,15 +825,17 @@ routerAdd(
         },
       })
     } catch (err) {
-      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
-        return c.json(403, {
-          sucesso: false,
-          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
-        })
+      if (
+        err &&
+        (err.name === 'ApiError' || err instanceof ForbiddenError || err.name === 'ForbiddenError')
+      ) {
+        throw err
       }
+      console.log('[master] resumo', String((err && err.message) || err), err && err.stack)
       return c.json(500, {
-        sucesso: false,
-        message: err.message || 'Erro ao carregar resumo do painel master.',
+        erro: 'master_falhou',
+        rota: 'resumo',
+        detalhe: String((err && err.message) || err),
       })
     }
   },
@@ -852,11 +853,10 @@ routerAdd(
   'GET',
   '/backend/v1/master/licencas',
   (c) => {
-    const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
-
     try {
-      masterLib.exigirMaster(auth, $app)
+      const { exigirMaster } = require(`${__hooks}/master_lib.js`)
+      const auth = c.auth || c.get('authRecord')
+      exigirMaster(auth, $app)
 
       const assinantes = $app.findRecordsByFilter('assinantes', '', '-created', 1000, 0)
       const planos = $app.findRecordsByFilter('planos_catalogo', '', '', 200, 0)
@@ -972,15 +972,17 @@ routerAdd(
         licencas: lista,
       })
     } catch (err) {
-      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
-        return c.json(403, {
-          sucesso: false,
-          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
-        })
+      if (
+        err &&
+        (err.name === 'ApiError' || err instanceof ForbiddenError || err.name === 'ForbiddenError')
+      ) {
+        throw err
       }
+      console.log('[master] licencas', String((err && err.message) || err), err && err.stack)
       return c.json(500, {
-        sucesso: false,
-        message: err.message || 'Erro ao listar licenças de clientes.',
+        erro: 'master_falhou',
+        rota: 'licencas',
+        detalhe: String((err && err.message) || err),
       })
     }
   },
@@ -1887,11 +1889,10 @@ routerAdd(
   'PUT',
   '/backend/v1/master/config',
   (c) => {
-    const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
-
     try {
-      masterLib.exigirMaster(auth, $app)
+      const { exigirMaster } = require(`${__hooks}/master_lib.js`)
+      const auth = c.auth || c.get('authRecord')
+      exigirMaster(auth, $app)
 
       let reqData = {}
       try {
@@ -1927,15 +1928,17 @@ routerAdd(
         },
       })
     } catch (err) {
-      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
-        return c.json(403, {
-          sucesso: false,
-          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
-        })
+      if (
+        err &&
+        (err.name === 'ApiError' || err instanceof ForbiddenError || err.name === 'ForbiddenError')
+      ) {
+        throw err
       }
+      console.log('[master] config', String((err && err.message) || err), err && err.stack)
       return c.json(500, {
-        sucesso: false,
-        message: err.message || 'Erro ao salvar configurações do master.',
+        erro: 'master_falhou',
+        rota: 'config',
+        detalhe: String((err && err.message) || err),
       })
     }
   },
@@ -1948,11 +1951,10 @@ routerAdd(
   'GET',
   '/backend/v1/master/planos',
   (c) => {
-    const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
-
     try {
-      masterLib.exigirMaster(auth, $app)
+      const { exigirMaster } = require(`${__hooks}/master_lib.js`)
+      const auth = c.auth || c.get('authRecord')
+      exigirMaster(auth, $app)
 
       const planosRecs = $app.findRecordsByFilter('planos_catalogo', '', 'valor_mensal', 200, 0)
       const assinantes = $app.findRecordsByFilter('assinantes', '', 'nome', 1000, 0)
@@ -2005,15 +2007,17 @@ routerAdd(
         planos: planos,
       })
     } catch (err) {
-      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
-        return c.json(403, {
-          sucesso: false,
-          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
-        })
+      if (
+        err &&
+        (err.name === 'ApiError' || err instanceof ForbiddenError || err.name === 'ForbiddenError')
+      ) {
+        throw err
       }
+      console.log('[master] planos', String((err && err.message) || err), err && err.stack)
       return c.json(500, {
-        sucesso: false,
-        message: err.message || 'Erro ao carregar catálogo de planos para o master.',
+        erro: 'master_falhou',
+        rota: 'planos',
+        detalhe: String((err && err.message) || err),
       })
     }
   },

@@ -3527,6 +3527,16 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.147** — Correção Mínima e Urgente nas Rotas Master (Try/Catch e Require Escopo JSVM):
+
+1. **Correção das 4 Rotas Master (`pocketbase/hooks/master_rotas.js`):**
+   - Nas rotas `GET /backend/v1/master/resumo`, `GET /backend/v1/master/planos`, `GET /backend/v1/master/licencas` e `PUT /backend/v1/master/config`, o `require(`${\_\_hooks}/master_lib.js`)` foi movido para dentro do bloco `try` como primeira instrução, seguido imediatamente da validação `exigirMaster`.
+   - Se o `require` ou a execução falhar, a exceção não escapa do handler em erro 400 genérico.
+   - Preservado o rethrow de `ApiError` / `ForbiddenError` (401/403) mantendo o bloqueio de quem não é master.
+   - Adicionado log detalhado `console.log("[master] <rota>", ...)` e resposta estruturada HTTP 500 `{ erro: "master_falhou", rota: "<rota>", detalhe: ... }`.
+
+---
+
 **Versão 0.0.146** — Etapa 9 Multi-tenant (Prompt 9.7c: Detalhes Completos de Planos de Licença e Assinantes Vinculados):
 
 1. **Extensão do Endpoint `/backend/v1/master/planos` (`pocketbase/hooks/master_rotas.js`):**
