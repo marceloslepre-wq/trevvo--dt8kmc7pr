@@ -66,11 +66,12 @@ function obterConfigMaster(appInstance) {
     const configs = app.findRecordsByFilter('config_master', '', '-created', 1, 0)
     if (configs && configs.length > 0) {
       return {
+        id: configs[0].id,
         dias_trial: configs[0].getInt('dias_trial') || 15,
       }
     }
   } catch (_) {}
-  return { dias_trial: 15 }
+  return { id: '', dias_trial: 15 }
 }
 
 module.exports = {

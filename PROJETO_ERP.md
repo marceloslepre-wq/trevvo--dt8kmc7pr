@@ -3515,6 +3515,58 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.138** — Etapa 9 Multi-tenant (Prompt 9.7a2: Painel Master - Links de Cadastro, Painel de Operações, Resumo e CRUD do Catálogo de Planos):
+
+1. **Quadro "Gerador de Link de Primeiro Cadastro" (`MasterPage.tsx`):**
+   - Selos visuais `"Página pública /cadastro"` e `"N dias de teste grátis"` integrados.
+   - Parâmetro `dias_trial` carregado diretamente de `config_master.dias_trial` e editável diretamente neste quadro via botão "Salvar" (`PUT /backend/v1/master/config`).
+   - Seletor de plano pré-selecionado opcional com opção `"Nenhum plano específico (cliente escolhe na tela)"` ou seleção de um plano ativo do catálogo (`/cadastro` ou `/cadastro?plano=id`).
+   - Botões de ação para o link gerado: `"Copiar"` (com feedback de copiado para área de transferência) e `"Abrir página"` (exibindo aviso amigável de em breve até o Prompt 9.8).
+   - Área de **Compartilhamento direto**:
+     - **WhatsApp:** abre o WhatsApp Web/App com mensagem de convite personalizada e o link.
+     - **E-mail:** abre o cliente de e-mail padrão com assunto e corpo de convite estruturados.
+     - **Copiar link:** botão rápido de cópia direta do link.
+
+2. **Quadro "Painel Master de Operações" (`MasterPage.tsx` e `master_rotas.js`):**
+   - Endpoint dedicado `GET /backend/v1/master/resumo` com verificação estrita via `exigirMaster`.
+   - 4 Cartões de indicadores operacionais:
+     - **Assinantes (total):** contagem geral de clientes assinantes do banco (HOSPITAL HOME e TESTE B = 2).
+     - **Licenças ativas:** contagem de assinantes com `status = 'Ativa'`.
+     - **Licenças expiradas:** contagem de assinantes com `status = 'Expirada'`.
+     - **Planos:** total de planos comerciais cadastrados no catálogo.
+   - Linha de métricas financeiras:
+     - **MRR total ativo:** cálculo consolidado da soma do `valor_mensal` das licenças ativas, desconsiderando as contas isentas (`valor_mensal = 0`, ex: Plano Master).
+     - **Clientes em trial:** contagem de assinantes com `status = 'Trial'`.
+     - Nota de governança: `"Cobrança comercial gerenciada pelo Master"`.
+
+3. **Aba "Catálogo de planos (N)" com Gestão Completa (`MasterPage.tsx` e `master_rotas.js`):**
+   - Título da aba com contador dinâmico de planos (`Catálogo de planos (4)`) e botão `"Novo plano"`.
+   - Aba `"Licenças de clientes"` mantida estritamente com o aviso "em construção" para entrega no Prompt 9.7b.
+   - **Cartões de Plano no Catálogo:**
+     - Exibição de nome, situação Ativo/Inativo, etiqueta comercial (badge), descrição detalhada, valor mensal (com indicação `"Grátis / Master"` quando `valor_mensal = 0`), limites estruturais (empresas e usuários, com indicação `"Ilimitado"` quando 0 ou vazio), e recursos fiscais inclusos (NF-e mod 55, NFC-e mod 65 e EFD SPED Fiscal).
+     - Botões de ação em cada cartão: `"Editar"` e `"Excluir"`.
+     - **Proteções de Negócio na Exclusão:**
+       - O **Plano Master** (`exclusivo_master = true`) não possui botão de exclusão e o backend bloqueia qualquer tentativa.
+       - Endpoints impedem a exclusão de planos em uso por qualquer assinante (ex: Plano Básico em uso pelo TESTE B), recusando a exclusão com mensagem sugerindo a inativação do plano para não afetar clientes ativos.
+   - **Modal de Formulário (Criar / Editar Plano):**
+     - Cobertura de todos os campos da tabela `planos_catalogo`: `nome`, `etiqueta`, `descricao`, `valor_mensal`, `limite_empresas`, `limite_usuarios`, `permite_nfe`, `permite_nfce`, `permite_sped`, `exclusivo_master`, `ativo`.
+   - **Endpoints REST CRUD Master:**
+     - `GET /backend/v1/master/planos`: lista todos os planos com contagem de assinantes vinculados.
+     - `POST /backend/v1/master/planos`: criação de novos planos com validações.
+     - `PUT /backend/v1/master/planos/{id}`: edição completa de planos existentes.
+     - `DELETE /backend/v1/master/planos/{id}`: exclusão segura com regras de bloqueio.
+     - `PUT /backend/v1/master/config`: alteração dos parâmetros do registro de `config_master`.
+
+4. **Bateria de Testes Automatizados no Backend:**
+   - Teste automatizado executado com sucesso:
+     1. Resumo confirma 2 assinantes existentes (HOSPITAL HOME e TESTE B).
+     2. Criação, edição e exclusão de plano de teste funcionaram com sucesso total.
+     3. Tentativa de exclusão do plano Básico (usado pelo TESTE B) foi corretamente recusada pelo backend.
+     4. Plano de teste temporário foi removido no término da execução.
+     5. Sem arquivos de teste residuais no repositório.
+
+---
+
 **Versão 0.0.137** — Etapa 9 Multi-tenant (Prompt 9.7a: Painel Master - Parte 1: Tabelas, Planos Iniciais, Acesso e Topo):
 
 1. **Modelagem de Dados e Migrations (Migration 0081):**
