@@ -284,6 +284,22 @@ import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
 
 (acrescentar aqui cada tabela criada, com seus campos)
 
+### credenciais_fiscais
+
+Tabela de armazenamento seguro de credenciais fiscais da Focus NFe por empresa emissora (Etapa 9 Multi-tenant - 9.6, Migration 0080). Permite que cada filial/matriz ou assinante configure tokens próprios da Focus NFe (`token_homologacao` e `token_producao`) e mantenha um segredo aleatório exclusivo de webhook (`webhook_secret`) para validação criptográfica HMAC/Bearer de callbacks recebidos por empresa. Acesso totalmente bloqueado para a API do navegador (`listRule: null`, `viewRule: null`, `createRule: null`, `updateRule: null`, `deleteRule: null`), operada exclusivamente pelo backend via pb_hooks (`fiscal_credenciais_rotas.js`, `fiscal_token_lib.js`, `fiscal_webhook_focus.js`). As rotas públicas e autenticadas nunca expõem os tokens completos (somente os 4 últimos dígitos ou status booleano). Possui fallback automático para segredos de ambiente do Skip Cloud ($os.getenv) caso nenhum token esteja gravado na coleção. Possui índice único por `empresa_id`.
+
+- id (text, PK)
+- empresa_id (relation -> empresas, obrigatório, cascadeDelete: true, índice único)
+- token_homologacao (text, token de autenticação da Focus NFe no ambiente de Homologação)
+- token_producao (text, token de autenticação da Focus NFe no ambiente de Produção)
+- webhook_secret (text, segredo gerado de 32 caracteres para validação de cabeçalho Authorization nos webhooks)
+- atualizado_por (relation -> users, usuário administrador responsável pela última alteração)
+- atualizado_em (text, data/hora ISO da última gravação)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+Índices: `empresa_id` (único: `idx_credenciais_fiscais_empresa`).
+
 ### sequencias
 
 Tabela central de controle de numeração atômica sequencial por assinante e empresa (Etapa 9 Multi-tenant - 9.5b, Migration 0074/0077). Mantém os contadores sequenciais de movimentos (`vendas`, `inventarios`, `pedidos_compra`, `transferencias`) e cadastros (`produtos`, `clientes`, `fornecedores`, `condicoes_pagamento`, `empresas`). Acesso totalmente bloqueado para o navegador (`listRule: null`, `viewRule: null`, `createRule: null`, `updateRule: null`, `deleteRule: null`), sendo gerida e incrementada exclusivamente no servidor pelo backend (`pb_hooks`) através do módulo `numeracao_lib.js`. Possui índice único composto por `(assinante_id, empresa_id, tipo)`.
@@ -3451,6 +3467,30 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.135** — Etapa 9 Multi-tenant (Prompt 9.6b: Backend de Credenciais Fiscais da Focus NFe por Empresa):
+
+1. **Correção de Leitura de Parâmetros de Rota no PocketBase v0.23+ (`fiscal_webhook_focus.js`):**
+   - Substituída a chamada obsoleta `requestInfo().pathParameters` por `e.request.pathValue("empresa_id")` no endpoint `POST /backend/v1/fiscal/webhook-focus/{empresa_id}`.
+   - Preservada a rota legada sem parâmetro (`POST /backend/v1/fiscal/webhook-focus`), que continua validando autenticação via segredo global `FOCUS_NFE_WEBHOOK_SECRET` para compatibilidade total com a HOSPITAL HOME.
+
+2. **Conexão Unificada de Tokens da Focus NFe via `obterTokenFocus` (`fiscal_token_lib.js`):**
+   - Adequação completa dos hooks de emissão e cancelamento de notas (`pocketbase/hooks/fiscal_nfce_operacoes.js` e `pocketbase/hooks/fiscal_nfe_operacoes.js`) para obter credenciais exclusivamente via biblioteca `obterTokenFocus`.
+   - Remoção de qualquer leitura direta de variáveis de ambiente `FOCUS_NFE_TOKEN_*` fora do módulo de controle `fiscal_token_lib.js`.
+   - Módulo carregado via `require` dinâmico dentro dos callbacks, cumprindo a regra permanente de escopo da JSVM goja do PocketBase.
+
+3. **Status e Diagnóstico de Segredos (`fiscal_credenciais_rotas.js`):**
+   - Endpoint `GET /backend/v1/fiscal/status-segredos` exibe o status de cada empresa acessível ao usuário autenticado informando a origem da credencial (`segredo` ou `banco`), o ambiente configurado e o nome do segredo esperado, sem nunca expor os tokens completos.
+
+4. **Isolamento Multi-tenant e Proteção da Coleção `credenciais_fiscais`:**
+   - Tabela `credenciais_fiscais` (Migration 0080) confirmada com regras fechadas para o navegador (`listRule: null`, `viewRule: null`, `createRule: null`, `updateRule: null`, `deleteRule: null`).
+   - Requisições autenticadas para `GET /backend/v1/fiscal/credenciais` validam estritamente o vínculo da empresa solicitada com o assinante do usuário (`exigirEmpresaDoUsuario`), retornando HTTP 403 Forbidden para tentativas de acesso cruzado entre assinantes distintos.
+
+5. **Deploy do Backend e Integridade de Testes:**
+   - Deploy aceito com sucesso pela runtime do Skip Cloud (`deploy_backend`), sem erros de compilação ou rejeição de hooks.
+   - Validações realizadas diretamente contra a API viva sem deixar nenhum arquivo de teste em `pocketbase/migrations/` ou `pocketbase/hooks/`.
+
+---
 
 **Versão 0.0.133** — Etapa 9 Multi-tenant (Prompt 9.5c2: Fechamento do 9.5c, Recálculo de Contadores e Testes de Numeração por Assinante):
 

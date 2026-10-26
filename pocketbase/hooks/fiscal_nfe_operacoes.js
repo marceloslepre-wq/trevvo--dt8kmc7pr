@@ -197,22 +197,16 @@ routerAdd(
       })
     }
 
-    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {}
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaId, $app)
+    const ambiente = tokenInfo.ambiente
+    const nomeSegredo = tokenInfo.nomeSegredo
+    const token = tokenInfo.token
 
     if (!token) {
       return c.json(400, {
         sucesso: false,
-        message: `Token da Focus NFe não encontrado para ${nomeEmpresa}: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+        message: `Token da Focus NFe não encontrado para ${nomeEmpresa}: cadastre na tela de credenciais fiscais ou crie o segredo ${nomeSegredo} no Skip Cloud.`,
       })
     }
 
@@ -519,22 +513,16 @@ routerAdd(
     }
 
     const config = configs[0]
-    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {}
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaId, $app)
+    const ambiente = tokenInfo.ambiente
+    const nomeSegredo = tokenInfo.nomeSegredo
+    const token = tokenInfo.token
 
     if (!token) {
       return c.json(400, {
         sucesso: false,
-        message: `Token da Focus NFe não encontrado: configure o segredo ${nomeSegredo}.`,
+        message: `Token da Focus NFe não encontrado: cadastre na tela de credenciais fiscais ou configure o segredo ${nomeSegredo}.`,
       })
     }
 
@@ -976,22 +964,16 @@ routerAdd(
     }
 
     const config = configs[0]
-    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {}
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaId, $app)
+    const ambiente = tokenInfo.ambiente
+    const nomeSegredo = tokenInfo.nomeSegredo
+    const token = tokenInfo.token
 
     if (!token) {
       return c.json(400, {
         sucesso: false,
-        message: `Token da Focus NFe não encontrado: configure o segredo ${nomeSegredo}.`,
+        message: `Token da Focus NFe não encontrado: cadastre na tela de credenciais fiscais ou configure o segredo ${nomeSegredo}.`,
       })
     }
 
@@ -1280,22 +1262,16 @@ routerAdd(
     }
 
     const config = configs[0]
-    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {}
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaId, $app)
+    const ambiente = tokenInfo.ambiente
+    const nomeSegredo = tokenInfo.nomeSegredo
+    const token = tokenInfo.token
 
     if (!token) {
       return c.json(400, {
         sucesso: false,
-        message: `Token da Focus NFe não encontrado: configure o segredo ${nomeSegredo}.`,
+        message: `Token da Focus NFe não encontrado: cadastre na tela de credenciais fiscais ou configure o segredo ${nomeSegredo}.`,
       })
     }
 
@@ -1603,22 +1579,16 @@ routerAdd(
     }
 
     const config = configs[0]
-    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {}
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaId, $app)
+    const ambiente = tokenInfo.ambiente
+    const nomeSegredo = tokenInfo.nomeSegredo
+    const token = tokenInfo.token
 
     if (!token) {
       return c.json(400, {
         sucesso: false,
-        message: `Token da Focus NFe não encontrado: configure o segredo ${nomeSegredo}.`,
+        message: `Token da Focus NFe não encontrado: cadastre na tela de credenciais fiscais ou configure o segredo ${nomeSegredo}.`,
       })
     }
 

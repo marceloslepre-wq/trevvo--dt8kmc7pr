@@ -6,7 +6,368 @@
  */
 
 /**
- * 1) POST /backend/v1/fiscal/webhook-focus (Endpoint público para callbacks da Focus)
+ * 1.b) POST /backend/v1/fiscal/webhook-focus/{empresa_id} (Endpoint por empresa - Prompt 9.6)
+ * Valida o cabeçalho Authorization contra o webhook_secret da credenciais_fiscais daquela empresa.
+ */
+routerAdd('POST', '/backend/v1/fiscal/webhook-focus/{empresa_id}', (c) => {
+  let empresaIdParam = ''
+  try {
+    if (typeof c.request?.pathValue === 'function') {
+      empresaIdParam = (c.request.pathValue('empresa_id') || '').trim()
+    } else if (typeof c.pathValue === 'function') {
+      empresaIdParam = (c.pathValue('empresa_id') || '').trim()
+    }
+  } catch (_) {}
+
+  if (!empresaIdParam) {
+    return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório na rota.' })
+  }
+
+  let cred = null
+  try {
+    const creds = $app.findRecordsByFilter(
+      'credenciais_fiscais',
+      "empresa_id = '" + empresaIdParam + "'",
+      '-created',
+      1,
+      0,
+    )
+    if (creds && creds.length > 0) cred = creds[0]
+  } catch (_) {}
+
+  const secretEsperado = cred ? (cred.getString('webhook_secret') || '').trim() : ''
+  if (!secretEsperado) {
+    console.error(
+      '[Webhook Focus Empresa] webhook_secret não cadastrado para a empresa:',
+      empresaIdParam,
+    )
+    return c.json(401, {
+      sucesso: false,
+      message: 'Webhook secret não configurado para esta empresa.',
+    })
+  }
+
+  let authHeader = ''
+  try {
+    const rawHeaders = c.requestInfo().headers || {}
+    authHeader = (rawHeaders['authorization'] || rawHeaders['Authorization'] || '').trim()
+  } catch (_) {
+    authHeader = ''
+  }
+
+  if (!authHeader || authHeader !== secretEsperado) {
+    console.warn('[Webhook Focus Empresa] Authorization inválido para empresa:', empresaIdParam)
+    return c.json(401, { sucesso: false, message: 'Cabeçalho Authorization inválido.' })
+  }
+
+  const encodeBase64 = (str) => {
+    if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+      try {
+        return Buffer.from(str, 'utf8').toString('base64')
+      } catch (_) {}
+    }
+    if (typeof btoa === 'function') {
+      try {
+        return btoa(str)
+      } catch (_) {}
+    }
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    let out = ''
+    let i = 0
+    const len = str.length
+    while (i < len) {
+      const c1 = str.charCodeAt(i++) & 0xff
+      if (i === len) {
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt((c1 & 0x3) << 4)
+        out += '=='
+        break
+      }
+      const c2 = str.charCodeAt(i++) & 0xff
+      if (i === len) {
+        out += chars.charAt(c1 >> 2)
+        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+        out += chars.charAt((c2 & 0x0f) << 2)
+        out += '='
+        break
+      }
+      const c3 = str.charCodeAt(i++) & 0xff
+      out += chars.charAt(c1 >> 2)
+      out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+      out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+      out += chars.charAt(c3 & 0x3f)
+    }
+    return out
+  }
+
+  try {
+    const body = c.requestInfo().body || {}
+    const ref = (body.ref || body.referencia || body.reference || '').trim()
+    console.log(
+      '[Webhook Focus Empresa]',
+      empresaIdParam,
+      'ref:',
+      ref,
+      'payload:',
+      JSON.stringify(body),
+    )
+
+    if (!ref) {
+      return c.json(200, { sucesso: true, message: 'Aviso recebido sem referência.' })
+    }
+
+    let docRec = null
+    const docs = $app.findRecordsByFilter(
+      'documentos_fiscais',
+      "referencia = '" + ref + "'",
+      '-created',
+      1,
+      0,
+    )
+    if (docs && docs.length > 0) docRec = docs[0]
+
+    if (!docRec) {
+      const partes = ref.split('-')
+      if (partes.length >= 3) {
+        try {
+          docRec = $app.findRecordById('documentos_fiscais', partes[2])
+        } catch (_) {}
+      }
+    }
+
+    if (!docRec) {
+      return c.json(200, { sucesso: true, message: 'Documento fiscal não encontrado.' })
+    }
+
+    const docEmpresaId = docRec.getString('empresa_id')
+    if (docEmpresaId && docEmpresaId !== empresaIdParam) {
+      console.warn(
+        '[Webhook Focus Empresa] Documento pertence a outra empresa:',
+        docEmpresaId,
+        'esperado:',
+        empresaIdParam,
+      )
+      return c.json(200, { sucesso: true, message: 'Documento pertence a outra empresa.' })
+    }
+
+    const modelo = docRec.getString('modelo') || '55'
+    const configs = $app.findRecordsByFilter(
+      'config_emissao_fiscal',
+      "empresa_id = '" + empresaIdParam + "' && ativo = true",
+      '-created',
+      1,
+      0,
+    )
+    if (!configs || configs.length === 0) {
+      return c.json(200, { sucesso: true, message: 'Configuração da empresa ausente.' })
+    }
+
+    const config = configs[0]
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaIdParam, $app)
+    const ambiente = tokenInfo.ambiente
+    const token = tokenInfo.token
+
+    if (!token) {
+      return c.json(200, { sucesso: true, message: 'Token fiscal ausente.' })
+    }
+
+    const baseUrl =
+      ambiente === 'Produção'
+        ? 'https://api.focusnfe.com.br/v2'
+        : 'https://homologacao.focusnfe.com.br/v2'
+    const baseUrlOrigin =
+      ambiente === 'Produção'
+        ? 'https://api.focusnfe.com.br'
+        : 'https://homologacao.focusnfe.com.br'
+
+    const endpoint = modelo === '65' ? 'nfce' : 'nfe'
+    const queryParam = modelo === '65' ? '' : '?completa=1'
+    const url = `${baseUrl}/${endpoint}/${encodeURIComponent(ref)}${queryParam}`
+    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
+
+    let res = null
+    try {
+      res = $http.send({
+        method: 'GET',
+        url: url,
+        headers: {
+          Authorization: basicAuthHeader,
+          Accept: 'application/json',
+        },
+        timeout: 45,
+      })
+    } catch (errHttp) {
+      return c.json(200, { sucesso: true, message: 'Falha de comunicação com a Focus.' })
+    }
+
+    const statusCode = res?.statusCode || 200
+    let respJson = null
+    try {
+      respJson = JSON.parse(res?.raw || '')
+    } catch (_) {}
+
+    if (statusCode === 404) {
+      return c.json(200, { sucesso: true, message: 'Nota não encontrada na Focus.' })
+    }
+
+    const statusFocus = respJson?.status || ''
+    const statusSefaz = respJson?.status_sefaz || ''
+    const motivoSefaz = respJson?.mensagem_sefaz || respJson?.mensagem || ''
+
+    let vendaRec = null
+    const vId = docRec.getString('venda_id')
+    if (vId) {
+      try {
+        vendaRec = $app.findRecordById('vendas', vId)
+      } catch (_) {}
+    }
+
+    if (
+      statusFocus === 'autorizado' ||
+      (statusCode === 200 && respJson?.chave_nfe && !statusFocus.includes('erro'))
+    ) {
+      const numeroNota = Number(respJson?.numero) || undefined
+      const serieNota = respJson?.serie
+        ? String(respJson.serie)
+        : config.getString('serie_nfe') || '1'
+      const chaveNota = respJson?.chave_nfe || respJson?.chave || ''
+      const protocoloNota = respJson?.protocolo || ''
+      const danfeUrl =
+        respJson?.danfe_url ||
+        (respJson?.caminho_danfe ? `${baseUrlOrigin}${respJson.caminho_danfe}` : '')
+
+      docRec.set('status', 'Autorizada')
+      if (numeroNota) docRec.set('numero', numeroNota)
+      if (serieNota) docRec.set('serie', serieNota)
+      if (chaveNota) docRec.set('chave_acesso', chaveNota)
+      if (protocoloNota) docRec.set('protocolo', protocoloNota)
+      if (danfeUrl) docRec.set('danfe_url', danfeUrl)
+      docRec.set('data_autorizacao', new Date().toISOString())
+      docRec.set('status_sefaz', statusSefaz || '100')
+      docRec.set('mensagem_sefaz', motivoSefaz || 'Autorizado o uso da NF-e')
+      docRec.set('json_retorno', respJson)
+
+      const transfIdDoc = docRec.getString('transferencia_id')
+      if (transfIdDoc) {
+        try {
+          const transfRec = $app.findRecordById('transferencias', transfIdDoc)
+          if (transfRec) {
+            if (numeroNota) transfRec.set('nota_fiscal_numero', String(numeroNota))
+            if (chaveNota) transfRec.set('nota_fiscal_chave', chaveNota)
+            $app.save(transfRec)
+          }
+        } catch (_) {}
+      }
+
+      const devVendaIdDoc = docRec.getString('devolucao_venda_id')
+      if (devVendaIdDoc) {
+        try {
+          const devVendaRec = $app.findRecordById('vendas', devVendaIdDoc)
+          if (devVendaRec) {
+            devVendaRec.set('documento_fiscal_status', 'Autorizada')
+            devVendaRec.set('documento_fiscal_id', docRec.id)
+            $app.save(devVendaRec)
+          }
+        } catch (_) {}
+      }
+
+      const caminhoXml = respJson?.caminho_xml_nota_fiscal || respJson?.xml_url || ''
+      if (caminhoXml) {
+        try {
+          let urlFinalXml = caminhoXml
+          if (caminhoXml.startsWith('/')) urlFinalXml = `${baseUrlOrigin}${caminhoXml}`
+          const authH = 'Basic ' + encodeBase64(token + ':')
+          const resXml = $http.send({
+            method: 'GET',
+            url: urlFinalXml,
+            headers: { Authorization: authH },
+            timeout: 45,
+          })
+          if ((resXml.statusCode || 200) < 300 && resXml.raw) {
+            const fileName = `nfe_${ref}.xml`
+            const fileUpload = $filesystem.fileFromBytes(Buffer.from(resXml.raw, 'utf-8'), fileName)
+            docRec.set('xml_arquivo', fileUpload)
+          }
+        } catch (_) {}
+      }
+
+      $app.save(docRec)
+      if (vendaRec) {
+        vendaRec.set('documento_fiscal_status', 'Autorizada')
+        vendaRec.set('documento_fiscal_id', docRec.id)
+        $app.save(vendaRec)
+      }
+      return c.json(200, { sucesso: true, message: 'Documento autorizado processado com sucesso.' })
+    }
+
+    if (statusFocus === 'erro_autorizacao' || statusFocus === 'rejeitado') {
+      let motivoRejeicao = motivoSefaz || 'Nota fiscal rejeitada pela SEFAZ'
+      if (Array.isArray(respJson?.erros) && respJson.erros.length > 0) {
+        motivoRejeicao = respJson.erros
+          .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
+          .join('; ')
+      }
+      docRec.set('status', 'Rejeitada')
+      docRec.set('status_sefaz', statusSefaz || 'Rejeição')
+      docRec.set('mensagem_sefaz', motivoRejeicao)
+      docRec.set('erros', respJson?.erros || [{ mensagem: motivoRejeicao }])
+      docRec.set('json_retorno', respJson)
+      $app.save(docRec)
+      if (vendaRec) {
+        vendaRec.set('documento_fiscal_status', 'Rejeitada')
+        vendaRec.set('documento_fiscal_id', docRec.id)
+        $app.save(vendaRec)
+      }
+      return c.json(200, { sucesso: true, message: 'Documento rejeitado processado.' })
+    }
+
+    if (
+      statusFocus === 'denegado' ||
+      statusSefaz === '110' ||
+      statusSefaz === '301' ||
+      statusSefaz === '302' ||
+      statusSefaz === '303'
+    ) {
+      docRec.set('status', 'Denegada')
+      docRec.set('status_sefaz', statusSefaz || 'Denegada')
+      docRec.set('mensagem_sefaz', motivoSefaz || 'Uso denegado pela SEFAZ.')
+      docRec.set('json_retorno', respJson)
+      $app.save(docRec)
+      if (vendaRec) {
+        vendaRec.set('documento_fiscal_status', 'Denegada')
+        vendaRec.set('documento_fiscal_id', docRec.id)
+        $app.save(vendaRec)
+      }
+      return c.json(200, { sucesso: true, message: 'Documento denegado processado.' })
+    }
+
+    if (statusFocus === 'cancelado') {
+      docRec.set('status', 'Cancelada')
+      docRec.set('mensagem_sefaz', motivoSefaz || 'Nota cancelada')
+      docRec.set('json_retorno', respJson)
+      $app.save(docRec)
+      if (vendaRec) {
+        vendaRec.set('documento_fiscal_status', 'Cancelada')
+        $app.save(vendaRec)
+      }
+      return c.json(200, { sucesso: true, message: 'Documento cancelado processado.' })
+    }
+
+    docRec.set('status', 'Processando')
+    docRec.set('status_sefaz', statusSefaz || statusFocus || 'processando')
+    docRec.set('mensagem_sefaz', motivoSefaz || 'Processando autorização na SEFAZ')
+    docRec.set('json_retorno', respJson)
+    $app.save(docRec)
+    return c.json(200, { sucesso: true, message: 'Status atualizado para processando.' })
+  } catch (errGeral) {
+    console.error('[Webhook Focus Empresa] Erro:', errGeral)
+    return c.json(200, { sucesso: false, message: 'Erro interno registrado nos logs.' })
+  }
+})
+
+/**
+ * 1) POST /backend/v1/fiscal/webhook-focus (Endpoint público para callbacks da Focus - Legado HH)
  */
 routerAdd('POST', '/backend/v1/fiscal/webhook-focus', (c) => {
   const encodeBase64 = (str) => {
@@ -170,22 +531,16 @@ routerAdd('POST', '/backend/v1/fiscal/webhook-focus', (c) => {
     }
 
     const config = configs[0]
-    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {
-      token = ''
-    }
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaId, $app)
+    const ambiente = tokenInfo.ambiente
+    const token = tokenInfo.token
 
     if (!token) {
-      console.error('[Webhook Focus] Token fiscal não encontrado no segredo:', nomeSegredo)
+      console.error(
+        '[Webhook Focus] Token fiscal não encontrado (nem banco nem segredo) para empresa:',
+        empresaId,
+      )
       return c.json(200, { sucesso: true, message: 'Token fiscal da empresa ausente.' })
     }
 
@@ -575,26 +930,16 @@ routerAdd(
         continue
       }
 
-      const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-      const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-      const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-      const nomeSegredo = codigoToken
-        ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-        : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-      let token = ''
-      try {
-        token = ($os.getenv(nomeSegredo) || '').trim()
-      } catch (_) {
-        token = ''
-      }
+      const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+      const tokenInfo = obterTokenFocus(empId, $app)
+      const token = tokenInfo.token
 
       if (!token) {
         resultados.push({
           empresa_id: empId,
           empresa_nome: nomeEmp,
           sucesso: false,
-          mensagem: `Token não configurado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+          mensagem: `Token não configurado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
         })
         continue
       }
@@ -754,19 +1099,10 @@ routerAdd(
     }
 
     const config = configs[0]
-    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {
-      token = ''
-    }
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaId, $app)
+    const ambiente = tokenInfo.ambiente
+    const token = tokenInfo.token
 
     if (!token) {
       return c.json(200, {
@@ -917,19 +1253,10 @@ routerAdd(
     }
 
     const config = configs[0]
-    const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {
-      token = ''
-    }
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaId, $app)
+    const ambiente = tokenInfo.ambiente
+    const token = tokenInfo.token
 
     if (!token) {
       return c.json(400, {
@@ -1102,19 +1429,10 @@ routerAdd(
         }
 
         const config = configs[0]
-        const ambiente = config.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-        const codigoToken = (config.getString('codigo_token') || '').trim().toUpperCase()
-        const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-        const nomeSegredo = codigoToken
-          ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-          : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-        let token = ''
-        try {
-          token = ($os.getenv(nomeSegredo) || '').trim()
-        } catch (_) {
-          token = ''
-        }
+        const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+        const tokenInfo = obterTokenFocus(empresaId, $app)
+        const ambiente = tokenInfo.ambiente
+        const token = tokenInfo.token
 
         if (!token) {
           falhas++

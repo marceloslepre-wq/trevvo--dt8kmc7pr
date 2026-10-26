@@ -146,22 +146,15 @@ routerAdd(
       })
     }
 
-    const ambiente = cfgFiscal.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (cfgFiscal.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {}
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaId, $app)
+    const ambiente = tokenInfo.ambiente
+    const token = tokenInfo.token
 
     if (!token) {
       return c.json(400, {
         sucesso: false,
-        message: `Token da Focus NFe não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+        message: `Token da Focus NFe não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
       })
     }
 
@@ -898,22 +891,15 @@ routerAdd(
       })
     }
 
-    const ambiente = cfgFiscal.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
-    const codigoToken = (cfgFiscal.getString('codigo_token') || '').trim().toUpperCase()
-    const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
-    const nomeSegredo = codigoToken
-      ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
-      : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
-
-    let token = ''
-    try {
-      token = ($os.getenv(nomeSegredo) || '').trim()
-    } catch (_) {}
+    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    const tokenInfo = obterTokenFocus(empresaOrigemId, $app)
+    const ambiente = tokenInfo.ambiente
+    const token = tokenInfo.token
 
     if (!token) {
       return c.json(400, {
         sucesso: false,
-        message: `Token da Focus NFe não encontrado: crie o segredo ${nomeSegredo} no Skip Cloud.`,
+        message: `Token da Focus NFe não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
       })
     }
 
