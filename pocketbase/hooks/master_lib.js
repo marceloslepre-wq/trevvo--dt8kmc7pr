@@ -74,8 +74,41 @@ function obterConfigMaster(appInstance) {
   return { id: '', dias_trial: 15 }
 }
 
+/**
+ * Registra um evento de ciclo de vida em licencas_eventos.
+ * @param {any} app
+ * @param {{
+ *   assinante_id: string,
+ *   numero_licenca: string,
+ *   tipo: string,
+ *   plano_id?: string,
+ *   validade_ate?: string,
+ *   descricao?: string,
+ *   criado_por?: string
+ * }} dados
+ */
+function registrarEventoLicenca(app, dados) {
+  try {
+    const col = app.findCollectionByNameOrId('licencas_eventos')
+    const rec = new Record(col)
+    rec.set('assinante_id', dados.assinante_id)
+    rec.set('numero_licenca', dados.numero_licenca)
+    rec.set('tipo', dados.tipo)
+    if (dados.plano_id) rec.set('plano_id', dados.plano_id)
+    if (dados.validade_ate !== undefined) rec.set('validade_ate', dados.validade_ate || '')
+    if (dados.descricao) rec.set('descricao', dados.descricao)
+    if (dados.criado_por) rec.set('criado_por', dados.criado_por)
+    app.save(rec)
+    return rec
+  } catch (err) {
+    console.error('Erro ao registrar evento de licenca:', err)
+    return null
+  }
+}
+
 module.exports = {
   exigirMaster: exigirMaster,
   checarSeMaster: checarSeMaster,
   obterConfigMaster: obterConfigMaster,
+  registrarEventoLicenca: registrarEventoLicenca,
 }

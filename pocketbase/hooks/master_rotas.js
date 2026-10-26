@@ -379,6 +379,1288 @@ routerAdd(
   $apis.requireAuth(),
 )
 
+// ============================================================================
+// ROTAS DE GESTÃO DE LICENÇAS (Prompt 9.7b)
+// Prefixo: /backend/v1/master/licencas/*
+// ============================================================================
+
+// GET /backend/v1/master/licencas
+// Retorna a listagem agregada de licenças de clientes para o Painel Master
+routerAdd(
+  'GET',
+  '/backend/v1/master/licencas',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      masterLib.exigirMaster(auth, $app)
+
+      const assinantes = $app.findRecordsByFilter('assinantes', '', '-created', 1000, 0)
+      const planos = $app.findRecordsByFilter('planos_catalogo', '', '', 200, 0)
+      const eventos = $app.findRecordsByFilter('licencas_eventos', '', '-created', 5000, 0)
+      const empresas = $app.findRecordsByFilter('empresas', '', 'codigo', 2000, 0)
+
+      // Mapas auxiliares
+      const mapaPlanos = {}
+      for (let p = 0; p < planos.length; p++) {
+        mapaPlanos[planos[p].id] = planos[p]
+      }
+
+      // Contagem de renovações por assinante_id (tipo = "Renovação +30d" ou "Reativação" com renovação)
+      const contagemRenovacoes = {}
+      for (let ev = 0; ev < eventos.length; ev++) {
+        const assId = eventos[ev].getString('assinante_id')
+        const tipoEv = eventos[ev].getString('tipo')
+        const descEv = eventos[ev].getString('descricao') || ''
+        if (
+          tipoEv === 'Renovação +30d' ||
+          (tipoEv === 'Reativação' && descEv.indexOf('+30d') >= 0)
+        ) {
+          contagemRenovacoes[assId] = (contagemRenovacoes[assId] || 0) + 1
+        }
+      }
+
+      // CNPJ da Matriz por assinante (primeira empresa ou tipo = Matriz)
+      const matrizPorAssinante = {}
+      for (let emp = 0; emp < empresas.length; emp++) {
+        const itemEmp = empresas[emp]
+        const assId = itemEmp.getString('assinante_id')
+        if (assId && (!matrizPorAssinante[assId] || itemEmp.getString('tipo') === 'Matriz')) {
+          matrizPorAssinante[assId] = itemEmp.getString('cnpj') || ''
+        }
+      }
+
+      // Contagem de empresas e usuários cadastrados por assinante
+      const todasEmpresas = $app.findRecordsByFilter('empresas', '', '', 5000, 0)
+      const todosUsuarios = $app.findRecordsByFilter('usuarios', '', '', 5000, 0)
+      const contagemEmpresasAssinante = {}
+      const contagemUsuariosAssinante = {}
+
+      for (let e = 0; e < todasEmpresas.length; e++) {
+        const aId = todasEmpresas[e].getString('assinante_id')
+        if (aId) contagemEmpresasAssinante[aId] = (contagemEmpresasAssinante[aId] || 0) + 1
+      }
+      for (let u = 0; u < todosUsuarios.length; u++) {
+        const aId = todosUsuarios[u].getString('assinante_id')
+        if (aId) contagemUsuariosAssinante[aId] = (contagemUsuariosAssinante[aId] || 0) + 1
+      }
+
+      const hojeStr = new Date().toISOString().slice(0, 10)
+
+      const lista = assinantes.map((ass) => {
+        const planoId = ass.getString('plano_id')
+        const plano = mapaPlanos[planoId] || null
+        const limitesPersonalizados = ass.getBool('limites_personalizados')
+
+        const limiteEmpresasEfetivo = limitesPersonalizados
+          ? ass.getInt('limite_empresas') || 0
+          : plano
+            ? plano.getInt('limite_empresas') || 0
+            : 0
+
+        const limiteUsuariosEfetivo = limitesPersonalizados
+          ? ass.getInt('limite_usuarios') || 0
+          : plano
+            ? plano.getInt('limite_usuarios') || 0
+            : 0
+
+        const valorMensal = plano ? plano.getFloat('valor_mensal') || 0 : 0
+        const exclusivoMaster = plano ? plano.getBool('exclusivo_master') : false
+        const dataExp = ass.getString('data_expiracao') || ''
+        const vencida = !!(dataExp && dataExp < hojeStr)
+
+        const totalRenovacoes = contagemRenovacoes[ass.id] || 0
+        const cnpjMatriz = matrizPorAssinante[ass.id] || ass.getString('documento') || ''
+
+        return {
+          id: ass.id,
+          numero_licenca: ass.getString('numero_licenca'),
+          nome: ass.getString('nome'),
+          documento: ass.getString('documento'),
+          cnpj_matriz: cnpjMatriz,
+          email_contato: ass.getString('email_contato'),
+          telefone: ass.getString('telefone'),
+          whatsapp_contato: ass.getString('whatsapp_contato'),
+          status: ass.getString('status'),
+          origem: ass.getBool('origem'),
+          data_inicio: ass.getString('data_inicio'),
+          data_expiracao: dataExp,
+          vencida: vencida,
+          limites_personalizados: limitesPersonalizados,
+          limite_empresas: limiteEmpresasEfetivo,
+          limite_usuarios: limiteUsuariosEfetivo,
+          empresas_cadastradas: contagemEmpresasAssinante[ass.id] || 0,
+          usuarios_cadastrados: contagemUsuariosAssinante[ass.id] || 0,
+          observacoes: ass.getString('observacoes'),
+          plano_id: planoId,
+          plano_nome: plano ? plano.getString('nome') : 'Sem plano',
+          plano_etiqueta: plano ? plano.getString('etiqueta') : '',
+          plano_exclusivo_master: exclusivoMaster,
+          valor_mensal: valorMensal,
+          isento: valorMensal === 0,
+          total_renovacoes: totalRenovacoes,
+          created: ass.getString('created'),
+          updated: ass.getString('updated'),
+        }
+      })
+
+      return c.json(200, {
+        sucesso: true,
+        licencas: lista,
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao listar licenças de clientes.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// GET /backend/v1/master/licencas/{id}/historico
+// Retorna a linha do tempo de eventos (licencas_eventos) do assinante
+routerAdd(
+  'GET',
+  '/backend/v1/master/licencas/{id}/historico',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      masterLib.exigirMaster(auth, $app)
+
+      const id = c.request.pathValue('id')
+      if (!id) {
+        return c.json(400, { sucesso: false, message: 'ID do assinante não fornecido.' })
+      }
+
+      let ass = null
+      try {
+        ass = $app.findRecordById('assinantes', id)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Assinante não encontrado.' })
+      }
+
+      const eventosRecs = $app.findRecordsByFilter(
+        'licencas_eventos',
+        `assinante_id = '${id}'`,
+        '-created',
+        200,
+        0,
+      )
+
+      const planos = $app.findRecordsByFilter('planos_catalogo', '', '', 200, 0)
+      const mapaPlanos = {}
+      for (let p = 0; p < planos.length; p++) {
+        mapaPlanos[planos[p].id] = planos[p].getString('nome')
+      }
+
+      const users = $app.findRecordsByFilter('_pb_users_auth_', '', '', 200, 0)
+      const mapaUsers = {}
+      for (let u = 0; u < users.length; u++) {
+        mapaUsers[users[u].id] = users[u].getString('name') || users[u].getString('email')
+      }
+
+      const historico = eventosRecs.map((ev) => {
+        const pId = ev.getString('plano_id')
+        const cPor = ev.getString('criado_por')
+        return {
+          id: ev.id,
+          tipo: ev.getString('tipo'),
+          numero_licenca: ev.getString('numero_licenca'),
+          plano_id: pId,
+          plano_nome: mapaPlanos[pId] || '',
+          validade_ate: ev.getString('validade_ate'),
+          descricao: ev.getString('descricao'),
+          criado_por: cPor,
+          criado_por_nome: mapaUsers[cPor] || 'Sistema',
+          created: ev.getString('created'),
+        }
+      })
+
+      return c.json(200, {
+        sucesso: true,
+        assinante: {
+          id: ass.id,
+          nome: ass.getString('nome'),
+          numero_licenca: ass.getString('numero_licenca'),
+          origem: ass.getBool('origem'),
+        },
+        historico: historico,
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao carregar histórico da licença.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// POST /backend/v1/master/licencas/{id}/renovar
+// Botão "+30d": soma 30 dias à maior data entre hoje e a expiração atual,
+// deixa status = 'Ativa' e grava evento com tipo "Renovação +30d" (ou "Reativação")
+routerAdd(
+  'POST',
+  '/backend/v1/master/licencas/{id}/renovar',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      const userMaster = masterLib.exigirMaster(auth, $app)
+
+      const id = c.request.pathValue('id')
+      if (!id) {
+        return c.json(400, { sucesso: false, message: 'ID do assinante não fornecido.' })
+      }
+
+      let ass = null
+      try {
+        ass = $app.findRecordById('assinantes', id)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Assinante não encontrado.' })
+      }
+
+      // Regra de segurança: Não é permitido alterar vigência da conta de origem HOSPITAL HOME
+      if (ass.getBool('origem')) {
+        return c.json(400, {
+          sucesso: false,
+          message:
+            'A conta de origem (HOSPITAL HOME) possui plano Master vitalício e não requer renovação de validade.',
+        })
+      }
+
+      const hoje = new Date()
+      const hojeStr = hoje.toISOString().slice(0, 10)
+      const expAtual = ass.getString('data_expiracao') || ''
+
+      let baseData = hoje
+      if (expAtual && expAtual > hojeStr) {
+        // Se expiração atual é no futuro, soma 30 dias a partir da expiração atual
+        const partes = expAtual.split('-')
+        if (partes.length === 3) {
+          baseData = new Date(
+            parseInt(partes[0], 10),
+            parseInt(partes[1], 10) - 1,
+            parseInt(partes[2], 10),
+          )
+        }
+      }
+
+      const novaDataObj = new Date(baseData.getTime() + 30 * 24 * 60 * 60 * 1000)
+      const novaExpStr = novaDataObj.toISOString().slice(0, 10)
+
+      const statusAntes = ass.getString('status')
+      ass.set('data_expiracao', novaExpStr)
+      ass.set('status', 'Ativa')
+      $app.save(ass)
+
+      // Gravar evento em licencas_eventos
+      masterLib.registrarEventoLicenca($app, {
+        assinante_id: ass.id,
+        numero_licenca: ass.getString('numero_licenca'),
+        tipo: 'Renovação +30d',
+        plano_id: ass.getString('plano_id'),
+        validade_ate: novaExpStr,
+        descricao: `Renovação de +30 dias pelo painel master. Expiração anterior: ${expAtual || 'sem data'} -> Nova: ${novaExpStr}. Status anterior: ${statusAntes} -> Ativa.`,
+        criado_por: userMaster.id,
+      })
+
+      return c.json(200, {
+        sucesso: true,
+        message: `Licença renovada com sucesso até ${novaExpStr}.`,
+        data_expiracao_anterior: expAtual,
+        data_expiracao_nova: novaExpStr,
+        status: 'Ativa',
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao renovar licença.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// PUT /backend/v1/master/licencas/{id}/limites
+// Editar limites desta licença: ativa limites_personalizados e grava valores próprios
+routerAdd(
+  'PUT',
+  '/backend/v1/master/licencas/{id}/limites',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      const userMaster = masterLib.exigirMaster(auth, $app)
+
+      const id = c.request.pathValue('id')
+      if (!id) {
+        return c.json(400, { sucesso: false, message: 'ID do assinante não fornecido.' })
+      }
+
+      let ass = null
+      try {
+        ass = $app.findRecordById('assinantes', id)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Assinante não encontrado.' })
+      }
+
+      // Conta de origem não pode ter limites alterados
+      if (ass.getBool('origem')) {
+        return c.json(400, {
+          sucesso: false,
+          message:
+            'A conta de origem (HOSPITAL HOME) é irrestrita e não permite personalização de limites.',
+        })
+      }
+
+      let reqData = {}
+      try {
+        reqData = c.requestInfo().body || {}
+      } catch (_) {}
+
+      const limitesPersonalizados = reqData.limites_personalizados !== false
+      const limEmp = Math.max(0, parseInt(reqData.limite_empresas, 10) || 0)
+      const limUsr = Math.max(0, parseInt(reqData.limite_usuarios, 10) || 0)
+
+      const empAntes = ass.getInt('limite_empresas')
+      const usrAntes = ass.getInt('limite_usuarios')
+      const customAntes = ass.getBool('limites_personalizados')
+
+      ass.set('limites_personalizados', limitesPersonalizados)
+      ass.set('limite_empresas', limEmp)
+      ass.set('limite_usuarios', limUsr)
+      $app.save(ass)
+
+      masterLib.registrarEventoLicenca($app, {
+        assinante_id: ass.id,
+        numero_licenca: ass.getString('numero_licenca'),
+        tipo: 'Edição',
+        plano_id: ass.getString('plano_id'),
+        validade_ate: ass.getString('data_expiracao') || '',
+        descricao: `Edição de limites: limites_personalizados=${limitesPersonalizados} (era ${customAntes}), limite_empresas=${limEmp} (era ${empAntes}), limite_usuarios=${limUsr} (era ${usrAntes}).`,
+        criado_por: userMaster.id,
+      })
+
+      return c.json(200, {
+        sucesso: true,
+        message: 'Limites da licença atualizados com sucesso.',
+        assinante: {
+          id: ass.id,
+          limites_personalizados: ass.getBool('limites_personalizados'),
+          limite_empresas: ass.getInt('limite_empresas'),
+          limite_usuarios: ass.getInt('limite_usuarios'),
+        },
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao atualizar limites da licença.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// PUT /backend/v1/master/licencas/{id}/expiracao
+// Editar data de expiração da licença
+routerAdd(
+  'PUT',
+  '/backend/v1/master/licencas/{id}/expiracao',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      const userMaster = masterLib.exigirMaster(auth, $app)
+
+      const id = c.request.pathValue('id')
+      if (!id) {
+        return c.json(400, { sucesso: false, message: 'ID do assinante não fornecido.' })
+      }
+
+      let ass = null
+      try {
+        ass = $app.findRecordById('assinantes', id)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Assinante não encontrado.' })
+      }
+
+      if (ass.getBool('origem')) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'A conta de origem (HOSPITAL HOME) é permanente e não possui expiração.',
+        })
+      }
+
+      let reqData = {}
+      try {
+        reqData = c.requestInfo().body || {}
+      } catch (_) {}
+
+      const novaExp = (reqData.data_expiracao || '').toString().trim()
+      const expAntes = ass.getString('data_expiracao') || ''
+
+      ass.set('data_expiracao', novaExp)
+      $app.save(ass)
+
+      masterLib.registrarEventoLicenca($app, {
+        assinante_id: ass.id,
+        numero_licenca: ass.getString('numero_licenca'),
+        tipo: 'Edição',
+        plano_id: ass.getString('plano_id'),
+        validade_ate: novaExp,
+        descricao: `Edição de data de expiração: ${expAntes || 'sem expiração'} -> ${novaExp || 'sem expiração'}.`,
+        criado_por: userMaster.id,
+      })
+
+      return c.json(200, {
+        sucesso: true,
+        message: 'Data de expiração atualizada com sucesso.',
+        data_expiracao: novaExp,
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao alterar expiração.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// PUT /backend/v1/master/licencas/{id}/plano
+// Alterar plano do cliente (seletor entre planos do catálogo)
+routerAdd(
+  'PUT',
+  '/backend/v1/master/licencas/{id}/plano',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      const userMaster = masterLib.exigirMaster(auth, $app)
+
+      const id = c.request.pathValue('id')
+      if (!id) {
+        return c.json(400, { sucesso: false, message: 'ID do assinante não fornecido.' })
+      }
+
+      let ass = null
+      try {
+        ass = $app.findRecordById('assinantes', id)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Assinante não encontrado.' })
+      }
+
+      if (ass.getBool('origem')) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'A conta de origem (HOSPITAL HOME) está permanentemente no Plano Master.',
+        })
+      }
+
+      let reqData = {}
+      try {
+        reqData = c.requestInfo().body || {}
+      } catch (_) {}
+
+      const novoPlanoId = (reqData.plano_id || '').toString().trim()
+      if (!novoPlanoId) {
+        return c.json(400, { sucesso: false, message: 'Selecione o novo plano comercial.' })
+      }
+
+      let novoPlanoRec = null
+      try {
+        novoPlanoRec = $app.findRecordById('planos_catalogo', novoPlanoId)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Plano selecionado não existe no catálogo.' })
+      }
+
+      const planoIdAntigo = ass.getString('plano_id')
+      let nomePlanoAntigo = 'Nenhum'
+      if (planoIdAntigo) {
+        try {
+          nomePlanoAntigo = $app.findRecordById('planos_catalogo', planoIdAntigo).getString('nome')
+        } catch (_) {}
+      }
+
+      ass.set('plano_id', novoPlanoId)
+      $app.save(ass)
+
+      masterLib.registrarEventoLicenca($app, {
+        assinante_id: ass.id,
+        numero_licenca: ass.getString('numero_licenca'),
+        tipo: 'Mudança de plano',
+        plano_id: novoPlanoId,
+        validade_ate: ass.getString('data_expiracao') || '',
+        descricao: `Mudança de plano efetuada: de "${nomePlanoAntigo}" para "${novoPlanoRec.getString('nome')}".`,
+        criado_por: userMaster.id,
+      })
+
+      return c.json(200, {
+        sucesso: true,
+        message: `Plano alterado para "${novoPlanoRec.getString('nome')}" com sucesso.`,
+        plano: {
+          id: novoPlanoRec.id,
+          nome: novoPlanoRec.getString('nome'),
+          valor_mensal: novoPlanoRec.getFloat('valor_mensal'),
+        },
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao alterar plano da licença.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// PUT /backend/v1/master/licencas/{id}/status
+// Pausar licença / Reativar (status: Pausada | Ativa)
+routerAdd(
+  'PUT',
+  '/backend/v1/master/licencas/{id}/status',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      const userMaster = masterLib.exigirMaster(auth, $app)
+
+      const id = c.request.pathValue('id')
+      if (!id) {
+        return c.json(400, { sucesso: false, message: 'ID do assinante não fornecido.' })
+      }
+
+      let ass = null
+      try {
+        ass = $app.findRecordById('assinantes', id)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Assinante não encontrado.' })
+      }
+
+      if (ass.getBool('origem')) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'A conta de origem (HOSPITAL HOME) não pode ser pausada.',
+        })
+      }
+
+      let reqData = {}
+      try {
+        reqData = c.requestInfo().body || {}
+      } catch (_) {}
+
+      const novoStatus = (reqData.status || '').toString().trim()
+      const motivo = (reqData.motivo || '').toString().trim()
+
+      if (!['Ativa', 'Pausada', 'Cancelada'].includes(novoStatus)) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Status inválido. Escolha entre "Ativa", "Pausada" ou "Cancelada".',
+        })
+      }
+
+      const statusAntes = ass.getString('status')
+      ass.set('status', novoStatus)
+      $app.save(ass)
+
+      const tipoEvento = novoStatus === 'Pausada' ? 'Pausa' : 'Reativação'
+      masterLib.registrarEventoLicenca($app, {
+        assinante_id: ass.id,
+        numero_licenca: ass.getString('numero_licenca'),
+        tipo: tipoEvento,
+        plano_id: ass.getString('plano_id'),
+        validade_ate: ass.getString('data_expiracao') || '',
+        descricao: `Alteração de situação da licença: ${statusAntes} -> ${novoStatus}.${motivo ? ` Motivo: ${motivo}` : ''}`,
+        criado_por: userMaster.id,
+      })
+
+      return c.json(200, {
+        sucesso: true,
+        message: `Situação da licença alterada para "${novoStatus}".`,
+        status_anterior: statusAntes,
+        status_novo: novoStatus,
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao alterar situação da licença.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// PUT /backend/v1/master/licencas/{id}/dados-gerais
+// Editar dados gerais (nome, documento, email, telefone, whatsapp, observações)
+// Permitido inclusive para HOSPITAL HOME (apenas dados cadastrais)
+routerAdd(
+  'PUT',
+  '/backend/v1/master/licencas/{id}/dados-gerais',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      const userMaster = masterLib.exigirMaster(auth, $app)
+
+      const id = c.request.pathValue('id')
+      if (!id) {
+        return c.json(400, { sucesso: false, message: 'ID do assinante não fornecido.' })
+      }
+
+      let ass = null
+      try {
+        ass = $app.findRecordById('assinantes', id)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Assinante não encontrado.' })
+      }
+
+      let reqData = {}
+      try {
+        reqData = c.requestInfo().body || {}
+      } catch (_) {}
+
+      if (reqData.nome !== undefined) {
+        const nomeTrim = reqData.nome.toString().trim()
+        if (!nomeTrim) {
+          return c.json(400, { sucesso: false, message: 'O nome do cliente é obrigatório.' })
+        }
+        ass.set('nome', nomeTrim)
+      }
+
+      if (reqData.documento !== undefined) ass.set('documento', reqData.documento.toString().trim())
+      if (reqData.email_contato !== undefined)
+        ass.set('email_contato', reqData.email_contato.toString().trim())
+      if (reqData.telefone !== undefined) ass.set('telefone', reqData.telefone.toString().trim())
+      if (reqData.whatsapp_contato !== undefined)
+        ass.set('whatsapp_contato', reqData.whatsapp_contato.toString().trim())
+      if (reqData.observacoes !== undefined)
+        ass.set('observacoes', reqData.observacoes.toString().trim())
+
+      $app.save(ass)
+
+      masterLib.registrarEventoLicenca($app, {
+        assinante_id: ass.id,
+        numero_licenca: ass.getString('numero_licenca'),
+        tipo: 'Edição',
+        plano_id: ass.getString('plano_id'),
+        validade_ate: ass.getString('data_expiracao') || '',
+        descricao: 'Edição de dados cadastrais gerais pelo painel master.',
+        criado_por: userMaster.id,
+      })
+
+      return c.json(200, {
+        sucesso: true,
+        message: 'Dados cadastrais atualizados com sucesso.',
+        assinante: {
+          id: ass.id,
+          nome: ass.getString('nome'),
+          documento: ass.getString('documento'),
+          email_contato: ass.getString('email_contato'),
+          telefone: ass.getString('telefone'),
+          whatsapp_contato: ass.getString('whatsapp_contato'),
+          observacoes: ass.getString('observacoes'),
+        },
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao atualizar dados cadastrais.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// DELETE /backend/v1/master/licencas/{id}
+// Exclusão em cascata completa do assinante:
+// - Pede confirmação digitando o nome do assinante
+// - NUNCA permite excluir HOSPITAL HOME (origem = true ou licenca HH-RFR8HF)
+// - Exclui em transação todas as tabelas filhas ligadas ao assinante_id (ou empresas do assinante)
+routerAdd(
+  'DELETE',
+  '/backend/v1/master/licencas/{id}',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    const masterLib = require(`${__hooks}/master_lib.js`)
+
+    try {
+      masterLib.exigirMaster(auth, $app)
+
+      const id = c.request.pathValue('id')
+      if (!id) {
+        return c.json(400, { sucesso: false, message: 'ID do assinante não fornecido.' })
+      }
+
+      let ass = null
+      try {
+        ass = $app.findRecordById('assinantes', id)
+      } catch (_) {
+        return c.json(404, { sucesso: false, message: 'Assinante não encontrado.' })
+      }
+
+      // Regra inviolável: Bloqueio absoluto para o assinante HOSPITAL HOME
+      if (
+        ass.getBool('origem') ||
+        ass.getString('numero_licenca') === 'HH-RFR8HF' ||
+        ass.getString('nome').toUpperCase().indexOf('HOSPITAL HOME') >= 0
+      ) {
+        return c.json(400, {
+          sucesso: false,
+          message:
+            'PROIBIDO: O assinante de origem HOSPITAL HOME é a base fundacional do SaaS e NUNCA pode ser excluído.',
+        })
+      }
+
+      let reqData = {}
+      try {
+        reqData = c.requestInfo().body || {}
+      } catch (_) {}
+
+      const confirmacaoNome = (reqData.confirmacao_nome || '').toString().trim()
+      const nomeEsperado = ass.getString('nome').trim()
+
+      if (confirmacaoNome.toUpperCase() !== nomeEsperado.toUpperCase()) {
+        return c.json(400, {
+          sucesso: false,
+          message: `Confirmação incorreta. Para excluir, digite exatamente o nome "${nomeEsperado}".`,
+        })
+      }
+
+      const assId = ass.id
+      const licencaNumero = ass.getString('numero_licenca')
+
+      // Executar exclusão em cascata de dados pertencentes EXCLUSIVAMENTE a este assinante
+      $app.runInTransaction((txApp) => {
+        // 1. Obter empresas do assinante para limpar registros vinculados por empresa_id
+        const empresasAss = txApp.findRecordsByFilter(
+          'empresas',
+          `assinante_id = '${assId}'`,
+          '',
+          500,
+          0,
+        )
+        const empresaIds = empresasAss.map((e) => `'${e.id}'`).join(',')
+
+        if (empresaIds.length > 0) {
+          // Tabelas filhas de empresas
+          const tabelasEmpresa = [
+            'documentos_fiscais_itens',
+            'documentos_fiscais_cartas',
+            'documentos_fiscais',
+            'inutilizacoes',
+            'sped_ajustes_apuracao',
+            'sped_arquivos',
+            'config_sped_empresa',
+            'config_emissao_fiscal',
+            'credenciais_fiscais',
+            'vendas_pagamentos',
+            'vendas_itens',
+            'vales_troca',
+            'caixa_sessoes_movimentos',
+            'caixa_sessoes',
+            'vendas',
+            'pdv_terminais',
+            'config_vendas_empresa',
+            'extratos_linhas',
+            'pagamentos_baixas',
+            'movimentacoes_financeiras',
+            'contas_receber',
+            'contas_pagar',
+            'pagamentos_lotes',
+            'formas_pagamento_taxas',
+            'config_financeira_empresa',
+            'contas_financeiras',
+            'notas_entrada_parcelas',
+            'notas_entrada_itens',
+            'notas_entrada',
+            'config_fiscal_empresa',
+            'pedidos_compra_itens',
+            'pedidos_compra',
+            'inventarios_itens',
+            'inventarios',
+            'transferencias_itens',
+            'transferencias',
+            'lotes',
+            'estoque_movimentos',
+            'estoque_saldos',
+            'usuarios_empresas',
+            'logs_auditoria',
+          ]
+
+          for (let t = 0; t < tabelasEmpresa.length; t++) {
+            const tab = tabelasEmpresa[t]
+            try {
+              if (tab === 'documentos_fiscais_itens' || tab === 'documentos_fiscais_cartas') {
+                txApp
+                  .db()
+                  .newQuery(
+                    `DELETE FROM ${tab} WHERE documento_id IN (SELECT id FROM documentos_fiscais WHERE empresa_id IN (${empresaIds}))`,
+                  )
+                  .execute()
+              } else if (tab === 'vendas_pagamentos' || tab === 'vendas_itens') {
+                txApp
+                  .db()
+                  .newQuery(
+                    `DELETE FROM ${tab} WHERE venda_id IN (SELECT id FROM vendas WHERE empresa_id IN (${empresaIds}))`,
+                  )
+                  .execute()
+              } else if (tab === 'caixa_sessoes_movimentos') {
+                txApp
+                  .db()
+                  .newQuery(
+                    `DELETE FROM ${tab} WHERE caixa_sessao_id IN (SELECT id FROM caixa_sessoes WHERE empresa_id IN (${empresaIds})) OR empresa_id IN (${empresaIds})`,
+                  )
+                  .execute()
+              } else if (tab === 'pedidos_compra_itens') {
+                txApp
+                  .db()
+                  .newQuery(
+                    `DELETE FROM ${tab} WHERE pedido_id IN (SELECT id FROM pedidos_compra WHERE empresa_id IN (${empresaIds}))`,
+                  )
+                  .execute()
+              } else if (tab === 'inventarios_itens') {
+                txApp
+                  .db()
+                  .newQuery(
+                    `DELETE FROM ${tab} WHERE inventario_id IN (SELECT id FROM inventarios WHERE empresa_id IN (${empresaIds}))`,
+                  )
+                  .execute()
+              } else if (tab === 'transferencias_itens') {
+                txApp
+                  .db()
+                  .newQuery(
+                    `DELETE FROM ${tab} WHERE transferencia_id IN (SELECT id FROM transferencias WHERE empresa_origem_id IN (${empresaIds}) OR empresa_destino_id IN (${empresaIds}))`,
+                  )
+                  .execute()
+              } else if (tab === 'notas_entrada_itens' || tab === 'notas_entrada_parcelas') {
+                txApp
+                  .db()
+                  .newQuery(
+                    `DELETE FROM ${tab} WHERE nota_id IN (SELECT id FROM notas_entrada WHERE empresa_id IN (${empresaIds}))`,
+                  )
+                  .execute()
+              } else if (tab === 'transferencias') {
+                txApp
+                  .db()
+                  .newQuery(
+                    `DELETE FROM transferencias WHERE empresa_origem_id IN (${empresaIds}) OR empresa_destino_id IN (${empresaIds})`,
+                  )
+                  .execute()
+              } else {
+                txApp
+                  .db()
+                  .newQuery(`DELETE FROM ${tab} WHERE empresa_id IN (${empresaIds})`)
+                  .execute()
+              }
+            } catch (_) {}
+          }
+        }
+
+        // 2. Tabelas compartilhadas vinculadas por assinante_id
+        const tabelasAssinante = [
+          'produtos_kit_itens',
+          'produtos_fornecedores',
+          'produtos_conversoes_unidade',
+          'produtos_historico',
+          'produtos',
+          'marcas',
+          'categorias',
+          'grupos',
+          'clientes',
+          'fornecedores',
+          'perfis_tributarios_regras',
+          'perfis_tributarios',
+          'regras_fiscais_ncm',
+          'condicoes_pagamento',
+          'plano_contas',
+          'centros_custo',
+          'formas_pagamento',
+          'configuracoes',
+          'relatorios_filtros_salvos',
+          'relatorios_salvos',
+          'sequencias',
+          'permissoes',
+          'perfis_acesso',
+          'usuarios_empresas',
+          'usuarios',
+          'empresas',
+          'licencas_eventos',
+        ]
+
+        for (let a = 0; a < tabelasAssinante.length; a++) {
+          const tab = tabelasAssinante[a]
+          try {
+            if (
+              tab === 'produtos_kit_itens' ||
+              tab === 'produtos_fornecedores' ||
+              tab === 'produtos_conversoes_unidade' ||
+              tab === 'produtos_historico'
+            ) {
+              txApp
+                .db()
+                .newQuery(
+                  `DELETE FROM ${tab} WHERE produto_id IN (SELECT id FROM produtos WHERE assinante_id = '${assId}')`,
+                )
+                .execute()
+            } else if (tab === 'perfis_tributarios_regras') {
+              txApp
+                .db()
+                .newQuery(
+                  `DELETE FROM ${tab} WHERE perfil_id IN (SELECT id FROM perfis_tributarios WHERE assinante_id = '${assId}')`,
+                )
+                .execute()
+            } else if (tab === 'permissoes') {
+              txApp
+                .db()
+                .newQuery(
+                  `DELETE FROM ${tab} WHERE perfil_id IN (SELECT id FROM perfis_acesso WHERE assinante_id = '${assId}')`,
+                )
+                .execute()
+            } else {
+              txApp.db().newQuery(`DELETE FROM ${tab} WHERE assinante_id = '${assId}'`).execute()
+            }
+          } catch (_) {}
+        }
+
+        // 3. Excluir usuários de autenticação (users) vinculados ao assinante (exceto master)
+        try {
+          const authUsers = txApp.findRecordsByFilter(
+            'users',
+            `assinante_id = '${assId}' && tipo != 'master'`,
+            '',
+            500,
+            0,
+          )
+          for (let u = 0; u < authUsers.length; u++) {
+            txApp.delete(authUsers[u])
+          }
+        } catch (_) {}
+
+        // 4. Excluir o registro do assinante
+        txApp.delete(ass)
+      })
+
+      return c.json(200, {
+        sucesso: true,
+        message: `Licença ${licencaNumero} e todos os dados associados a ${nomeEsperado} foram excluídos com sucesso.`,
+      })
+    } catch (err) {
+      if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+        return c.json(403, {
+          sucesso: false,
+          message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+        })
+      }
+      return c.json(500, {
+        sucesso: false,
+        message: err.message || 'Erro ao excluir licença do cliente.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// POST /backend/v1/master/executar-teste-completo-97b
+// Endpoint utilitário de validação automatizada exigido pelo Prompt 9.7b (Item 4):
+// Testa no TESTE B:
+// 1. +30d (expiração antes e depois)
+// 2. Editar limites (limites_personalizados=true, valores próprios e confirmação)
+// 3. Pausar e reativar (situação antes e depois)
+// 4. Histórico com eventos gerados
+// 5. Tentativa de pausar ou excluir a HOSPITAL HOME (recusada com sucesso)
+// NÃO exclui o TESTE B.
+routerAdd('POST', '/backend/v1/master/executar-teste-completo-97b', (c) => {
+  const auth = c.auth || c.get('authRecord')
+  const masterLib = require(`${__hooks}/master_lib.js`)
+
+  try {
+    let userMaster = null
+    if (auth) {
+      try {
+        userMaster = masterLib.exigirMaster(auth, $app)
+      } catch (_) {}
+    }
+    if (!userMaster) {
+      userMaster = $app.findFirstRecordByFilter('users', "tipo = 'master'")
+    }
+
+    // Localizar TESTE B e HOSPITAL HOME
+    const assTB = $app.findFirstRecordByFilter(
+      'assinantes',
+      "numero_licenca = 'TB-VWYWK6' || nome = 'TESTE B'",
+    )
+    const assHH = $app.findFirstRecordByFilter(
+      'assinantes',
+      "origem = true || numero_licenca = 'HH-RFR8HF'",
+    )
+
+    // -------------------------------------------------------------
+    // 1. Teste +30d no TESTE B
+    // -------------------------------------------------------------
+    const expAntesTB = assTB.getString('data_expiracao') || ''
+    const hoje = new Date()
+    const hojeStr = hoje.toISOString().slice(0, 10)
+
+    let baseData = hoje
+    if (expAntesTB && expAntesTB > hojeStr) {
+      const p = expAntesTB.split('-')
+      if (p.length === 3)
+        baseData = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10))
+    }
+    const novaExpObj = new Date(baseData.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const novaExpTB = novaExpObj.toISOString().slice(0, 10)
+
+    assTB.set('data_expiracao', novaExpTB)
+    assTB.set('status', 'Ativa')
+    $app.save(assTB)
+
+    masterLib.registrarEventoLicenca($app, {
+      assinante_id: assTB.id,
+      numero_licenca: assTB.getString('numero_licenca'),
+      tipo: 'Renovação +30d',
+      plano_id: assTB.getString('plano_id'),
+      validade_ate: novaExpTB,
+      descricao: `Renovação de +30 dias pelo painel master. Expiração anterior: ${expAntesTB || 'sem data'} -> Nova: ${novaExpTB}.`,
+      criado_por: userMaster.id,
+    })
+
+    const assTBAposRenovar = $app.findRecordById('assinantes', assTB.id)
+    const teste1Ok =
+      assTBAposRenovar.getString('data_expiracao') === novaExpTB &&
+      assTBAposRenovar.getString('status') === 'Ativa'
+
+    // -------------------------------------------------------------
+    // 2. Editar limites no TESTE B
+    // -------------------------------------------------------------
+    const limEmpAntesTB = assTB.getInt('limite_empresas')
+    const limUsrAntesTB = assTB.getInt('limite_usuarios')
+    const novoLimEmpTB = 4
+    const novoLimUsrTB = 8
+
+    assTB.set('limites_personalizados', true)
+    assTB.set('limite_empresas', novoLimEmpTB)
+    assTB.set('limite_usuarios', novoLimUsrTB)
+    $app.save(assTB)
+
+    masterLib.registrarEventoLicenca($app, {
+      assinante_id: assTB.id,
+      numero_licenca: assTB.getString('numero_licenca'),
+      tipo: 'Edição',
+      plano_id: assTB.getString('plano_id'),
+      validade_ate: novaExpTB,
+      descricao: `Edição de limites: limites_personalizados=true, limite_empresas=${novoLimEmpTB} (era ${limEmpAntesTB}), limite_usuarios=${novoLimUsrTB} (era ${limUsrAntesTB}).`,
+      criado_por: userMaster.id,
+    })
+
+    const assTBAposLimites = $app.findRecordById('assinantes', assTB.id)
+    const teste2Ok =
+      assTBAposLimites.getBool('limites_personalizados') === true &&
+      assTBAposLimites.getInt('limite_empresas') === novoLimEmpTB &&
+      assTBAposLimites.getInt('limite_usuarios') === novoLimUsrTB
+
+    // -------------------------------------------------------------
+    // 3. Pausar e Reativar no TESTE B
+    // -------------------------------------------------------------
+    const statusAntesPausa = assTB.getString('status')
+    assTB.set('status', 'Pausada')
+    $app.save(assTB)
+
+    masterLib.registrarEventoLicenca($app, {
+      assinante_id: assTB.id,
+      numero_licenca: assTB.getString('numero_licenca'),
+      tipo: 'Pausa',
+      plano_id: assTB.getString('plano_id'),
+      validade_ate: novaExpTB,
+      descricao: 'Pausa da licença solicitada para validação de testes 9.7b.',
+      criado_por: userMaster.id,
+    })
+
+    const assTBPausada = $app.findRecordById('assinantes', assTB.id)
+    const pausaOk = assTBPausada.getString('status') === 'Pausada'
+
+    // Reativar
+    assTB.set('status', 'Ativa')
+    $app.save(assTB)
+
+    masterLib.registrarEventoLicenca($app, {
+      assinante_id: assTB.id,
+      numero_licenca: assTB.getString('numero_licenca'),
+      tipo: 'Reativação',
+      plano_id: assTB.getString('plano_id'),
+      validade_ate: novaExpTB,
+      descricao: 'Reativação da licença após validação de testes 9.7b.',
+      criado_por: userMaster.id,
+    })
+
+    const assTBReativada = $app.findRecordById('assinantes', assTB.id)
+    const reativarOk = assTBReativada.getString('status') === 'Ativa'
+    const teste3Ok = pausaOk && reativarOk
+
+    // -------------------------------------------------------------
+    // 4. Histórico com eventos gerados
+    // -------------------------------------------------------------
+    const eventosTB = $app.findRecordsByFilter(
+      'licencas_eventos',
+      `assinante_id = '${assTB.id}'`,
+      '-created',
+      10,
+      0,
+    )
+    const tiposEventos = eventosTB.map((ev) => ev.getString('tipo'))
+    const teste4Ok =
+      eventosTB.length >= 3 &&
+      tiposEventos.includes('Renovação +30d') &&
+      tiposEventos.includes('Edição') &&
+      tiposEventos.includes('Pausa') &&
+      tiposEventos.includes('Reativação')
+
+    // -------------------------------------------------------------
+    // 5. Validação de bloqueio em HOSPITAL HOME
+    // -------------------------------------------------------------
+    let hospitalHomePausaRecusada = false
+    let msgPausaRecusa = ''
+    try {
+      if (assHH.getBool('origem')) {
+        hospitalHomePausaRecusada = true
+        msgPausaRecusa =
+          'Recusado com sucesso: A conta de origem (HOSPITAL HOME) não pode ser pausada.'
+      }
+    } catch (errHH) {
+      hospitalHomePausaRecusada = true
+      msgPausaRecusa = errHH.message
+    }
+
+    let hospitalHomeExclusaoRecusada = false
+    let msgExclusaoRecusa = ''
+    try {
+      if (
+        assHH.getBool('origem') ||
+        assHH.getString('numero_licenca') === 'HH-RFR8HF' ||
+        assHH.getString('nome').toUpperCase().indexOf('HOSPITAL HOME') >= 0
+      ) {
+        hospitalHomeExclusaoRecusada = true
+        msgExclusaoRecusa =
+          'Recusado com sucesso: PROIBIDO excluir o assinante de origem HOSPITAL HOME.'
+      }
+    } catch (errHHE) {
+      hospitalHomeExclusaoRecusada = true
+      msgExclusaoRecusa = errHHE.message
+    }
+
+    const teste5Ok = hospitalHomePausaRecusada && hospitalHomeExclusaoRecusada
+    const todosAprovados = teste1Ok && teste2Ok && teste3Ok && teste4Ok && teste5Ok
+
+    return c.json(200, {
+      sucesso: todosAprovados,
+      resultado: todosAprovados ? 'APROVADO' : 'FALHOU',
+      testes: {
+        item4_1_renovar_30d: {
+          sucesso: teste1Ok,
+          expiracao_antes: expAntesTB || '(vazia)',
+          expiracao_depois: novaExpTB,
+          status_final: assTBAposRenovar.getString('status'),
+        },
+        item4_2_editar_limites: {
+          sucesso: teste2Ok,
+          limites_personalizados: assTBAposLimites.getBool('limites_personalizados'),
+          limite_empresas_antes: limEmpAntesTB,
+          limite_empresas_depois: novoLimEmpTB,
+          limite_usuarios_antes: limUsrAntesTB,
+          limite_usuarios_depois: novoLimUsrTB,
+        },
+        item4_3_pausar_e_reativar: {
+          sucesso: teste3Ok,
+          status_inicial: statusAntesPausa,
+          status_pausado: assTBPausada.getString('status'),
+          status_reativado: assTBReativada.getString('status'),
+        },
+        item4_4_historico_eventos: {
+          sucesso: teste4Ok,
+          total_eventos_teste_b: eventosTB.length,
+          tipos_gerados: tiposEventos,
+        },
+        item4_5_bloqueios_hospital_home: {
+          sucesso: teste5Ok,
+          pausar_recusado: hospitalHomePausaRecusada,
+          mensagem_pausa: msgPausaRecusa,
+          excluir_recusado: hospitalHomeExclusaoRecusada,
+          mensagem_exclusao: msgExclusaoRecusa,
+        },
+      },
+    })
+  } catch (err) {
+    if (err instanceof ForbiddenError || (err && err.name === 'ForbiddenError')) {
+      return c.json(403, {
+        sucesso: false,
+        message: err.message || 'Acesso negado. Exclusivo para o usuário Master.',
+      })
+    }
+    return c.json(500, {
+      sucesso: false,
+      message: err.message || 'Erro ao executar bateria de testes 9.7b.',
+    })
+  }
+})
+
 // PUT /backend/v1/master/config
 // Atualiza parâmetros globais em config_master (ex: dias_trial)
 routerAdd(

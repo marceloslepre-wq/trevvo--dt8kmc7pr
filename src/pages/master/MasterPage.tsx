@@ -68,16 +68,52 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useConfiguracoes } from '@/contexts/ConfiguracoesContext'
 import { useToast } from '@/hooks/use-toast'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   obterMasterResumo,
   listarMasterPlanos,
   criarMasterPlano,
   atualizarMasterPlano,
   excluirMasterPlano,
   atualizarConfigMaster,
+  listarMasterLicencas,
+  obterHistoricoLicenca,
+  renovarLicenca30Dias,
+  editarLimitesLicenca,
+  editarExpiracaoLicenca,
+  alterarPlanoLicenca,
+  alterarStatusLicenca,
+  editarDadosGeraisLicenca,
+  excluirLicencaCascata,
   MasterResumo,
   MasterPlano,
   MasterPlanoFormData,
+  MasterLicencaItem,
+  MasterLicencaEvento,
 } from '@/services/master'
+import {
+  Search,
+  SlidersHorizontal,
+  Calendar,
+  Zap,
+  MoreVertical,
+  History,
+  Play,
+  Pause,
+  Sliders,
+  CalendarClock,
+  ArrowRightLeft,
+  UserCheck,
+  UserX,
+  Phone,
+  AlertTriangle,
+} from 'lucide-react'
 
 const FORM_PLANO_PADRAO: MasterPlanoFormData = {
   nome: '',
@@ -106,6 +142,63 @@ export const MasterPage: React.FC = () => {
   // Dados principais
   const [resumo, setResumo] = useState<MasterResumo | null>(null)
   const [planos, setPlanos] = useState<MasterPlano[]>([])
+  const [licencas, setLicencas] = useState<MasterLicencaItem[]>([])
+
+  // Filtros da aba Licenças
+  const [buscaLicenca, setBuscaLicenca] = useState('')
+  const [filtroSituacao, setFiltroSituacao] = useState<
+    'todos' | 'ativas' | 'renovadas' | 'expiradas' | 'pausadas' | 'trial'
+  >('todos')
+
+  // Modais de Poderes da Licença
+  const [licencaSelecionada, setLicencaSelecionada] = useState<MasterLicencaItem | null>(null)
+  const [modalHistoricoAberto, setModalHistoricoAberto] = useState(false)
+  const [historicoEventos, setHistoricoEventos] = useState<MasterLicencaEvento[]>([])
+  const [carregandoHistorico, setCarregandoHistorico] = useState(false)
+
+  // Modal Editar Limites
+  const [modalLimitesAberto, setModalLimitesAberto] = useState(false)
+  const [limitesForm, setLimitesForm] = useState({
+    limites_personalizados: true,
+    limite_empresas: 1,
+    limite_usuarios: 3,
+  })
+  const [salvandoLimites, setSalvandoLimites] = useState(false)
+
+  // Modal Editar Expiração
+  const [modalExpiracaoAberto, setModalExpiracaoAberto] = useState(false)
+  const [novaExpiracaoInput, setNovaExpiracaoInput] = useState('')
+  const [salvandoExpiracao, setSalvandoExpiracao] = useState(false)
+
+  // Modal Alterar Plano
+  const [modalAlterarPlanoAberto, setModalAlterarPlanoAberto] = useState(false)
+  const [novoPlanoSelecionado, setNovoPlanoSelecionado] = useState('')
+  const [salvandoPlanoLicenca, setSalvandoPlanoLicenca] = useState(false)
+
+  // Modal Pausar / Reativar
+  const [modalStatusAberto, setModalStatusAberto] = useState(false)
+  const [motivoStatus, setMotivoStatus] = useState('')
+  const [salvandoStatus, setSalvandoStatus] = useState(false)
+
+  // Modal Editar Dados Gerais
+  const [modalDadosGeraisAberto, setModalDadosGeraisAberto] = useState(false)
+  const [dadosGeraisForm, setDadosGeraisForm] = useState({
+    nome: '',
+    documento: '',
+    email_contato: '',
+    telefone: '',
+    whatsapp_contato: '',
+    observacoes: '',
+  })
+  const [salvandoDadosGerais, setSalvandoDadosGerais] = useState(false)
+
+  // Modal Excluir Licença (com digitação do nome)
+  const [modalExcluirLicencaAberto, setModalExcluirLicencaAberto] = useState(false)
+  const [digitacaoConfirmacaoExclusao, setDigitacaoConfirmacaoExclusao] = useState('')
+  const [excluindoLicenca, setExcluindoLicenca] = useState(false)
+
+  // Estado de renovação rápida (+30d)
+  const [renovandoId, setRenovandoId] = useState<string | null>(null)
 
   // Quadro 1: Gerador de Link de Primeiro Cadastro
   const [diasTrialInput, setDiasTrialInput] = useState<number>(15)
@@ -126,12 +219,14 @@ export const MasterPage: React.FC = () => {
   // Carregar dados
   const carregarDadosMaster = useCallback(async () => {
     try {
-      const [resumoData, planosData] = await Promise.all([
+      const [resumoData, planosData, licencasData] = await Promise.all([
         obterMasterResumo(),
         listarMasterPlanos(),
+        listarMasterLicencas(),
       ])
       setResumo(resumoData)
       setPlanos(planosData)
+      setLicencas(licencasData)
       setDiasTrialInput(resumoData.dias_trial_padrao || 15)
     } catch (err: any) {
       toast({
@@ -343,6 +438,347 @@ export const MasterPage: React.FC = () => {
       })
     } finally {
       setExcluindoPlano(false)
+    }
+  }
+
+  // Contagens dos filtros de licenças
+  const contagensFiltros = useMemo(() => {
+    const total = licencas.length
+    const ativas = licencas.filter((l) => l.status === 'Ativa').length
+    const renovadas = licencas.filter((l) => l.total_renovacoes > 0).length
+    const expiradas = licencas.filter((l) => l.status === 'Expirada' || l.vencida).length
+    const pausadas = licencas.filter((l) => l.status === 'Pausada').length
+    const trial = licencas.filter((l) => l.status === 'Trial').length
+    return { total, ativas, renovadas, expiradas, pausadas, trial }
+  }, [licencas])
+
+  // Licenças filtradas por busca e situação
+  const licencasFiltradas = useMemo(() => {
+    return licencas.filter((lic) => {
+      // Filtro de situação
+      if (filtroSituacao === 'ativas' && lic.status !== 'Ativa') return false
+      if (filtroSituacao === 'renovadas' && lic.total_renovacoes <= 0) return false
+      if (filtroSituacao === 'expiradas' && lic.status !== 'Expirada' && !lic.vencida) return false
+      if (filtroSituacao === 'pausadas' && lic.status !== 'Pausada') return false
+      if (filtroSituacao === 'trial' && lic.status !== 'Trial') return false
+
+      // Busca por cliente, CNPJ, plano ou número da licença
+      if (buscaLicenca.trim()) {
+        const termo = buscaLicenca.toLowerCase()
+        const matchNome = (lic.nome || '').toLowerCase().includes(termo)
+        const matchDoc = (lic.documento || '').toLowerCase().includes(termo)
+        const matchCnpjMatriz = (lic.cnpj_matriz || '').toLowerCase().includes(termo)
+        const matchPlano = (lic.plano_nome || '').toLowerCase().includes(termo)
+        const matchLic = (lic.numero_licenca || '').toLowerCase().includes(termo)
+        return matchNome || matchDoc || matchCnpjMatriz || matchPlano || matchLic
+      }
+
+      return true
+    })
+  }, [licencas, filtroSituacao, buscaLicenca])
+
+  // ==========================================
+  // AÇÕES DAS LICENÇAS
+  // ==========================================
+
+  // Botão +30d
+  const handleRenovar30d = async (lic: MasterLicencaItem) => {
+    if (lic.origem) {
+      toast({
+        title: 'Operação não permitida',
+        description: 'A conta de origem (HOSPITAL HOME) é isenta e permanente.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      setRenovandoId(lic.id)
+      const res = await renovarLicenca30Dias(lic.id)
+      toast({
+        title: 'Licença renovada (+30 dias)',
+        description: res.message || `Nova expiração: ${res.data_expiracao_nova}.`,
+      })
+      await carregarDadosMaster()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao renovar',
+        description: err?.message || 'Não foi possível renovar a licença.',
+        variant: 'destructive',
+      })
+    } finally {
+      setRenovandoId(null)
+    }
+  }
+
+  // Abrir Histórico
+  const handleAbrirHistorico = async (lic: MasterLicencaItem) => {
+    setLicencaSelecionada(lic)
+    setModalHistoricoAberto(true)
+    setCarregandoHistorico(true)
+    try {
+      const res = await obterHistoricoLicenca(lic.id)
+      setHistoricoEventos(res.historico || [])
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao carregar histórico',
+        description: err?.message || 'Falha ao buscar linha do tempo de eventos.',
+        variant: 'destructive',
+      })
+    } finally {
+      setCarregandoHistorico(false)
+    }
+  }
+
+  // Abrir Editar Limites
+  const handleAbrirLimites = (lic: MasterLicencaItem) => {
+    if (lic.origem) {
+      toast({
+        title: 'Ação não permitida',
+        description:
+          'Os limites do assinante de origem HOSPITAL HOME são permanentes e ilimitados.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setLicencaSelecionada(lic)
+    setLimitesForm({
+      limites_personalizados: lic.limites_personalizados,
+      limite_empresas: lic.limite_empresas || 1,
+      limite_usuarios: lic.limite_usuarios || 3,
+    })
+    setModalLimitesAberto(true)
+  }
+
+  const handleSalvarLimites = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!licencaSelecionada) return
+    try {
+      setSalvandoLimites(true)
+      await editarLimitesLicenca(licencaSelecionada.id, limitesForm)
+      toast({
+        title: 'Limites atualizados',
+        description: 'Os limites da licença foram alterados com sucesso.',
+      })
+      setModalLimitesAberto(false)
+      await carregarDadosMaster()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar limites',
+        description: err?.message || 'Falha ao atualizar limites da licença.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoLimites(false)
+    }
+  }
+
+  // Abrir Editar Expiração
+  const handleAbrirExpiracao = (lic: MasterLicencaItem) => {
+    if (lic.origem) {
+      toast({
+        title: 'Ação não permitida',
+        description: 'O assinante HOSPITAL HOME é permanente e não possui expiração.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setLicencaSelecionada(lic)
+    setNovaExpiracaoInput(lic.data_expiracao || '')
+    setModalExpiracaoAberto(true)
+  }
+
+  const handleSalvarExpiracao = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!licencaSelecionada) return
+    try {
+      setSalvandoExpiracao(true)
+      await editarExpiracaoLicenca(licencaSelecionada.id, novaExpiracaoInput)
+      toast({
+        title: 'Expiração alterada',
+        description: `Nova data de validade gravada com sucesso: ${novaExpiracaoInput || 'Sem expiração'}.`,
+      })
+      setModalExpiracaoAberto(false)
+      await carregarDadosMaster()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao alterar expiração',
+        description: err?.message || 'Falha ao gravar data de expiração.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoExpiracao(false)
+    }
+  }
+
+  // Abrir Alterar Plano
+  const handleAbrirAlterarPlano = (lic: MasterLicencaItem) => {
+    if (lic.origem) {
+      toast({
+        title: 'Ação não permitida',
+        description: 'A conta HOSPITAL HOME permanece no Plano Master.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setLicencaSelecionada(lic)
+    setNovoPlanoSelecionado(lic.plano_id || '')
+    setModalAlterarPlanoAberto(true)
+  }
+
+  const handleSalvarPlanoLicenca = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!licencaSelecionada || !novoPlanoSelecionado) return
+    try {
+      setSalvandoPlanoLicenca(true)
+      await alterarPlanoLicenca(licencaSelecionada.id, novoPlanoSelecionado)
+      toast({
+        title: 'Plano comercial alterado',
+        description: 'O plano do assinante foi atualizado com sucesso.',
+      })
+      setModalAlterarPlanoAberto(false)
+      await carregarDadosMaster()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao mudar plano',
+        description: err?.message || 'Falha ao alterar o plano da licença.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoPlanoLicenca(false)
+    }
+  }
+
+  // Abrir Pausar / Reativar
+  const handleAbrirStatus = (lic: MasterLicencaItem) => {
+    if (lic.origem) {
+      toast({
+        title: 'Ação não permitida',
+        description: 'A conta de origem (HOSPITAL HOME) não pode ser pausada.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setLicencaSelecionada(lic)
+    setMotivoStatus('')
+    setModalStatusAberto(true)
+  }
+
+  const handleSalvarStatus = async () => {
+    if (!licencaSelecionada) return
+    const novoSt = licencaSelecionada.status === 'Pausada' ? 'Ativa' : 'Pausada'
+    try {
+      setSalvandoStatus(true)
+      await alterarStatusLicenca(licencaSelecionada.id, novoSt, motivoStatus)
+      toast({
+        title: novoSt === 'Pausada' ? 'Licença Pausada' : 'Licença Reativada',
+        description: `Situação do cliente alterada para ${novoSt}.`,
+      })
+      setModalStatusAberto(false)
+      await carregarDadosMaster()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao alterar situação',
+        description: err?.message || 'Falha na alteração da situação.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoStatus(false)
+    }
+  }
+
+  // Abrir Editar Dados Gerais
+  const handleAbrirDadosGerais = (lic: MasterLicencaItem) => {
+    setLicencaSelecionada(lic)
+    setDadosGeraisForm({
+      nome: lic.nome || '',
+      documento: lic.documento || '',
+      email_contato: lic.email_contato || '',
+      telefone: lic.telefone || '',
+      whatsapp_contato: lic.whatsapp_contato || '',
+      observacoes: lic.observacoes || '',
+    })
+    setModalDadosGeraisAberto(true)
+  }
+
+  const handleSalvarDadosGerais = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!licencaSelecionada) return
+    if (!dadosGeraisForm.nome.trim()) {
+      toast({
+        title: 'Nome obrigatório',
+        description: 'O nome do cliente não pode ser deixado em branco.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      setSalvandoDadosGerais(true)
+      await editarDadosGeraisLicenca(licencaSelecionada.id, dadosGeraisForm)
+      toast({
+        title: 'Dados cadastrais salvos',
+        description: 'Informações do assinante atualizadas com sucesso.',
+      })
+      setModalDadosGeraisAberto(false)
+      await carregarDadosMaster()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar dados',
+        description: err?.message || 'Falha na atualização cadastral.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoDadosGerais(false)
+    }
+  }
+
+  // Abrir Excluir Licença
+  const handleAbrirExcluirLicenca = (lic: MasterLicencaItem) => {
+    if (lic.origem) {
+      toast({
+        title: 'Operação proibida',
+        description: 'O assinante de origem HOSPITAL HOME NUNCA pode ser excluído.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setLicencaSelecionada(lic)
+    setDigitacaoConfirmacaoExclusao('')
+    setModalExcluirLicencaAberto(true)
+  }
+
+  const handleConfirmarExclusaoLicenca = async () => {
+    if (!licencaSelecionada) return
+    const esperado = licencaSelecionada.nome.trim().toUpperCase()
+    const digitado = digitacaoConfirmacaoExclusao.trim().toUpperCase()
+
+    if (digitado !== esperado) {
+      toast({
+        title: 'Confirmação incorreta',
+        description: `Digite exatamente "${licencaSelecionada.nome}" para autorizar a exclusão.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      setExcluindoLicenca(true)
+      await excluirLicencaCascata(licencaSelecionada.id, digitacaoConfirmacaoExclusao.trim())
+      toast({
+        title: 'Licença excluída',
+        description: `O assinante ${licencaSelecionada.nome} e todos os dados foram apagados.`,
+      })
+      setModalExcluirLicencaAberto(false)
+      await carregarDadosMaster()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao excluir licença',
+        description: err?.message || 'Falha ao processar exclusão em cascata.',
+        variant: 'destructive',
+      })
+    } finally {
+      setExcluindoLicenca(false)
     }
   }
 
@@ -795,13 +1231,13 @@ export const MasterPage: React.FC = () => {
           {/* Cabeçalho das Abas */}
           <div className="flex items-center justify-between border-b border-slate-200 pb-3">
             <TabsList className="bg-slate-200/80 p-1 border border-slate-300">
-              {/* Licenças de clientes (9.7b em construção) */}
+              {/* Licenças de clientes (9.7b) */}
               <TabsTrigger
                 value="licencas"
                 className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs px-4 py-2"
               >
                 <KeyRound size={15} className="text-purple-600" />
-                Licenças de clientes
+                Licenças de clientes ({licencas.length})
               </TabsTrigger>
 
               {/* Catálogo de planos (N) com contador */}
@@ -826,32 +1262,497 @@ export const MasterPage: React.FC = () => {
             )}
           </div>
 
-          {/* ABA 1: Licenças de Clientes (CONTINUA EM CONSTRUÇÃO - 9.7b) */}
-          <TabsContent value="licencas" className="mt-0">
-            <Card className="border-slate-200 shadow-sm bg-white">
-              <CardContent className="flex flex-col items-center justify-center py-16 text-center px-4">
-                <div className="h-16 w-16 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-4 ring-8 ring-purple-50/50">
-                  <Construction size={32} />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 tracking-tight">
-                  Licenças de Clientes em Construção
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-500 mt-2 max-w-md leading-relaxed">
-                  A listagem completa de clientes assinantes, detalhes da licença, vigência, status,
-                  renovações e auditoria na linha do tempo de eventos será entregue no Prompt 9.7b.
-                </p>
-                <div className="mt-5 flex items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className="text-purple-700 bg-purple-50 border-purple-200 font-semibold"
-                  >
-                    Etapa 9.7b
-                  </Badge>
-                  <span className="text-xs text-slate-400">
-                    Tabelas assinantes e licencas_eventos prontas
-                  </span>
+          {/* ABA 1: Licenças de Clientes (ITEM 1 DO PROMPT 9.7b) */}
+          <TabsContent value="licencas" className="mt-0 space-y-4">
+            {/* Barra de Filtros e Busca de Licenças */}
+            <Card className="border-slate-200 shadow-xs bg-white">
+              <CardContent className="p-3 sm:p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  {/* Campo de Busca */}
+                  <div className="relative flex-1">
+                    <Search
+                      size={15}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <Input
+                      placeholder="Buscar por cliente, CNPJ, plano ou número da licença..."
+                      value={buscaLicenca}
+                      onChange={(e) => setBuscaLicenca(e.target.value)}
+                      className="pl-9 h-9 text-xs bg-slate-50/70 border-slate-200"
+                    />
+                    {buscaLicenca && (
+                      <button
+                        type="button"
+                        onClick={() => setBuscaLicenca('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 font-bold"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filtros de Situação com Contagem */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant={filtroSituacao === 'todos' ? 'default' : 'outline'}
+                      onClick={() => setFiltroSituacao('todos')}
+                      className={`h-8 text-xs px-2.5 font-medium ${
+                        filtroSituacao === 'todos'
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-white text-slate-600'
+                      }`}
+                    >
+                      Todos ({contagensFiltros.total})
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant={filtroSituacao === 'ativas' ? 'default' : 'outline'}
+                      onClick={() => setFiltroSituacao('ativas')}
+                      className={`h-8 text-xs px-2.5 font-medium ${
+                        filtroSituacao === 'ativas'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-white text-slate-600'
+                      }`}
+                    >
+                      Ativas ({contagensFiltros.ativas})
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant={filtroSituacao === 'renovadas' ? 'default' : 'outline'}
+                      onClick={() => setFiltroSituacao('renovadas')}
+                      className={`h-8 text-xs px-2.5 font-medium ${
+                        filtroSituacao === 'renovadas'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-slate-600'
+                      }`}
+                      title="Renovadas ao menos uma vez"
+                    >
+                      Renovadas ({contagensFiltros.renovadas})
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant={filtroSituacao === 'expiradas' ? 'default' : 'outline'}
+                      onClick={() => setFiltroSituacao('expiradas')}
+                      className={`h-8 text-xs px-2.5 font-medium ${
+                        filtroSituacao === 'expiradas'
+                          ? 'bg-rose-600 text-white'
+                          : 'bg-white text-slate-600'
+                      }`}
+                    >
+                      Expiradas ({contagensFiltros.expiradas})
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant={filtroSituacao === 'pausadas' ? 'default' : 'outline'}
+                      onClick={() => setFiltroSituacao('pausadas')}
+                      className={`h-8 text-xs px-2.5 font-medium ${
+                        filtroSituacao === 'pausadas'
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-white text-slate-600'
+                      }`}
+                    >
+                      Pausadas ({contagensFiltros.pausadas})
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant={filtroSituacao === 'trial' ? 'default' : 'outline'}
+                      onClick={() => setFiltroSituacao('trial')}
+                      className={`h-8 text-xs px-2.5 font-medium ${
+                        filtroSituacao === 'trial'
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-white text-slate-600'
+                      }`}
+                    >
+                      Trial ({contagensFiltros.trial})
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
+            </Card>
+
+            {/* Tabela de Licenças (um assinante por linha) */}
+            <Card className="border-slate-200 shadow-xs bg-white overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                      <th className="py-3 px-3.5">Licença</th>
+                      <th className="py-3 px-3.5">Cliente</th>
+                      <th className="py-3 px-3.5">Plano Contratado</th>
+                      <th className="py-3 px-3.5 text-center">Limites Efetivos</th>
+                      <th className="py-3 px-3.5 text-right">Mensalidade</th>
+                      <th className="py-3 px-3.5">Expiração</th>
+                      <th className="py-3 px-3.5 text-center">Situação</th>
+                      <th className="py-3 px-3.5">Contato / WhatsApp</th>
+                      <th className="py-3 px-3.5 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {carregandoDados ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-slate-500">
+                          <div className="flex items-center justify-center gap-2">
+                            <RefreshCw size={15} className="animate-spin text-indigo-600" />
+                            Carregando licenças de clientes...
+                          </div>
+                        </td>
+                      </tr>
+                    ) : licencasFiltradas.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-slate-500">
+                          <KeyRound size={28} className="mx-auto text-slate-300 mb-2" />
+                          <p className="font-semibold text-slate-700">Nenhuma licença encontrada</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {buscaLicenca || filtroSituacao !== 'todos'
+                              ? 'Tente ajustar os filtros ou o termo de busca.'
+                              : 'Não há clientes assinantes cadastrados no sistema.'}
+                          </p>
+                        </td>
+                      </tr>
+                    ) : (
+                      licencasFiltradas.map((lic) => {
+                        const ehHospitalHome = lic.origem
+                        const ehRenovando = renovandoId === lic.id
+
+                        return (
+                          <tr
+                            key={lic.id}
+                            className={`hover:bg-slate-50/80 transition-colors ${
+                              ehHospitalHome ? 'bg-amber-50/20' : ''
+                            }`}
+                          >
+                            {/* Coluna 1: Número da Licença */}
+                            <td className="py-3 px-3.5 align-middle font-mono font-bold text-slate-800">
+                              <div className="flex items-center gap-1.5">
+                                <KeyRound size={13} className="text-purple-600 shrink-0" />
+                                <span>{lic.numero_licenca}</span>
+                              </div>
+                            </td>
+
+                            {/* Coluna 2: Cliente (Nome, CNPJ da Matriz e Selo ORIGEM na HOSPITAL HOME) */}
+                            <td className="py-3 px-3.5 align-middle">
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-900 text-xs">
+                                    {lic.nome}
+                                  </span>
+                                  {ehHospitalHome && (
+                                    <Badge className="bg-amber-500 text-slate-950 font-extrabold text-[9px] px-1.5 py-0 border-none">
+                                      ORIGEM
+                                    </Badge>
+                                  )}
+                                </div>
+                                <span className="text-[11px] text-slate-500 font-mono">
+                                  {lic.cnpj_matriz || lic.documento || 'Sem documento'}
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Coluna 3: Plano Contratado (Selo Master no plano exclusivo_master) */}
+                            <td className="py-3 px-3.5 align-middle">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-slate-800">
+                                  {lic.plano_nome}
+                                </span>
+                                {lic.plano_exclusivo_master && (
+                                  <Badge className="bg-indigo-600 text-white font-bold text-[9px] px-1.5 py-0">
+                                    Master
+                                  </Badge>
+                                )}
+                                {lic.plano_etiqueta && !lic.plano_exclusivo_master && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[9px] text-indigo-700 bg-indigo-50 border-indigo-200 px-1 py-0"
+                                  >
+                                    {lic.plano_etiqueta}
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Coluna 4: Limites Efetivos (Empresas e Usuários com selo Custom) */}
+                            <td className="py-3 px-3.5 align-middle text-center">
+                              <div className="flex flex-col items-center gap-0.5">
+                                <div className="flex items-center gap-2 text-[11px]">
+                                  <span title="Limite de empresas">
+                                    🏢{' '}
+                                    <strong className="text-slate-800">
+                                      {lic.limite_empresas <= 0 ? '∞' : lic.limite_empresas}
+                                    </strong>
+                                  </span>
+                                  <span className="text-slate-300">|</span>
+                                  <span title="Limite de usuários">
+                                    👤{' '}
+                                    <strong className="text-slate-800">
+                                      {lic.limite_usuarios <= 0 ? '∞' : lic.limite_usuarios}
+                                    </strong>
+                                  </span>
+                                </div>
+                                {lic.limites_personalizados && (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-amber-50 text-amber-800 border-amber-300 text-[9px] font-semibold px-1 py-0 mt-0.5"
+                                  >
+                                    Custom
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Coluna 5: Valor Mensal ou "Isento" */}
+                            <td className="py-3 px-3.5 align-middle text-right font-medium">
+                              {lic.isento ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-slate-100 text-slate-700 font-bold text-[10px]"
+                                >
+                                  Isento
+                                </Badge>
+                              ) : (
+                                <span className="text-slate-900 font-bold">
+                                  {formatarMoeda(lic.valor_mensal)}
+                                  <span className="text-[10px] text-slate-400 font-normal">
+                                    /mês
+                                  </span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Coluna 6: Expiração em vermelho com "Vencida" quando já passou */}
+                            <td className="py-3 px-3.5 align-middle">
+                              {lic.origem ? (
+                                <span className="text-slate-500 font-medium text-[11px]">
+                                  Vitalícia
+                                </span>
+                              ) : lic.data_expiracao ? (
+                                <div className="flex flex-col">
+                                  <span
+                                    className={`font-semibold ${
+                                      lic.vencida ? 'text-rose-600 font-bold' : 'text-slate-700'
+                                    }`}
+                                  >
+                                    {lic.data_expiracao}
+                                  </span>
+                                  {lic.vencida && (
+                                    <Badge className="bg-rose-100 text-rose-800 border border-rose-300 text-[9px] px-1 py-0 w-fit font-bold">
+                                      Vencida
+                                    </Badge>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-[11px]">Sem expiração</span>
+                              )}
+                            </td>
+
+                            {/* Coluna 7: Situação + Selo "Nª licença" (renovações) */}
+                            <td className="py-3 px-3.5 align-middle text-center">
+                              <div className="flex flex-col items-center gap-1">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] font-bold px-2 py-0.5 ${
+                                    lic.status === 'Ativa'
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                      : lic.status === 'Trial'
+                                        ? 'bg-purple-50 text-purple-800 border-purple-300'
+                                        : lic.status === 'Pausada'
+                                          ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                          : 'bg-rose-50 text-rose-800 border-rose-300'
+                                  }`}
+                                >
+                                  {lic.status}
+                                </Badge>
+
+                                {lic.total_renovacoes > 0 && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-semibold px-1 py-0"
+                                    title={`Renovada ${lic.total_renovacoes} vez(es)`}
+                                  >
+                                    {lic.total_renovacoes}ª licença
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Coluna 8: WhatsApp com link para wa.me */}
+                            <td className="py-3 px-3.5 align-middle">
+                              {lic.whatsapp_contato ? (
+                                <a
+                                  href={`https://wa.me/55${lic.whatsapp_contato.replace(/\D/g, '')}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 font-semibold text-[11px] hover:underline"
+                                  title="Abrir conversa no WhatsApp"
+                                >
+                                  <MessageCircle size={13} className="text-emerald-600" />
+                                  <span>{lic.whatsapp_contato}</span>
+                                </a>
+                              ) : lic.telefone ? (
+                                <span className="text-slate-600 text-[11px] flex items-center gap-1">
+                                  <Phone size={11} className="text-slate-400" />
+                                  {lic.telefone}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-[11px]">-</span>
+                              )}
+                            </td>
+
+                            {/* Coluna 9: Ações (+30d e Menu Poderes da Licença) */}
+                            <td className="py-3 px-3.5 align-middle text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {/* Botão +30d */}
+                                {!ehHospitalHome && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleRenovar30d(lic)}
+                                    disabled={ehRenovando}
+                                    className="h-7 text-[11px] px-2 font-bold bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:text-emerald-900 gap-1"
+                                    title="Renovar +30 dias de validade"
+                                  >
+                                    {ehRenovando ? (
+                                      <RefreshCw size={11} className="animate-spin" />
+                                    ) : (
+                                      <>
+                                        <Zap size={11} className="text-emerald-600" />
+                                        +30d
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
+
+                                {/* Menu Poderes da Licença */}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0 text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                                      title="Poderes da licença"
+                                    >
+                                      <MoreVertical size={14} />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-56 text-xs">
+                                    <DropdownMenuLabel className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+                                      Poderes da Licença
+                                    </DropdownMenuLabel>
+
+                                    {/* Item 1: Histórico de renovações (sempre disponível) */}
+                                    <DropdownMenuItem
+                                      onClick={() => handleAbrirHistorico(lic)}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <History size={14} className="text-indigo-600" />
+                                      <span>Histórico de renovações</span>
+                                    </DropdownMenuItem>
+
+                                    {/* Item 2: Editar dados gerais (sempre disponível) */}
+                                    <DropdownMenuItem
+                                      onClick={() => handleAbrirDadosGerais(lic)}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <Pencil size={14} className="text-blue-600" />
+                                      <span>Editar dados gerais</span>
+                                    </DropdownMenuItem>
+
+                                    {/* Demais itens: Desativados/Ocultos para HOSPITAL HOME */}
+                                    {!ehHospitalHome && (
+                                      <>
+                                        <DropdownMenuSeparator />
+
+                                        {/* Editar limites desta licença */}
+                                        <DropdownMenuItem
+                                          onClick={() => handleAbrirLimites(lic)}
+                                          className="gap-2 cursor-pointer"
+                                        >
+                                          <Sliders size={14} className="text-amber-600" />
+                                          <span>Editar limites desta licença</span>
+                                        </DropdownMenuItem>
+
+                                        {/* Editar data de expiração */}
+                                        <DropdownMenuItem
+                                          onClick={() => handleAbrirExpiracao(lic)}
+                                          className="gap-2 cursor-pointer"
+                                        >
+                                          <CalendarClock size={14} className="text-purple-600" />
+                                          <span>Editar data de expiração</span>
+                                        </DropdownMenuItem>
+
+                                        {/* Alterar plano do cliente */}
+                                        <DropdownMenuItem
+                                          onClick={() => handleAbrirAlterarPlano(lic)}
+                                          className="gap-2 cursor-pointer"
+                                        >
+                                          <ArrowRightLeft size={14} className="text-teal-600" />
+                                          <span>Alterar plano do cliente</span>
+                                        </DropdownMenuItem>
+
+                                        {/* Pausar licença / Reativar */}
+                                        <DropdownMenuItem
+                                          onClick={() => handleAbrirStatus(lic)}
+                                          className="gap-2 cursor-pointer"
+                                        >
+                                          {lic.status === 'Pausada' ? (
+                                            <>
+                                              <Play size={14} className="text-emerald-600" />
+                                              <span>Reativar licença</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Pause size={14} className="text-amber-600" />
+                                              <span>Pausar licença</span>
+                                            </>
+                                          )}
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+
+                                    <DropdownMenuSeparator />
+
+                                    {/* Acessar painel (desativado até o 9.7b2) */}
+                                    <DropdownMenuItem
+                                      disabled
+                                      className="gap-2 text-slate-400 cursor-not-allowed"
+                                      title="Disponível no Prompt 9.7b2 (Login Como)"
+                                    >
+                                      <LayoutDashboard size={14} className="text-slate-400" />
+                                      <span className="flex-1">Acessar painel</span>
+                                      <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded">
+                                        9.7b2
+                                      </span>
+                                    </DropdownMenuItem>
+
+                                    {/* Excluir licença (proibido na HOSPITAL HOME) */}
+                                    {!ehHospitalHome && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => handleAbrirExcluirLicenca(lic)}
+                                          className="gap-2 text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer font-semibold"
+                                        >
+                                          <Trash2 size={14} />
+                                          <span>Excluir licença...</span>
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </Card>
           </TabsContent>
 
@@ -1335,6 +2236,656 @@ export const MasterPage: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* =================================================================== */}
+      {/* MODAIS DOS PODERES DA LICENÇA (ITEM 2 DO PROMPT 9.7b)               */}
+      {/* =================================================================== */}
+
+      {/* MODAL L1: Histórico de Renovações e Linha do Tempo */}
+      <Dialog open={modalHistoricoAberto} onOpenChange={setModalHistoricoAberto}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-indigo-700">
+              <History size={18} />
+              Histórico da Licença — {licencaSelecionada?.nome}
+            </DialogTitle>
+            <DialogDescription>
+              Linha do tempo completa de eventos, vigências e alterações registradas em{' '}
+              <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">
+                {licencaSelecionada?.numero_licenca}
+              </code>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2">
+            {carregandoHistorico ? (
+              <div className="py-12 text-center text-slate-500">
+                <RefreshCw size={18} className="animate-spin mx-auto text-indigo-600 mb-2" />
+                <p className="text-xs">Carregando linha do tempo de eventos...</p>
+              </div>
+            ) : historicoEventos.length === 0 ? (
+              <div className="py-8 text-center text-slate-500 text-xs">
+                Nenhum evento registrado até o momento para esta licença.
+              </div>
+            ) : (
+              <div className="space-y-3 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-slate-200">
+                {historicoEventos.map((ev) => {
+                  const dataFormatada = ev.created
+                    ? new Date(ev.created).toLocaleString('pt-BR')
+                    : ''
+
+                  return (
+                    <div key={ev.id} className="relative flex items-start gap-3 pl-8 text-xs">
+                      <div
+                        className={`absolute left-2 top-1.5 h-3.5 w-3.5 rounded-full border-2 bg-white -translate-x-1/2 ${
+                          ev.tipo === 'Criação'
+                            ? 'border-indigo-600 bg-indigo-600'
+                            : ev.tipo === 'Renovação +30d' || ev.tipo === 'Reativação'
+                              ? 'border-emerald-600 bg-emerald-600'
+                              : ev.tipo === 'Pausa'
+                                ? 'border-amber-600 bg-amber-600'
+                                : 'border-blue-600 bg-blue-600'
+                        }`}
+                      />
+                      <div className="flex-1 p-3 rounded-lg border border-slate-200 bg-slate-50/70 shadow-2xs">
+                        <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] font-bold ${
+                                ev.tipo === 'Criação'
+                                  ? 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                                  : ev.tipo === 'Renovação +30d' || ev.tipo === 'Reativação'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : ev.tipo === 'Pausa'
+                                      ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                      : 'bg-blue-50 text-blue-800 border-blue-300'
+                              }`}
+                            >
+                              {ev.tipo}
+                            </Badge>
+                            {ev.plano_nome && (
+                              <span className="text-[11px] font-semibold text-slate-700">
+                                Plano: {ev.plano_nome}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {dataFormatada}
+                          </span>
+                        </div>
+
+                        <p className="text-slate-700 text-xs mt-1 leading-relaxed">
+                          {ev.descricao}
+                        </p>
+
+                        <div className="mt-2 flex flex-wrap items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-200/60">
+                          <span>
+                            Responsável: <strong>{ev.criado_por_nome || 'Master'}</strong>
+                          </span>
+                          {ev.validade_ate && (
+                            <span>
+                              Vigência até: <strong>{ev.validade_ate}</strong>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setModalHistoricoAberto(false)}
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL L2: Editar Limites desta Licença */}
+      <Dialog open={modalLimitesAberto} onOpenChange={setModalLimitesAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <Sliders size={18} />
+              Editar Limites da Licença
+            </DialogTitle>
+            <DialogDescription>
+              Personalize os limites de empresas e usuários para {licencaSelecionada?.nome}. Ao
+              salvar, os limites individuais sobrepõem os valores do plano contratado.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSalvarLimites} className="space-y-4 py-2">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-amber-200 bg-amber-50/50">
+              <div>
+                <Label className="text-xs font-bold text-amber-950">
+                  Ativar limites personalizados
+                </Label>
+                <p className="text-[11px] text-amber-800">
+                  Desmarque se desejar voltar a usar os limites do plano comercial.
+                </p>
+              </div>
+              <Switch
+                checked={limitesForm.limites_personalizados}
+                onCheckedChange={(checked) =>
+                  setLimitesForm((prev) => ({ ...prev, limites_personalizados: checked }))
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Limite de Empresas</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={limitesForm.limite_empresas}
+                  onChange={(e) =>
+                    setLimitesForm((prev) => ({
+                      ...prev,
+                      limite_empresas: parseInt(e.target.value, 10) || 0,
+                    }))
+                  }
+                  disabled={!limitesForm.limites_personalizados}
+                  className="text-xs h-9 font-semibold"
+                />
+                <p className="text-[10px] text-slate-400">0 = Ilimitado</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Limite de Usuários</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={limitesForm.limite_usuarios}
+                  onChange={(e) =>
+                    setLimitesForm((prev) => ({
+                      ...prev,
+                      limite_usuarios: parseInt(e.target.value, 10) || 0,
+                    }))
+                  }
+                  disabled={!limitesForm.limites_personalizados}
+                  className="text-xs h-9 font-semibold"
+                />
+                <p className="text-[10px] text-slate-400">0 = Ilimitado</p>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalLimitesAberto(false)}
+                disabled={salvandoLimites}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={salvandoLimites}
+                className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5 font-semibold"
+              >
+                {salvandoLimites ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    Salvar Limites
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL L3: Editar Data de Expiração */}
+      <Dialog open={modalExpiracaoAberto} onOpenChange={setModalExpiracaoAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-purple-700">
+              <CalendarClock size={18} />
+              Editar Data de Expiração
+            </DialogTitle>
+            <DialogDescription>
+              Ajuste manualmente a validade da licença para {licencaSelecionada?.nome}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSalvarExpiracao} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Data de Validade (AAAA-MM-DD)</Label>
+              <Input
+                type="date"
+                value={novaExpiracaoInput}
+                onChange={(e) => setNovaExpiracaoInput(e.target.value)}
+                className="text-xs h-9 font-semibold"
+              />
+              <p className="text-[10px] text-slate-500">
+                Deixe em branco caso a licença seja indeterminada/sem expiração.
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalExpiracaoAberto(false)}
+                disabled={salvandoExpiracao}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={salvandoExpiracao}
+                className="bg-purple-600 hover:bg-purple-700 text-white gap-1.5 font-semibold"
+              >
+                {salvandoExpiracao ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    Gravando...
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    Salvar Expiração
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL L4: Alterar Plano do Cliente */}
+      <Dialog open={modalAlterarPlanoAberto} onOpenChange={setModalAlterarPlanoAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-teal-700">
+              <ArrowRightLeft size={18} />
+              Alterar Plano Comercial
+            </DialogTitle>
+            <DialogDescription>
+              Selecione o novo plano comercial do catálogo para vincular a{' '}
+              {licencaSelecionada?.nome}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSalvarPlanoLicenca} className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold">Escolha o Plano do Catálogo</Label>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {planos.map((pl) => {
+                  const selecionado = novoPlanoSelecionado === pl.id
+                  return (
+                    <div
+                      key={pl.id}
+                      onClick={() => setNovoPlanoSelecionado(pl.id)}
+                      className={`p-3 rounded-lg border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                        selecionado
+                          ? 'border-teal-500 bg-teal-50/70 shadow-xs'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-800">{pl.nome}</span>
+                          {pl.exclusivo_master && (
+                            <Badge className="bg-indigo-600 text-white text-[9px] px-1 py-0">
+                              Master
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Limites: {pl.limite_empresas || '∞'} emp / {pl.limite_usuarios || '∞'}{' '}
+                          usuarios
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold text-slate-900">
+                          {formatarMoeda(pl.valor_mensal)}
+                        </span>
+                        <span className="block text-[10px] text-slate-400">/mês</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalAlterarPlanoAberto(false)}
+                disabled={salvandoPlanoLicenca}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={salvandoPlanoLicenca || !novoPlanoSelecionado}
+                className="bg-teal-600 hover:bg-teal-700 text-white gap-1.5 font-semibold"
+              >
+                {salvandoPlanoLicenca ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    Alterando...
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    Confirmar Mudança
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL L5: Pausar / Reativar Licença */}
+      <Dialog open={modalStatusAberto} onOpenChange={setModalStatusAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              {licencaSelecionada?.status === 'Pausada' ? (
+                <>
+                  <Play size={18} className="text-emerald-600" />
+                  Reativar Licença de Cliente
+                </>
+              ) : (
+                <>
+                  <Pause size={18} className="text-amber-600" />
+                  Pausar Licença de Cliente
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {licencaSelecionada?.status === 'Pausada'
+                ? `Deseja restabelecer o acesso total do assinante ${licencaSelecionada?.nome}?`
+                : `Ao pausar a licença de ${licencaSelecionada?.nome}, os acessos ao ERP ficarão suspensos até a reativação.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Motivo da Ação (Opcional)</Label>
+              <Input
+                placeholder="Ex.: Solicitação do cliente, atraso comercial, etc."
+                value={motivoStatus}
+                onChange={(e) => setMotivoStatus(e.target.value)}
+                className="text-xs h-9"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setModalStatusAberto(false)}
+              disabled={salvandoStatus}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSalvarStatus}
+              disabled={salvandoStatus}
+              className={
+                licencaSelecionada?.status === 'Pausada'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5'
+                  : 'bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1.5'
+              }
+            >
+              {salvandoStatus ? (
+                <>
+                  <RefreshCw size={14} className="animate-spin" />
+                  Processando...
+                </>
+              ) : licencaSelecionada?.status === 'Pausada' ? (
+                <>
+                  <Play size={14} />
+                  Confirmar Reativação
+                </>
+              ) : (
+                <>
+                  <Pause size={14} />
+                  Confirmar Pausa
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL L6: Editar Dados Gerais */}
+      <Dialog open={modalDadosGeraisAberto} onOpenChange={setModalDadosGeraisAberto}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-blue-700">
+              <Pencil size={18} />
+              Editar Dados Gerais do Cliente
+            </DialogTitle>
+            <DialogDescription>
+              Atualize as informações cadastrais e canais de contato de {licencaSelecionada?.nome}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSalvarDadosGerais} className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Razão Social / Nome do Cliente *</Label>
+              <Input
+                value={dadosGeraisForm.nome}
+                onChange={(e) => setDadosGeraisForm((prev) => ({ ...prev, nome: e.target.value }))}
+                required
+                className="text-xs h-9 font-semibold"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Documento / CNPJ / CPF</Label>
+                <Input
+                  value={dadosGeraisForm.documento}
+                  onChange={(e) =>
+                    setDadosGeraisForm((prev) => ({ ...prev, documento: e.target.value }))
+                  }
+                  className="text-xs h-9 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">E-mail de Contato</Label>
+                <Input
+                  type="email"
+                  value={dadosGeraisForm.email_contato}
+                  onChange={(e) =>
+                    setDadosGeraisForm((prev) => ({ ...prev, email_contato: e.target.value }))
+                  }
+                  className="text-xs h-9"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Telefone</Label>
+                <Input
+                  value={dadosGeraisForm.telefone}
+                  onChange={(e) =>
+                    setDadosGeraisForm((prev) => ({ ...prev, telefone: e.target.value }))
+                  }
+                  placeholder="(00) 0000-0000"
+                  className="text-xs h-9"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1">
+                  <MessageCircle size={13} className="text-emerald-600" />
+                  WhatsApp
+                </Label>
+                <Input
+                  value={dadosGeraisForm.whatsapp_contato}
+                  onChange={(e) =>
+                    setDadosGeraisForm((prev) => ({ ...prev, whatsapp_contato: e.target.value }))
+                  }
+                  placeholder="Ex: 85999998888"
+                  className="text-xs h-9"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Observações Internas</Label>
+              <Textarea
+                value={dadosGeraisForm.observacoes}
+                onChange={(e) =>
+                  setDadosGeraisForm((prev) => ({ ...prev, observacoes: e.target.value }))
+                }
+                rows={2}
+                className="text-xs resize-none"
+                placeholder="Anotações comerciais ou operacionais..."
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalDadosGeraisAberto(false)}
+                disabled={salvandoDadosGerais}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={salvandoDadosGerais}
+                className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 font-semibold"
+              >
+                {salvandoDadosGerais ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    Salvar Dados
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL L7: Excluir Licença em Cascata (com Confirmação Digitada) */}
+      <Dialog open={modalExcluirLicencaAberto} onOpenChange={setModalExcluirLicencaAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600">
+              <Trash2 size={18} />
+              Excluir Licença e Assinante (Cascata Total)
+            </DialogTitle>
+            <DialogDescription>
+              Esta ação apagará permanentemente o cliente{' '}
+              <strong className="text-slate-900">{licencaSelecionada?.nome}</strong> (Licença:{' '}
+              <code>{licencaSelecionada?.numero_licenca}</code>) e <u>TODOS</u> os dados vinculados
+              a ele.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 space-y-3 text-xs text-slate-600">
+            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 space-y-1">
+              <p className="font-bold flex items-center gap-1">
+                <AlertTriangle size={14} className="text-rose-600" />
+                ATENÇÃO: AÇÃO DESTRUTIVA IRREVERSÍVEL!
+              </p>
+              <p className="text-[11px] leading-relaxed">
+                Serão excluídas em cascata todas as empresas, usuários, notas fiscais, vendas,
+                contas financeiras e movimentos cadastrados por este assinante.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-800">
+                Para confirmar, digite exatamente o nome{' '}
+                <span className="font-mono font-bold text-rose-700">
+                  {licencaSelecionada?.nome}
+                </span>
+                :
+              </Label>
+              <Input
+                value={digitacaoConfirmacaoExclusao}
+                onChange={(e) => setDigitacaoConfirmacaoExclusao(e.target.value)}
+                placeholder={licencaSelecionada?.nome}
+                className="text-xs h-9 border-rose-300 focus-visible:ring-rose-500 font-medium"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setModalExcluirLicencaAberto(false)}
+              disabled={excluindoLicenca}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={handleConfirmarExclusaoLicenca}
+              disabled={
+                excluindoLicenca ||
+                digitacaoConfirmacaoExclusao.trim().toUpperCase() !==
+                  (licencaSelecionada?.nome || '').trim().toUpperCase()
+              }
+              className="gap-1.5 font-bold"
+            >
+              {excluindoLicenca ? (
+                <>
+                  <RefreshCw size={14} className="animate-spin" />
+                  Excluindo em cascata...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={14} />
+                  Excluir Tudo Definitivamente
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
