@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-27T14:25:50.652Z",
+  "generatedAt": "2026-10-27T17:50:53.128Z",
   "collections": [
     {
       "name": "users",
@@ -523,10 +523,10 @@
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_empresas_cnpj ON empresas (cnpj)",
-        "CREATE UNIQUE INDEX idx_empresas_codigo ON empresas (codigo)",
         "CREATE INDEX idx_empresas_tipo ON empresas (tipo)",
         "CREATE INDEX idx_empresas_ativo ON empresas (ativo)",
-        "CREATE INDEX idx_empresas_assinante ON empresas (assinante_id)"
+        "CREATE INDEX idx_empresas_assinante ON empresas (assinante_id)",
+        "CREATE UNIQUE INDEX idx_empresas_assinante_codigo ON empresas (assinante_id, codigo)"
       ]
     },
     {

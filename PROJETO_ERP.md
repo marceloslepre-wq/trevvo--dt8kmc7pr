@@ -1392,7 +1392,7 @@ Tabela que armazena os estabelecimentos (Matriz e Filiais), cada um com seu CNPJ
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
 
-Índices: `cnpj` (único: `idx_empresas_cnpj`), `codigo` (único: `idx_empresas_codigo`), `tipo` (`idx_empresas_tipo`), `ativo` (`idx_empresas_ativo`).
+Índices: `cnpj` (único: `idx_empresas_cnpj`), `(assinante_id, codigo)` (único por assinante: `idx_empresas_assinante_codigo` substituindo o antigo global `idx_empresas_codigo` na Migration 0092), `tipo` (`idx_empresas_tipo`), `ativo` (`idx_empresas_ativo`), `assinante_id` (`idx_empresas_assinante`).
 
 ### unidades_medida
 
@@ -3526,6 +3526,17 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.154** — Etapa 9 Multi-tenant (Ajuste de Unicidade de Empresas por Assinante - Migration 0092):
+
+1. **Unicidade de Código de Empresas por Assinante (Migration 0092):**
+   - Na coleção `empresas`, remoção do índice único global `idx_empresas_codigo` (que impunha `codigo` único em todo o banco, gerando erro "codigo: Value must be unique." ao auto-cadastrar novas matrizes com código 1 a partir do endpoint `/backend/v1/assinatura/cadastrar`).
+   - Criação do índice único composto `idx_empresas_assinante_codigo` em `(assinante_id, codigo)`.
+   - A numeração de código de empresas segue rigorosamente a regra das demais coleções cadastrais de tenancy (clientes, fornecedores, produtos, grupos, plano_contas, etc.), sendo gerada por assinante através da coleção `sequencias` (`tipo: 'codigo_empresas'`).
+   - Migration estritamente idempotente, sem alteração de campos, esquemas ou dados existentes no banco vivo.
+   - Demais índices únicos e globais mantidos intactos (`idx_empresas_cnpj`, `idx_assinantes_licenca`, `idx_sequencias_chave`, etc.).
+
+---
 
 **Versão 0.0.153** — Etapa 9 Multi-tenant (Prompt 9.8-2b: Correção "Invalid module" no require de numeracao_lib na Rota Cadastrar):
 
