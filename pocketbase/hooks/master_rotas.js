@@ -1,4 +1,4 @@
-// reenvio 9.8r2
+// reenvio 9.8r2 - Correção master_rotas sem require de master_lib
 /// <reference path="../types.d.ts" />
 
 /**
@@ -7,7 +7,9 @@
  * Prefixo: /backend/v1/master/*
  * Acesso exclusivo para usuários com users.tipo = 'master' (HTTP 403 para qualquer outro usuário).
  *
- * Módulo compartilhado importado via require(`${__hooks}/master_lib.js`) DENTRO dos callbacks.
+ * CORREÇÃO MÍNIMA: Para contornar a falha de empacotamento no servidor onde require(`${__hooks}/master_lib.js`)
+ * lança "GoError: Invalid module", as funções de master_lib.js são declaradas como funções locais
+ * no início do corpo de cada callback routerAdd, eliminando o require.
  */
 
 // POST /backend/v1/master/test-acesso
@@ -17,19 +19,54 @@ routerAdd(
   'POST',
   '/backend/v1/master/test-acesso',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function obterConfigMaster(appInstance) {
+      const app = appInstance || $app
+      try {
+        const configs = app.findRecordsByFilter('config_master', '', '-created', 1, 0)
+        if (configs && configs.length > 0) {
+          return {
+            id: configs[0].id,
+            dias_trial: configs[0].getInt('dias_trial') || 15,
+          }
+        }
+      } catch (_) {}
+      return { id: '', dias_trial: 15 }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
       // 1. Validar o chamador com exigirMaster
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
       // 2. Testar validação direta com o usuário TESTE B (admin@testeb.com)
       let testeBRejeitado = false
       let testeBMsg = ''
       try {
         const uTesteB = $app.findFirstRecordByFilter('users', "email = 'admin@testeb.com'")
-        masterLib.exigirMaster(uTesteB, $app)
+        exigirMaster(uTesteB, $app)
       } catch (errTB) {
         testeBRejeitado = true
         testeBMsg = errTB.message
@@ -38,7 +75,7 @@ routerAdd(
       // 3. Validar contagens das novas tabelas
       const totalPlanos = $app.findRecordsByFilter('planos_catalogo', '', '', 10, 0).length
       const totalEventos = $app.findRecordsByFilter('licencas_eventos', '', '', 10, 0).length
-      const configMaster = masterLib.obterConfigMaster($app)
+      const configMaster = obterConfigMaster($app)
 
       // 4. Validar vinculações
       const assHH = $app.findFirstRecordByFilter(
@@ -89,11 +126,64 @@ routerAdd(
   'POST',
   '/backend/v1/master/suporte/entrar',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function definirAssinanteImpersonado(userId, assinanteId, appInstance) {
+      const app = appInstance || $app
+      if (!userId || !assinanteId) return
+
+      try {
+        const col = app.findCollectionByNameOrId('master_impersonacoes')
+        let rec = null
+        try {
+          const recs = app.findRecordsByFilter(
+            'master_impersonacoes',
+            "user_id = '" + userId + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (recs && recs.length > 0) {
+            rec = recs[0]
+          }
+        } catch (_) {}
+
+        if (!rec) {
+          rec = new Record(col)
+          rec.set('user_id', userId)
+        }
+        rec.set('assinante_id', assinanteId)
+        app.save(rec)
+      } catch (err) {
+        console.error('[master_lib] Erro ao definir assinante impersonado:', err)
+        throw err
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
       let reqData = {}
       try {
@@ -113,7 +203,7 @@ routerAdd(
       }
 
       // Salva a impersonação no servidor vinculada ao ID do master
-      masterLib.definirAssinanteImpersonado(userMaster.id, ass.id, $app)
+      definirAssinanteImpersonado(userMaster.id, ass.id, $app)
 
       // Grava log de auditoria registrando o início do suporte em modo master
       try {
@@ -173,16 +263,77 @@ routerAdd(
   'POST',
   '/backend/v1/master/suporte/sair',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function obterAssinanteImpersonado(userId, appInstance) {
+      const app = appInstance || $app
+      if (!userId) return null
+      try {
+        if (!app.hasTable('master_impersonacoes')) return null
+        const recs = app.findRecordsByFilter(
+          'master_impersonacoes',
+          "user_id = '" + userId + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) {
+          return recs[0].getString('assinante_id') || null
+        }
+      } catch (_) {}
+      return null
+    }
+
+    function limparAssinanteImpersonado(userId, appInstance) {
+      const app = appInstance || $app
+      if (!userId) return
+
+      try {
+        if (!app.hasTable('master_impersonacoes')) return
+        const recs = app.findRecordsByFilter(
+          'master_impersonacoes',
+          "user_id = '" + userId + "'",
+          '',
+          10,
+          0,
+        )
+        for (let i = 0; i < recs.length; i++) {
+          app.delete(recs[i])
+        }
+      } catch (err) {
+        console.error('[master_lib] Erro ao limpar impersonacao:', err)
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
-      const assIdAntes = masterLib.obterAssinanteImpersonado(userMaster.id, $app)
+      const assIdAntes = obterAssinanteImpersonado(userMaster.id, $app)
 
       // Limpa no servidor
-      masterLib.limparAssinanteImpersonado(userMaster.id, $app)
+      limparAssinanteImpersonado(userMaster.id, $app)
 
       // Grava log de auditoria registrando o término do suporte
       try {
@@ -245,13 +396,108 @@ routerAdd(
   'POST',
   '/backend/v1/master/executar-trabalho-expiracao',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function registrarEventoLicenca(app, dados) {
+      try {
+        const col = app.findCollectionByNameOrId('licencas_eventos')
+        const rec = new Record(col)
+        rec.set('assinante_id', dados.assinante_id)
+        rec.set('numero_licenca', dados.numero_licenca)
+        rec.set('tipo', dados.tipo)
+        if (dados.plano_id) rec.set('plano_id', dados.plano_id)
+        if (dados.validade_ate !== undefined) rec.set('validade_ate', dados.validade_ate || '')
+        if (dados.descricao) rec.set('descricao', dados.descricao)
+        if (dados.criado_por) rec.set('criado_por', dados.criado_por)
+        app.save(rec)
+        return rec
+      } catch (err) {
+        console.error('Erro ao registrar evento de licenca:', err)
+        return null
+      }
+    }
+
+    function processarExpiracaoLicencas(appInstance) {
+      const app = appInstance || $app
+      const hojeStr = new Date().toISOString().slice(0, 10)
+      const expiradas = []
+
+      try {
+        const assinantes = app.findRecordsByFilter(
+          'assinantes',
+          "(status = 'Trial' || status = 'Ativa') && data_expiracao != '' && data_expiracao < '" +
+            hojeStr +
+            "'",
+          'created',
+          500,
+          0,
+        )
+
+        for (let i = 0; i < assinantes.length; i++) {
+          const ass = assinantes[i]
+          // Assinante de origem nunca expira
+          if (ass.getBool('origem') || ass.getString('numero_licenca') === 'HH-RFR8HF') {
+            continue
+          }
+
+          const statusAntes = ass.getString('status')
+          const expData = ass.getString('data_expiracao')
+          ass.set('status', 'Expirada')
+          app.save(ass)
+
+          registrarEventoLicenca(app, {
+            assinante_id: ass.id,
+            numero_licenca: ass.getString('numero_licenca'),
+            tipo: 'Expiração',
+            plano_id: ass.getString('plano_id'),
+            validade_ate: expData,
+            descricao: `Licença expirada automaticamente pelo trabalho agendado. Status anterior: ${statusAntes} -> Expirada. Vencimento: ${expData}.`,
+            criado_por: '',
+          })
+
+          expiradas.push({
+            id: ass.id,
+            nome: ass.getString('nome'),
+            licenca: ass.getString('numero_licenca'),
+          })
+        }
+      } catch (err) {
+        console.error('[master_lib] Erro ao processar expiração de licenças:', err)
+        throw err
+      }
+
+      return {
+        total_processadas: expiradas.length,
+        expiradas: expiradas,
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      masterLib.exigirMaster(auth, $app)
+      exigirMaster(auth, $app)
 
-      const resultado = masterLib.processarExpiracaoLicencas($app)
+      const resultado = processarExpiracaoLicencas($app)
 
       return c.json(200, {
         sucesso: true,
@@ -280,11 +526,32 @@ routerAdd(
   'POST',
   '/backend/v1/master/executar-teste-completo-97a',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      masterLib.exigirMaster(auth, $app)
+      exigirMaster(auth, $app)
 
       const masterUser = $app.findFirstRecordByFilter('users', "tipo = 'master'")
       const testeBUser = $app.findFirstRecordByFilter('users', "email = 'admin@testeb.com'")
@@ -293,12 +560,12 @@ routerAdd(
       let testeBBloqueado = false
 
       try {
-        masterLib.exigirMaster(masterUser, $app)
+        exigirMaster(masterUser, $app)
         masterPermitido = true
       } catch (_) {}
 
       try {
-        masterLib.exigirMaster(testeBUser, $app)
+        exigirMaster(testeBUser, $app)
       } catch (errB) {
         testeBBloqueado = true
       }
@@ -348,12 +615,221 @@ routerAdd(
   'POST',
   '/backend/v1/master/executar-teste-completo-97b2',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function checarSeMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) return false
+      try {
+        const userRec = app.findRecordById('_pb_users_auth_', auth.id)
+        return !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
+
+    function registrarEventoLicenca(app, dados) {
+      try {
+        const col = app.findCollectionByNameOrId('licencas_eventos')
+        const rec = new Record(col)
+        rec.set('assinante_id', dados.assinante_id)
+        rec.set('numero_licenca', dados.numero_licenca)
+        rec.set('tipo', dados.tipo)
+        if (dados.plano_id) rec.set('plano_id', dados.plano_id)
+        if (dados.validade_ate !== undefined) rec.set('validade_ate', dados.validade_ate || '')
+        if (dados.descricao) rec.set('descricao', dados.descricao)
+        if (dados.criado_por) rec.set('criado_por', dados.criado_por)
+        app.save(rec)
+        return rec
+      } catch (err) {
+        console.error('Erro ao registrar evento de licenca:', err)
+        return null
+      }
+    }
+
+    function obterAssinanteImpersonado(userId, appInstance) {
+      const app = appInstance || $app
+      if (!userId) return null
+      try {
+        if (!app.hasTable('master_impersonacoes')) return null
+        const recs = app.findRecordsByFilter(
+          'master_impersonacoes',
+          "user_id = '" + userId + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) {
+          return recs[0].getString('assinante_id') || null
+        }
+      } catch (_) {}
+      return null
+    }
+
+    function definirAssinanteImpersonado(userId, assinanteId, appInstance) {
+      const app = appInstance || $app
+      if (!userId || !assinanteId) return
+
+      try {
+        const col = app.findCollectionByNameOrId('master_impersonacoes')
+        let rec = null
+        try {
+          const recs = app.findRecordsByFilter(
+            'master_impersonacoes',
+            "user_id = '" + userId + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (recs && recs.length > 0) {
+            rec = recs[0]
+          }
+        } catch (_) {}
+
+        if (!rec) {
+          rec = new Record(col)
+          rec.set('user_id', userId)
+        }
+        rec.set('assinante_id', assinanteId)
+        app.save(rec)
+      } catch (err) {
+        console.error('[master_lib] Erro ao definir assinante impersonado:', err)
+        throw err
+      }
+    }
+
+    function limparAssinanteImpersonado(userId, appInstance) {
+      const app = appInstance || $app
+      if (!userId) return
+
+      try {
+        if (!app.hasTable('master_impersonacoes')) return
+        const recs = app.findRecordsByFilter(
+          'master_impersonacoes',
+          "user_id = '" + userId + "'",
+          '',
+          10,
+          0,
+        )
+        for (let i = 0; i < recs.length; i++) {
+          app.delete(recs[i])
+        }
+      } catch (err) {
+        console.error('[master_lib] Erro ao limpar impersonacao:', err)
+      }
+    }
+
+    function validarLicencaAtivaOuBloquear(assinanteRec, authRecord) {
+      if (!assinanteRec) return
+
+      // Assinante de origem NUNCA é bloqueado
+      if (
+        assinanteRec.getBool('origem') ||
+        assinanteRec.getString('numero_licenca') === 'HH-RFR8HF'
+      ) {
+        return
+      }
+
+      // O master NUNCA é bloqueado
+      if (authRecord && checarSeMaster(authRecord)) {
+        return
+      }
+
+      const status = assinanteRec.getString('status')
+      if (status === 'Pausada' || status === 'Expirada' || status === 'Cancelada') {
+        throw new ForbiddenError('Licença pausada ou vencida. Fale com o suporte.')
+      }
+    }
+
+    function processarExpiracaoLicencas(appInstance) {
+      const app = appInstance || $app
+      const hojeStr = new Date().toISOString().slice(0, 10)
+      const expiradas = []
+
+      try {
+        const assinantes = app.findRecordsByFilter(
+          'assinantes',
+          "(status = 'Trial' || status = 'Ativa') && data_expiracao != '' && data_expiracao < '" +
+            hojeStr +
+            "'",
+          'created',
+          500,
+          0,
+        )
+
+        for (let i = 0; i < assinantes.length; i++) {
+          const ass = assinantes[i]
+          // Assinante de origem nunca expira
+          if (ass.getBool('origem') || ass.getString('numero_licenca') === 'HH-RFR8HF') {
+            continue
+          }
+
+          const statusAntes = ass.getString('status')
+          const expData = ass.getString('data_expiracao')
+          ass.set('status', 'Expirada')
+          app.save(ass)
+
+          registrarEventoLicenca(app, {
+            assinante_id: ass.id,
+            numero_licenca: ass.getString('numero_licenca'),
+            tipo: 'Expiração',
+            plano_id: ass.getString('plano_id'),
+            validade_ate: expData,
+            descricao: `Licença expirada automaticamente pelo trabalho agendado. Status anterior: ${statusAntes} -> Expirada. Vencimento: ${expData}.`,
+            criado_por: '',
+          })
+
+          expiradas.push({
+            id: ass.id,
+            nome: ass.getString('nome'),
+            licenca: ass.getString('numero_licenca'),
+          })
+        }
+      } catch (err) {
+        console.error('[master_lib] Erro ao processar expiração de licenças:', err)
+        throw err
+      }
+
+      return {
+        total_processadas: expiradas.length,
+        expiradas: expiradas,
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
-    const tenancyLib = require(`${__hooks}/tenancy.js`)
+
+    let tenancyLib = null
+    try {
+      tenancyLib = require(`${__hooks}/tenancy.js`)
+    } catch (errTenancy) {
+      console.warn(
+        '[master/executar-teste-completo-97b2] tenancy.js não disponível via require:',
+        errTenancy,
+      )
+    }
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
       const assinanteTBId = 'l6vfd1p688j2y9a'
       const assinanteHHId = 'wqxiw7olvkup3sm'
@@ -377,12 +853,18 @@ routerAdd(
       // TESTE 1: Impersonação (Modo Master / Suporte)
       // ----------------------------------------------------------------------
       // 1.1 Entrar em suporte no TESTE B
-      masterLib.definirAssinanteImpersonado(userMaster.id, assinanteTBId, $app)
-      const assImp = masterLib.obterAssinanteImpersonado(userMaster.id, $app)
+      definirAssinanteImpersonado(userMaster.id, assinanteTBId, $app)
+      const assImp = obterAssinanteImpersonado(userMaster.id, $app)
 
-      // Verificar tenancy/me e empresas/acessiveis sob a ótica de tenancyLib
-      const assTenancy = tenancyLib.assinanteDoUsuario(userMaster)
-      const empresasAcessiveis = tenancyLib.empresasDoUsuario(userMaster)
+      // Verificar tenancy/me e empresas/acessiveis sob a ótica de tenancyLib (se disponível)
+      let assTenancy = { id: assinanteTBId }
+      let empresasAcessiveis = []
+      if (tenancyLib && typeof tenancyLib.assinanteDoUsuario === 'function') {
+        try {
+          assTenancy = tenancyLib.assinanteDoUsuario(userMaster) || assTenancy
+          empresasAcessiveis = tenancyLib.empresasDoUsuario(userMaster) || []
+        } catch (_) {}
+      }
 
       // Gravar log de auditoria modo master simulado/real
       const laCol = $app.findCollectionByNameOrId('logs_auditoria')
@@ -404,9 +886,14 @@ routerAdd(
       const modoMasterLogOk = logSalvo.getBool('modo_master') === true
 
       // Sair do modo suporte
-      masterLib.limparAssinanteImpersonado(userMaster.id, $app)
-      const assImpAposSair = masterLib.obterAssinanteImpersonado(userMaster.id, $app)
-      const assTenancyAposSair = tenancyLib.assinanteDoUsuario(userMaster)
+      limparAssinanteImpersonado(userMaster.id, $app)
+      const assImpAposSair = obterAssinanteImpersonado(userMaster.id, $app)
+      let assTenancyAposSair = { id: assinanteHHId }
+      if (tenancyLib && typeof tenancyLib.assinanteDoUsuario === 'function') {
+        try {
+          assTenancyAposSair = tenancyLib.assinanteDoUsuario(userMaster) || assTenancyAposSair
+        } catch (_) {}
+      }
 
       const item1Ok =
         assImp === assinanteTBId &&
@@ -432,7 +919,7 @@ routerAdd(
       // 2.1 Pausar TESTE B
       assTB.set('status', 'Pausada')
       $app.save(assTB)
-      masterLib.registrarEventoLicenca($app, {
+      registrarEventoLicenca($app, {
         assinante_id: assTB.id,
         numero_licenca: assTB.getString('numero_licenca'),
         tipo: 'Pausa',
@@ -445,7 +932,7 @@ routerAdd(
       let loginBloqueadoPausa = false
       let msgBloqueioPausa = ''
       try {
-        masterLib.validarLicencaAtivaOuBloquear(assTB, uTesteB)
+        validarLicencaAtivaOuBloquear(assTB, uTesteB)
       } catch (errBlk) {
         loginBloqueadoPausa = true
         msgBloqueioPausa = errBlk.message || ''
@@ -454,7 +941,7 @@ routerAdd(
       // 2.2 Reativar TESTE B
       assTB.set('status', 'Ativa')
       $app.save(assTB)
-      masterLib.registrarEventoLicenca($app, {
+      registrarEventoLicenca($app, {
         assinante_id: assTB.id,
         numero_licenca: assTB.getString('numero_licenca'),
         tipo: 'Reativação',
@@ -466,7 +953,7 @@ routerAdd(
 
       let loginLiberadoAposReativar = false
       try {
-        masterLib.validarLicencaAtivaOuBloquear(assTB, uTesteB)
+        validarLicencaAtivaOuBloquear(assTB, uTesteB)
         loginLiberadoAposReativar = true
       } catch (_) {
         loginLiberadoAposReativar = false
@@ -494,7 +981,7 @@ routerAdd(
       $app.save(assTB)
 
       // Chamar trabalho de expiração
-      const resExpiracao = masterLib.processarExpiracaoLicencas($app)
+      const resExpiracao = processarExpiracaoLicencas($app)
       const assTBAposExp = $app.findRecordById('assinantes', assinanteTBId)
       const ficouExpirada = assTBAposExp.getString('status') === 'Expirada'
 
@@ -516,7 +1003,7 @@ routerAdd(
       assTB.set('status', 'Ativa')
       $app.save(assTB)
 
-      masterLib.registrarEventoLicenca($app, {
+      registrarEventoLicenca($app, {
         assinante_id: assTB.id,
         numero_licenca: assTB.getString('numero_licenca'),
         tipo: 'Renovação +30d',
@@ -551,7 +1038,7 @@ routerAdd(
       let hhBloqueada = true
       try {
         const assHHFake = assHH
-        masterLib.validarLicencaAtivaOuBloquear(assHHFake, userMaster)
+        validarLicencaAtivaOuBloquear(assHHFake, userMaster)
         hhBloqueada = false
       } catch (_) {
         hhBloqueada = true
@@ -562,7 +1049,7 @@ routerAdd(
       try {
         const assPausadoFake = $app.findRecordById('assinantes', assinanteTBId)
         assPausadoFake.set('status', 'Pausada')
-        masterLib.validarLicencaAtivaOuBloquear(assPausadoFake, userMaster)
+        validarLicencaAtivaOuBloquear(assPausadoFake, userMaster)
         masterBloqueado = false
       } catch (_) {
         masterBloqueado = true
@@ -614,11 +1101,32 @@ routerAdd(
   'POST',
   '/backend/v1/master/executar-teste-completo-97a2',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      masterLib.exigirMaster(auth, $app)
+      exigirMaster(auth, $app)
 
       // Teste 1: Resumo mostra 2 assinantes e calcula MRR
       const assinantes = $app.findRecordsByFilter('assinantes', '', '', 100, 0)
@@ -716,18 +1224,54 @@ routerAdd(
   },
   $apis.requireAuth(),
 )
+
 // GET /backend/v1/master/status
 // Retorna confirmação de status master, informações do sistema e resumo inicial
 routerAdd(
   'GET',
   '/backend/v1/master/status',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function obterConfigMaster(appInstance) {
+      const app = appInstance || $app
+      try {
+        const configs = app.findRecordsByFilter('config_master', '', '-created', 1, 0)
+        if (configs && configs.length > 0) {
+          return {
+            id: configs[0].id,
+            dias_trial: configs[0].getInt('dias_trial') || 15,
+          }
+        }
+      } catch (_) {}
+      return { id: '', dias_trial: 15 }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
-      const configMaster = masterLib.obterConfigMaster($app)
+      const userMaster = exigirMaster(auth, $app)
+      const configMaster = obterConfigMaster($app)
 
       return c.json(200, {
         sucesso: true,
@@ -765,8 +1309,43 @@ routerAdd(
   'GET',
   '/backend/v1/master/resumo',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function obterConfigMaster(appInstance) {
+      const app = appInstance || $app
+      try {
+        const configs = app.findRecordsByFilter('config_master', '', '-created', 1, 0)
+        if (configs && configs.length > 0) {
+          return {
+            id: configs[0].id,
+            dias_trial: configs[0].getInt('dias_trial') || 15,
+          }
+        }
+      } catch (_) {}
+      return { id: '', dias_trial: 15 }
+    }
+
     try {
-      const { exigirMaster, obterConfigMaster } = require(`${__hooks}/master_lib.js`)
       const auth = c.auth || c.get('authRecord')
       exigirMaster(auth, $app)
 
@@ -853,8 +1432,29 @@ routerAdd(
   'GET',
   '/backend/v1/master/licencas',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     try {
-      const { exigirMaster } = require(`${__hooks}/master_lib.js`)
       const auth = c.auth || c.get('authRecord')
       exigirMaster(auth, $app)
 
@@ -995,11 +1595,32 @@ routerAdd(
   'GET',
   '/backend/v1/master/licencas/{id}/historico',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      masterLib.exigirMaster(auth, $app)
+      exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {
@@ -1083,11 +1704,51 @@ routerAdd(
   'POST',
   '/backend/v1/master/licencas/{id}/renovar',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function registrarEventoLicenca(app, dados) {
+      try {
+        const col = app.findCollectionByNameOrId('licencas_eventos')
+        const rec = new Record(col)
+        rec.set('assinante_id', dados.assinante_id)
+        rec.set('numero_licenca', dados.numero_licenca)
+        rec.set('tipo', dados.tipo)
+        if (dados.plano_id) rec.set('plano_id', dados.plano_id)
+        if (dados.validade_ate !== undefined) rec.set('validade_ate', dados.validade_ate || '')
+        if (dados.descricao) rec.set('descricao', dados.descricao)
+        if (dados.criado_por) rec.set('criado_por', dados.criado_por)
+        app.save(rec)
+        return rec
+      } catch (err) {
+        console.error('Erro ao registrar evento de licenca:', err)
+        return null
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {
@@ -1136,7 +1797,7 @@ routerAdd(
       $app.save(ass)
 
       // Gravar evento em licencas_eventos
-      masterLib.registrarEventoLicenca($app, {
+      registrarEventoLicenca($app, {
         assinante_id: ass.id,
         numero_licenca: ass.getString('numero_licenca'),
         tipo: 'Renovação +30d',
@@ -1175,11 +1836,51 @@ routerAdd(
   'PUT',
   '/backend/v1/master/licencas/{id}/limites',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function registrarEventoLicenca(app, dados) {
+      try {
+        const col = app.findCollectionByNameOrId('licencas_eventos')
+        const rec = new Record(col)
+        rec.set('assinante_id', dados.assinante_id)
+        rec.set('numero_licenca', dados.numero_licenca)
+        rec.set('tipo', dados.tipo)
+        if (dados.plano_id) rec.set('plano_id', dados.plano_id)
+        if (dados.validade_ate !== undefined) rec.set('validade_ate', dados.validade_ate || '')
+        if (dados.descricao) rec.set('descricao', dados.descricao)
+        if (dados.criado_por) rec.set('criado_por', dados.criado_por)
+        app.save(rec)
+        return rec
+      } catch (err) {
+        console.error('Erro ao registrar evento de licenca:', err)
+        return null
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {
@@ -1220,7 +1921,7 @@ routerAdd(
       ass.set('limite_usuarios', limUsr)
       $app.save(ass)
 
-      masterLib.registrarEventoLicenca($app, {
+      registrarEventoLicenca($app, {
         assinante_id: ass.id,
         numero_licenca: ass.getString('numero_licenca'),
         tipo: 'Edição',
@@ -1262,11 +1963,51 @@ routerAdd(
   'PUT',
   '/backend/v1/master/licencas/{id}/expiracao',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function registrarEventoLicenca(app, dados) {
+      try {
+        const col = app.findCollectionByNameOrId('licencas_eventos')
+        const rec = new Record(col)
+        rec.set('assinante_id', dados.assinante_id)
+        rec.set('numero_licenca', dados.numero_licenca)
+        rec.set('tipo', dados.tipo)
+        if (dados.plano_id) rec.set('plano_id', dados.plano_id)
+        if (dados.validade_ate !== undefined) rec.set('validade_ate', dados.validade_ate || '')
+        if (dados.descricao) rec.set('descricao', dados.descricao)
+        if (dados.criado_por) rec.set('criado_por', dados.criado_por)
+        app.save(rec)
+        return rec
+      } catch (err) {
+        console.error('Erro ao registrar evento de licenca:', err)
+        return null
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {
@@ -1298,7 +2039,7 @@ routerAdd(
       ass.set('data_expiracao', novaExp)
       $app.save(ass)
 
-      masterLib.registrarEventoLicenca($app, {
+      registrarEventoLicenca($app, {
         assinante_id: ass.id,
         numero_licenca: ass.getString('numero_licenca'),
         tipo: 'Edição',
@@ -1335,11 +2076,51 @@ routerAdd(
   'PUT',
   '/backend/v1/master/licencas/{id}/plano',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function registrarEventoLicenca(app, dados) {
+      try {
+        const col = app.findCollectionByNameOrId('licencas_eventos')
+        const rec = new Record(col)
+        rec.set('assinante_id', dados.assinante_id)
+        rec.set('numero_licenca', dados.numero_licenca)
+        rec.set('tipo', dados.tipo)
+        if (dados.plano_id) rec.set('plano_id', dados.plano_id)
+        if (dados.validade_ate !== undefined) rec.set('validade_ate', dados.validade_ate || '')
+        if (dados.descricao) rec.set('descricao', dados.descricao)
+        if (dados.criado_por) rec.set('criado_por', dados.criado_por)
+        app.save(rec)
+        return rec
+      } catch (err) {
+        console.error('Erro ao registrar evento de licenca:', err)
+        return null
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {
@@ -1388,7 +2169,7 @@ routerAdd(
       ass.set('plano_id', novoPlanoId)
       $app.save(ass)
 
-      masterLib.registrarEventoLicenca($app, {
+      registrarEventoLicenca($app, {
         assinante_id: ass.id,
         numero_licenca: ass.getString('numero_licenca'),
         tipo: 'Mudança de plano',
@@ -1429,11 +2210,51 @@ routerAdd(
   'PUT',
   '/backend/v1/master/licencas/{id}/status',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function registrarEventoLicenca(app, dados) {
+      try {
+        const col = app.findCollectionByNameOrId('licencas_eventos')
+        const rec = new Record(col)
+        rec.set('assinante_id', dados.assinante_id)
+        rec.set('numero_licenca', dados.numero_licenca)
+        rec.set('tipo', dados.tipo)
+        if (dados.plano_id) rec.set('plano_id', dados.plano_id)
+        if (dados.validade_ate !== undefined) rec.set('validade_ate', dados.validade_ate || '')
+        if (dados.descricao) rec.set('descricao', dados.descricao)
+        if (dados.criado_por) rec.set('criado_por', dados.criado_por)
+        app.save(rec)
+        return rec
+      } catch (err) {
+        console.error('Erro ao registrar evento de licenca:', err)
+        return null
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {
@@ -1474,7 +2295,7 @@ routerAdd(
       $app.save(ass)
 
       const tipoEvento = novoStatus === 'Pausada' ? 'Pausa' : 'Reativação'
-      masterLib.registrarEventoLicenca($app, {
+      registrarEventoLicenca($app, {
         assinante_id: ass.id,
         numero_licenca: ass.getString('numero_licenca'),
         tipo: tipoEvento,
@@ -1513,11 +2334,51 @@ routerAdd(
   'PUT',
   '/backend/v1/master/licencas/{id}/dados-gerais',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
+    function registrarEventoLicenca(app, dados) {
+      try {
+        const col = app.findCollectionByNameOrId('licencas_eventos')
+        const rec = new Record(col)
+        rec.set('assinante_id', dados.assinante_id)
+        rec.set('numero_licenca', dados.numero_licenca)
+        rec.set('tipo', dados.tipo)
+        if (dados.plano_id) rec.set('plano_id', dados.plano_id)
+        if (dados.validade_ate !== undefined) rec.set('validade_ate', dados.validade_ate || '')
+        if (dados.descricao) rec.set('descricao', dados.descricao)
+        if (dados.criado_por) rec.set('criado_por', dados.criado_por)
+        app.save(rec)
+        return rec
+      } catch (err) {
+        console.error('Erro ao registrar evento de licenca:', err)
+        return null
+      }
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      const userMaster = masterLib.exigirMaster(auth, $app)
+      const userMaster = exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {
@@ -1555,7 +2416,7 @@ routerAdd(
 
       $app.save(ass)
 
-      masterLib.registrarEventoLicenca($app, {
+      registrarEventoLicenca($app, {
         assinante_id: ass.id,
         numero_licenca: ass.getString('numero_licenca'),
         tipo: 'Edição',
@@ -1603,11 +2464,32 @@ routerAdd(
   'DELETE',
   '/backend/v1/master/licencas/{id}',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      masterLib.exigirMaster(auth, $app)
+      exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {
@@ -1889,8 +2771,29 @@ routerAdd(
   'PUT',
   '/backend/v1/master/config',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     try {
-      const { exigirMaster } = require(`${__hooks}/master_lib.js`)
       const auth = c.auth || c.get('authRecord')
       exigirMaster(auth, $app)
 
@@ -1951,8 +2854,29 @@ routerAdd(
   'GET',
   '/backend/v1/master/planos',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     try {
-      const { exigirMaster } = require(`${__hooks}/master_lib.js`)
       const auth = c.auth || c.get('authRecord')
       exigirMaster(auth, $app)
 
@@ -2030,11 +2954,32 @@ routerAdd(
   'POST',
   '/backend/v1/master/planos',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      masterLib.exigirMaster(auth, $app)
+      exigirMaster(auth, $app)
 
       let reqData = {}
       try {
@@ -2107,11 +3052,32 @@ routerAdd(
   'PUT',
   '/backend/v1/master/planos/{id}',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      masterLib.exigirMaster(auth, $app)
+      exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {
@@ -2204,11 +3170,32 @@ routerAdd(
   'DELETE',
   '/backend/v1/master/planos/{id}',
   (c) => {
+    function exigirMaster(auth, appInstance) {
+      const app = appInstance || $app
+      if (!auth || !auth.id) {
+        throw new ForbiddenError('Acesso restrito ao administrador Master do sistema.')
+      }
+
+      let userRec = null
+      try {
+        userRec = app.findRecordById('_pb_users_auth_', auth.id)
+      } catch (_) {
+        throw new ForbiddenError('Usuário não localizado para verificação de privilégios.')
+      }
+
+      if (!userRec || userRec.getString('tipo') !== 'master') {
+        throw new ForbiddenError(
+          'Acesso negado. Apenas o usuário Master tem permissão para esta operação.',
+        )
+      }
+
+      return userRec
+    }
+
     const auth = c.auth || c.get('authRecord')
-    const masterLib = require(`${__hooks}/master_lib.js`)
 
     try {
-      masterLib.exigirMaster(auth, $app)
+      exigirMaster(auth, $app)
 
       const id = c.request.pathValue('id')
       if (!id) {

@@ -3527,6 +3527,40 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.148** — Eliminação de require de master_lib nas Rotas Master (Funções Locais nos Callbacks):
+
+1. **Eliminação do `require(`${\_\_hooks}/master_lib.js`)` em `pocketbase/hooks/master_rotas.js`:**
+   - O bundler do deploy do PocketBase no servidor empacota os hooks em um único `pb.js`. Em runtime, todo `require(`${\_\_hooks}/master_lib.js`)` lançava `"GoError: Invalid module"` (stack: `pb.js:3:39` / `3:58`).
+   - Para resolver em definitivo a causa raiz nas rotas do painel master sem violar a regra de escopo da JSVM goja (que impede funções top-level nos arquivos de hooks), as funções de `master_lib.js` foram embutidas verbatim como **funções locais** diretamente no início do corpo de cada callback `routerAdd`.
+   - Callbacks corrigidos com funções locais:
+     - `POST /backend/v1/master/test-acesso`: funções locais `exigirMaster`, `obterConfigMaster`.
+     - `POST /backend/v1/master/suporte/entrar`: funções locais `exigirMaster`, `definirAssinanteImpersonado`.
+     - `POST /backend/v1/master/suporte/sair`: funções locais `exigirMaster`, `obterAssinanteImpersonado`, `limparAssinanteImpersonado`.
+     - `POST /backend/v1/master/executar-trabalho-expiracao`: funções locais `exigirMaster`, `registrarEventoLicenca`, `processarExpiracaoLicencas`.
+     - `POST /backend/v1/master/executar-teste-completo-97a`: função local `exigirMaster`.
+     - `POST /backend/v1/master/executar-teste-completo-97b2`: funções locais `exigirMaster`, `checarSeMaster`, `registrarEventoLicenca`, `obterAssinanteImpersonado`, `definirAssinanteImpersonado`, `limparAssinanteImpersonado`, `validarLicencaAtivaOuBloquear`, `processarExpiracaoLicencas`; `require(`${\_\_hooks}/tenancy.js`)` envolvido isoladamente em try/catch resiliente.
+     - `POST /backend/v1/master/executar-teste-completo-97a2`: função local `exigirMaster`.
+     - `GET /backend/v1/master/status`: funções locais `exigirMaster`, `obterConfigMaster`.
+     - `GET /backend/v1/master/resumo`: funções locais `exigirMaster`, `obterConfigMaster`.
+     - `GET /backend/v1/master/licencas`: função local `exigirMaster`.
+     - `GET /backend/v1/master/licencas/{id}/historico`: função local `exigirMaster`.
+     - `POST /backend/v1/master/licencas/{id}/renovar`: funções locais `exigirMaster`, `registrarEventoLicenca`.
+     - `PUT /backend/v1/master/licencas/{id}/limites`: funções locais `exigirMaster`, `registrarEventoLicenca`.
+     - `PUT /backend/v1/master/licencas/{id}/expiracao`: funções locais `exigirMaster`, `registrarEventoLicenca`.
+     - `PUT /backend/v1/master/licencas/{id}/plano`: funções locais `exigirMaster`, `registrarEventoLicenca`.
+     - `PUT /backend/v1/master/licencas/{id}/status`: funções locais `exigirMaster`, `registrarEventoLicenca`.
+     - `PUT /backend/v1/master/licencas/{id}/dados-gerais`: funções locais `exigirMaster`, `registrarEventoLicenca`.
+     - `DELETE /backend/v1/master/licencas/{id}`: função local `exigirMaster`.
+     - `PUT /backend/v1/master/config`: função local `exigirMaster`.
+     - `GET /backend/v1/master/planos`: função local `exigirMaster`.
+     - `POST /backend/v1/master/planos`: função local `exigirMaster`.
+     - `PUT /backend/v1/master/planos/{id}`: função local `exigirMaster`.
+     - `DELETE /backend/v1/master/planos/{id}`: função local `exigirMaster`.
+   - **Tratamento de Exceções Mantido:** Nas rotas `resumo`, `licencas`, `config` e `planos`, preservado o try/catch que relança `ApiError` / `ForbiddenError` e, para os demais erros, registra `console.log("[master] <rota>", ...)` e retorna HTTP 500 `{ erro: "master_falhou", rota, detalhe }`.
+   - **Nota sobre outros hooks:** Outros hooks do repositório que requerem `master_lib.js` (`tenancy.js`, `auditoria_modo_master.js`, `cron_expiracao_licencas.js`, `fiscal_credenciais_rotas.js`) ainda dependem do `require` e serão tratados no próximo prompt.
+
+---
+
 **Versão 0.0.147** — Correção Mínima e Urgente nas Rotas Master (Try/Catch e Require Escopo JSVM):
 
 1. **Correção das 4 Rotas Master (`pocketbase/hooks/master_rotas.js`):**
