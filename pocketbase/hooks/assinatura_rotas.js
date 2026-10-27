@@ -8,9 +8,8 @@
  * POST /backend/v1/assinatura/cadastrar
  *
  * REGRAS CRÍTICAS DA JSVM (goja):
- * - NENHUM require de master_lib.js (causa "Invalid module" no servidor).
- * - Módulos permitidos com require DENTRO do callback: tenancy.js, numeracao_lib.js, fiscal_token_lib.js.
- * - TODAS as funções auxiliares são locais DENTRO do callback (evita "Hook scoping error").
+ * - NENHUM require de arquivo de hook (causa "Invalid module" no servidor pb.js empacotado).
+ * - TODAS as funções auxiliares (inclusive proximoNumeroLocal) são locais DENTRO do callback (evita "Hook scoping error").
  * - IP lido do primeiro valor de x-forwarded-for, NUNCA de requestInfo().remoteIP.
  * - Transação única com $app.runInTransaction para criar assinante, empresa, admin e carga inicial.
  */
@@ -372,14 +371,130 @@ routerAdd('POST', '/backend/v1/assinatura/cadastrar', (c) => {
     const dataExpiracaoStr = expiraData.toISOString().slice(0, 10)
 
     // -------------------------------------------------------------------------
+    // Função local de numeração sequencial atômica (substitui require de numeracao_lib)
+    // -------------------------------------------------------------------------
+    function proximoNumeroLocal(assinanteId, empresaId, tipo, txApp) {
+      if (!assinanteId) {
+        throw new BadRequestError('assinanteId é obrigatório para gerar numeração.')
+      }
+      const empId = empresaId || ''
+
+      const executar = (tx) => {
+        const seqCol = tx.findCollectionByNameOrId('sequencias')
+
+        // Tentar localizar sequência existente
+        let filtro = "assinante_id = '" + assinanteId + "' && tipo = '" + tipo + "'"
+        if (empId) {
+          filtro += " && empresa_id = '" + empId + "'"
+        } else {
+          filtro += " && (empresa_id = '' || empresa_id = null)"
+        }
+
+        const existentes = tx.findRecordsByFilter('sequencias', filtro, '', 1, 0)
+
+        if (existentes && existentes.length > 0) {
+          const seqRec = existentes[0]
+          const atual = seqRec.getInt('ultimo_numero') || 0
+          const proximo = atual + 1
+          seqRec.set('ultimo_numero', proximo)
+          tx.save(seqRec)
+          return proximo
+        }
+
+        // Se não existe, busca a semente (seed) na coleção de origem
+        let seed = 0
+        try {
+          if (tipo === 'vendas') {
+            const ult = tx.findRecordsByFilter(
+              'vendas',
+              "empresa_id = '" + empId + "'",
+              '-numero',
+              1,
+              0,
+            )
+            if (ult && ult.length > 0) seed = ult[0].getInt('numero') || 0
+          } else if (tipo === 'inventarios') {
+            const ult = tx.findRecordsByFilter(
+              'inventarios',
+              "empresa_id = '" + empId + "'",
+              '-numero',
+              1,
+              0,
+            )
+            if (ult && ult.length > 0) seed = ult[0].getInt('numero') || 0
+          } else if (tipo === 'pedidos_compra') {
+            const ult = tx.findRecordsByFilter(
+              'pedidos_compra',
+              "empresa_id = '" + empId + "'",
+              '-numero',
+              1,
+              0,
+            )
+            if (ult && ult.length > 0) seed = ult[0].getInt('numero') || 0
+          } else if (tipo === 'transferencias') {
+            const ult = tx.findRecordsByFilter(
+              'transferencias',
+              "empresa_origem_id = '" + empId + "'",
+              '-numero',
+              1,
+              0,
+            )
+            if (ult && ult.length > 0) seed = ult[0].getInt('numero') || 0
+          } else {
+            // Cadastros por assinante (tipo "codigo_produtos", "codigo_clientes", etc. ou nome direto da coleção)
+            let colecaoDestino = tipo
+            if (tipo.startsWith('codigo_')) {
+              colecaoDestino = tipo.replace('codigo_', '')
+            }
+            if (
+              colecaoDestino === 'produtos' ||
+              colecaoDestino === 'clientes' ||
+              colecaoDestino === 'fornecedores' ||
+              colecaoDestino === 'condicoes_pagamento' ||
+              colecaoDestino === 'empresas'
+            ) {
+              const ult = tx.findRecordsByFilter(
+                colecaoDestino,
+                "assinante_id = '" + assinanteId + "'",
+                '-codigo',
+                1,
+                0,
+              )
+              if (ult && ult.length > 0) seed = ult[0].getInt('codigo') || 0
+            }
+          }
+        } catch (errSeed) {
+          console.log('[numeracao_lib] Aviso ao buscar seed para ' + tipo + ': ' + errSeed.message)
+          seed = 0
+        }
+
+        const proximo = seed + 1
+        const novoRec = new Record(seqCol)
+        novoRec.set('assinante_id', assinanteId)
+        novoRec.set('empresa_id', empId)
+        novoRec.set('tipo', tipo)
+        novoRec.set('ultimo_numero', proximo)
+        tx.save(novoRec)
+        return proximo
+      }
+
+      if (txApp) {
+        return executar(txApp)
+      }
+
+      let resultado = 0
+      $app.runInTransaction((tx) => {
+        resultado = executar(tx)
+      })
+      return resultado
+    }
+
+    // -------------------------------------------------------------------------
     // 4. Carga Inicial: função local dentro do handler
     // -------------------------------------------------------------------------
     function executarCargaInicial(tx, assinante, empresaNova) {
       const assinanteId = assinante.id
       const empresaId = empresaNova.id
-
-      // Carregar numeracao_lib com require dentro do callback
-      const numLib = require(`${__hooks}/numeracao_lib.js`)
 
       // A) Centros de Custo Padrão ("1 - Geral")
       const centrosCustoCol = tx.findCollectionByNameOrId('centros_custo')
@@ -762,7 +877,7 @@ routerAdd('POST', '/backend/v1/assinatura/cadastrar', (c) => {
 
       for (let cIdx = 0; cIdx < condicoesPadrao.length; cIdx++) {
         const cp = condicoesPadrao[cIdx]
-        const codCond = numLib.proximoNumero(assinanteId, null, 'codigo_condicoes_pagamento', tx)
+        const codCond = proximoNumeroLocal(assinanteId, null, 'codigo_condicoes_pagamento', tx)
         const cpRec = new Record(condicoesCol)
         cpRec.set('codigo', codCond)
         cpRec.set('nome', cp.nome)
@@ -930,7 +1045,7 @@ routerAdd('POST', '/backend/v1/assinatura/cadastrar', (c) => {
 
       // F) Cliente "Consumidor Final"
       const clientesCol = tx.findCollectionByNameOrId('clientes')
-      const codCli = numLib.proximoNumero(assinanteId, null, 'codigo_clientes', tx)
+      const codCli = proximoNumeroLocal(assinanteId, null, 'codigo_clientes', tx)
       const cliRec = new Record(clientesCol)
       cliRec.set('codigo', codCli)
       cliRec.set('nome_razao_social', 'Consumidor Final')
@@ -1043,8 +1158,6 @@ routerAdd('POST', '/backend/v1/assinatura/cadastrar', (c) => {
     let resultado = null
 
     $app.runInTransaction((tx) => {
-      const numLib = require(`${__hooks}/numeracao_lib.js`)
-
       // A) Criar Assinante
       const assinantesCol = tx.findCollectionByNameOrId('assinantes')
       const numeroLicenca = gerarNumeroLicenca(tx)
@@ -1098,7 +1211,7 @@ routerAdd('POST', '/backend/v1/assinatura/cadastrar', (c) => {
 
       // B) Criar Empresa Matriz
       const empresasCol = tx.findCollectionByNameOrId('empresas')
-      const codEmpresa = numLib.proximoNumero(assinanteId, null, 'codigo_empresas', tx)
+      const codEmpresa = proximoNumeroLocal(assinanteId, null, 'codigo_empresas', tx)
 
       const empresaRec = new Record(empresasCol)
       empresaRec.set('tipo', 'Matriz')

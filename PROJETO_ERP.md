@@ -3527,6 +3527,17 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.153** — Etapa 9 Multi-tenant (Prompt 9.8-2b: Correção "Invalid module" no require de numeracao_lib na Rota Cadastrar):
+
+1. **Eliminação do `require` de `numeracao_lib.js` na rota `POST /backend/v1/assinatura/cadastrar` (`pocketbase/hooks/assinatura_rotas.js`):**
+   - No ambiente de servidor Skip Cloud / PocketBase os hooks são empacotados num único bundle (`pb.js`), fazendo com que `require(`${\_\_hooks}/numeracao_lib.js`)` falhe com `GoError: Invalid module`.
+   - Adicionada a função local `proximoNumeroLocal` diretamente no corpo do callback da rota `cadastrar`, com implementação idêntica e mantendo a escrita na coleção `sequencias`, numeração sequencial e seeds de fallback.
+   - Eliminados os dois `require(`${__hooks}/numeracao_lib.js`)` (dentro de `executarCargaInicial` e na transação `$app.runInTransaction`).
+   - Nenhuma chamada a `require` restante na rota `cadastrar`.
+   - Nenhuma alteração nas validações, transação atômica, rate-limit ou rota `/assinatura/planos`.
+
+---
+
 **Versão 0.0.152** — Etapa 9 Multi-tenant (Prompt 9.8-2: Página Pública de Auto-Cadastro /cadastro e Correção de Lotes):
 
 1. **Página Pública `/cadastro` (`src/pages/auth/CadastroPublicoPage.tsx` e `src/App.tsx`):**
