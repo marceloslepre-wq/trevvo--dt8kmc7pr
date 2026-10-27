@@ -48,11 +48,43 @@ onRecordAuthWithPasswordRequest((e) => {
   }
 
   if (assinanteId) {
+    function checarSeMasterLocal(authRec, appInstance) {
+      const app = appInstance || $app
+      if (!authRec || !authRec.id) return false
+      try {
+        const userRec = app.findRecordById('_pb_users_auth_', authRec.id)
+        return !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
+
+    function validarLicencaAtivaOuBloquearLocal(assinanteRec, authRecord) {
+      if (!assinanteRec) return
+
+      // Assinante de origem NUNCA é bloqueado
+      if (
+        assinanteRec.getBool('origem') ||
+        assinanteRec.getString('numero_licenca') === 'HH-RFR8HF'
+      ) {
+        return
+      }
+
+      // O master NUNCA é bloqueado
+      if (authRecord && checarSeMasterLocal(authRecord)) {
+        return
+      }
+
+      const status = assinanteRec.getString('status')
+      if (status === 'Pausada' || status === 'Expirada' || status === 'Cancelada') {
+        throw new ForbiddenError('Licença pausada ou vencida. Fale com o suporte.')
+      }
+    }
+
     try {
       const assinante = $app.findRecordById('assinantes', assinanteId)
       if (assinante) {
-        const masterLib = require(`${__hooks}/master_lib.js`)
-        masterLib.validarLicencaAtivaOuBloquear(assinante, record)
+        validarLicencaAtivaOuBloquearLocal(assinante, record)
       }
     } catch (errBloq) {
       throw new ForbiddenError(errBloq.message || 'Licença pausada ou vencida. Fale com o suporte.')

@@ -3527,6 +3527,19 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.149** — Eliminação Total do require de master_lib.js nos Hooks Ativos (Funções Locais em Escopo JSVM):
+
+1. **Eliminação dos requires de `master_lib.js` nos 4 arquivos de hooks restantes:**
+   - Para contornar a falha de empacotamento no servidor onde `require(`${\_\_hooks}/master_lib.js`)` lança `"GoError: Invalid module"` no bundle unificado `pb.js`, todos os pontos de consumo restantes foram adaptados para declarar localmente (dentro de cada função/callback, respeitando o escopo da JSVM goja) cópias fiéis das funções auxiliares necessárias:
+     - `pocketbase/hooks/cron_expiracao_licencas.js`: o cron diário de expiração de licenças (`expiracao_diaria_licencas`) agora define localmente `processarExpiracaoLicencasLocal` e `registrarEventoLicencaLocal`, sem require externo.
+     - `pocketbase/hooks/tenancy.js`: os 7 pontos que antes dependiam do require de `master_lib.js` foram saneados com implementações locais (`obterAssinanteImpersonadoLocal`, `checarSeMasterLocal`, `validarLicencaAtivaOuBloquearLocal`) dentro de `assinanteDoUsuario`, `empresasDoUsuario`, `GET /backend/v1/empresas/acessiveis` e `GET /backend/v1/tenancy/me`. As três situações de tenancy continuam garantidas com fidelidade: (a) usuário master não bloqueado, (b) licença pausada/expirada/cancelada bloqueada com "Licença pausada ou vencida. Fale com o suporte.", e (c) impersonação pelo master na coleção `master_impersonacoes`.
+     - `pocketbase/hooks/auditoria_modo_master.js`: em `onRecordCreate` de `logs_auditoria`, as funções `checarSeMasterLocal` e `obterAssinanteImpersonadoLocal` são declaradas localmente para marcar `modo_master = true` quando master estiver em atendimento de suporte.
+     - `pocketbase/hooks/fiscal_credenciais_rotas.js`: no endpoint `GET /backend/v1/fiscal/credenciais`, a verificação de modo master para ocultar credenciais foi adaptada com funções locais.
+     - Adicionalmente em `pocketbase/hooks/usuario_bloquear_licenca_auth.js`: eliminado o require restante de `master_lib.js` com funções locais no callback de login.
+   - NENHUM arquivo ativo em `pocketbase/hooks/` faz mais require de `master_lib.js`. O arquivo `master_lib.js` permanece intacto no repositório.
+
+---
+
 **Versão 0.0.148** — Eliminação de require de master_lib nas Rotas Master (Funções Locais nos Callbacks):
 
 1. **Eliminação do `require(`${\_\_hooks}/master_lib.js`)` em `pocketbase/hooks/master_rotas.js`:**

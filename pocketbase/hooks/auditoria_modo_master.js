@@ -17,10 +17,39 @@ onRecordCreate((e) => {
   // Verificar se o usuário autenticado é master em modo impersonado
   const auth = e.auth || e.get('authRecord')
   if (auth && auth.id) {
+    function checarSeMasterLocal(authRec, appInstance) {
+      const app = appInstance || $app
+      if (!authRec || !authRec.id) return false
+      try {
+        const userRec = app.findRecordById('_pb_users_auth_', authRec.id)
+        return !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
+
+    function obterAssinanteImpersonadoLocal(userId, appInstance) {
+      const app = appInstance || $app
+      if (!userId) return null
+      try {
+        if (!app.hasTable('master_impersonacoes')) return null
+        const recs = app.findRecordsByFilter(
+          'master_impersonacoes',
+          "user_id = '" + userId + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) {
+          return recs[0].getString('assinante_id') || null
+        }
+      } catch (_) {}
+      return null
+    }
+
     try {
-      const masterLib = require(`${__hooks}/master_lib.js`)
-      if (masterLib.checarSeMaster(auth, $app)) {
-        const impId = masterLib.obterAssinanteImpersonado(auth.id, $app)
+      if (checarSeMasterLocal(auth, $app)) {
+        const impId = obterAssinanteImpersonadoLocal(auth.id, $app)
         if (impId) {
           record.set('modo_master', true)
         }

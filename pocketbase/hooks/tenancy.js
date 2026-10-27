@@ -76,12 +76,63 @@ function assinanteDoUsuario(auth) {
     throw new BadRequestError('Usuário não possui vínculo com nenhum assinante cadastrado.')
   }
 
+  function obterAssinanteImpersonadoLocal(userId, appInstance) {
+    const app = appInstance || $app
+    if (!userId) return null
+    try {
+      if (!app.hasTable('master_impersonacoes')) return null
+      const recs = app.findRecordsByFilter(
+        'master_impersonacoes',
+        "user_id = '" + userId + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (recs && recs.length > 0) {
+        return recs[0].getString('assinante_id') || null
+      }
+    } catch (_) {}
+    return null
+  }
+
+  function checarSeMasterLocal(authRec, appInstance) {
+    const app = appInstance || $app
+    if (!authRec || !authRec.id) return false
+    try {
+      const userRec = app.findRecordById('_pb_users_auth_', authRec.id)
+      return !!(userRec && userRec.getString('tipo') === 'master')
+    } catch (_) {
+      return false
+    }
+  }
+
+  function validarLicencaAtivaOuBloquearLocal(assinanteRec, authRecord) {
+    if (!assinanteRec) return
+
+    // Assinante de origem NUNCA é bloqueado
+    if (
+      assinanteRec.getBool('origem') ||
+      assinanteRec.getString('numero_licenca') === 'HH-RFR8HF'
+    ) {
+      return
+    }
+
+    // O master NUNCA é bloqueado
+    if (authRecord && checarSeMasterLocal(authRecord)) {
+      return
+    }
+
+    const status = assinanteRec.getString('status')
+    if (status === 'Pausada' || status === 'Expirada' || status === 'Cancelada') {
+      throw new ForbiddenError('Licença pausada ou vencida. Fale com o suporte.')
+    }
+  }
+
   // Prompt 9.7b2: Se for Master e estiver com modo master (impersonação) ligado no servidor,
   // tenancy.js passa a usar o assinante do cliente que o master está atendendo
   if (eMaster(auth)) {
     try {
-      const masterLib = require(`${__hooks}/master_lib.js`)
-      const impersonadoId = masterLib.obterAssinanteImpersonado(auth.id, $app)
+      const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
       if (impersonadoId) {
         assinanteId = impersonadoId
       }
@@ -95,8 +146,7 @@ function assinanteDoUsuario(auth) {
 
   // Prompt 9.7b2: Bloqueio de licença Pausada, Expirada ou Cancelada
   try {
-    const masterLib = require(`${__hooks}/master_lib.js`)
-    masterLib.validarLicencaAtivaOuBloquear(assinante, auth)
+    validarLicencaAtivaOuBloquearLocal(assinante, auth)
   } catch (errBloq) {
     throw errBloq
   }
@@ -161,13 +211,31 @@ function empresasDoUsuario(auth) {
   let assinanteId = usuarioRec.getString('assinante_id')
   if (!assinanteId) return []
 
+  function obterAssinanteImpersonadoLocal(userId, appInstance) {
+    const app = appInstance || $app
+    if (!userId) return null
+    try {
+      if (!app.hasTable('master_impersonacoes')) return null
+      const recs = app.findRecordsByFilter(
+        'master_impersonacoes',
+        "user_id = '" + userId + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (recs && recs.length > 0) {
+        return recs[0].getString('assinante_id') || null
+      }
+    } catch (_) {}
+    return null
+  }
+
   // Prompt 9.7b2: Se o usuário autenticado for Master em modo de suporte,
   // usa o assinante impersonado para consultar empresas
   const ehMasterUser = eMaster(auth)
   if (ehMasterUser) {
     try {
-      const masterLib = require(`${__hooks}/master_lib.js`)
-      const impersonadoId = masterLib.obterAssinanteImpersonado(auth.id, $app)
+      const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
       if (impersonadoId) {
         assinanteId = impersonadoId
       }
@@ -314,10 +382,61 @@ routerAdd(
         ehMaster = !!(userRec && userRec.getString('tipo') === 'master')
       } catch (_) {}
 
+      function obterAssinanteImpersonadoLocal(userId, appInstance) {
+        const app = appInstance || $app
+        if (!userId) return null
+        try {
+          if (!app.hasTable('master_impersonacoes')) return null
+          const recs = app.findRecordsByFilter(
+            'master_impersonacoes',
+            "user_id = '" + userId + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (recs && recs.length > 0) {
+            return recs[0].getString('assinante_id') || null
+          }
+        } catch (_) {}
+        return null
+      }
+
+      function checarSeMasterLocal(authRec, appInstance) {
+        const app = appInstance || $app
+        if (!authRec || !authRec.id) return false
+        try {
+          const userRec = app.findRecordById('_pb_users_auth_', authRec.id)
+          return !!(userRec && userRec.getString('tipo') === 'master')
+        } catch (_) {
+          return false
+        }
+      }
+
+      function validarLicencaAtivaOuBloquearLocal(assinanteRec, authRecord) {
+        if (!assinanteRec) return
+
+        // Assinante de origem NUNCA é bloqueado
+        if (
+          assinanteRec.getBool('origem') ||
+          assinanteRec.getString('numero_licenca') === 'HH-RFR8HF'
+        ) {
+          return
+        }
+
+        // O master NUNCA é bloqueado
+        if (authRecord && checarSeMasterLocal(authRecord)) {
+          return
+        }
+
+        const status = assinanteRec.getString('status')
+        if (status === 'Pausada' || status === 'Expirada' || status === 'Cancelada') {
+          throw new ForbiddenError('Licença pausada ou vencida. Fale com o suporte.')
+        }
+      }
+
       if (ehMaster) {
         try {
-          const masterLib = require(`${__hooks}/master_lib.js`)
-          const impId = masterLib.obterAssinanteImpersonado(auth.id, $app)
+          const impId = obterAssinanteImpersonadoLocal(auth.id, $app)
           if (impId) {
             assinanteId = impId
           }
@@ -327,8 +446,7 @@ routerAdd(
       // Validar se a licença do assinante está bloqueada
       try {
         const assRec = $app.findRecordById('assinantes', assinanteId)
-        const masterLib = require(`${__hooks}/master_lib.js`)
-        masterLib.validarLicencaAtivaOuBloquear(assRec, auth)
+        validarLicencaAtivaOuBloquearLocal(assRec, auth)
       } catch (errBloq) {
         return c.json(403, {
           sucesso: false,
@@ -482,10 +600,61 @@ routerAdd(
       if (usuarioRec) {
         let assId = usuarioRec.getString('assinante_id')
 
+        function obterAssinanteImpersonadoLocal(userId, appInstance) {
+          const app = appInstance || $app
+          if (!userId) return null
+          try {
+            if (!app.hasTable('master_impersonacoes')) return null
+            const recs = app.findRecordsByFilter(
+              'master_impersonacoes',
+              "user_id = '" + userId + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (recs && recs.length > 0) {
+              return recs[0].getString('assinante_id') || null
+            }
+          } catch (_) {}
+          return null
+        }
+
+        function checarSeMasterLocal(authRec, appInstance) {
+          const app = appInstance || $app
+          if (!authRec || !authRec.id) return false
+          try {
+            const userRec = app.findRecordById('_pb_users_auth_', authRec.id)
+            return !!(userRec && userRec.getString('tipo') === 'master')
+          } catch (_) {
+            return false
+          }
+        }
+
+        function validarLicencaAtivaOuBloquearLocal(assinanteRec, authRecord) {
+          if (!assinanteRec) return
+
+          // Assinante de origem NUNCA é bloqueado
+          if (
+            assinanteRec.getBool('origem') ||
+            assinanteRec.getString('numero_licenca') === 'HH-RFR8HF'
+          ) {
+            return
+          }
+
+          // O master NUNCA é bloqueado
+          if (authRecord && checarSeMasterLocal(authRecord)) {
+            return
+          }
+
+          const status = assinanteRec.getString('status')
+          if (status === 'Pausada' || status === 'Expirada' || status === 'Cancelada') {
+            throw new ForbiddenError('Licença pausada ou vencida. Fale com o suporte.')
+          }
+        }
+
         if (ehMaster) {
           try {
-            const masterLib = require(`${__hooks}/master_lib.js`)
-            const impId = masterLib.obterAssinanteImpersonado(auth.id, $app)
+            const impId = obterAssinanteImpersonadoLocal(auth.id, $app)
             if (impId) {
               modoMasterAtivo = true
               assId = impId
@@ -499,8 +668,7 @@ routerAdd(
             if (assRec) {
               // Validar bloqueio de licença se não for master
               try {
-                const masterLib = require(`${__hooks}/master_lib.js`)
-                masterLib.validarLicencaAtivaOuBloquear(assRec, auth)
+                validarLicencaAtivaOuBloquearLocal(assRec, auth)
               } catch (errBloq) {
                 return c.json(403, {
                   sucesso: false,

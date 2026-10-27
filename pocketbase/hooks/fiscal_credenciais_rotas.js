@@ -129,12 +129,41 @@ routerAdd(
     }
 
     // Prompt 9.7b2 - Requisito 1: As credenciais fiscais do cliente continuam ocultas para o master
+    function checarSeMasterLocal(authRec, appInstance) {
+      const app = appInstance || $app
+      if (!authRec || !authRec.id) return false
+      try {
+        const userRec = app.findRecordById('_pb_users_auth_', authRec.id)
+        return !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
+
+    function obterAssinanteImpersonadoLocal(userId, appInstance) {
+      const app = appInstance || $app
+      if (!userId) return null
+      try {
+        if (!app.hasTable('master_impersonacoes')) return null
+        const recs = app.findRecordsByFilter(
+          'master_impersonacoes',
+          "user_id = '" + userId + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) {
+          return recs[0].getString('assinante_id') || null
+        }
+      } catch (_) {}
+      return null
+    }
+
     let ehModoMaster = false
     try {
-      const masterLib = require(`${__hooks}/master_lib.js`)
       if (
-        masterLib.checarSeMaster(authRecord, $app) &&
-        masterLib.obterAssinanteImpersonado(authRecord.id, $app)
+        checarSeMasterLocal(authRecord, $app) &&
+        obterAssinanteImpersonadoLocal(authRecord.id, $app)
       ) {
         ehModoMaster = true
       }
