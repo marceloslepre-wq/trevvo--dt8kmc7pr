@@ -17,6 +17,7 @@ import ForgotPasswordScreen from '@/pages/auth/ForgotPasswordScreen'
 import ResetPasswordScreen from '@/pages/auth/ResetPasswordScreen'
 import VerifyEmailScreen from '@/pages/auth/VerifyEmailScreen'
 import ConfirmEmailChangeScreen from '@/pages/auth/ConfirmEmailChangeScreen'
+import CadastroPublicoPage from '@/pages/auth/CadastroPublicoPage'
 
 // Páginas do Sistema
 import Index from '@/pages/Index'
@@ -131,6 +132,14 @@ const App = () => (
                   element={
                     <PublicOnlyRoute>
                       <LoginScreen />
+                    </PublicOnlyRoute>
+                  }
+                />
+                <Route
+                  path="/cadastro"
+                  element={
+                    <PublicOnlyRoute>
+                      <CadastroPublicoPage />
                     </PublicOnlyRoute>
                   }
                 />

@@ -3527,6 +3527,34 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.152** — Etapa 9 Multi-tenant (Prompt 9.8-2: Página Pública de Auto-Cadastro /cadastro e Correção de Lotes):
+
+1. **Página Pública `/cadastro` (`src/pages/auth/CadastroPublicoPage.tsx` e `src/App.tsx`):**
+   - Rota pública e acessível sem login (`PublicOnlyRoute` em `/cadastro`), permitindo que novos clientes criem suas contas de forma independente.
+   - **Catálogo de Planos Comerciais:** listagem dos planos de assinatura ativos e comerciais (`GET /backend/v1/assinatura/planos` com fallback em `planos_catalogo`). Permite pré-selecionar o plano diretamente pela URL (`/cadastro?plano=id`, nome ou etiqueta) ou alterar interativamente na tela, apresentando valores, limites de empresas e usuários, e recursos fiscais inclusos (NF-e, NFC-e e SPED).
+   - **Dados do Responsável (Usuário Administrador):** nome completo, e-mail corporativo com validação de formato, telefones de contato, WhatsApp e senha com confirmação (mínimo de 8 caracteres).
+   - **Dados da Empresa Matriz:** CNPJ com validação de 14 posições e dígitos verificadores com pesos e módulo 11 (suporta alfanumérico e numérico), consulta automática e enriquecimento cadastral via BrasilAPI (`buscarBrasilApiCnpj`), razão social, nome fantasia, Inscrição Estadual, CRT (Regime Tributário) e endereço completo com busca via ViaCEP (`buscarViaCep`). Todos os campos editáveis pelo usuário.
+   - **Termos de Uso e Política de Privacidade:** checkbox mandatório e modal informativo com as diretrizes de avaliação Trial e segurança SaaS multi-tenant.
+   - **Integração com o Backend:** consome a rota pública `POST /backend/v1/assinatura/cadastrar` com tratamento de mensagens de erro amigáveis retornadas pelo servidor.
+   - **Acesso Direto Pós-Cadastro:** após a criação atômica no backend, o usuário é automaticamente autenticado no ERP (`authWithPassword`) e redirecionado para `/painel`, com a empresa matriz criada selecionada como empresa ativa no `EmpresaContext`.
+   - **Link Direto na Tela de Login:** atalho "Cadastre-se grátis" adicionado no rodapé de `LoginScreen.tsx`.
+
+2. **Integração com o Painel Master (`MasterPage.tsx`):**
+   - No quadro "Gerador de Link de Primeiro Cadastro", o botão "Abrir página" agora abre imediatamente a página `/cadastro` em nova aba com o link gerado contendo o plano pré-selecionado (`/cadastro?plano=id`).
+
+3. **Correção no Card de Lotes do Painel Inicial (`Index.tsx`):**
+   - Corrigido o filtro de consulta da coleção `lotes` no painel inicial para utilizar o campo real `quantidade > 0` em vez de `quantidade_saldo > 0` (campo inexistente no esquema).
+
+---
+
+**Versão 0.0.151** — Etapa 9 Multi-tenant (Prompt 9.8-1: Endpoint Público de Assinatura e Cadastro de Novos Assinantes):
+
+- Endpoint `POST /backend/v1/assinatura/cadastrar` no ar em `pocketbase/hooks/assinatura_rotas.js`.
+- Criação atômica de assinante Trial, empresa matriz, perfil Administrador, usuário e carga inicial.
+- Validações de CNPJ, e-mail único, rate limit de 5 cadastros/hora/IP via cabeçalho `x-forwarded-for`.
+
+---
+
 **Versão 0.0.149** — Eliminação Total do require de master_lib.js nos Hooks Ativos (Funções Locais em Escopo JSVM):
 
 1. **Eliminação dos requires de `master_lib.js` nos 4 arquivos de hooks restantes:**

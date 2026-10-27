@@ -168,10 +168,18 @@ export default function LoginScreen() {
               </Button>
             </form>
 
-            <div className="mt-6 pt-4 border-t border-slate-100 text-center">
-              <p className="text-xs text-slate-500">
-                Acesso restrito. Novos usuários são cadastrados exclusivamente pelo administrador do
-                sistema.
+            <div className="mt-6 pt-4 border-t border-slate-100 text-center space-y-2">
+              <p className="text-xs text-slate-600">
+                Quer criar um novo ambiente para sua empresa?{' '}
+                <Link
+                  to="/cadastro"
+                  className="font-semibold text-blue-600 hover:text-blue-700 underline"
+                >
+                  Cadastre-se grátis
+                </Link>
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Usuários adicionais de empresas já existentes são gerenciados pelo administrador.
               </p>
             </div>
           </CardContent>

@@ -382,11 +382,7 @@ export const MasterPage: React.FC = () => {
   }
 
   const handleAbrirPagina = () => {
-    toast({
-      title: 'Página pública de cadastro em breve',
-      description:
-        'A tela pública de auto-cadastro (/cadastro) será disponibilizada na próxima etapa (Prompt 9.8).',
-    })
+    window.open(linkGerado, '_blank')
   }
 
   const handleCompartilharWhatsApp = () => {

@@ -15,6 +15,40 @@
  * - Transação única com $app.runInTransaction para criar assinante, empresa, admin e carga inicial.
  */
 
+routerAdd('GET', '/backend/v1/assinatura/planos', (c) => {
+  try {
+    const planos = $app.findRecordsByFilter(
+      'planos_catalogo',
+      'ativo = true && exclusivo_master = false',
+      'valor_mensal',
+      100,
+      0,
+    )
+    const lista = []
+    for (let i = 0; i < planos.length; i++) {
+      const p = planos[i]
+      lista.push({
+        id: p.id,
+        nome: p.getString('nome'),
+        etiqueta: p.getString('etiqueta'),
+        descricao: p.getString('descricao'),
+        valor_mensal: p.getFloat('valor_mensal'),
+        limite_empresas: p.getInt('limite_empresas'),
+        limite_usuarios: p.getInt('limite_usuarios'),
+        permite_nfe: p.getBool('permite_nfe'),
+        permite_nfce: p.getBool('permite_nfce'),
+        permite_sped: p.getBool('permite_sped'),
+        exclusivo_master: p.getBool('exclusivo_master'),
+        ativo: p.getBool('ativo'),
+      })
+    }
+    return c.json(200, { sucesso: true, planos: lista })
+  } catch (err) {
+    console.log('[assinatura/planos]', err && err.message, err && err.stack)
+    return c.json(500, { error: 'Falha ao listar planos disponíveis.' })
+  }
+})
+
 routerAdd('POST', '/backend/v1/assinatura/cadastrar', (c) => {
   try {
     // -------------------------------------------------------------------------
@@ -196,6 +230,18 @@ routerAdd('POST', '/backend/v1/assinatura/cadastrar', (c) => {
           0,
         )
         if (planos.length > 0) planoRec = planos[0]
+      } catch (_) {}
+    }
+    if (!planoRec) {
+      try {
+        const porEtiqueta = $app.findRecordsByFilter(
+          'planos_catalogo',
+          `etiqueta = '${planoId}'`,
+          '',
+          1,
+          0,
+        )
+        if (porEtiqueta.length > 0) planoRec = porEtiqueta[0]
       } catch (_) {}
     }
 

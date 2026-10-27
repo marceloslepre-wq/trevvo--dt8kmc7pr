@@ -309,7 +309,7 @@ export default function Index() {
 
               // Lotes com saldo > 0 na empresa ativa
               const lotes = await pb.collection('lotes').getFullList({
-                filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && quantidade_saldo > 0`,
+                filter: `empresa_id = '${empresaAtiva.id}' && ativo = true && quantidade > 0`,
               })
 
               let vencidos = 0
