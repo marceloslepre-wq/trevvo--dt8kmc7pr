@@ -1192,7 +1192,7 @@ routerAdd('POST', '/backend/v1/assinatura/cadastrar', (c) => {
       numero_licenca: resultado.numero_licenca,
     })
   } catch (err) {
-    console.log('[assinatura/cadastrar] Erro no cadastro:', err && err.message, err && err.stack)
+    console.log('[assinatura]', err && err.message, err && err.stack)
     return c.json(err.status || 500, {
       error: err.message || 'Falha interna ao processar cadastro de assinante.',
     })

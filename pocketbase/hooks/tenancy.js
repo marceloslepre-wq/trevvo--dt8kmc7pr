@@ -319,13 +319,6 @@ function exigirEmpresaDoUsuario(auth, empresaId) {
   return encontrada
 }
 
-module.exports = {
-  assinanteDoUsuario: assinanteDoUsuario,
-  eMaster: eMaster,
-  empresasDoUsuario: empresasDoUsuario,
-  exigirEmpresaDoUsuario: exigirEmpresaDoUsuario,
-}
-
 routerAdd(
   'GET',
   '/backend/v1/empresas/acessiveis',
@@ -727,3 +720,10 @@ routerAdd(
   },
   $apis.requireAuth(),
 )
+
+module.exports = {
+  assinanteDoUsuario: assinanteDoUsuario,
+  eMaster: eMaster,
+  empresasDoUsuario: empresasDoUsuario,
+  exigirEmpresaDoUsuario: exigirEmpresaDoUsuario,
+}
