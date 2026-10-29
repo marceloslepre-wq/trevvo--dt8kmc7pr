@@ -111,8 +111,10 @@ routerAdd(
       }
 
       // 5) Chamada à API externa apicpf.dev
-      // Documentação: GET https://apicpf.dev/consulta?cpf={apenas_numeros} com header X-API-KEY: {chave}
-      const urlApi = `https://apicpf.dev/consulta?cpf=${cpfLimpo}`
+      // Documentação: GET https://api.apicpf.dev/consulta?cpf={apenas_numeros} (ou https://apicpf.dev/consulta)
+      // com header X-API-KEY: {chave}
+      // Tentamos o host oficial api.apicpf.dev primeiro; se falhar na rede, fallback para apicpf.dev
+      let urlApi = `https://api.apicpf.dev/consulta?cpf=${cpfLimpo}`
       let resHttp = null
 
       try {
@@ -125,18 +127,32 @@ routerAdd(
           },
           timeout: 20,
         })
-      } catch (errHttp) {
-        console.log(
-          '[consulta-cpf]',
-          'Falha de rede ao consultar apicpf.dev:',
-          errHttp && errHttp.message ? errHttp.message : String(errHttp),
-          errHttp && errHttp.stack ? errHttp.stack : '',
-        )
-        return c.json(502, {
-          sucesso: false,
-          erro: 'falha_comunicacao',
-          mensagem: 'Falha na comunicação com o serviço de consulta de CPF.',
-        })
+      } catch (errHttp1) {
+        // Fallback para apicpf.dev caso api.apicpf.dev tenha alguma indisponibilidade de DNS/rede
+        try {
+          urlApi = `https://apicpf.dev/consulta?cpf=${cpfLimpo}`
+          resHttp = $http.send({
+            method: 'GET',
+            url: urlApi,
+            headers: {
+              'X-API-KEY': apiKey,
+              Accept: 'application/json',
+            },
+            timeout: 20,
+          })
+        } catch (errHttp) {
+          console.log(
+            '[consulta-cpf]',
+            'Falha de rede ao consultar apicpf.dev:',
+            errHttp && errHttp.message ? errHttp.message : String(errHttp),
+            errHttp && errHttp.stack ? errHttp.stack : '',
+          )
+          return c.json(502, {
+            sucesso: false,
+            erro: 'falha_comunicacao',
+            mensagem: 'Falha na comunicação com o serviço de consulta de CPF.',
+          })
+        }
       }
 
       const statusCode = (resHttp && resHttp.statusCode) || 500
@@ -147,15 +163,14 @@ routerAdd(
         corpoJson = null
       }
 
-      // Tratamento da resposta externa
+      // Tratamento da resposta externa (suporta { data: { nome, ... } } ou direto { nome, ... })
       if (statusCode === 200 && corpoJson) {
-        // Retorna JSON com nome, mae, genero, data_nascimento (data_nascimento como vier)
-        const nome = String(corpoJson.nome || corpoJson.nome_completo || '').trim()
-        const dataNascimento = String(
-          corpoJson.data_nascimento || corpoJson.nascimento || '',
-        ).trim()
-        const mae = String(corpoJson.mae || corpoJson.nome_mae || '').trim()
-        const genero = String(corpoJson.genero || corpoJson.sexo || '').trim()
+        const dados =
+          corpoJson.data && typeof corpoJson.data === 'object' ? corpoJson.data : corpoJson
+        const nome = String(dados.nome || dados.nome_completo || '').trim()
+        const dataNascimento = String(dados.data_nascimento || dados.nascimento || '').trim()
+        const mae = String(dados.mae || dados.nome_mae || '').trim()
+        const genero = String(dados.genero || dados.sexo || '').trim()
 
         return c.json(200, {
           sucesso: true,
