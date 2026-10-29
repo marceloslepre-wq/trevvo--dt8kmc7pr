@@ -40,6 +40,7 @@
 - E-mail com formato válido.
 - CEP: ao digitar 8 dígitos, buscar endereço em https://viacep.com.br/ws/{cep}/json/ e preencher logradouro, bairro, cidade, UF e código IBGE do município.
 - CNPJ: botão "Consultar CNPJ" que busca em https://brasilapi.com.br/api/cnpj/v1/{cnpj} e preencher razão social, nome fantasia, endereço e CNAE (quando o CNPJ for numérico).
+- CPF: consulta de dados de pessoa física no cadastro de clientes (/cadastros/clientes) integrada ao serviço apicpf.dev via endpoint seguro no backend (`GET /backend/v1/cadastros/consulta-cpf?cpf={numeros}`). Ao sair do campo (onBlur) com 11 dígitos válidos, preenche automaticamente nome e data de nascimento (ambos editáveis). A chave da API é configurada na variável de ambiente `APICPF_DEV_KEY` ($os.getenv). Se não configurada, o backend retorna HTTP 400 com mensagem clara em português sem travar a tela ou o formulário manual.
 
 ## Permissões
 
@@ -3537,6 +3538,31 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 2. **Sanitização de Payload no Update de Clientes (`src/services/clientes.ts`):**
    - No fluxo de atualização (`PATCH /api/collections/clientes/records/:id`), garantia de que `assinante_id` NÃO seja enviado no corpo da requisição (cumprindo a regra `@request.body.assinante_id:isset = false`).
    - Omissão de campos de sistema e metadados (`id`, `collectionId`, `collectionName`, `created`, `updated`, `created_by`, `expand`).
+
+---
+
+**Versão 0.0.156** — Integração de Consulta de CPF no Cadastro de Clientes (apicpf.dev):
+
+1. **Backend — Rota Segura de Consulta de CPF (`pocketbase/hooks/consulta_cpf_rotas.js`):**
+   - Rota `GET /backend/v1/cadastros/consulta-cpf?cpf={numeros}` com autenticação obrigatória via `$apis.requireAuth()`.
+   - Isolamento pelo assinante do usuário com validação de tenancy via módulo `tenancy.js` (`assinanteDoUsuario`) requerido dentro do callback.
+   - Validação de CPF (11 dígitos numéricos com cálculo dos dígitos verificadores no módulo 11 e rejeição de sequências repetidas).
+   - Leitura segura da chave de API via variável de ambiente `APICPF_DEV_KEY` ($os.getenv). Se ausente ou vazia, responde HTTP 400 com mensagem amigável: _"Consulta de CPF não configurada. Cadastre a chave da API CPF no painel."_ sem travar a tela.
+   - Quando configurada, consome via `$http.send` a API `https://apicpf.dev/consulta?cpf={apenas_numeros}` com cabeçalho `X-API-KEY`.
+   - Em HTTP 200, retorna ao frontend `{ sucesso: true, nome, data_nascimento, mae, genero }`.
+   - Em caso de 404 da base externa, retorna HTTP 404 com `{ sucesso: false, erro: "cpf_nao_encontrado", mensagem: "CPF não encontrado na base. Preencha os dados manualmente." }`.
+   - Tratamento de exceções com logs seguros `[consulta-cpf]`, sem vazar a chave de API no log ou na resposta.
+
+2. **Frontend — Integração no Formulário de Clientes (`ClienteForm.tsx` e `services/clientes.ts`):**
+   - Serviço tipado `consultarCpfCliente(cpf)` em `src/services/clientes.ts` consumindo o endpoint do PocketBase.
+   - No formulário de cliente (`ClienteForm.tsx`), ao sair do campo CPF (`onBlur`) com 11 dígitos válidos para Pessoa Física:
+     - Dispara a consulta com feedback visual discreto (indicador com spinner `Consultando CPF...`).
+     - Preenche automaticamente a razão social / nome completo e a data de nascimento (convertendo `DD/MM/AAAA` para `AAAA-MM-DD` para o input de data), mantendo ambos totalmente editáveis.
+     - Notifica o operador com toast e hint amigável: _"Dados preenchidos pela consulta de CPF"_.
+     - Cache local em sessão (`useRef<Set<string>>`) para não consultar novamente o mesmo CPF já retornado com sucesso.
+     - Na edição, só efetua a consulta se o operador tiver alterado o CPF em relação ao valor inicial do cadastro.
+     - Se o CPF não for localizado na base externa (`cpf_nao_encontrado`), exibe aviso amigável e permite prosseguir com preenchimento manual sem bloqueio.
+     - Se a chave não estiver configurada (`chave_nao_configurada`), exibe toast informativo apenas uma vez e não interrompe nem trava o preenchimento.
 
 ---
 

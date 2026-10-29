@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   UserCheck,
@@ -60,6 +60,7 @@ import {
   listarVendedoresAtivos,
   normalizarCpfCnpj,
   validarDadosCliente,
+  consultarCpfCliente,
 } from '@/services/clientes'
 import { obterHistoricoVendasCliente, ResumoVendasCliente } from '@/services/vendas'
 import { ShoppingCart } from 'lucide-react'
@@ -226,6 +227,11 @@ export const ClienteForm: React.FC = () => {
   // Erros e Avisos
   const [erros, setErros] = useState<Record<string, string>>({})
   const [buscandoCnpjApi, setBuscandoCnpjApi] = useState(false)
+  const [buscandoCpfApi, setBuscandoCpfApi] = useState(false)
+  const [hintCpf, setHintCpf] = useState<string | null>(null)
+  const cpfsConsultadosComSucessoRef = useRef<Set<string>>(new Set())
+  const cpfInicialEdicaoRef = useRef<string>('')
+  const avisouChaveNaoConfiguradaRef = useRef(false)
   const [clienteInativoExistente, setClienteInativoExistente] = useState<Cliente | null>(null)
   const [reativando, setReativando] = useState(false)
 
@@ -290,7 +296,9 @@ export const ClienteForm: React.FC = () => {
           setCodigo(c.codigo)
           setTipoPessoa(c.tipo_pessoa || 'Física')
           if (c.tipo_pessoa === 'Física') {
-            setCpfCnpj(c.cpf_cnpj ? formatarCPF(c.cpf_cnpj) : '')
+            const cpfFmt = c.cpf_cnpj ? formatarCPF(c.cpf_cnpj) : ''
+            setCpfCnpj(cpfFmt)
+            cpfInicialEdicaoRef.current = normalizarCpfCnpj(cpfFmt)
           } else if (c.tipo_pessoa === 'Jurídica') {
             setCpfCnpj(c.cpf_cnpj ? formatarCNPJ(c.cpf_cnpj) : '')
           } else {
@@ -522,6 +530,97 @@ export const ClienteForm: React.FC = () => {
       })
     } finally {
       setReativando(false)
+    }
+  }
+
+  // Consulta de CPF na API Externa (apicpf.dev via backend) ao sair do campo (onBlur)
+  const handleBlurCpf = async () => {
+    if (tipoPessoa !== 'Física') return
+    const limpo = normalizarCpfCnpj(cpfCnpj)
+    if (!limpo || limpo.length !== 11) return
+    if (!validarCPF(limpo)) return
+
+    // Na edição, só consulta se o CPF mudou em relação ao inicial
+    if (ehEdicao && limpo === cpfInicialEdicaoRef.current) {
+      return
+    }
+
+    // Cache simples: não consultar de novo se já consultou com sucesso nesta sessão
+    if (cpfsConsultadosComSucessoRef.current.has(limpo)) {
+      return
+    }
+
+    setBuscandoCpfApi(true)
+    setHintCpf('Consultando dados do CPF...')
+    try {
+      const res = await consultarCpfCliente(limpo)
+
+      if (res.sucesso) {
+        cpfsConsultadosComSucessoRef.current.add(limpo)
+        let preencheuAlgo = false
+
+        if (res.nome && res.nome.trim()) {
+          setNomeRazaoSocial(res.nome.trim().slice(0, 60))
+          preencheuAlgo = true
+        }
+
+        if (res.data_nascimento && res.data_nascimento.trim()) {
+          let dataFormatada = res.data_nascimento.trim()
+          // Tratar possíveis formatos: "DD/MM/YYYY" -> "YYYY-MM-DD" para input date
+          if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataFormatada)) {
+            const [dia, mes, ano] = dataFormatada.split('/')
+            dataFormatada = `${ano}-${mes}-${dia}`
+          }
+          setDataNascimento(dataFormatada)
+          preencheuAlgo = true
+        }
+
+        const msgSucesso = 'Dados preenchidos pela consulta de CPF.'
+        setHintCpf(msgSucesso)
+        toast({
+          title: 'Dados preenchidos pela consulta de CPF',
+          description: preencheuAlgo
+            ? 'Nome e data de nascimento preenchidos automaticamente. Os campos permanecem editáveis.'
+            : 'Consulta realizada com sucesso.',
+        })
+      } else {
+        if (res.erro === 'chave_nao_configurada') {
+          setHintCpf(null)
+          if (!avisouChaveNaoConfiguradaRef.current) {
+            avisouChaveNaoConfiguradaRef.current = true
+            toast({
+              variant: 'default',
+              title: 'Consulta de CPF não configurada',
+              description:
+                res.mensagem ||
+                'Consulta de CPF não configurada. Cadastre a chave da API CPF no painel.',
+            })
+          }
+        } else if (res.erro === 'cpf_nao_encontrado') {
+          const msgAviso =
+            res.mensagem || 'CPF não encontrado na base. Preencha os dados manualmente.'
+          setHintCpf(msgAviso)
+          toast({
+            variant: 'default',
+            title: 'CPF não encontrado na base',
+            description: msgAviso,
+          })
+        } else {
+          setHintCpf(null)
+          if (res.mensagem) {
+            toast({
+              variant: 'default',
+              title: 'Consulta de CPF',
+              description: res.mensagem,
+            })
+          }
+        }
+      }
+    } catch (err) {
+      setHintCpf(null)
+      console.warn('Erro ao consultar CPF:', err)
+    } finally {
+      setBuscandoCpfApi(false)
     }
   }
 
@@ -1040,16 +1139,28 @@ export const ClienteForm: React.FC = () => {
                   {tipoPessoa === 'Física' && (
                     <>
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-700">CPF *</Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold text-slate-700">CPF *</Label>
+                          {buscandoCpfApi && (
+                            <span className="text-[11px] text-blue-600 flex items-center gap-1 font-normal">
+                              <Loader2 className="h-3 w-3 animate-spin" /> Consultando CPF...
+                            </span>
+                          )}
+                        </div>
                         <Input
                           value={cpfCnpj}
                           onChange={(e) => handleDocChange(e.target.value)}
+                          onBlur={handleBlurCpf}
                           placeholder="000.000.000-00"
                           className={`h-9 text-xs ${erros.cpf_cnpj ? 'border-red-500' : ''}`}
                         />
-                        {erros.cpf_cnpj && (
+                        {erros.cpf_cnpj ? (
                           <p className="text-[11px] text-red-600">{erros.cpf_cnpj}</p>
-                        )}
+                        ) : hintCpf ? (
+                          <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                            <Info className="h-3 w-3 text-blue-500 shrink-0" /> {hintCpf}
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="space-y-1.5">

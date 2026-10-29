@@ -527,3 +527,54 @@ export async function ativarCliente(id: string): Promise<Cliente> {
 
   return atualizado
 }
+
+/**
+ * Resposta da rota de consulta de CPF (apicpf.dev via backend Skip Cloud)
+ */
+export interface DadosConsultaCpf {
+  sucesso: boolean
+  nome?: string
+  data_nascimento?: string
+  mae?: string
+  genero?: string
+  erro?: string
+  mensagem?: string
+}
+
+/**
+ * Consulta CPF na rota do backend (/backend/v1/cadastros/consulta-cpf)
+ */
+export async function consultarCpfCliente(cpf: string): Promise<DadosConsultaCpf> {
+  const limpo = normalizarCpfCnpj(cpf)
+  if (!limpo || limpo.length !== 11) {
+    return {
+      sucesso: false,
+      erro: 'cpf_invalido',
+      mensagem: 'CPF deve conter 11 dígitos numéricos.',
+    }
+  }
+
+  try {
+    const res = await pb.send<DadosConsultaCpf>(
+      `/backend/v1/cadastros/consulta-cpf?cpf=${encodeURIComponent(limpo)}`,
+      {
+        method: 'GET',
+      },
+    )
+    return res
+  } catch (err: unknown) {
+    const errorObj = err as { status?: number; data?: DadosConsultaCpf; message?: string }
+    if (errorObj?.data && typeof errorObj.data === 'object') {
+      return {
+        sucesso: false,
+        erro: errorObj.data.erro || 'erro_consulta',
+        mensagem: errorObj.data.mensagem || errorObj.message || 'Erro ao consultar CPF.',
+      }
+    }
+    return {
+      sucesso: false,
+      erro: 'falha_requisicao',
+      mensagem: errorObj?.message || 'Erro na comunicação com o servidor para consulta de CPF.',
+    }
+  }
+}
