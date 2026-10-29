@@ -3556,6 +3556,27 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.165** — Subcategoria nas Telas de Produto: Formulário e Listagem (Prompt G1c do ERP):
+
+1. **Formulário de Produto (`ProdutoForm.tsx`):**
+   - Utilização do seletor encadeado de 3 níveis `SelectGrupoCategoria` (Grupo → Categoria → Subcategoria).
+   - O campo de subcategoria aparece automaticamente apenas quando a categoria escolhida possui subcategorias ativas cadastradas, permanecendo opcional.
+   - Ao alterar grupo ou categoria, as seleções filhas são resetadas de forma consistente.
+   - Suporte completo à edição de produtos antigos sem subcategoria: o campo carrega vazio e salva sem erro ou exigência de preenchimento.
+   - Suporte a herança automática de margem padrão (`margem_padrao_percentual`) ao selecionar uma subcategoria, caso o produto ainda não tenha margem definida.
+
+2. **Listagem de Produtos (`ProdutosLista.tsx`):**
+   - Adição do filtro por subcategoria encadeado à categoria selecionada (`filtroSubcategoria` / `subcategoriasDaCategoria`).
+   - Seletor de subcategoria desabilitado quando nenhuma categoria está selecionada ou quando a categoria não possui subcategorias.
+   - Limpar ou trocar a categoria limpa automaticamente o filtro de subcategoria.
+   - Na coluna de classificação mercadológica da tabela, exibição conjunta de categoria e subcategoria (ex.: `› Categoria › Subcategoria`), com visual elegante e sem quebra caso o produto não possua subcategoria.
+   - Inclusão da coluna `Subcategoria` na exportação de produtos para CSV.
+
+3. **Preservação do Cadastro Rápido via Importação de XML:**
+   - Confirmado que o cadastro rápido de produtos em lote ou individual via importação de XML de notas fiscais de entrada (`ModalProdutosNaoCadastrados.tsx`, `ProdutoCadastroRapido.tsx`, `cadastroAutomaticoProdutos.ts`) segue funcionando perfeitamente sem exigir subcategoria.
+
+---
+
 **Versão 0.0.164** — Árvore Mercadológica em 3 Níveis e Gestão Completa de Subcategorias (Prompt G1b do ERP):
 
 1. **Árvore de 3 Níveis na Tela Grupos e Categorias (`/cadastros/grupos-categorias`):**

@@ -75,8 +75,10 @@ import {
 import {
   listarTodosGruposAtivos,
   listarCategoriasPorGrupo,
+  listarSubcategoriasPorCategoria,
   Grupo,
   Categoria,
+  Subcategoria,
 } from '@/services/gruposCategorias'
 import { listarTodasMarcasAtivas, Marca } from '@/services/marcas'
 import { listarTodosFornecedoresAtivos, Fornecedor } from '@/services/fornecedores'
@@ -107,6 +109,7 @@ export const ProdutosLista: React.FC = () => {
   const [filtroTipo, setFiltroTipo] = useState<TipoProduto | 'todos'>('todos')
   const [filtroGrupo, setFiltroGrupo] = useState('todos')
   const [filtroCategoria, setFiltroCategoria] = useState('todos')
+  const [filtroSubcategoria, setFiltroSubcategoria] = useState('todos')
   const [filtroMarca, setFiltroMarca] = useState('todos')
   const [filtroFornecedor, setFiltroFornecedor] = useState('todos')
   const [filtroSituacao, setFiltroSituacao] = useState<'todos' | 'ativos' | 'inativos'>('ativos')
@@ -120,6 +123,7 @@ export const ProdutosLista: React.FC = () => {
   // Listas auxiliares para dropdowns de filtros
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [categoriasDoGrupo, setCategoriasDoGrupo] = useState<Categoria[]>([])
+  const [subcategoriasDaCategoria, setSubcategoriasDaCategoria] = useState<Subcategoria[]>([])
   const [marcas, setMarcas] = useState<Marca[]>([])
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
 
@@ -173,8 +177,22 @@ export const ProdutosLista: React.FC = () => {
     } else {
       setCategoriasDoGrupo([])
       setFiltroCategoria('todos')
+      setSubcategoriasDaCategoria([])
+      setFiltroSubcategoria('todos')
     }
   }, [filtroGrupo])
+
+  // Recarregar subcategorias do filtro quando categoria muda
+  useEffect(() => {
+    if (filtroCategoria && filtroCategoria !== 'todos') {
+      listarSubcategoriasPorCategoria(filtroCategoria, true)
+        .then(setSubcategoriasDaCategoria)
+        .catch(console.error)
+    } else {
+      setSubcategoriasDaCategoria([])
+      setFiltroSubcategoria('todos')
+    }
+  }, [filtroCategoria])
 
   // Recarregar categorias para modal de massa quando grupo muda
   useEffect(() => {
@@ -198,6 +216,7 @@ export const ProdutosLista: React.FC = () => {
         tipo: filtroTipo,
         grupo_id: filtroGrupo,
         categoria_id: filtroCategoria,
+        subcategoria_id: filtroSubcategoria,
         marca_id: filtroMarca,
         fornecedor_id: filtroFornecedor,
         situacao: filtroSituacao,
@@ -226,6 +245,7 @@ export const ProdutosLista: React.FC = () => {
     filtroTipo,
     filtroGrupo,
     filtroCategoria,
+    filtroSubcategoria,
     filtroMarca,
     filtroFornecedor,
     filtroSituacao,
@@ -274,6 +294,7 @@ export const ProdutosLista: React.FC = () => {
     setFiltroTipo('todos')
     setFiltroGrupo('todos')
     setFiltroCategoria('todos')
+    setFiltroSubcategoria('todos')
     setFiltroMarca('todos')
     setFiltroFornecedor('todos')
     setFiltroSituacao('ativos')
@@ -458,6 +479,7 @@ export const ProdutosLista: React.FC = () => {
       'Marca',
       'Grupo',
       'Categoria',
+      'Subcategoria',
       'Unidade',
       'Preço Custo',
       'Preço Venda',
@@ -477,6 +499,7 @@ export const ProdutosLista: React.FC = () => {
       `"${(p.expand?.marca_id?.nome || '').replace(/"/g, '""')}"`,
       `"${(p.expand?.grupo_id?.nome || '').replace(/"/g, '""')}"`,
       `"${(p.expand?.categoria_id?.nome || '').replace(/"/g, '""')}"`,
+      `"${(p.expand?.subcategoria_id?.nome || '').replace(/"/g, '""')}"`,
       p.expand?.unidade_id?.sigla || '',
       (p.preco_custo || 0).toFixed(4).replace('.', ','),
       (p.preco_venda || 0).toFixed(2).replace('.', ','),
@@ -558,6 +581,7 @@ export const ProdutosLista: React.FC = () => {
     filtroTipo !== 'todos' ||
     filtroGrupo !== 'todos' ||
     filtroCategoria !== 'todos' ||
+    filtroSubcategoria !== 'todos' ||
     filtroMarca !== 'todos' ||
     filtroFornecedor !== 'todos' ||
     filtroSituacao !== 'ativos' ||
@@ -671,7 +695,7 @@ export const ProdutosLista: React.FC = () => {
           </div>
 
           {/* Linha 2: Filtros avançados */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-1 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 pt-1 text-xs">
             {/* Tipo */}
             <div>
               <Label className="text-[11px] text-slate-500 mb-1 block">Tipo</Label>
@@ -701,6 +725,8 @@ export const ProdutosLista: React.FC = () => {
                 value={filtroGrupo}
                 onValueChange={(val) => {
                   setFiltroGrupo(val)
+                  setFiltroCategoria('todos')
+                  setFiltroSubcategoria('todos')
                   setPagina(1)
                 }}
               >
@@ -725,6 +751,7 @@ export const ProdutosLista: React.FC = () => {
                 value={filtroCategoria}
                 onValueChange={(val) => {
                   setFiltroCategoria(val)
+                  setFiltroSubcategoria('todos')
                   setPagina(1)
                 }}
                 disabled={filtroGrupo === 'todos'}
@@ -737,6 +764,39 @@ export const ProdutosLista: React.FC = () => {
                   {categoriasDoGrupo.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Subcategoria */}
+            <div>
+              <Label className="text-[11px] text-slate-500 mb-1 block">Subcategoria</Label>
+              <Select
+                value={filtroSubcategoria}
+                onValueChange={(val) => {
+                  setFiltroSubcategoria(val)
+                  setPagina(1)
+                }}
+                disabled={filtroCategoria === 'todos' || subcategoriasDaCategoria.length === 0}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue
+                    placeholder={
+                      filtroCategoria === 'todos'
+                        ? 'Todas subcategorias'
+                        : subcategoriasDaCategoria.length === 0
+                          ? 'Sem subcategorias'
+                          : 'Todas subcategorias'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todas subcategorias</SelectItem>
+                  {subcategoriasDaCategoria.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.nome}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1046,17 +1106,33 @@ export const ProdutosLista: React.FC = () => {
                         {p.expand?.marca_id?.nome || <span className="text-slate-300">—</span>}
                       </td>
 
-                      {/* Grupo / Categoria */}
+                      {/* Grupo / Categoria / Subcategoria */}
                       <td className="py-2.5 px-3 text-slate-700">
                         {p.expand?.grupo_id ? (
-                          <div className="truncate max-w-[160px]">
+                          <div className="truncate max-w-[180px]">
                             <span className="font-medium text-slate-800">
                               {p.expand.grupo_id.nome}
                             </span>
                             {p.expand?.categoria_id && (
-                              <div className="text-[10px] text-slate-400">
-                                › {p.expand.categoria_id.nome}
+                              <div className="text-[10px] text-slate-500 flex items-center flex-wrap gap-1">
+                                <span>› {p.expand.categoria_id.nome}</span>
+                                {p.expand?.subcategoria_id && (
+                                  <span className="text-indigo-600 font-medium">
+                                    › {p.expand.subcategoria_id.nome}
+                                  </span>
+                                )}
                               </div>
+                            )}
+                          </div>
+                        ) : p.expand?.categoria_id ? (
+                          <div className="truncate max-w-[180px]">
+                            <span className="font-medium text-slate-800">
+                              {p.expand.categoria_id.nome}
+                            </span>
+                            {p.expand?.subcategoria_id && (
+                              <span className="text-indigo-600 font-medium text-[10px] ml-1">
+                                › {p.expand.subcategoria_id.nome}
+                              </span>
                             )}
                           </div>
                         ) : (

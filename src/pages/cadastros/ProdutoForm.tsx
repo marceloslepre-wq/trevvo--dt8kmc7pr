@@ -120,6 +120,7 @@ export const ProdutoForm: React.FC = () => {
     marca_id: undefined,
     grupo_id: undefined,
     categoria_id: undefined,
+    subcategoria_id: undefined,
     fornecedor_principal_id: undefined,
     observacoes: '',
 
@@ -1042,8 +1043,11 @@ export const ProdutoForm: React.FC = () => {
                 <SelectGrupoCategoria
                   grupoId={formData.grupo_id || ''}
                   categoriaId={formData.categoria_id || ''}
+                  subcategoriaId={formData.subcategoria_id || ''}
                   onGrupoChange={(gid, grupo) => {
                     handleCampoChange('grupo_id', gid || undefined)
+                    handleCampoChange('categoria_id', undefined)
+                    handleCampoChange('subcategoria_id', undefined)
                     if (
                       grupo?.margem_padrao_percentual &&
                       (!formData.margem_percentual || formData.margem_percentual === 0)
@@ -1053,11 +1057,21 @@ export const ProdutoForm: React.FC = () => {
                   }}
                   onCategoriaChange={(cid, categoria) => {
                     handleCampoChange('categoria_id', cid || undefined)
+                    handleCampoChange('subcategoria_id', undefined)
                     if (
                       categoria?.margem_padrao_percentual &&
                       (!formData.margem_percentual || formData.margem_percentual === 0)
                     ) {
                       handleCampoChange('margem_percentual', categoria.margem_padrao_percentual)
+                    }
+                  }}
+                  onSubcategoriaChange={(sid, subcategoria) => {
+                    handleCampoChange('subcategoria_id', sid || undefined)
+                    if (
+                      subcategoria?.margem_padrao_percentual &&
+                      (!formData.margem_percentual || formData.margem_percentual === 0)
+                    ) {
+                      handleCampoChange('margem_percentual', subcategoria.margem_padrao_percentual)
                     }
                   }}
                 />
