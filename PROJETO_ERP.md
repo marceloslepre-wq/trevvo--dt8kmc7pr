@@ -3527,6 +3527,19 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.156** — Correção de Criação e Atualização de Clientes (Tenancy no CREATE e Sanitização no UPDATE):
+
+1. **Inclusão de `assinante_id` no Cadastro de Clientes (`src/services/clientes.ts`):**
+   - Na função `salvarCliente` (fluxo de criação `POST /api/collections/clientes/records`), inclusão explícita de `assinante_id` obtido do usuário autenticado (`pb.authStore.record.assinante_id` ou via `obterUsuarioCacheLocal`).
+   - Cumpre a regra de criação da coleção `clientes` (`assinante_id = @request.auth.assinante_id`), eliminando o erro HTTP 400 ("Failed to create record.") ocorrido em `/cadastros/clientes/novo`.
+   - Limpeza preventiva de campos de sistema (`id`, `collectionId`, `collectionName`, `created`, `updated`, `expand`) no payload do create.
+
+2. **Sanitização de Payload no Update de Clientes (`src/services/clientes.ts`):**
+   - No fluxo de atualização (`PATCH /api/collections/clientes/records/:id`), garantia de que `assinante_id` NÃO seja enviado no corpo da requisição (cumprindo a regra `@request.body.assinante_id:isset = false`).
+   - Omissão de campos de sistema e metadados (`id`, `collectionId`, `collectionName`, `created`, `updated`, `created_by`, `expand`).
+
+---
+
 **Versão 0.0.155** — Correção Pontual de Runtime no Update de Empresas (Sanitização do Payload PATCH):
 
 1. **Sanitização de Payload na Edição de Empresas (`src/services/empresas.ts`):**
