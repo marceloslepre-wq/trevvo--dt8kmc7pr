@@ -3528,6 +3528,20 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.159** — Ativação da Chave da API de Consulta de CPF (APICPF_DEV_KEY no Backend):
+
+1. **Configuração de Variável de Ambiente no Skip Cloud:**
+   - Registrada a variável de ambiente `APICPF_DEV_KEY` com o valor de produção fornecido via `set_env`.
+   - Chave confirmada disponível nos segredos do backend (`list_secrets`).
+   - Backend reimplantado com sucesso via `deploy_backend`, disponibilizando a chave para o hook `pocketbase/hooks/consulta_cpf_rotas.js` através de `$os.getenv("APICPF_DEV_KEY")`.
+   - Consulta ao endpoint `/backend/v1/cadastros/consulta-cpf` ativa para o frontend em `ClienteForm.tsx` sem consumo prévio da cota de consultas no build.
+
+---
+
+**Versão 0.0.158** — Ajuste de Documentação e Hooks de Consulta de CPF:
+
+---
+
 **Versão 0.0.156** — Correção de Criação e Atualização de Clientes (Tenancy no CREATE e Sanitização no UPDATE):
 
 1. **Inclusão de `assinante_id` no Cadastro de Clientes (`src/services/clientes.ts`):**
