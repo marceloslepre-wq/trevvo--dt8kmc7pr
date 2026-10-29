@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-29T15:12:46.197Z",
+  "generatedAt": "2026-10-29T19:12:03.662Z",
   "collections": [
     {
       "name": "users",
@@ -3313,6 +3313,13 @@
           "required": true,
           "system": false,
           "collectionRef": "assinantes"
+        },
+        {
+          "name": "subcategoria_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "subcategorias"
         }
       ],
       "indexes": [
@@ -3328,7 +3335,8 @@
         "CREATE INDEX idx_produtos_ativo ON produtos (ativo)",
         "CREATE INDEX idx_produtos_fiscal_revisado ON produtos (fiscal_revisado)",
         "CREATE UNIQUE INDEX idx_produtos_assinante_codigo ON produtos (assinante_id, codigo)",
-        "CREATE UNIQUE INDEX idx_produtos_assinante_gtin ON produtos (assinante_id, gtin) WHERE gtin != '' AND gtin IS NOT NULL"
+        "CREATE UNIQUE INDEX idx_produtos_assinante_gtin ON produtos (assinante_id, gtin) WHERE gtin != '' AND gtin IS NOT NULL",
+        "CREATE INDEX idx_produtos_subcategoria ON produtos (subcategoria_id)"
       ]
     },
     {
@@ -11610,6 +11618,92 @@
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_master_impersonacoes_user ON master_impersonacoes (user_id)"
+      ]
+    },
+    {
+      "name": "subcategorias",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "view": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "create": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "update": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id",
+        "delete": "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
+      },
+      "fields": [
+        {
+          "name": "assinante_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "assinantes"
+        },
+        {
+          "name": "categoria_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "categorias"
+        },
+        {
+          "name": "codigo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "margem_padrao_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "updated_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_subcat_categoria_nome ON subcategorias (categoria_id, nome)",
+        "CREATE UNIQUE INDEX idx_subcat_assinante_codigo ON subcategorias (assinante_id, codigo) WHERE codigo != '' AND codigo IS NOT NULL",
+        "CREATE INDEX idx_subcat_assinante ON subcategorias (assinante_id)",
+        "CREATE INDEX idx_subcat_categoria ON subcategorias (categoria_id)",
+        "CREATE INDEX idx_subcat_ativo ON subcategorias (ativo)"
       ]
     }
   ]

@@ -16,6 +16,7 @@ export interface Produto {
   marca_id?: string
   grupo_id?: string
   categoria_id?: string
+  subcategoria_id?: string
   fornecedor_principal_id?: string
   foto?: string
   fotos_adicionais?: string[]
@@ -134,6 +135,12 @@ export interface Produto {
     marca_id?: { id: string; nome: string }
     grupo_id?: { id: string; codigo: string; nome: string; margem_padrao_percentual?: number }
     categoria_id?: { id: string; codigo?: string; nome: string; margem_padrao_percentual?: number }
+    subcategoria_id?: {
+      id: string
+      codigo?: string
+      nome: string
+      margem_padrao_percentual?: number
+    }
     fornecedor_principal_id?: { id: string; razao_social: string; nome_fantasia?: string }
     unidade_id?: { id: string; sigla: string; descricao: string; aceita_fracionado: boolean }
     unidade_tributavel_id?: { id: string; sigla: string; descricao: string }
@@ -205,6 +212,7 @@ export interface ListarProdutosParams {
   busca?: string
   grupo_id?: string
   categoria_id?: string
+  subcategoria_id?: string
   marca_id?: string
   fornecedor_id?: string
   tipo?: TipoProduto | 'todos'
@@ -323,6 +331,11 @@ export async function listarProdutos(
     condicoes.push(`categoria_id = '${params.categoria_id}'`)
   }
 
+  // Filtro de subcategoria
+  if (params.subcategoria_id && params.subcategoria_id !== 'todos') {
+    condicoes.push(`subcategoria_id = '${params.subcategoria_id}'`)
+  }
+
   // Filtro de marca
   if (params.marca_id && params.marca_id !== 'todos') {
     condicoes.push(`marca_id = '${params.marca_id}'`)
@@ -363,7 +376,7 @@ export async function listarProdutos(
     filter,
     sort: ordenacao,
     expand:
-      'marca_id,grupo_id,categoria_id,fornecedor_principal_id,unidade_id,unidade_tributavel_id,perfil_tributario_id',
+      'marca_id,grupo_id,categoria_id,subcategoria_id,fornecedor_principal_id,unidade_id,unidade_tributavel_id,perfil_tributario_id',
   })
 
   return {
@@ -378,7 +391,7 @@ export async function listarProdutos(
 export async function obterProdutoPorId(id: string): Promise<Produto> {
   return await pb.collection('produtos').getOne<Produto>(id, {
     expand:
-      'marca_id,grupo_id,categoria_id,fornecedor_principal_id,unidade_id,unidade_tributavel_id,perfil_tributario_id',
+      'marca_id,grupo_id,categoria_id,subcategoria_id,fornecedor_principal_id,unidade_id,unidade_tributavel_id,perfil_tributario_id',
   })
 }
 
@@ -938,6 +951,7 @@ export async function salvarProduto(
     marca_id: dados.marca_id || null,
     grupo_id: dados.grupo_id || null,
     categoria_id: dados.categoria_id || null,
+    subcategoria_id: dados.subcategoria_id || null,
     fornecedor_principal_id: dados.fornecedor_principal_id || null,
     observacoes: dados.observacoes || '',
 

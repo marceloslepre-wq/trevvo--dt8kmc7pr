@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import { FolderTree, Layers, Loader2 } from 'lucide-react'
+import { FolderTree, Layers, GitCommit, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Label } from '@/components/ui/label'
 import {
@@ -12,19 +12,24 @@ import {
 import {
   Grupo,
   Categoria,
+  Subcategoria,
   listarTodosGruposAtivos,
   listarCategoriasPorGrupo,
+  listarSubcategoriasPorCategoria,
 } from '@/services/gruposCategorias'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
 
 export interface SelectGrupoCategoriaProps {
   grupoId?: string
   categoriaId?: string
+  subcategoriaId?: string
   onGrupoChange?: (grupoId: string, grupo?: Grupo) => void
   onCategoriaChange?: (categoriaId: string, categoria?: Categoria) => void
+  onSubcategoriaChange?: (subcategoriaId: string, subcategoria?: Subcategoria) => void
   disabled?: boolean
   requiredGrupo?: boolean
   requiredCategoria?: boolean
+  requiredSubcategoria?: boolean
   somenteAtivos?: boolean
   className?: string
   layout?: 'horizontal' | 'vertical'
@@ -33,19 +38,24 @@ export interface SelectGrupoCategoriaProps {
 export const SelectGrupoCategoria: React.FC<SelectGrupoCategoriaProps> = ({
   grupoId = '',
   categoriaId = '',
+  subcategoriaId = '',
   onGrupoChange,
   onCategoriaChange,
+  onSubcategoriaChange,
   disabled = false,
   requiredGrupo = false,
   requiredCategoria = false,
+  requiredSubcategoria = false,
   somenteAtivos = true,
   className,
   layout = 'horizontal',
 }) => {
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [subcategorias, setSubcategorias] = useState<Subcategoria[]>([])
   const [carregandoGrupos, setCarregandoGrupos] = useState(false)
   const [carregandoCategorias, setCarregandoCategorias] = useState(false)
+  const [carregandoSubcategorias, setCarregandoSubcategorias] = useState(false)
   const assinanteId = useAssinanteId()
 
   // Carregar grupos
@@ -95,14 +105,46 @@ export const SelectGrupoCategoria: React.FC<SelectGrupoCategoriaProps> = ({
     carregarCategorias(grupoId)
   }, [grupoId, carregarCategorias])
 
+  // Carregar subcategorias quando categoriaId muda
+  const carregarSubcategorias = useCallback(
+    async (cid: string) => {
+      if (!cid) {
+        setSubcategorias([])
+        return
+      }
+      setCarregandoSubcategorias(true)
+      try {
+        const dados = await listarSubcategoriasPorCategoria(
+          cid,
+          somenteAtivos,
+          assinanteId || undefined,
+        )
+        setSubcategorias(dados)
+      } catch (err) {
+        console.error('Erro ao carregar subcategorias da categoria:', err)
+        setSubcategorias([])
+      } finally {
+        setCarregandoSubcategorias(false)
+      }
+    },
+    [somenteAtivos, assinanteId],
+  )
+
+  useEffect(() => {
+    carregarSubcategorias(categoriaId)
+  }, [categoriaId, carregarSubcategorias])
+
   const handleGrupoSelecionado = (novoGrupoId: string) => {
     const grupoEncontrado = grupos.find((g) => g.id === novoGrupoId)
     if (onGrupoChange) {
       onGrupoChange(novoGrupoId, grupoEncontrado)
     }
-    // Ao trocar o grupo, limpa a categoria selecionada pois a lista de categorias muda
+    // Ao trocar o grupo, limpa categoria e subcategoria
     if (onCategoriaChange) {
       onCategoriaChange('', undefined)
+    }
+    if (onSubcategoriaChange) {
+      onSubcategoriaChange('', undefined)
     }
   }
 
@@ -111,10 +153,28 @@ export const SelectGrupoCategoria: React.FC<SelectGrupoCategoriaProps> = ({
     if (onCategoriaChange) {
       onCategoriaChange(novaCategoriaId, categoriaEncontrada)
     }
+    if (onSubcategoriaChange) {
+      onSubcategoriaChange('', undefined)
+    }
   }
 
+  const handleSubcategoriaSelecionada = (novaSubcategoriaId: string) => {
+    const valorReal = novaSubcategoriaId === '__nenhuma__' ? '' : novaSubcategoriaId
+    const subEncontrada = subcategorias.find((s) => s.id === valorReal)
+    if (onSubcategoriaChange) {
+      onSubcategoriaChange(valorReal, subEncontrada)
+    }
+  }
+
+  // Subcategoria só é exibida quando a categoria escolhida tem subcategorias
+  const temSubcategorias = subcategorias.length > 0
+
   const containerClasses =
-    layout === 'horizontal' ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : 'flex flex-col space-y-4'
+    layout === 'horizontal'
+      ? temSubcategorias
+        ? 'grid grid-cols-1 sm:grid-cols-3 gap-4'
+        : 'grid grid-cols-1 sm:grid-cols-2 gap-4'
+      : 'flex flex-col space-y-4'
 
   return (
     <div className={cn(containerClasses, className)}>
@@ -211,6 +271,55 @@ export const SelectGrupoCategoria: React.FC<SelectGrupoCategoriaProps> = ({
           </SelectContent>
         </Select>
       </div>
+
+      {/* 3. Seleção de Subcategoria (encadeada à categoria; só aparece se a categoria tiver subcategorias) */}
+      {temSubcategorias && (
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <GitCommit className="h-3.5 w-3.5 text-indigo-600" />
+              <span>Subcategoria</span>
+              {requiredSubcategoria && <span className="text-rose-600">*</span>}
+            </span>
+            <span className="text-[10px] font-normal text-slate-400">(opcional)</span>
+          </Label>
+
+          <Select
+            value={subcategoriaId || '__nenhuma__'}
+            onValueChange={handleSubcategoriaSelecionada}
+            disabled={disabled || !categoriaId || carregandoSubcategorias}
+          >
+            <SelectTrigger className="text-xs h-10 bg-white">
+              <SelectValue
+                placeholder={
+                  carregandoSubcategorias
+                    ? 'Carregando subcategorias...'
+                    : 'Selecione a subcategoria (nível 3)...'
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__nenhuma__" className="text-xs text-slate-500 italic">
+                Nenhuma (não classificar em subcategoria)
+              </SelectItem>
+              {subcategorias.map((s) => (
+                <SelectItem key={s.id} value={s.id} className="text-xs">
+                  {s.codigo && (
+                    <span className="font-mono text-slate-500 mr-1.5 text-[11px]">{s.codigo}</span>
+                  )}
+                  <span>{s.nome}</span>
+                  {s.margem_padrao_percentual !== undefined &&
+                    s.margem_padrao_percentual !== null && (
+                      <span className="text-indigo-700 font-medium ml-1.5 text-[11px]">
+                        ({Number(s.margem_padrao_percentual).toFixed(2)}%)
+                      </span>
+                    )}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   )
 }

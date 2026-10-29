@@ -30,12 +30,33 @@ export interface Categoria {
   }
 }
 
-export interface GrupoComCategorias extends Grupo {
-  categorias: CategoriaComContagem[]
+export interface Subcategoria {
+  id: string
+  ativo: boolean
+  categoria_id: string
+  codigo?: string
+  nome: string
+  margem_padrao_percentual?: number | null
+  created_by?: string
+  updated_by?: string
+  created?: string
+  updated?: string
+  expand?: {
+    categoria_id?: Categoria
+  }
+}
+
+export interface SubcategoriaComContagem extends Subcategoria {
   quantidade_produtos: number
 }
 
 export interface CategoriaComContagem extends Categoria {
+  quantidade_produtos: number
+  subcategorias?: SubcategoriaComContagem[]
+}
+
+export interface GrupoComCategorias extends Grupo {
+  categorias: CategoriaComContagem[]
   quantidade_produtos: number
 }
 
@@ -347,7 +368,22 @@ export async function salvarCategoria(dados: {
   return salva
 }
 
+export async function contarSubcategoriasAtivasDaCategoria(categoriaId: string): Promise<number> {
+  const res = await pb.collection('subcategorias').getList(1, 1, {
+    filter: `categoria_id = '${categoriaId}' && ativo = true`,
+  })
+  return res.totalItems
+}
+
 export async function inativarCategoria(id: string): Promise<void> {
+  // Regra de negócio obrigatória: não permitir inativar uma categoria com subcategorias ativas
+  const subcatAtivas = await contarSubcategoriasAtivasDaCategoria(id)
+  if (subcatAtivas > 0) {
+    throw new Error(
+      `Não é possível inativar esta categoria pois ela possui ${subcatAtivas} subcategoria(s) ativa(s). Inative as subcategorias antes de inativar a categoria.`,
+    )
+  }
+
   const antes = await obterCategoria(id)
   const atualizada = await pb.collection('categorias').update<Categoria>(id, {
     ativo: false,
@@ -386,7 +422,172 @@ export async function ativarCategoria(id: string): Promise<void> {
 }
 
 // -------------------------------------------------------------
-// ÁRVORE MERCADOLÓGICA (Grupos com Categorias e contagem futura de produtos)
+// SUBCATEGORIAS (Nível 3)
+// -------------------------------------------------------------
+
+export async function listarSubcategoriasPorCategoria(
+  categoriaId: string,
+  somenteAtivos = true,
+  assinanteId?: string,
+): Promise<Subcategoria[]> {
+  const condicoes: string[] = [`categoria_id = '${categoriaId}'`]
+  if (somenteAtivos) {
+    condicoes.push('ativo = true')
+  }
+  if (assinanteId) {
+    condicoes.push(`assinante_id = '${assinanteId}'`)
+  }
+
+  return await pb.collection('subcategorias').getFullList<Subcategoria>({
+    filter: condicoes.join(' && '),
+    sort: 'codigo,nome',
+  })
+}
+
+export async function listarTodasSubcategoriasAtivas(
+  assinanteId?: string,
+): Promise<Subcategoria[]> {
+  const conds = ['ativo = true']
+  if (assinanteId) {
+    conds.push(`assinante_id = '${assinanteId}'`)
+  }
+  return await pb.collection('subcategorias').getFullList<Subcategoria>({
+    filter: conds.join(' && '),
+    sort: 'nome',
+    expand: 'categoria_id',
+  })
+}
+
+export async function obterSubcategoria(id: string): Promise<Subcategoria> {
+  return await pb.collection('subcategorias').getOne<Subcategoria>(id, {
+    expand: 'categoria_id',
+  })
+}
+
+export async function salvarSubcategoria(dados: {
+  id?: string
+  categoria_id: string
+  codigo?: string
+  nome: string
+  margem_padrao_percentual?: number | null
+  ativo?: boolean
+}): Promise<Subcategoria> {
+  const nomeFormatado = dados.nome.trim()
+  const codigoFormatado = dados.codigo?.trim().toUpperCase() || ''
+  const categoriaId = dados.categoria_id.trim()
+
+  if (!categoriaId) {
+    throw new Error('A categoria é obrigatória para cadastrar a subcategoria.')
+  }
+  if (!nomeFormatado) {
+    throw new Error('O nome da subcategoria é obrigatório.')
+  }
+
+  // Verificar se a categoria pai está ativa
+  const categoria = await obterCategoria(categoriaId)
+  if (!categoria.ativo) {
+    throw new Error('Não é possível adicionar uma subcategoria a uma categoria inativa.')
+  }
+
+  // Regra: nome único DENTRO da categoria
+  const dupNome = await pb.collection('subcategorias').getList<Subcategoria>(1, 1, {
+    filter: dados.id
+      ? `categoria_id = '${categoriaId}' && nome = '${nomeFormatado.replace(/'/g, "\\'")}' && id != '${dados.id}'`
+      : `categoria_id = '${categoriaId}' && nome = '${nomeFormatado.replace(/'/g, "\\'")}'`,
+  })
+  if (dupNome.totalItems > 0) {
+    throw new Error(
+      `Já existe uma subcategoria com o nome "${nomeFormatado}" dentro desta categoria.`,
+    )
+  }
+
+  let salva: Subcategoria
+  if (dados.id) {
+    const antes = await obterSubcategoria(dados.id)
+    salva = await pb.collection('subcategorias').update<Subcategoria>(dados.id, {
+      categoria_id: categoriaId,
+      codigo: codigoFormatado,
+      nome: nomeFormatado,
+      margem_padrao_percentual:
+        dados.margem_padrao_percentual !== undefined && dados.margem_padrao_percentual !== null
+          ? Number(dados.margem_padrao_percentual)
+          : null,
+      ativo: dados.ativo !== undefined ? dados.ativo : antes.ativo,
+      updated_by: pb.authStore.record?.id || null,
+    })
+
+    await registrarAuditoria({
+      tabela: 'subcategorias',
+      registro_id: salva.id,
+      acao: 'alteracao',
+      valores_antes: antes as unknown as Record<string, unknown>,
+      valores_depois: salva as unknown as Record<string, unknown>,
+    })
+  } else {
+    salva = await pb.collection('subcategorias').create<Subcategoria>({
+      categoria_id: categoriaId,
+      codigo: codigoFormatado,
+      nome: nomeFormatado,
+      margem_padrao_percentual:
+        dados.margem_padrao_percentual !== undefined && dados.margem_padrao_percentual !== null
+          ? Number(dados.margem_padrao_percentual)
+          : null,
+      ativo: true,
+      created_by: pb.authStore.record?.id || null,
+      updated_by: pb.authStore.record?.id || null,
+    })
+
+    await registrarAuditoria({
+      tabela: 'subcategorias',
+      registro_id: salva.id,
+      acao: 'inclusao',
+      valores_depois: salva as unknown as Record<string, unknown>,
+    })
+  }
+
+  return salva
+}
+
+export async function inativarSubcategoria(id: string): Promise<void> {
+  const antes = await obterSubcategoria(id)
+  const atualizada = await pb.collection('subcategorias').update<Subcategoria>(id, {
+    ativo: false,
+    updated_by: pb.authStore.record?.id || null,
+  })
+
+  await registrarAuditoria({
+    tabela: 'subcategorias',
+    registro_id: id,
+    acao: 'inativacao',
+    valores_antes: antes as unknown as Record<string, unknown>,
+    valores_depois: atualizada as unknown as Record<string, unknown>,
+  })
+}
+
+export async function ativarSubcategoria(id: string): Promise<void> {
+  const antes = await obterSubcategoria(id)
+  // Verificar se a categoria pai está ativa
+  const categoria = await obterCategoria(antes.categoria_id)
+  if (!categoria.ativo) {
+    throw new Error('Não é possível reativar uma subcategoria cuja categoria pai está inativa.')
+  }
+
+  const atualizada = await pb.collection('subcategorias').update<Subcategoria>(id, {
+    ativo: true,
+    updated_by: pb.authStore.record?.id || null,
+  })
+
+  await registrarAuditoria({
+    tabela: 'subcategorias',
+    registro_id: id,
+    acao: 'ativacao',
+    valores_antes: antes as unknown as Record<string, unknown>,
+    valores_depois: atualizada as unknown as Record<string, unknown>,
+  })
+}
+
+// -------------------------------------------------------------
+// ÁRVORE MERCADOLÓGICA (Grupos > Categorias > Subcategorias com contagem de produtos)
 // -------------------------------------------------------------
 
 export async function carregarArvoreMercadologica(
@@ -418,7 +619,31 @@ export async function carregarArvoreMercadologica(
     sort: 'codigo,nome',
   })
 
-  // 3. Agrupar categorias por grupo_id
+  // 3. Carrega todas as subcategorias
+  const condicoesSubcat: string[] = []
+  if (params.situacao === 'ativos') {
+    condicoesSubcat.push('ativo = true')
+  } else if (params.situacao === 'inativos') {
+    condicoesSubcat.push('ativo = false')
+  }
+  if (params.assinante_id) {
+    condicoesSubcat.push(`assinante_id = '${params.assinante_id}'`)
+  }
+  const subcategorias = await pb.collection('subcategorias').getFullList<Subcategoria>({
+    filter: condicoesSubcat.length > 0 ? condicoesSubcat.join(' && ') : '',
+    sort: 'codigo,nome',
+  })
+
+  // 4. Agrupar subcategorias por categoria_id
+  const mapaSubcategorias: Record<string, Subcategoria[]> = {}
+  subcategorias.forEach((sub) => {
+    if (!mapaSubcategorias[sub.categoria_id]) {
+      mapaSubcategorias[sub.categoria_id] = []
+    }
+    mapaSubcategorias[sub.categoria_id].push(sub)
+  })
+
+  // 5. Agrupar categorias por grupo_id
   const mapaCategorias: Record<string, Categoria[]> = {}
   categorias.forEach((cat) => {
     if (!mapaCategorias[cat.grupo_id]) {
@@ -427,17 +652,19 @@ export async function carregarArvoreMercadologica(
     mapaCategorias[cat.grupo_id].push(cat)
   })
 
-  // 3.1 Contagem real de produtos por grupo e por categoria
+  // 5.1 Contagem real de produtos por grupo, por categoria e por subcategoria
   const contagemGrupo: Record<string, number> = {}
   const contagemCategoria: Record<string, number> = {}
+  const contagemSubcategoria: Record<string, number> = {}
   try {
     const prods = await pb.collection('produtos').getFullList<{
       id: string
       grupo_id?: string
       categoria_id?: string
+      subcategoria_id?: string
       ativo: boolean
     }>({
-      fields: 'id,grupo_id,categoria_id,ativo',
+      fields: 'id,grupo_id,categoria_id,subcategoria_id,ativo',
       filter: 'ativo = true',
     })
     for (const p of prods) {
@@ -447,17 +674,27 @@ export async function carregarArvoreMercadologica(
       if (p.categoria_id) {
         contagemCategoria[p.categoria_id] = (contagemCategoria[p.categoria_id] || 0) + 1
       }
+      if (p.subcategoria_id) {
+        contagemSubcategoria[p.subcategoria_id] = (contagemSubcategoria[p.subcategoria_id] || 0) + 1
+      }
     }
   } catch (errProd) {
     console.warn('Não foi possível obter contagem de produtos:', errProd)
   }
 
-  // 4. Montar estrutura em árvore com contagem real de produtos
+  // 6. Montar estrutura em árvore de 3 níveis com contagem real de produtos
   const arvore: GrupoComCategorias[] = grupos.map((g) => {
-    const catsDoGrupo = (mapaCategorias[g.id] || []).map((cat) => ({
-      ...cat,
-      quantidade_produtos: contagemCategoria[cat.id] || 0,
-    }))
+    const catsDoGrupo: CategoriaComContagem[] = (mapaCategorias[g.id] || []).map((cat) => {
+      const subsDaCat: SubcategoriaComContagem[] = (mapaSubcategorias[cat.id] || []).map((sub) => ({
+        ...sub,
+        quantidade_produtos: contagemSubcategoria[sub.id] || 0,
+      }))
+      return {
+        ...cat,
+        subcategorias: subsDaCat,
+        quantidade_produtos: contagemCategoria[cat.id] || 0,
+      }
+    })
     return {
       ...g,
       categorias: catsDoGrupo,
@@ -465,26 +702,46 @@ export async function carregarArvoreMercadologica(
     }
   })
 
-  // 5. Aplicar filtro de busca sobre grupo ou categorias
+  // 7. Aplicar filtro de busca sobre grupo, categorias ou subcategorias
   if (params.busca && params.busca.trim()) {
     const termo = params.busca.trim().toLowerCase()
     return arvore
       .map((g) => {
         const grupoCombina =
           g.nome.toLowerCase().includes(termo) || g.codigo.toLowerCase().includes(termo)
-        const catsFiltradas = g.categorias.filter(
-          (c) =>
-            c.nome.toLowerCase().includes(termo) ||
-            (c.codigo && c.codigo.toLowerCase().includes(termo)),
-        )
+
+        const catsFiltradas = g.categorias
+          .map((cat) => {
+            const catCombina =
+              cat.nome.toLowerCase().includes(termo) ||
+              (cat.codigo && cat.codigo.toLowerCase().includes(termo))
+
+            const subsFiltradas = (cat.subcategorias || []).filter(
+              (s) =>
+                s.nome.toLowerCase().includes(termo) ||
+                (s.codigo && s.codigo.toLowerCase().includes(termo)),
+            )
+
+            if (catCombina || grupoCombina) {
+              return cat
+            }
+
+            if (subsFiltradas.length > 0) {
+              return {
+                ...cat,
+                subcategorias: subsFiltradas,
+              }
+            }
+
+            return null
+          })
+          .filter((c): c is CategoriaComContagem => c !== null)
 
         if (grupoCombina) {
-          // Se o grupo combina com o termo, mostra ele e todas as suas categorias (ou as que batem se tiver)
           return g
         }
 
         if (catsFiltradas.length > 0) {
-          // Se alguma categoria combina, mostra o grupo com apenas as categorias que combinam
           return {
             ...g,
             categorias: catsFiltradas,

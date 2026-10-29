@@ -18,6 +18,7 @@ const COLS_15 = [
   'marcas',
   'grupos',
   'categorias',
+  'subcategorias',
   'condicoes_pagamento',
   'plano_contas',
   'centros_custo',
@@ -254,6 +255,22 @@ onRecordCreate((e) => {
       }
     }
 
+    const subcategoriaId = record.getString('subcategoria_id')
+    if (subcategoriaId) {
+      try {
+        const subcat = $app.findRecordById('subcategorias', subcategoriaId)
+        if (
+          subcat &&
+          subcat.getString('assinante_id') &&
+          subcat.getString('assinante_id') !== assinanteId
+        ) {
+          throw new BadRequestError('A subcategoria selecionada pertence a outro assinante.')
+        }
+      } catch (err) {
+        if (err.message && err.message.includes('outro assinante')) throw err
+      }
+    }
+
     const fornecedorId = record.getString('fornecedor_principal_id')
     if (fornecedorId) {
       try {
@@ -321,6 +338,22 @@ onRecordUpdate((e) => {
         const cat = $app.findRecordById('categorias', categoriaId)
         if (cat && cat.getString('assinante_id') && cat.getString('assinante_id') !== assinanteId) {
           throw new BadRequestError('A categoria selecionada pertence a outro assinante.')
+        }
+      } catch (err) {
+        if (err.message && err.message.includes('outro assinante')) throw err
+      }
+    }
+
+    const subcategoriaId = record.getString('subcategoria_id')
+    if (subcategoriaId) {
+      try {
+        const subcat = $app.findRecordById('subcategorias', subcategoriaId)
+        if (
+          subcat &&
+          subcat.getString('assinante_id') &&
+          subcat.getString('assinante_id') !== assinanteId
+        ) {
+          throw new BadRequestError('A subcategoria selecionada pertence a outro assinante.')
         }
       } catch (err) {
         if (err.message && err.message.includes('outro assinante')) throw err
