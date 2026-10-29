@@ -3527,6 +3527,14 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.155** — Correção Pontual de Runtime no Update de Empresas (Sanitização do Payload PATCH):
+
+1. **Sanitização de Payload na Edição de Empresas (`src/services/empresas.ts`):**
+   - Na função `atualizarEmpresa`, sanitização do payload enviado no PATCH para `/api/collections/empresas/records/:id`, omitindo campos imutáveis e de sistema (`assinante_id`, `id`, `collectionId`, `collectionName`, `created`, `updated`, `created_by`).
+   - Evita a violação da regra de update da coleção `empresas` (`@request.body.assinante_id:isset = false`), corrigindo o erro HTTP 404 retornado pelo PocketBase ao salvar edição de empresas em `/cadastros/empresas/:id/editar`.
+
+---
+
 **Versão 0.0.154** — Etapa 9 Multi-tenant (Ajuste de Unicidade de Empresas por Assinante - Migration 0092):
 
 1. **Unicidade de Código de Empresas por Assinante (Migration 0092):**

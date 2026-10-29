@@ -314,8 +314,20 @@ export async function atualizarEmpresa(
     }
   }
 
+  // Sanitizar payload: omitir campos imutáveis/sistema que a regra da coleção rejeita
+  const {
+    assinante_id: _a,
+    id: _i,
+    collectionId: _c1,
+    collectionName: _c2,
+    created: _c,
+    updated: _u,
+    created_by: _cb,
+    ...resto
+  } = (dados || {}) as Record<string, unknown>
+
   const payload: Record<string, unknown> = {
-    ...dados,
+    ...resto,
     updated_by: user?.id || null,
   }
 
