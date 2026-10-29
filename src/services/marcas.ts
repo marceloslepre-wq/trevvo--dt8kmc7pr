@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
+import { obterUsuarioCacheLocal } from './usuarios'
 
 export interface Marca {
   id: string
@@ -7,6 +8,7 @@ export interface Marca {
   nome: string
   fabricante?: string
   observacao?: string
+  assinante_id?: string
   created_by?: string
   updated_by?: string
   created?: string
@@ -84,7 +86,9 @@ export async function salvarMarca(dados: {
   fabricante?: string
   observacao?: string
   ativo?: boolean
+  assinante_id?: string
 }): Promise<Marca> {
+  const user = pb.authStore.record
   const nomeFormatado = dados.nome.trim()
   const fabricanteFormatado = dados.fabricante?.trim() || ''
   const observacaoFormatada = dados.observacao?.trim() || ''
@@ -93,27 +97,61 @@ export async function salvarMarca(dados: {
     throw new Error('O nome da marca é obrigatório.')
   }
 
-  // Verificar duplicidade de nome
-  const duplicados = await pb.collection('marcas').getList<Marca>(1, 1, {
-    filter: dados.id
+  const authRecord = user as { assinante_id?: string; id?: string; email?: string } | null
+  const assinanteIdAtivo =
+    dados.assinante_id ||
+    authRecord?.assinante_id ||
+    obterUsuarioCacheLocal(user?.id || authRecord?.email)?.assinante_id ||
+    null
+
+  // Verificar duplicidade de nome dentro do mesmo assinante (ou geral se assinante não definido)
+  const condsDuplicidade: string[] = [
+    dados.id
       ? `nome = '${nomeFormatado.replace(/'/g, "\\'")}' && id != '${dados.id}'`
       : `nome = '${nomeFormatado.replace(/'/g, "\\'")}'`,
+  ]
+  if (assinanteIdAtivo) {
+    condsDuplicidade.push(`assinante_id = '${assinanteIdAtivo}'`)
+  }
+
+  const duplicados = await pb.collection('marcas').getList<Marca>(1, 1, {
+    filter: condsDuplicidade.join(' && '),
   })
 
   if (duplicados.totalItems > 0) {
     throw new Error(`A marca "${nomeFormatado}" já está cadastrada.`)
   }
 
+  const payload: Record<string, unknown> = {
+    nome: nomeFormatado,
+    fabricante: fabricanteFormatado,
+    observacao: observacaoFormatada,
+    ativo: dados.ativo !== undefined ? dados.ativo : true,
+    updated_by: user?.id || null,
+  }
+
   let salva: Marca
   if (dados.id) {
     const antes = await obterMarca(dados.id)
-    salva = await pb.collection('marcas').update<Marca>(dados.id, {
-      nome: nomeFormatado,
-      fabricante: fabricanteFormatado,
-      observacao: observacaoFormatada,
-      ativo: dados.ativo !== undefined ? dados.ativo : antes.ativo,
-      updated_by: pb.authStore.record?.id || null,
-    })
+    if (dados.ativo === undefined) {
+      payload.ativo = antes.ativo
+    }
+
+    // Sanitizar payload no update: remover assinante_id (a regra exige @request.body.assinante_id:isset = false)
+    // e campos de sistema imutáveis (id, collectionId, collectionName, created, updated, created_by, expand)
+    const {
+      assinante_id: _a,
+      id: _i,
+      collectionId: _c1,
+      collectionName: _c2,
+      created: _c,
+      updated: _u,
+      created_by: _cb,
+      expand: _exp,
+      ...payloadUpdate
+    } = payload
+
+    salva = await pb.collection('marcas').update<Marca>(dados.id, payloadUpdate)
 
     await registrarAuditoria({
       tabela: 'marcas',
@@ -123,19 +161,24 @@ export async function salvarMarca(dados: {
       valores_depois: salva as unknown as Record<string, unknown>,
     })
   } else {
-    salva = await pb.collection('marcas').create<Marca>({
-      nome: nomeFormatado,
-      fabricante: fabricanteFormatado,
-      observacao: observacaoFormatada,
-      ativo: true,
-      created_by: pb.authStore.record?.id || null,
-      updated_by: pb.authStore.record?.id || null,
-    })
+    // No create, a regra exige assinante_id = @request.auth.assinante_id
+    payload.assinante_id = assinanteIdAtivo
+    payload.created_by = user?.id || null
+
+    delete payload.id
+    delete (payload as Record<string, unknown>).collectionId
+    delete (payload as Record<string, unknown>).collectionName
+    delete (payload as Record<string, unknown>).created
+    delete (payload as Record<string, unknown>).updated
+    delete (payload as Record<string, unknown>).expand
+
+    salva = await pb.collection('marcas').create<Marca>(payload)
 
     await registrarAuditoria({
       tabela: 'marcas',
       registro_id: salva.id,
       acao: 'inclusao',
+      valores_antes: null,
       valores_depois: salva as unknown as Record<string, unknown>,
     })
   }

@@ -3528,6 +3528,24 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.162** — Correção de Criação e Atualização de Marcas (Tenancy no CREATE e Sanitização no UPDATE):
+
+1. **Inclusão de `assinante_id` no Cadastro de Marcas (`src/services/marcas.ts`):**
+   - Na função `salvarMarca` (fluxo de criação `POST /api/collections/marcas/records`), inclusão explícita de `assinante_id` obtido do usuário autenticado (`pb.authStore.record.assinante_id` ou via `obterUsuarioCacheLocal`).
+   - Cumpre a regra de criação da coleção `marcas` (`assinante_id = @request.auth.assinante_id`), eliminando o erro HTTP 400 ("Failed to create record.") ao criar marcas no ERP (ex.: "CURATEC" em `/cadastros/produtos/novo` via `SelectMarca.tsx`).
+   - Limpeza preventiva de campos de sistema (`id`, `collectionId`, `collectionName`, `created`, `updated`, `expand`) no payload do create.
+   - Verificação de duplicidade de marca restrita ao escopo do assinante ativo (`assinante_id`).
+
+2. **Sanitização de Payload no Update de Marcas (`src/services/marcas.ts`):**
+   - No fluxo de atualização (`PATCH /api/collections/marcas/records/:id`), garantia de que `assinante_id` NÃO seja enviado no corpo da requisição (cumprindo a regra `@request.body.assinante_id:isset = false`).
+   - Omissão de campos de sistema e metadados (`id`, `collectionId`, `collectionName`, `created`, `updated`, `created_by`, `expand`), evitando erros HTTP 404 ou 400 ao salvar edição de marcas.
+
+3. **Limpeza e Governança do Repositório:**
+   - Auditoria e remoção de arquivo residual de teste (`scripts/test_92b.js`).
+   - Confirmada a ausência de migrations 0093, crons ou rotas de teste no repositório.
+
+---
+
 **Versão 0.0.161** — Correção de Criação e Atualização de Fornecedores (Tenancy no CREATE e Sanitização no UPDATE):
 
 1. **Inclusão de `assinante_id` no Cadastro de Fornecedores (`src/services/fornecedores.ts`):**
