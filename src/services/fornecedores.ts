@@ -1,6 +1,7 @@
 import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from './auditoria'
 import { validarCPF, validarCNPJ, validarInscricaoEstadual } from '@/lib/validacoes'
+import { obterUsuarioCacheLocal } from './usuarios'
 
 export type TipoPessoaFornecedor = 'Física' | 'Jurídica' | 'Estrangeiro'
 export type IndicadorIeFornecedor = '1' | '2' | '9'
@@ -78,6 +79,7 @@ export interface Fornecedor {
   observacoes?: string
 
   // Metadados padrão
+  assinante_id?: string
   created_by?: string
   updated_by?: string
   created?: string
@@ -391,8 +393,25 @@ export async function salvarFornecedor(dados: Partial<Fornecedor>): Promise<Forn
   let fornecedorGravado: Fornecedor
   let registroAntes: Fornecedor | null = null
 
+  const authRecord = user as { assinante_id?: string; id?: string; email?: string } | null
+  const assinanteIdAtivo =
+    dados.assinante_id ||
+    authRecord?.assinante_id ||
+    obterUsuarioCacheLocal(user?.id || authRecord?.email)?.assinante_id ||
+    null
+
   if (ehNovo) {
+    // No create, a regra exige assinante_id = @request.auth.assinante_id
+    payload.assinante_id = assinanteIdAtivo
     payload.created_by = user?.id || null
+
+    delete payload.id
+    delete (payload as Record<string, unknown>).collectionId
+    delete (payload as Record<string, unknown>).collectionName
+    delete (payload as Record<string, unknown>).created
+    delete (payload as Record<string, unknown>).updated
+    delete (payload as Record<string, unknown>).expand
+
     fornecedorGravado = await pb.collection('fornecedores').create<Fornecedor>(payload)
 
     await registrarAuditoria({
@@ -404,7 +423,24 @@ export async function salvarFornecedor(dados: Partial<Fornecedor>): Promise<Forn
     })
   } else {
     registroAntes = await obterFornecedorPorId(dados.id!)
-    fornecedorGravado = await pb.collection('fornecedores').update<Fornecedor>(dados.id!, payload)
+
+    // Sanitizar payload no update: remover assinante_id (a regra exige @request.body.assinante_id:isset = false)
+    // e campos de sistema imutáveis (id, collectionId, collectionName, created, updated, created_by, expand)
+    const {
+      assinante_id: _a,
+      id: _i,
+      collectionId: _c1,
+      collectionName: _c2,
+      created: _c,
+      updated: _u,
+      created_by: _cb,
+      expand: _exp,
+      ...payloadUpdate
+    } = payload
+
+    fornecedorGravado = await pb
+      .collection('fornecedores')
+      .update<Fornecedor>(dados.id!, payloadUpdate)
 
     await registrarAuditoria({
       tabela: 'fornecedores',

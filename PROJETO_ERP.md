@@ -3528,6 +3528,19 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.161** — Correção de Criação e Atualização de Fornecedores (Tenancy no CREATE e Sanitização no UPDATE):
+
+1. **Inclusão de `assinante_id` no Cadastro de Fornecedores (`src/services/fornecedores.ts`):**
+   - Na função `salvarFornecedor` (fluxo de criação `POST /api/collections/fornecedores/records`), inclusão explícita de `assinante_id` obtido do usuário autenticado (`pb.authStore.record.assinante_id` ou via `obterUsuarioCacheLocal`).
+   - Cumpre a regra de criação da coleção `fornecedores` (`assinante_id = @request.auth.assinante_id`), eliminando o erro HTTP 400 ("Failed to create record.") ocorrido em `/cadastros/fornecedores/novo`.
+   - Limpeza preventiva de campos de sistema (`id`, `collectionId`, `collectionName`, `created`, `updated`, `expand`) no payload do create.
+
+2. **Sanitização de Payload no Update de Fornecedores (`src/services/fornecedores.ts`):**
+   - No fluxo de atualização (`PATCH /api/collections/fornecedores/records/:id`), garantia de que `assinante_id` NÃO seja enviado no corpo da requisição (cumprindo a regra `@request.body.assinante_id:isset = false`).
+   - Omissão de campos de sistema e metadados (`id`, `collectionId`, `collectionName`, `created`, `updated`, `created_by`, `expand`), evitando erros HTTP 404 ao salvar edição de fornecedores.
+
+---
+
 **Versão 0.0.160** — Eliminação de require nos Hooks de Numeração e Consulta de CPF (Funções Locais em Escopo JSVM):
 
 1. **Substituição de `require` por Funções Locais em `numeracao_cadastros.js` e `consulta_cpf_rotas.js`:**
