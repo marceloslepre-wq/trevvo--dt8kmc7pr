@@ -1598,14 +1598,41 @@ Tabela de categorias mercadológicas (nível 2 da classificação, pertencente a
 
 - id (text, PK)
 - ativo (boolean, padrão true)
+- assinante_id (relation -> assinantes, obrigatório)
 - grupo_id (relation -> grupos, obrigatório)
 - codigo (texto opcional, ex: "01.01", "SUC")
-- nome (texto obrigatório, único DENTRO do grupo pai)
+- nome (texto obrigatório, único DENTRO do grupo pai por assinante)
 - margem_padrao_percentual (número percentual opcional; se vazio, herda a margem do grupo)
 - created_by (relation -> users, opcional)
 - updated_by (relation -> users, opcional)
 - created (autodate, onCreate)
 - updated (autodate, onCreate, onUpdate)
+
+### subcategorias
+
+Tabela de subcategorias mercadológicas (nível 3 da classificação, pertencente a uma categoria). Compartilhada entre todas as empresas do assinante (criada na migration `0093_etapa9_subcategorias.js`).
+
+- id (text, PK)
+- ativo (boolean, padrão true)
+- assinante_id (relation -> assinantes, obrigatório; isolamento multi-tenant)
+- categoria_id (relation -> categorias, obrigatório; relação com a categoria pai)
+- codigo (número inteiro/texto com numeração sequencial automática gerada no backend por assinante através da coleção `sequencias`, com índice único `idx_subcategorias_assinante_codigo` em `(assinante_id, codigo)`)
+- nome (texto obrigatório; até 60 caracteres)
+- margem_padrao_percentual (número percentual opcional; se vazio, herda a margem da categoria pai ou do grupo)
+- created_by (relation -> users, opcional)
+- updated_by (relation -> users, opcional)
+- created (autodate, onCreate)
+- updated (autodate, onCreate, onUpdate)
+
+**Índices e Regras de Negócio de Subcategorias:**
+
+- Índice único composto por categoria e nome: `idx_subcategorias_cat_nome` em `(categoria_id, nome)`.
+- Índice único composto por assinante e código: `idx_subcategorias_assinante_codigo` em `(assinante_id, codigo)`.
+- Regras de acesso e tenancy (PocketBase):
+  - List / View / Create: `@request.auth.id != "" && assinante_id = @request.auth.assinante_id`
+  - Update: `@request.auth.id != "" && assinante_id = @request.auth.assinante_id && @request.body.assinante_id:isset = false`
+  - Delete: apenas master (`@request.auth.tipo_usuario = "master"`) ou inativação lógica pelo operador.
+- Regra de bloqueio de exclusão/inativação: uma categoria que possua subcategorias ativas NÃO pode ser inativada (bloqueio preventivo na interface e no serviço `inativarCategoria`).
 
 ### clientes
 
@@ -1839,6 +1866,7 @@ Cadastro central de mercadorias, serviços e kits do ERP. Tabela completa inclui
 - marca_id (relation -> marcas, opcional)
 - grupo_id (relation -> grupos, opcional)
 - categoria_id (relation -> categorias, opcional; encadeado pelo grupo)
+- subcategoria_id (relation -> subcategorias, opcional; encadeado pela categoria)
 - fornecedor_principal_id (relation -> fornecedores, opcional)
 - foto (arquivo de imagem até 2 MB)
 - fotos_adicionais (até 5 arquivos de imagem até 2 MB cada)
@@ -3527,6 +3555,33 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.164** — Árvore Mercadológica em 3 Níveis e Gestão Completa de Subcategorias (Prompt G1b do ERP):
+
+1. **Árvore de 3 Níveis na Tela Grupos e Categorias (`/cadastros/grupos-categorias`):**
+   - A árvore mercadológica em `GruposCategoriasPage.tsx` passa a apresentar 3 níveis visuais de hierarquia: **Grupo (Nível 1) &gt; Categoria (Nível 2) &gt; Subcategoria (Nível 3)**.
+   - Cada nível conta com controle individual de expansão/recolhimento (`alternarExpansaoGrupo` e `alternarExpansaoCategoria`), além das ações globais "Expandir tudo" e "Recolher tudo".
+   - Cada nível exibe a respectiva contagem de produtos ativos vinculados (grupo, categoria e subcategoria).
+
+2. **Gestão Completa de Subcategorias (Criar, Editar, Inativar e Reativar):**
+   - Botão **"Subcategoria" / "Nova Subcategoria"** contextualizado em cada linha de categoria.
+   - Modal de formulário padronizado para subcategoria (`ModalSubcategoria`):
+     - Exibição da categoria pai vinculada (somente leitura);
+     - Código automático gerado sequencialmente no backend por assinante ou editável;
+     - Nome da subcategoria (obrigatório, único dentro da categoria);
+     - Margem padrão opcional de venda (`margem_padrao_percentual`), com indicação de herança da categoria ou do grupo pai.
+   - Suporte completo a edição (`salvarSubcategoria`) e inativação/reativação lógica (`inativarSubcategoria` / `ativarSubcategoria`).
+
+3. **Regra de Negócio — Bloqueio de Inativação de Categoria com Subcategorias Ativas:**
+   - Ao solicitar a inativação de uma categoria na tela, o sistema valida a quantidade de subcategorias ativas filhas.
+   - Caso existam subcategorias ativas, o diálogo bloqueia o botão de confirmação e exibe aviso claro: _"Bloqueio de inativação: subcategorias ativas encontradas! A categoria possui X subcategoria(s) ativa(s). Por regra do sistema, não é permitido inativar uma categoria com subcategorias ativas. Inative as subcategorias antes de inativar a categoria."_
+   - O serviço `inativarCategoria` também assegura essa validação em nível de regra de serviço.
+
+4. **Documentação Oficial Atualizada (`PROJETO_ERP.md`):**
+   - Inclusão da tabela `subcategorias` na seção "Tabelas" com todos os campos (`id`, `ativo`, `assinante_id`, `categoria_id`, `codigo`, `nome`, `margem_padrao_percentual`, timestamps), índices únicos (`idx_subcategorias_cat_nome` e `idx_subcategorias_assinante_codigo`) e regras de acesso por assinante.
+   - Inclusão do campo `subcategoria_id` (relation -&gt; `subcategorias`, opcional) na tabela `produtos`.
+
+---
 
 **Versão 0.0.162** — Correção de Criação e Atualização de Marcas (Tenancy no CREATE e Sanitização no UPDATE):
 

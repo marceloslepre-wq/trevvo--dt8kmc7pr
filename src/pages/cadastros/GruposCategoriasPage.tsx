@@ -51,14 +51,19 @@ import { usePermissoes } from '@/contexts/PermissoesContext'
 import {
   Grupo,
   Categoria,
+  Subcategoria,
+  CategoriaComContagem,
   GrupoComCategorias,
   carregarArvoreMercadologica,
   salvarGrupo,
   salvarCategoria,
+  salvarSubcategoria,
   inativarGrupo,
   ativarGrupo,
   inativarCategoria,
   ativarCategoria,
+  inativarSubcategoria,
+  ativarSubcategoria,
   listarTodosGruposAtivos,
 } from '@/services/gruposCategorias'
 import { SelectPerfilTributario } from '@/components/SelectPerfilTributario'
@@ -78,6 +83,7 @@ export const GruposCategoriasPage: React.FC = () => {
   const [busca, setBusca] = useState('')
   const [situacao, setSituacao] = useState<'todos' | 'ativos' | 'inativos'>('ativos')
   const [gruposExpandidos, setGruposExpandidos] = useState<Record<string, boolean>>({})
+  const [categoriasExpandidas, setCategoriasExpandidas] = useState<Record<string, boolean>>({})
 
   // Lista de grupos para seleção em modais
   const [gruposAtivos, setGruposAtivos] = useState<Grupo[]>([])
@@ -102,15 +108,29 @@ export const GruposCategoriasPage: React.FC = () => {
   const [margemCategoria, setMargemCategoria] = useState<string>('')
   const [errosCategoria, setErrosCategoria] = useState<{ grupo_id?: string; nome?: string }>({})
 
+  // Modal Subcategoria (Nível 3)
+  const [modalSubcategoriaAberto, setModalSubcategoriaAberto] = useState(false)
+  const [salvandoSubcategoria, setSalvandoSubcategoria] = useState(false)
+  const [editandoSubcategoriaId, setEditandoSubcategoriaId] = useState<string | null>(null)
+  const [categoriaIdSubcategoria, setCategoriaIdSubcategoria] = useState('')
+  const [nomeCategoriaPaiSubcat, setNomeCategoriaPaiSubcat] = useState('')
+  const [codigoSubcategoria, setCodigoSubcategoria] = useState('')
+  const [nomeSubcategoria, setNomeSubcategoria] = useState('')
+  const [margemSubcategoria, setMargemSubcategoria] = useState<string>('')
+  const [errosSubcategoria, setErrosSubcategoria] = useState<{
+    categoria_id?: string
+    nome?: string
+  }>({})
+
   // Ações de Inativação / Reativação
   const [itemParaInativar, setItemParaInativar] = useState<{
-    tipo: 'grupo' | 'categoria'
+    tipo: 'grupo' | 'categoria' | 'subcategoria'
     id: string
     nome: string
-    categoriasAtivas?: number
+    filhosAtivos?: number
   } | null>(null)
   const [itemParaAtivar, setItemParaAtivar] = useState<{
-    tipo: 'grupo' | 'categoria'
+    tipo: 'grupo' | 'categoria' | 'subcategoria'
     id: string
     nome: string
   } | null>(null)
@@ -145,34 +165,52 @@ export const GruposCategoriasPage: React.FC = () => {
     carregarDados()
   }, [carregarDados])
 
-  // Se houver busca, expande automaticamente todos os grupos com resultado
+  // Se houver busca, expande automaticamente todos os grupos e categorias com resultado
   useEffect(() => {
     if (busca.trim()) {
-      const expandirTodos: Record<string, boolean> = {}
+      const expandirTodosGrupos: Record<string, boolean> = {}
+      const expandirTodasCats: Record<string, boolean> = {}
       arvore.forEach((g) => {
-        expandirTodos[g.id] = true
+        expandirTodosGrupos[g.id] = true
+        g.categorias.forEach((c) => {
+          expandirTodasCats[c.id] = true
+        })
       })
-      setGruposExpandidos(expandirTodos)
+      setGruposExpandidos(expandirTodosGrupos)
+      setCategoriasExpandidas(expandirTodasCats)
     }
   }, [busca, arvore])
 
-  const alternarExpansao = (grupoId: string) => {
+  const alternarExpansaoGrupo = (grupoId: string) => {
     setGruposExpandidos((prev) => ({
       ...prev,
       [grupoId]: !prev[grupoId],
     }))
   }
 
-  const expandirTodosGrupos = () => {
-    const todos: Record<string, boolean> = {}
-    arvore.forEach((g) => {
-      todos[g.id] = true
-    })
-    setGruposExpandidos(todos)
+  const alternarExpansaoCategoria = (categoriaId: string) => {
+    setCategoriasExpandidas((prev) => ({
+      ...prev,
+      [categoriaId]: !prev[categoriaId],
+    }))
   }
 
-  const recolherTodosGrupos = () => {
+  const expandirTudo = () => {
+    const todosG: Record<string, boolean> = {}
+    const todasC: Record<string, boolean> = {}
+    arvore.forEach((g) => {
+      todosG[g.id] = true
+      g.categorias.forEach((c) => {
+        todasC[c.id] = true
+      })
+    })
+    setGruposExpandidos(todosG)
+    setCategoriasExpandidas(todasC)
+  }
+
+  const recolherTudo = () => {
     setGruposExpandidos({})
+    setCategoriasExpandidas({})
   }
 
   // -----------------------------------------------------------
@@ -321,6 +359,82 @@ export const GruposCategoriasPage: React.FC = () => {
   }
 
   // -----------------------------------------------------------
+  // HANDLERS SUBCATEGORIA (Nível 3)
+  // -----------------------------------------------------------
+  const handleNovaSubcategoria = (categoria: CategoriaComContagem) => {
+    setEditandoSubcategoriaId(null)
+    setCategoriaIdSubcategoria(categoria.id)
+    setNomeCategoriaPaiSubcat(categoria.nome)
+    setCodigoSubcategoria('')
+    setNomeSubcategoria('')
+    setMargemSubcategoria('')
+    setErrosSubcategoria({})
+    setModalSubcategoriaAberto(true)
+  }
+
+  const handleEditarSubcategoria = (sub: Subcategoria, categoriaPai?: CategoriaComContagem) => {
+    setEditandoSubcategoriaId(sub.id)
+    setCategoriaIdSubcategoria(sub.categoria_id)
+    setNomeCategoriaPaiSubcat(categoriaPai?.nome || '')
+    setCodigoSubcategoria(sub.codigo || '')
+    setNomeSubcategoria(sub.nome)
+    setMargemSubcategoria(
+      sub.margem_padrao_percentual !== undefined && sub.margem_padrao_percentual !== null
+        ? String(sub.margem_padrao_percentual)
+        : '',
+    )
+    setErrosSubcategoria({})
+    setModalSubcategoriaAberto(true)
+  }
+
+  const handleSalvarSubcategoria = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const nomeLimpo = nomeSubcategoria.trim()
+    const categoriaIdLimpa = categoriaIdSubcategoria.trim()
+    const erros: { categoria_id?: string; nome?: string } = {}
+
+    if (!categoriaIdLimpa) erros.categoria_id = 'Selecione a categoria pai.'
+    if (!nomeLimpo) erros.nome = 'O nome da subcategoria é obrigatório.'
+
+    if (Object.keys(erros).length > 0) {
+      setErrosSubcategoria(erros)
+      return
+    }
+
+    setSalvandoSubcategoria(true)
+    try {
+      const margemNum =
+        margemSubcategoria !== '' ? parseFloat(margemSubcategoria.replace(',', '.')) : null
+
+      await salvarSubcategoria({
+        id: editandoSubcategoriaId || undefined,
+        categoria_id: categoriaIdLimpa,
+        codigo: codigoSubcategoria.trim().toUpperCase() || undefined,
+        nome: nomeLimpo,
+        margem_padrao_percentual: isNaN(margemNum as number) ? null : margemNum,
+      })
+
+      toast({
+        title: editandoSubcategoriaId ? 'Subcategoria atualizada' : 'Subcategoria cadastrada',
+        description: `A subcategoria "${nomeLimpo}" foi gravada com sucesso.`,
+      })
+      setModalSubcategoriaAberto(false)
+      // Mantém a categoria e o grupo abertos na árvore para visualização imediata
+      setCategoriasExpandidas((prev) => ({ ...prev, [categoriaIdLimpa]: true }))
+      carregarDados()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao salvar subcategoria'
+      toast({
+        title: 'Erro ao salvar subcategoria',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoSubcategoria(false)
+    }
+  }
+
+  // -----------------------------------------------------------
   // HANDLERS INATIVAÇÃO / REATIVAÇÃO
   // -----------------------------------------------------------
   const handlePrepararInativacaoGrupo = (g: GrupoComCategorias) => {
@@ -330,15 +444,26 @@ export const GruposCategoriasPage: React.FC = () => {
       tipo: 'grupo',
       id: g.id,
       nome: `${g.codigo} - ${g.nome}`,
-      categoriasAtivas,
+      filhosAtivos: categoriasAtivas,
     })
   }
 
-  const handlePrepararInativacaoCategoria = (c: Categoria) => {
+  const handlePrepararInativacaoCategoria = (c: CategoriaComContagem) => {
+    // Contar quantas subcategorias ativas ela tem (Regra de negócio: bloquear inativação de categoria com subcategorias ativas)
+    const subcategoriasAtivas = (c.subcategorias || []).filter((s) => s.ativo).length
     setItemParaInativar({
       tipo: 'categoria',
       id: c.id,
       nome: c.nome,
+      filhosAtivos: subcategoriasAtivas,
+    })
+  }
+
+  const handlePrepararInativacaoSubcategoria = (s: Subcategoria) => {
+    setItemParaInativar({
+      tipo: 'subcategoria',
+      id: s.id,
+      nome: s.nome,
     })
   }
 
@@ -352,11 +477,17 @@ export const GruposCategoriasPage: React.FC = () => {
           title: 'Grupo inativado',
           description: `O grupo "${itemParaInativar.nome}" foi inativado.`,
         })
-      } else {
+      } else if (itemParaInativar.tipo === 'categoria') {
         await inativarCategoria(itemParaInativar.id)
         toast({
           title: 'Categoria inativada',
           description: `A categoria "${itemParaInativar.nome}" foi inativada.`,
+        })
+      } else {
+        await inativarSubcategoria(itemParaInativar.id)
+        toast({
+          title: 'Subcategoria inativada',
+          description: `A subcategoria "${itemParaInativar.nome}" foi inativada.`,
         })
       }
       setItemParaInativar(null)
@@ -383,11 +514,17 @@ export const GruposCategoriasPage: React.FC = () => {
           title: 'Grupo reativado',
           description: `O grupo "${itemParaAtivar.nome}" está ativo novamente.`,
         })
-      } else {
+      } else if (itemParaAtivar.tipo === 'categoria') {
         await ativarCategoria(itemParaAtivar.id)
         toast({
           title: 'Categoria reativada',
           description: `A categoria "${itemParaAtivar.nome}" está ativa novamente.`,
+        })
+      } else {
+        await ativarSubcategoria(itemParaAtivar.id)
+        toast({
+          title: 'Subcategoria reativada',
+          description: `A subcategoria "${itemParaAtivar.nome}" está ativa novamente.`,
         })
       }
       setItemParaAtivar(null)
@@ -408,6 +545,14 @@ export const GruposCategoriasPage: React.FC = () => {
     return arvore.reduce((acc, g) => acc + g.categorias.length, 0)
   }, [arvore])
 
+  const totalSubcategorias = useMemo(() => {
+    return arvore.reduce(
+      (acc, g) =>
+        acc + g.categorias.reduce((accCat, c) => accCat + (c.subcategorias?.length || 0), 0),
+      0,
+    )
+  }, [arvore])
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -420,8 +565,8 @@ export const GruposCategoriasPage: React.FC = () => {
             </h1>
           </div>
           <p className="text-sm text-slate-500 mt-1">
-            Estrutura mercadológica em árvore de 2 níveis para classificação e precificação de
-            produtos.
+            Estrutura mercadológica em árvore de 3 níveis (Grupo &gt; Categoria &gt; Subcategoria)
+            para classificação e precificação de produtos.
           </p>
         </div>
 
@@ -496,7 +641,7 @@ export const GruposCategoriasPage: React.FC = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={expandirTodosGrupos}
+                  onClick={expandirTudo}
                   className="h-8 px-2 text-xs text-slate-600 hover:text-slate-900"
                 >
                   Expandir tudo
@@ -505,7 +650,7 @@ export const GruposCategoriasPage: React.FC = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={recolherTodosGrupos}
+                  onClick={recolherTudo}
                   className="h-8 px-2 text-xs text-slate-600 hover:text-slate-900"
                 >
                   Recolher tudo
@@ -518,8 +663,8 @@ export const GruposCategoriasPage: React.FC = () => {
         <CardContent className="p-0">
           {/* Cabeçalho da Lista / Tabela da Árvore */}
           <div className="border-y border-slate-200 bg-slate-50/80 px-4 py-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider grid grid-cols-12 items-center">
-            <div className="col-span-6 sm:col-span-5">Estrutura Mercadológica (Nível 1 & 2)</div>
-            <div className="col-span-3 sm:col-span-3 text-center sm:text-left">Margem Padrão</div>
+            <div className="col-span-6 sm:col-span-5">Estrutura Mercadológica (3 Níveis)</div>
+            <div className="col-span-3 sm:col-span-3 text-center sm:text-left">Margem de Venda</div>
             <div className="hidden sm:block sm:col-span-2 text-center">Produtos</div>
             <div className="col-span-3 sm:col-span-2 text-right">Ações</div>
           </div>
@@ -574,7 +719,7 @@ export const GruposCategoriasPage: React.FC = () => {
                       <div className="col-span-6 sm:col-span-5 flex items-center gap-2 min-w-0">
                         <button
                           type="button"
-                          onClick={() => alternarExpansao(grupo.id)}
+                          onClick={() => alternarExpansaoGrupo(grupo.id)}
                           className="p-1 rounded-sm text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 shrink-0 transition-colors"
                           title={estaExpandido ? 'Recolher grupo' : 'Expandir grupo'}
                         >
@@ -711,118 +856,325 @@ export const GruposCategoriasPage: React.FC = () => {
                             )}
                           </div>
                         ) : (
-                          grupo.categorias.map((cat) => (
-                            <div
-                              key={cat.id}
-                              className={`grid grid-cols-12 items-center pl-8 sm:pl-10 pr-4 py-2.5 hover:bg-slate-100/60 transition-colors ${
-                                !cat.ativo ? 'opacity-60 bg-slate-100/30' : ''
-                              }`}
-                            >
-                              {/* Nome da categoria com ícone de ramificação */}
-                              <div className="col-span-6 sm:col-span-5 flex items-center gap-2 min-w-0">
-                                <span className="text-slate-300 font-mono text-sm shrink-0">
-                                  └─
-                                </span>
-                                {cat.codigo ? (
-                                  <span className="font-mono text-[11px] px-1.5 py-0.2 rounded bg-slate-200/80 text-slate-700 shrink-0">
-                                    {cat.codigo}
-                                  </span>
-                                ) : (
-                                  <span className="h-2 w-2 rounded-full bg-slate-300 shrink-0" />
-                                )}
-                                <span className="text-xs font-medium text-slate-800 truncate">
-                                  {cat.nome}
-                                </span>
-                                {!cat.ativo && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[9px] py-0 px-1 text-slate-500 border-slate-300"
-                                  >
-                                    Inativa
-                                  </Badge>
-                                )}
-                              </div>
+                          grupo.categorias.map((cat) => {
+                            const estaCatExpandida = Boolean(categoriasExpandidas[cat.id])
+                            const subcategoriasDaCat = cat.subcategorias || []
+                            const qtdSubcategorias = subcategoriasDaCat.length
 
-                              {/* Margem da Categoria (ou herança do grupo) */}
-                              <div className="col-span-3 sm:col-span-3 text-center sm:text-left text-xs">
-                                {cat.margem_padrao_percentual !== undefined &&
-                                cat.margem_padrao_percentual !== null ? (
-                                  <span className="inline-flex items-center gap-0.5 font-medium text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded text-[11px]">
-                                    <Percent className="h-2.5 w-2.5 text-slate-400" />
-                                    {Number(cat.margem_padrao_percentual).toFixed(2)}%
-                                  </span>
-                                ) : grupo.margem_padrao_percentual !== undefined &&
-                                  grupo.margem_padrao_percentual !== null ? (
-                                  <span
-                                    className="text-[11px] text-slate-500 italic inline-flex items-center gap-1"
-                                    title="Herda margem padrão do grupo"
-                                  >
-                                    <span>herda grupo:</span>
-                                    <span className="font-semibold text-slate-700">
-                                      {Number(grupo.margem_padrao_percentual).toFixed(2)}%
-                                    </span>
-                                  </span>
-                                ) : (
-                                  <span className="text-[11px] text-slate-400 italic">—</span>
-                                )}
-                              </div>
-
-                              {/* Quantidade de produtos */}
-                              <div className="hidden sm:flex sm:col-span-2 items-center justify-center text-xs text-slate-500">
-                                <span
-                                  className="text-[11px] px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600"
-                                  title="Quantidade de produtos vinculados a esta categoria"
+                            return (
+                              <div key={cat.id} className="group/categoria">
+                                {/* Linha da Categoria (Nível 2) */}
+                                <div
+                                  className={`grid grid-cols-12 items-center pl-6 sm:pl-8 pr-4 py-2.5 transition-colors ${
+                                    !cat.ativo
+                                      ? 'opacity-65 bg-slate-100/40'
+                                      : estaCatExpandida
+                                        ? 'bg-indigo-50/30'
+                                        : 'hover:bg-slate-100/70'
+                                  }`}
                                 >
-                                  {cat.quantidade_produtos ?? 0}{' '}
-                                  {cat.quantidade_produtos === 1 ? 'produto' : 'produtos'}
-                                </span>
-                              </div>
-
-                              {/* Ações da Categoria */}
-                              <div className="col-span-3 sm:col-span-2 flex items-center justify-end gap-1">
-                                {podeEditar && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleEditarCategoria(cat)}
-                                    className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600 hover:bg-white"
-                                    title="Editar categoria"
-                                  >
-                                    <Edit2 className="h-3 w-3" />
-                                  </Button>
-                                )}
-
-                                {podeInativar &&
-                                  (cat.ativo ? (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handlePrepararInativacaoCategoria(cat)}
-                                      className="h-7 w-7 p-0 text-slate-400 hover:text-amber-600 hover:bg-white"
-                                      title="Inativar categoria"
-                                    >
-                                      <Power className="h-3 w-3" />
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() =>
-                                        setItemParaAtivar({
-                                          tipo: 'categoria',
-                                          id: cat.id,
-                                          nome: cat.nome,
-                                        })
+                                  {/* Nome da categoria com toggle de expandir subcategorias */}
+                                  <div className="col-span-6 sm:col-span-5 flex items-center gap-1.5 min-w-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => alternarExpansaoCategoria(cat.id)}
+                                      className="p-1 rounded-sm text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 shrink-0 transition-colors"
+                                      title={
+                                        estaCatExpandida
+                                          ? 'Recolher subcategorias'
+                                          : 'Expandir subcategorias'
                                       }
-                                      className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600 hover:bg-white"
-                                      title="Reativar categoria"
                                     >
-                                      <RotateCcw className="h-3 w-3" />
-                                    </Button>
-                                  ))}
+                                      {estaCatExpandida ? (
+                                        <ChevronDown className="h-3.5 w-3.5 text-indigo-600" />
+                                      ) : (
+                                        <ChevronRight className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+
+                                    {cat.codigo ? (
+                                      <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 shrink-0 font-medium">
+                                        {cat.codigo}
+                                      </span>
+                                    ) : (
+                                      <span className="h-2 w-2 rounded-full bg-slate-300 shrink-0" />
+                                    )}
+
+                                    <span className="text-xs font-semibold text-slate-800 truncate">
+                                      {cat.nome}
+                                    </span>
+
+                                    <Badge
+                                      variant="secondary"
+                                      className="hidden md:inline-flex text-[9px] py-0 px-1 font-normal text-slate-500 bg-slate-200/60"
+                                      title="Total de subcategorias nesta categoria"
+                                    >
+                                      {qtdSubcategorias}{' '}
+                                      {qtdSubcategorias === 1 ? 'subcat' : 'subcats'}
+                                    </Badge>
+
+                                    {!cat.ativo && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[9px] py-0 px-1 text-slate-500 border-slate-300"
+                                      >
+                                        Inativa
+                                      </Badge>
+                                    )}
+                                  </div>
+
+                                  {/* Margem da Categoria (ou herança do grupo) */}
+                                  <div className="col-span-3 sm:col-span-3 text-center sm:text-left text-xs">
+                                    {cat.margem_padrao_percentual !== undefined &&
+                                    cat.margem_padrao_percentual !== null ? (
+                                      <span className="inline-flex items-center gap-0.5 font-medium text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded text-[11px]">
+                                        <Percent className="h-2.5 w-2.5 text-slate-400" />
+                                        {Number(cat.margem_padrao_percentual).toFixed(2)}%
+                                      </span>
+                                    ) : grupo.margem_padrao_percentual !== undefined &&
+                                      grupo.margem_padrao_percentual !== null ? (
+                                      <span
+                                        className="text-[11px] text-slate-500 italic inline-flex items-center gap-1"
+                                        title="Herda margem padrão do grupo"
+                                      >
+                                        <span>herda grupo:</span>
+                                        <span className="font-semibold text-slate-700">
+                                          {Number(grupo.margem_padrao_percentual).toFixed(2)}%
+                                        </span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-slate-400 italic">—</span>
+                                    )}
+                                  </div>
+
+                                  {/* Quantidade de produtos */}
+                                  <div className="hidden sm:flex sm:col-span-2 items-center justify-center text-xs text-slate-500">
+                                    <span
+                                      className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600 font-medium"
+                                      title="Quantidade de produtos vinculados a esta categoria"
+                                    >
+                                      <Package className="h-2.5 w-2.5 text-slate-400" />
+                                      {cat.quantidade_produtos ?? 0}
+                                    </span>
+                                  </div>
+
+                                  {/* Ações da Categoria */}
+                                  <div className="col-span-3 sm:col-span-2 flex items-center justify-end gap-1">
+                                    {podeCriar && cat.ativo && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleNovaSubcategoria(cat)}
+                                        className="h-7 px-1.5 text-xs text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                                        title="Adicionar subcategoria nesta categoria"
+                                      >
+                                        <Plus className="h-3 w-3 mr-0.5" />
+                                        <span className="hidden lg:inline text-[11px]">
+                                          Subcategoria
+                                        </span>
+                                      </Button>
+                                    )}
+
+                                    {podeEditar && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleEditarCategoria(cat)}
+                                        className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600 hover:bg-white"
+                                        title="Editar categoria"
+                                      >
+                                        <Edit2 className="h-3 w-3" />
+                                      </Button>
+                                    )}
+
+                                    {podeInativar &&
+                                      (cat.ativo ? (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handlePrepararInativacaoCategoria(cat)}
+                                          className="h-7 w-7 p-0 text-slate-400 hover:text-amber-600 hover:bg-white"
+                                          title="Inativar categoria"
+                                        >
+                                          <Power className="h-3 w-3" />
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() =>
+                                            setItemParaAtivar({
+                                              tipo: 'categoria',
+                                              id: cat.id,
+                                              nome: cat.nome,
+                                            })
+                                          }
+                                          className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600 hover:bg-white"
+                                          title="Reativar categoria"
+                                        >
+                                          <RotateCcw className="h-3 w-3" />
+                                        </Button>
+                                      ))}
+                                  </div>
+                                </div>
+
+                                {/* Subcategorias (Nível 3 — expandido) */}
+                                {estaCatExpandida && (
+                                  <div className="bg-slate-100/50 divide-y divide-slate-200/50 border-t border-slate-200/60">
+                                    {subcategoriasDaCat.length === 0 ? (
+                                      <div className="py-2.5 pl-14 sm:pl-16 pr-4 text-xs text-slate-400 italic flex items-center justify-between">
+                                        <span>
+                                          Nenhuma subcategoria cadastrada nesta categoria.
+                                        </span>
+                                        {podeCriar && cat.ativo && (
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleNovaSubcategoria(cat)}
+                                            className="h-6 text-[11px] text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                          >
+                                            <Plus className="h-3 w-3 mr-1" />
+                                            Nova Subcategoria
+                                          </Button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      subcategoriasDaCat.map((sub) => (
+                                        <div
+                                          key={sub.id}
+                                          className={`grid grid-cols-12 items-center pl-12 sm:pl-16 pr-4 py-2 hover:bg-slate-200/40 transition-colors ${
+                                            !sub.ativo ? 'opacity-60 bg-slate-200/30' : ''
+                                          }`}
+                                        >
+                                          {/* Nome da subcategoria com ícone de nível 3 */}
+                                          <div className="col-span-6 sm:col-span-5 flex items-center gap-1.5 min-w-0">
+                                            <span className="text-slate-300 font-mono text-xs shrink-0">
+                                              └─
+                                            </span>
+                                            {sub.codigo ? (
+                                              <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 shrink-0 font-medium">
+                                                {sub.codigo}
+                                              </span>
+                                            ) : (
+                                              <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 shrink-0" />
+                                            )}
+                                            <span className="text-xs text-slate-700 truncate font-normal">
+                                              {sub.nome}
+                                            </span>
+                                            {!sub.ativo && (
+                                              <Badge
+                                                variant="outline"
+                                                className="text-[9px] py-0 px-1 text-slate-500 border-slate-300"
+                                              >
+                                                Inativa
+                                              </Badge>
+                                            )}
+                                          </div>
+
+                                          {/* Margem da Subcategoria (ou herança categoria/grupo) */}
+                                          <div className="col-span-3 sm:col-span-3 text-center sm:text-left text-xs">
+                                            {sub.margem_padrao_percentual !== undefined &&
+                                            sub.margem_padrao_percentual !== null ? (
+                                              <span className="inline-flex items-center gap-0.5 font-medium text-indigo-700 bg-indigo-50/80 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px]">
+                                                <Percent className="h-2.5 w-2.5 text-indigo-500" />
+                                                {Number(sub.margem_padrao_percentual).toFixed(2)}%
+                                              </span>
+                                            ) : cat.margem_padrao_percentual !== undefined &&
+                                              cat.margem_padrao_percentual !== null ? (
+                                              <span
+                                                className="text-[10px] text-slate-500 italic inline-flex items-center gap-1"
+                                                title="Herda margem padrão da categoria"
+                                              >
+                                                <span>herda cat:</span>
+                                                <span className="font-medium text-slate-700">
+                                                  {Number(cat.margem_padrao_percentual).toFixed(2)}%
+                                                </span>
+                                              </span>
+                                            ) : grupo.margem_padrao_percentual !== undefined &&
+                                              grupo.margem_padrao_percentual !== null ? (
+                                              <span
+                                                className="text-[10px] text-slate-400 italic inline-flex items-center gap-1"
+                                                title="Herda margem padrão do grupo"
+                                              >
+                                                <span>herda grupo:</span>
+                                                <span className="font-medium text-slate-600">
+                                                  {Number(grupo.margem_padrao_percentual).toFixed(
+                                                    2,
+                                                  )}
+                                                  %
+                                                </span>
+                                              </span>
+                                            ) : (
+                                              <span className="text-[10px] text-slate-400 italic">
+                                                —
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          {/* Quantidade de produtos na Subcategoria */}
+                                          <div className="hidden sm:flex sm:col-span-2 items-center justify-center text-xs text-slate-500">
+                                            <span
+                                              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.2 rounded bg-white/80 border border-slate-200 text-slate-600"
+                                              title="Quantidade de produtos vinculados a esta subcategoria"
+                                            >
+                                              <Package className="h-2.5 w-2.5 text-slate-400" />
+                                              {sub.quantidade_produtos ?? 0}
+                                            </span>
+                                          </div>
+
+                                          {/* Ações da Subcategoria */}
+                                          <div className="col-span-3 sm:col-span-2 flex items-center justify-end gap-1">
+                                            {podeEditar && (
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleEditarSubcategoria(sub, cat)}
+                                                className="h-6 w-6 p-0 text-slate-500 hover:text-indigo-600 hover:bg-white"
+                                                title="Editar subcategoria"
+                                              >
+                                                <Edit2 className="h-3 w-3" />
+                                              </Button>
+                                            )}
+
+                                            {podeInativar &&
+                                              (sub.ativo ? (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() =>
+                                                    handlePrepararInativacaoSubcategoria(sub)
+                                                  }
+                                                  className="h-6 w-6 p-0 text-slate-400 hover:text-amber-600 hover:bg-white"
+                                                  title="Inativar subcategoria"
+                                                >
+                                                  <Power className="h-3 w-3" />
+                                                </Button>
+                                              ) : (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() =>
+                                                    setItemParaAtivar({
+                                                      tipo: 'subcategoria',
+                                                      id: sub.id,
+                                                      nome: sub.nome,
+                                                    })
+                                                  }
+                                                  className="h-6 w-6 p-0 text-slate-400 hover:text-emerald-600 hover:bg-white"
+                                                  title="Reativar subcategoria"
+                                                >
+                                                  <RotateCcw className="h-3 w-3" />
+                                                </Button>
+                                              ))}
+                                          </div>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))
+                            )
+                          })
                         )}
                       </div>
                     )}
@@ -835,11 +1187,12 @@ export const GruposCategoriasPage: React.FC = () => {
           {/* Rodapé Informativo */}
           <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-slate-200 text-xs text-slate-500 gap-2 bg-slate-50/50">
             <div>
-              Total: <strong>{arvore.length}</strong> grupo(s) e <strong>{totalCategorias}</strong>{' '}
-              categoria(s) cadastrada(s).
+              Total: <strong>{arvore.length}</strong> grupo(s), <strong>{totalCategorias}</strong>{' '}
+              categoria(s) e <strong>{totalSubcategorias}</strong> subcategoria(s) cadastrada(s).
             </div>
             <div className="text-[11px] text-slate-400">
-              * A contagem reflete os produtos ativos cadastrados em cada grupo e categoria.
+              * A contagem reflete os produtos ativos cadastrados em cada grupo, categoria e
+              subcategoria.
             </div>
           </div>
         </CardContent>
@@ -1112,7 +1465,132 @@ export const GruposCategoriasPage: React.FC = () => {
       </Dialog>
 
       {/* ======================================================== */}
-      {/* CONFIRMAÇÃO DE INATIVAÇÃO (COM REGRA DE GRUPO COM CATS) */}
+      {/* MODAL SUBCATEGORIA (Nível 3) */}
+      {/* ======================================================== */}
+      <Dialog open={modalSubcategoriaAberto} onOpenChange={setModalSubcategoriaAberto}>
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={handleSalvarSubcategoria}>
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-slate-900">
+                {editandoSubcategoriaId ? 'Editar Subcategoria' : 'Nova Subcategoria'}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                Subcategorias pertencem a uma categoria e representam o nível 3 da classificação
+                (ex: Refrigerante Lata 350ml dentro de Refrigerantes).
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">
+                  Categoria Pai <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  value={nomeCategoriaPaiSubcat || 'Categoria Selecionada'}
+                  disabled
+                  className="bg-slate-100 text-slate-700 font-medium text-xs cursor-not-allowed"
+                />
+                {errosSubcategoria.categoria_id && (
+                  <p className="text-xs text-rose-600 font-medium">
+                    {errosSubcategoria.categoria_id}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1 space-y-1.5">
+                  <Label htmlFor="subcat-codigo" className="text-xs font-semibold text-slate-700">
+                    Código
+                  </Label>
+                  <Input
+                    id="subcat-codigo"
+                    value={codigoSubcategoria}
+                    onChange={(e) => setCodigoSubcategoria(e.target.value.toUpperCase())}
+                    placeholder="Automático"
+                    maxLength={10}
+                    className="font-mono uppercase"
+                  />
+                  <p className="text-[10px] text-slate-400">Código automático se vazio</p>
+                </div>
+
+                <div className="col-span-2 space-y-1.5">
+                  <Label htmlFor="subcat-nome" className="text-xs font-semibold text-slate-700">
+                    Nome da Subcategoria <span className="text-rose-600">*</span>
+                  </Label>
+                  <Input
+                    id="subcat-nome"
+                    value={nomeSubcategoria}
+                    onChange={(e) => {
+                      setNomeSubcategoria(e.target.value)
+                      if (errosSubcategoria.nome)
+                        setErrosSubcategoria((prev) => ({ ...prev, nome: undefined }))
+                    }}
+                    placeholder="Ex: Lata 350ml, Garrafa 2L..."
+                    autoFocus
+                  />
+                  {errosSubcategoria.nome && (
+                    <p className="text-xs text-rose-600 font-medium">{errosSubcategoria.nome}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="subcat-margem" className="text-xs font-semibold text-slate-700">
+                  Margem Padrão de Venda (%)
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="subcat-margem"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1000"
+                    value={margemSubcategoria}
+                    onChange={(e) => setMargemSubcategoria(e.target.value)}
+                    placeholder="Deixe em branco para herdar da categoria"
+                    className="pr-8"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">
+                    %
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Opcional. Se não informada, a subcategoria herdará a margem da categoria pai (ou
+                  do grupo).
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setModalSubcategoriaAberto(false)}
+                disabled={salvandoSubcategoria}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                disabled={salvandoSubcategoria}
+              >
+                {salvandoSubcategoria ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  'Salvar Subcategoria'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* CONFIRMAÇÃO DE INATIVAÇÃO (COM REGRA DE BLOQUEIO) */}
       {/* ======================================================== */}
       <AlertDialog
         open={Boolean(itemParaInativar)}
@@ -1123,47 +1601,68 @@ export const GruposCategoriasPage: React.FC = () => {
             <div className="flex items-center gap-2 text-amber-600 mb-1">
               <AlertTriangle className="h-5 w-5" />
               <AlertDialogTitle>
-                Inativar {itemParaInativar?.tipo === 'grupo' ? 'Grupo' : 'Categoria'}
+                Inativar{' '}
+                {itemParaInativar?.tipo === 'grupo'
+                  ? 'Grupo'
+                  : itemParaInativar?.tipo === 'categoria'
+                    ? 'Categoria'
+                    : 'Subcategoria'}
               </AlertDialogTitle>
             </div>
             <AlertDialogDescription className="text-sm text-slate-600">
-              {itemParaInativar?.tipo === 'grupo' &&
-              (itemParaInativar.categoriasAtivas || 0) > 0 ? (
+              {itemParaInativar?.tipo === 'grupo' && (itemParaInativar.filhosAtivos || 0) > 0 ? (
                 <div className="p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1.5">
                   <p className="font-semibold text-sm">
                     Bloqueio de inativação: categorias ativas encontradas!
                   </p>
                   <p>
                     O grupo <strong>{itemParaInativar.nome}</strong> possui{' '}
-                    <strong>{itemParaInativar.categoriasAtivas}</strong> categoria(s) ativa(s).
+                    <strong>{itemParaInativar.filhosAtivos}</strong> categoria(s) ativa(s).
                   </p>
                   <p>
                     Por regra do sistema, não é permitido inativar um grupo com categorias ativas.
                     Inative ou transfira todas as categorias deste grupo antes de prosseguir.
                   </p>
                 </div>
+              ) : itemParaInativar?.tipo === 'categoria' &&
+                (itemParaInativar.filhosAtivos || 0) > 0 ? (
+                <div className="p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1.5">
+                  <p className="font-semibold text-sm">
+                    Bloqueio de inativação: subcategorias ativas encontradas!
+                  </p>
+                  <p>
+                    A categoria <strong>{itemParaInativar.nome}</strong> possui{' '}
+                    <strong>{itemParaInativar.filhosAtivos}</strong> subcategoria(s) ativa(s).
+                  </p>
+                  <p>
+                    Por regra do sistema, não é permitido inativar uma categoria com subcategorias
+                    ativas. Inative as subcategorias antes de inativar a categoria.
+                  </p>
+                </div>
               ) : (
                 <>
                   Deseja realmente inativar{' '}
-                  {itemParaInativar?.tipo === 'grupo' ? 'o grupo' : 'a categoria'}{' '}
+                  {itemParaInativar?.tipo === 'grupo'
+                    ? 'o grupo'
+                    : itemParaInativar?.tipo === 'categoria'
+                      ? 'a categoria'
+                      : 'a subcategoria'}{' '}
                   <strong className="text-slate-900">{itemParaInativar?.nome}</strong>?
                   {itemParaInativar?.tipo === 'grupo'
                     ? ' O grupo não poderá receber novas categorias ou produtos.'
-                    : ' A categoria não poderá ser associada a novos produtos.'}
+                    : itemParaInativar?.tipo === 'categoria'
+                      ? ' A categoria não poderá receber novas subcategorias ou produtos.'
+                      : ' A subcategoria não poderá ser associada a novos produtos.'}
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={processandoAcao}>
-              {itemParaInativar?.tipo === 'grupo' && (itemParaInativar.categoriasAtivas || 0) > 0
-                ? 'Fechar'
-                : 'Cancelar'}
+              {(itemParaInativar?.filhosAtivos || 0) > 0 ? 'Fechar' : 'Cancelar'}
             </AlertDialogCancel>
-            {/* O botão de confirmar só fica ativo se NÃO tiver categorias ativas bloqueando */}
-            {!(
-              itemParaInativar?.tipo === 'grupo' && (itemParaInativar.categoriasAtivas || 0) > 0
-            ) && (
+            {/* O botão de confirmar só fica ativo se NÃO tiver filhos ativos bloqueando */}
+            {!((itemParaInativar?.filhosAtivos || 0) > 0) && (
               <AlertDialogAction
                 onClick={handleConfirmarInativacao}
                 disabled={processandoAcao}
@@ -1188,13 +1687,23 @@ export const GruposCategoriasPage: React.FC = () => {
             <div className="flex items-center gap-2 text-emerald-600 mb-1">
               <CheckCircle2 className="h-5 w-5" />
               <AlertDialogTitle>
-                Reativar {itemParaAtivar?.tipo === 'grupo' ? 'Grupo' : 'Categoria'}
+                Reativar{' '}
+                {itemParaAtivar?.tipo === 'grupo'
+                  ? 'Grupo'
+                  : itemParaAtivar?.tipo === 'categoria'
+                    ? 'Categoria'
+                    : 'Subcategoria'}
               </AlertDialogTitle>
             </div>
             <AlertDialogDescription className="text-sm text-slate-600">
-              Deseja reativar {itemParaAtivar?.tipo === 'grupo' ? 'o grupo' : 'a categoria'}{' '}
+              Deseja reativar{' '}
+              {itemParaAtivar?.tipo === 'grupo'
+                ? 'o grupo'
+                : itemParaAtivar?.tipo === 'categoria'
+                  ? 'a categoria'
+                  : 'a subcategoria'}{' '}
               <strong className="text-slate-900">{itemParaAtivar?.nome}</strong>? Ele(a) voltará a
-              ficar disponível para novas vinculações de produtos e categorias.
+              ficar disponível para novas vinculações de produtos e categorias/subcategorias.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
