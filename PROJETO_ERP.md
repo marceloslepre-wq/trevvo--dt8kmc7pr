@@ -3556,6 +3556,38 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.166** — Classificação Real de Produtos da HOSPITAL HOME e Sincronização de Sequências (Prompt G2 do ERP):
+
+1. **Classificação Mercadológica Real da HOSPITAL HOME (Migration 0094):**
+   - Inserção idempotente e segura da taxonomia real completa para o assinante `HOSPITAL HOME` (`wqxiw7olvkup3sm`):
+     - **8 Grupos:**
+       1. `Descartáveis` (código `1`)
+       2. `Órteses e Ortopédicos` (código `2`)
+       3. `Cadeiras de Rodas e Acessibilidade` (código `3`)
+       4. `Camas e Móveis Hospitalares` (código `4`)
+       5. `Aparelhos e Equipamentos de Medição` (código `5`)
+       6. `Fisioterapia e Fitness` (código `6`)
+       7. `Cuidados Pessoais` (código `7`)
+       8. `Meias de Compressão` (código `8`)
+     - **36 Categorias:** distribuídas entre os 8 grupos (códigos sequenciais `1` a `36`), incluindo as 8 categorias do grupo Descartáveis e as categorias dos demais grupos.
+     - **30 Subcategorias:** distribuídas nas 7 categorias estruturadas do grupo Descartáveis (códigos sequenciais `1` a `30`).
+   - Todos os registros gravados com `ativo = true`, `margem_padrao_percentual = null`, respeitando integridade referencial (`grupo_id`, `categoria_id`, `assinante_id`).
+   - Lógica idempotente com reaproveitamento automático caso já existisse algum registro correspondente no mesmo pai.
+
+2. **Sincronização dos Contadores de Sequências (`sequencias`):**
+   - Atualizados os contadores de códigos da HOSPITAL HOME para o maior número real gravado:
+     - `codigo_grupos`: `8`
+     - `codigo_categorias`: `36`
+     - `codigo_subcategorias`: `30`
+   - Garante que novos grupos, categorias ou subcategorias criados pelo usuário continuem a numeração a partir do próximo número livre (`9`, `37`, `31` respectivamente).
+
+3. **Preservação de Integridade, Tenancy e Endpoints:**
+   - Nenhum registro de outros assinantes (ex: TESTE B) foi afetado.
+   - Endpoints `/backend/v1/tenancy/me` e `/backend/v1/master/resumo` íntegros e operacionais.
+   - Zero erros "Invalid module" no log do backend.
+
+---
+
 **Versão 0.0.165** — Subcategoria nas Telas de Produto: Formulário e Listagem (Prompt G1c do ERP):
 
 1. **Formulário de Produto (`ProdutoForm.tsx`):**
