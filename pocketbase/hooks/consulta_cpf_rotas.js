@@ -27,11 +27,128 @@ routerAdd(
     }
 
     try {
-      // 2) Isolamento pelo assinante do usuário (usando tenancy.js requerido dentro do callback)
+      // 2) Isolamento pelo assinante do usuário (usando função local assinanteDoUsuarioLocal)
+      function assinanteDoUsuarioLocal(auth) {
+        if (!auth) {
+          throw new BadRequestError('Autenticação necessária para identificar o assinante.')
+        }
+
+        let usuarioRec = null
+        try {
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (uRecs && uRecs.length > 0) {
+            usuarioRec = uRecs[0]
+          }
+        } catch (_) {}
+
+        if (!usuarioRec && auth.getString && auth.getString('email')) {
+          try {
+            const uRecs = $app.findRecordsByFilter(
+              'usuarios',
+              "email = '" + auth.getString('email') + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (uRecs && uRecs.length > 0) {
+              usuarioRec = uRecs[0]
+            }
+          } catch (_) {}
+        }
+
+        if (!usuarioRec) {
+          throw new BadRequestError('Registro de usuário ERP não encontrado.')
+        }
+
+        let assinanteId = usuarioRec.getString('assinante_id')
+        if (!assinanteId) {
+          throw new BadRequestError('Usuário não possui vínculo com nenhum assinante cadastrado.')
+        }
+
+        function obterAssinanteImpersonadoLocal(userId, appInstance) {
+          const app = appInstance || $app
+          if (!userId) return null
+          try {
+            if (!app.hasTable('master_impersonacoes')) return null
+            const recs = app.findRecordsByFilter(
+              'master_impersonacoes',
+              "user_id = '" + userId + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (recs && recs.length > 0) {
+              return recs[0].getString('assinante_id') || null
+            }
+          } catch (_) {}
+          return null
+        }
+
+        function checarSeMasterLocal(authRec, appInstance) {
+          const app = appInstance || $app
+          if (!authRec || !authRec.id) return false
+          try {
+            const userRec = app.findRecordById('_pb_users_auth_', authRec.id)
+            return !!(userRec && userRec.getString('tipo') === 'master')
+          } catch (_) {
+            return false
+          }
+        }
+
+        function validarLicencaAtivaOuBloquearLocal(assinanteRec, authRec) {
+          if (!assinanteRec) return
+
+          // Assinante de origem NUNCA é bloqueado
+          if (
+            assinanteRec.getBool('origem') ||
+            assinanteRec.getString('numero_licenca') === 'HH-RFR8HF'
+          ) {
+            return
+          }
+
+          // O master NUNCA é bloqueado
+          if (authRec && checarSeMasterLocal(authRec)) {
+            return
+          }
+
+          const status = assinanteRec.getString('status')
+          if (status === 'Pausada' || status === 'Expirada' || status === 'Cancelada') {
+            throw new ForbiddenError('Licença pausada ou vencida. Fale com o suporte.')
+          }
+        }
+
+        if (checarSeMasterLocal(auth)) {
+          try {
+            const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
+            if (impersonadoId) {
+              assinanteId = impersonadoId
+            }
+          } catch (_) {}
+        }
+
+        const assinante = $app.findRecordById('assinantes', assinanteId)
+        if (!assinante) {
+          throw new BadRequestError('Assinante não encontrado.')
+        }
+
+        try {
+          validarLicencaAtivaOuBloquearLocal(assinante, auth)
+        } catch (errBloq) {
+          throw errBloq
+        }
+
+        return assinante
+      }
+
       let assinante = null
       try {
-        const { assinanteDoUsuario } = require(`${__hooks}/tenancy.js`)
-        assinante = assinanteDoUsuario(authRecord)
+        assinante = assinanteDoUsuarioLocal(authRecord)
       } catch (errTenancy) {
         console.log(
           '[consulta-cpf]',

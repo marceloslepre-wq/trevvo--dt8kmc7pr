@@ -3528,6 +3528,17 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.160** — Eliminação de require nos Hooks de Numeração e Consulta de CPF (Funções Locais em Escopo JSVM):
+
+1. **Substituição de `require` por Funções Locais em `numeracao_cadastros.js` e `consulta_cpf_rotas.js`:**
+   - No ambiente Skip Cloud / PocketBase JSVM, os hooks são carregados num único bundle (`pb.js`), fazendo com que `require("${__hooks}/...")` lance `GoError: Invalid module` em runtime.
+   - Em `pocketbase/hooks/numeracao_cadastros.js`: removido o `require("${__hooks}/numeracao_lib.js")` de todos os 5 callbacks (`produtos`, `clientes`, `fornecedores`, `condicoes_pagamento`, `empresas`) e substituído por função local `proximoNumeroLocal` declarada no corpo de cada callback com a mesma lógica atômica em transação contra a coleção `sequencias`.
+   - Em `pocketbase/hooks/consulta_cpf_rotas.js`: removido o `require("${__hooks}/tenancy.js")` e substituído pela função local `assinanteDoUsuarioLocal` no corpo do callback da rota `GET /backend/v1/cadastros/consulta-cpf`, mantendo o isolamento por assinante e o tratamento com logs estruturados `[consulta-cpf]`.
+   - Zero ocorrências da instrução `require` nos dois arquivos.
+   - Deploy do backend validado com sucesso e logs sem nenhum erro "Invalid module".
+
+---
+
 **Versão 0.0.159** — Ativação da Chave da API de Consulta de CPF (APICPF_DEV_KEY no Backend):
 
 1. **Configuração de Variável de Ambiente no Skip Cloud:**
