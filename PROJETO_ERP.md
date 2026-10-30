@@ -3556,6 +3556,18 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.182** — Ajuste do Usuário de Lançamento em Notas de Entrada e Deploy do Backend:
+
+1. **Gravação Segura do Usuário Autenticado em `POST /notas-entrada/lancar` (`pocketbase/hooks/nota_entrada_lancar.js`):**
+   - O campo `usuario_lancamento_id` de `notas_entrada` (alterado nas migrations 0097/0098 para apontar para `users`) passa a ser gravado estritamente com o ID do usuário autenticado (`authRecord.id` / `userId`), ignorando qualquer valor arbitrário (`usuario_erp_id` ou `usuario_lancamento_id`) enviado no corpo da requisição pelo navegador.
+   - Preservada a declaração das funções locais de tenancy dentro do callback (sem nenhum `require` de `tenancy.js`), evitando erro "Invalid module" no servidor.
+2. **Deploy do Backend e Migrations Aplicadas (`deploy_backend`):**
+   - Backend deployado com sucesso, carregando os hooks atualizados.
+   - As migrations de ajuste de schema da coleção `notas_entrada` (`usuario_lancamento_id` referenciando `users`) estão ativas e validadas no banco de dados.
+   - Logs de execução do backend (`requests` e `hooks`) auditados: zero erros "Invalid module" nas chamadas ativas e nos cron jobs.
+
+---
+
 **Versão 0.0.180** — Correção de Runtime no Hook de Lançamento de Notas de Entrada (`POST /notas-entrada/lancar`):
 
 - O `require(`${\_\_hooks}/tenancy.js`)` dentro do callback falhava com "Invalid module" no servidor do Skip Cloud.

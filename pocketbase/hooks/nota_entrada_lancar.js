@@ -290,7 +290,6 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
   const notaId = body.nota_id
   const atualizarCustoProdutos = body.atualizar_custo_produtos !== false // padrão true
   const justificativaDivergencia = body.justificativa_divergencia || ''
-  const usuarioErpId = body.usuario_erp_id || ''
 
   if (!notaId) {
     return c.json(400, { sucesso: false, message: 'nota_id é obrigatório.' })
@@ -994,9 +993,8 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
       // 8. Atualizar status da nota para Lançada
       nota.set('status', 'Lançada')
       nota.set('data_lancamento', new Date().toISOString())
-      if (usuarioErpId) {
-        nota.set('usuario_lancamento_id', usuarioErpId)
-      }
+      // Grava sempre o id do usuário autenticado (users), ignorando valor do navegador
+      nota.set('usuario_lancamento_id', userId)
       nota.set('updated_by', userId)
       txApp.save(nota)
 
