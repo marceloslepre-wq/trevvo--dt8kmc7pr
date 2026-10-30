@@ -3556,6 +3556,16 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.178** — Correção dos Requires de `tenancy.js` e Deploy dos Hooks do Backend:
+
+1. **Correção dos Requires de `tenancy.js` nos Hooks do Backend (`pocketbase/hooks/`):**
+   - Padronização do require das funções utilitárias de multi-tenancy (`exigirEmpresaDoUsuario`, `empresasDoUsuario`, `assinanteDoUsuario`) diretamente no corpo dos callbacks dos hooks do PocketBase, eliminando o erro de runtime `ReferenceError: exigirEmpresaDoUsuario is not defined`.
+   - Realização do deploy do backend (`deploy_backend`) no Skip Cloud.
+   - Validação dos logs do backend (stream hooks) confirmando carga íntegra sem erros de sintaxe, `Invalid module` ou `ReferenceError`.
+   - Endpoints centrais de governança `/backend/v1/tenancy/me` e `/backend/v1/empresas/acessiveis` confirmados ativos e respondendo normalmente com status HTTP 200.
+
+---
+
 **Versão 0.0.175** — Garantia Obrigatória da Assinatura `<?xml` no Upload de XML de Notas de Entrada:
 
 1. **Garantia da Assinatura `<?xml` no Conteúdo de `xml_arquivo` (`src/services/notasEntrada.ts`):**
