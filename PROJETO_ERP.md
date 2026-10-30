@@ -3556,6 +3556,28 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.170** — Correção "Parte A" de assinante_id nos Creates e Updates do Frontend:
+
+1. **Novo Módulo Utilitário de Tenancy no Frontend (`src/services/tenancyHelper.ts`):**
+   - Criação das funções centralizadas `obterAssinanteIdAtivo` e `sanitizarPayloadUpdate` (além de `comAssinanteId`).
+   - `obterAssinanteIdAtivo`: obtém o `assinante_id` com cadeia de fallbacks resilientes (parâmetro informado, `pb.authStore.record.assinante_id`, cache local de usuário em `obterUsuarioCacheLocal`, e localStorage geral).
+   - `sanitizarPayloadUpdate`: remove obrigatoriamente `assinante_id` nos payloads de UPDATE/PATCH (cumprindo a regra PocketBase `@request.body.assinante_id:isset = false`), além de metadados de sistema (`id`, `collectionId`, `collectionName`, `created`, `updated`, `created_by`, `expand`).
+
+2. **Produtos (`src/services/produtos.ts`):**
+   - No CREATE (`salvarProduto`), inclusão obrigatória de `assinante_id` obtido via `obterAssinanteIdAtivo`.
+   - No UPDATE (`salvarProduto`), sanitização rigorosa via `sanitizarPayloadUpdate` sem reenviar `assinante_id`, prevenindo erros de validação e HTTP 400/404.
+
+3. **Cadastro Automático de Produtos e Fornecedores via XML (`src/services/cadastroAutomaticoProdutos.ts`):**
+   - Criação de novos produtos oriundos da importação de XML padronizada chamando o serviço `salvarProduto`, assegurando a injeção do `assinante_id` correto no CREATE.
+
+4. **Fornecedor Criado por Comissões (`src/services/comissoes.ts`):**
+   - Fluxo de criação de fornecedor vinculado ao pagamento de comissões atualizado para utilizar `salvarFornecedor`, garantindo a injeção de `assinante_id` e numeração automática por assinante.
+
+5. **Isolamento de Tabelas Filhas / Vínculos (Puladas):**
+   - As coleções `perfis_tributarios_regras`, `produtos_historico`, `produtos_fornecedores`, `produtos_conversoes_unidade` e `produtos_kit_itens` NÃO possuem coluna `assinante_id`, pois seu isolamento multi-tenant é garantido via chave estrangeira do registro pai / relacionamento. Foram intencionalmente mantidas sem alteração de tenancy direta.
+
+---
+
 **Versão 0.0.169** — Correção do Campo CFOP no Perfil Tributário "Teste Normal 00" (Migration 0096):
 
 1. **Correção de ID para Código de CFOP nos Cenários do Perfil (Migration 0096):**
