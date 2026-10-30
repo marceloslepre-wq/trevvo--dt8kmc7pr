@@ -3,6 +3,7 @@ import { registrarAuditoria } from '@/services/auditoria'
 import { TipoEntradaNota, converterCfopEntrada } from '@/services/cfopConversao'
 import { Fornecedor, salvarFornecedor, normalizarCpfCnpj } from '@/services/fornecedores'
 import { TipoProduto } from '@/services/produtos'
+import { obterAssinanteIdAtivo, sanitizarPayloadUpdate } from '@/services/tenancyHelper'
 
 export type OrigemLancamentoNota = 'XML' | 'Digitação'
 export type ModeloNota = '55' | '65' | '01' | '1B' | '04'
@@ -338,11 +339,28 @@ export async function vincularPedidoNotaEntrada(
   notaId: string,
   pedidoCompraId: string | null,
 ): Promise<NotaEntrada> {
-  const nota = await pb.collection('notas_entrada').update<NotaEntrada>(notaId, {
+  const payloadLimpo = sanitizarPayloadUpdate({
     pedido_compra_id: pedidoCompraId,
     updated_by: pb.authStore.record?.id || null,
   })
+  const nota = await pb.collection('notas_entrada').update<NotaEntrada>(notaId, payloadLimpo)
   return nota
+}
+
+/**
+ * Atualiza campos de uma nota fiscal de entrada existente com payload sanitizado
+ * (garante que assinante_id e metadados de sistema nunca sejam enviados no PATCH/UPDATE).
+ */
+export async function atualizarNotaEntrada(
+  notaId: string,
+  dados: Partial<NotaEntrada> | Record<string, unknown>,
+): Promise<NotaEntrada> {
+  const payloadComUpdatedBy = {
+    ...dados,
+    updated_by: pb.authStore.record?.id || null,
+  }
+  const payloadLimpo = sanitizarPayloadUpdate(payloadComUpdatedBy)
+  return await pb.collection('notas_entrada').update<NotaEntrada>(notaId, payloadLimpo)
 }
 
 // ==========================================
@@ -1548,7 +1566,11 @@ export async function importarXmlNotaEntrada(params: {
   }
 
   // 3. Monta FormData para notas_entrada (suporte a upload do arquivo .xml)
+  const assinanteIdAtivo = obterAssinanteIdAtivo()
   const formData = new FormData()
+  if (assinanteIdAtivo) {
+    formData.append('assinante_id', assinanteIdAtivo)
+  }
   formData.append('empresa_id', empresaId)
   if (fId) formData.append('fornecedor_id', fId)
   formData.append('origem_lancamento', 'XML')
@@ -1888,7 +1910,9 @@ export async function salvarNotaEntradaDigitada(
   }
 
   // 1. Criar cabeçalho da nota
+  const assinanteIdAtivo = obterAssinanteIdAtivo()
   const payloadCabecalho: Record<string, unknown> = {
+    assinante_id: assinanteIdAtivo || '',
     empresa_id: dados.empresa_id,
     fornecedor_id: dados.fornecedor_id,
     transportadora_id: dados.transportadora_id || null,

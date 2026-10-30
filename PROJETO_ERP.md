@@ -3556,6 +3556,22 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.173** — Correção Cirúrgica de Tenancy em Notas de Entrada (Frontend):
+
+1. **Inclusão de `assinante_id` nos Creates de `notas_entrada` (`src/services/notasEntrada.ts`):**
+   - Importação e uso de `obterAssinanteIdAtivo` de `tenancyHelper.ts`.
+   - No CREATE via importação de XML (`importarXmlNotaEntrada`), inclusão explícita de `assinante_id` obtido do usuário logado via `obterAssinanteIdAtivo()` no `FormData` da requisição POST.
+   - No CREATE via digitação manual (`salvarNotaEntradaDigitada`), inclusão de `assinante_id: assinanteIdAtivo || ''` no payload do cabeçalho da requisição POST.
+   - Cumpre rigorosamente a regra de criação da coleção `notas_entrada` (`assinante_id = @request.auth.assinante_id`), eliminando o erro HTTP 400.
+   - Preservadas intactas as tabelas filhas `notas_entrada_itens` e `notas_entrada_parcelas` (que não possuem coluna `assinante_id`).
+   - Preservado intacto o MIME type `application/xml` no FormData do XML.
+
+2. **Sanitização de Payloads nos Updates de `notas_entrada` (`src/services/notasEntrada.ts`):**
+   - Utilização de `sanitizarPayloadUpdate` em `vincularPedidoNotaEntrada` e na nova função utilitária exportada `atualizarNotaEntrada`.
+   - Garante que `assinante_id` e metadados de sistema (`id`, `collectionId`, `collectionName`, `created`, `updated`, `created_by`, `expand`) nunca sejam enviados no corpo de requisições PATCH/UPDATE, cumprindo `@request.body.assinante_id:isset = false`.
+
+---
+
 **Versão 0.0.171** — Correção do MIME Type no Upload de XML de Notas de Entrada (Frontend):
 
 1. **Normalização do MIME Type de `xml_arquivo` no FormData (`src/services/notasEntrada.ts`):**
