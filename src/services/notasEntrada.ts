@@ -1596,15 +1596,13 @@ export async function importarXmlNotaEntrada(params: {
     formData.append('updated_by', user.id)
   }
 
-  // Anexa arquivo .xml se fornecido ou cria blob a partir do rawXml
+  // Anexa arquivo .xml se fornecido ou cria blob a partir do rawXml forçando application/xml
   if (arquivoXml) {
-    formData.append('xml_arquivo', arquivoXml)
+    const xmlBlob = new Blob([arquivoXml], { type: 'application/xml' })
+    formData.append('xml_arquivo', xmlBlob, arquivoXml.name)
   } else if (parsed.rawXml) {
-    const blob = new Blob([parsed.rawXml], { type: 'text/xml' })
-    const file = new File([blob], `nfe_${parsed.chaveAcesso || parsed.numero}.xml`, {
-      type: 'text/xml',
-    })
-    formData.append('xml_arquivo', file)
+    const xmlBlob = new Blob([parsed.rawXml], { type: 'application/xml' })
+    formData.append('xml_arquivo', xmlBlob, `nfe_${parsed.chaveAcesso || parsed.numero}.xml`)
   }
 
   const notaCriada = await pb.collection('notas_entrada').create<NotaEntrada>(formData)

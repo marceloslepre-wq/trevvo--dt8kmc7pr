@@ -3556,6 +3556,17 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.171** — Correção do MIME Type no Upload de XML de Notas de Entrada (Frontend):
+
+1. **Normalização do MIME Type de `xml_arquivo` no FormData (`src/services/notasEntrada.ts`):**
+   - Na função `importarXmlNotaEntrada`, ao anexar o arquivo XML ao `FormData` enviado para criação do registro na coleção `notas_entrada` (`POST /api/collections/notas_entrada/records`):
+     - Força o MIME type padronizado `application/xml` envolvendo o `File` original num novo `Blob([arquivoXml], { type: 'application/xml' })` e preservando o nome original do arquivo (`arquivoXml.name`).
+     - No fallback de `rawXml` string, cria o `Blob([parsed.rawXml], { type: 'application/xml' })` com o nome `nfe_${chaveAcesso || numero}.xml`.
+   - Elimina o erro HTTP 400 retornado pelo PocketBase (`validation_invalid_mime_type`: `mime type must be one of: text/xml, application/xml`) quando o navegador do cliente identifica arquivos XML baixados como `application/octet-stream`, `text/plain` ou string vazia.
+   - Preserva integralmente o conteúdo original do XML, o vínculo do fornecedor, itens, parcelas e auditoria.
+
+---
+
 **Versão 0.0.170** — Correção "Parte A" de assinante_id nos Creates e Updates do Frontend:
 
 1. **Novo Módulo Utilitário de Tenancy no Frontend (`src/services/tenancyHelper.ts`):**
