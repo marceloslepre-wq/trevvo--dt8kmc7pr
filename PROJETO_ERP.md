@@ -3556,6 +3556,13 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.180** — Correção de Runtime no Hook de Lançamento de Notas de Entrada (`POST /notas-entrada/lancar`):
+
+- O `require(`${\_\_hooks}/tenancy.js`)` dentro do callback falhava com "Invalid module" no servidor do Skip Cloud.
+- Substituído por cópias locais das funções (`assinanteDoUsuario`, `eMaster`, `empresasDoUsuario`, `exigirEmpresaDoUsuario`) diretamente no corpo do callback, seguindo o padrão comprovado de `consulta_cpf_rotas.js`.
+
+---
+
 **Versão 0.0.178** — Correção dos Requires de `tenancy.js` e Deploy dos Hooks do Backend:
 
 1. **Correção dos Requires de `tenancy.js` nos Hooks do Backend (`pocketbase/hooks/`):**
