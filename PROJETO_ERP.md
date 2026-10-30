@@ -3556,6 +3556,25 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.169** — Correção do Campo CFOP no Perfil Tributário "Teste Normal 00" (Migration 0096):
+
+1. **Correção de ID para Código de CFOP nos Cenários do Perfil (Migration 0096):**
+   - Na migration 0095 (v0.0.168), o campo `cfop` das regras do perfil tributário havia sido gravado com os IDs internos de relação da tabela `cfop`.
+   - A tela do ERP (`SelectCfop` / `CenarioCard`) e a emissão fiscal gravam e leem o código da coluna `codigo` da tabela global `cfop` (ex.: "5102").
+   - A migration 0096 atualizou os 8 cenários do perfil `Teste Normal 00` (id `u1moll54ljt17sv`, assinante HOSPITAL HOME `wqxiw7olvkup3sm`), substituindo os IDs pelos códigos correspondentes:
+     1. `VENDA_INTERNA_CONTRIBUINTE`: CFOP `5102` (anteriormente `7a5xo6gm918mtl9`)
+     2. `VENDA_INTERNA_CONSUMIDOR`: CFOP `5102` (anteriormente `7a5xo6gm918mtl9`)
+     3. `VENDA_INTERESTADUAL_CONTRIBUINTE`: CFOP `6102` (anteriormente `fprn4zrlwrmwh0x`)
+     4. `VENDA_INTERESTADUAL_CONSUMIDOR`: CFOP `6108` (anteriormente `yaxu8lsceli24is`)
+     5. `DEVOLUCAO_COMPRA`: CFOP `5202` (anteriormente `lag9w7o536u0f5l`)
+     6. `TRANSFERENCIA`: CFOP `5152` (anteriormente `wemr60mhlpe8jjv`)
+     7. `COMPRA_INTERNA`: CFOP `1102` (anteriormente `5hca13gg307sj3d`)
+     8. `COMPRA_INTERESTADUAL`: CFOP `2102` (anteriormente `j7ikbotbsxld8vi`)
+   - A migration é estritamente idempotente (reexecuções não duplicam nem alteram registros já corrigidos).
+   - Nenhum outro campo, perfil, assinante, tela, hook ou serviço foi modificado.
+
+---
+
 **Versão 0.0.168** — Perfil Tributário Completo de Teste "Teste Normal 00" para HOSPITAL HOME (Migration 0095):
 
 1. **Criação do Perfil Tributário Completo de Teste (Migration 0095):**
