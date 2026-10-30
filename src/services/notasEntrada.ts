@@ -380,6 +380,8 @@ export interface DadosEmpresaCalculo {
 export function calcularCreditosItem(params: {
   empresa: DadosEmpresaCalculo
   tipoEntrada: TipoEntradaNota
+  cfopEntrada?: string
+  cfopFornecedor?: string
   cstFornecedor?: string
   valorIcmsItem: number
   pCredSN?: number
@@ -408,6 +410,8 @@ export function calcularCreditosItem(params: {
   const {
     empresa,
     tipoEntrada,
+    cfopEntrada = '',
+    cfopFornecedor = '',
     cstFornecedor = '',
     valorIcmsItem,
     pCredSN = 0,
@@ -431,9 +435,19 @@ export function calcularCreditosItem(params: {
     crtNum === 3 ||
     empresa.regime_apuracao === 'Lucro Real' ||
     empresa.regime_apuracao === 'Lucro Presumido'
+
+  // CFOPs de bonificação, doação e brinde para revenda (1910, 2910, 1911, 2911)
+  // ou tipoEntrada Bonificação
+  const cfopsBonifDoacaoBrinde = ['1910', '2910', '1911', '2911']
+  const cfopLimpo = (cfopEntrada || cfopFornecedor || '').replace(/\D/g, '')
+  const ehBonificacaoOuBrinde =
+    tipoEntrada === 'Bonificação' || cfopsBonifDoacaoBrinde.includes(cfopLimpo)
+
   const ehRevendaOuInd =
-    tipoEntrada === 'Compra para revenda' || tipoEntrada === 'Compra para industrialização'
-  const ehIndustrializacao = tipoEntrada === 'Compra para industrialização'
+    tipoEntrada === 'Compra para revenda' ||
+    tipoEntrada === 'Compra para industrialização' ||
+    ehBonificacaoOuBrinde
+  const ehIndustrializacao = tipoEntrada === 'Compra para industrialização' || ehBonificacaoOuBrinde
 
   // 1. Crédito ICMS
   let aproveitaIcms = false
@@ -734,6 +748,8 @@ export async function vincularProdutoAoItemNota(
   const creditos = calcularCreditosItem({
     empresa: empresaDados || {},
     tipoEntrada: tipoEntradaNota || 'Compra para revenda',
+    cfopEntrada: item.cfop_entrada,
+    cfopFornecedor: item.cfop_fornecedor,
     cstFornecedor: item.cst_icms_fornecedor,
     valorIcmsItem: item.valor_icms || 0,
     valorIpiItem: item.valor_ipi || 0,
@@ -2022,6 +2038,8 @@ export async function salvarNotaEntradaDigitada(
     const creditos = calcularCreditosItem({
       empresa: dadosEmpresa,
       tipoEntrada: dados.tipo_entrada,
+      cfopEntrada: it.cfop_entrada,
+      cfopFornecedor: it.cfop_fornecedor,
       cstFornecedor: it.cst_icms_fornecedor || '',
       valorIcmsItem: it.valor_icms || 0,
       valorIpiItem: vIpi,
