@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-30T22:51:46.698Z",
+  "generatedAt": "2026-10-30T23:37:13.800Z",
   "collections": [
     {
       "name": "users",
@@ -5431,13 +5431,6 @@
           "system": false
         },
         {
-          "name": "usuario_lancamento_id",
-          "type": "relation",
-          "required": false,
-          "system": false,
-          "collectionRef": "usuarios"
-        },
-        {
           "name": "ativo",
           "type": "bool",
           "required": false,
@@ -5476,6 +5469,13 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "usuario_lancamento_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         }
       ],
       "indexes": [
