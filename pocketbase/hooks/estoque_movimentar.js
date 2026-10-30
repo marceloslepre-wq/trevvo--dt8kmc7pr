@@ -24,6 +24,8 @@ routerAdd('POST', '/estoque/movimentar', (c) => {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     body = c.requestInfo().body || {}

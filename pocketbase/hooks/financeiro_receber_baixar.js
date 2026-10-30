@@ -19,6 +19,8 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     body = c.requestInfo().body || {}

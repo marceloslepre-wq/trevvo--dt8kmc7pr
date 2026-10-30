@@ -37,6 +37,8 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
     const data = c.requestInfo().body || {}
     const empresaId = data.empresa_id
 
@@ -297,6 +299,8 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
     const data = c.requestInfo().body || {}
     const empresaId = data.empresa_id
     const ref = (data.ref || '').trim()
@@ -494,6 +498,8 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
     const data = c.requestInfo().body || {}
     const empresaId = data.empresa_id
     const ref = (data.ref || '').trim()
@@ -686,6 +692,8 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
     const data = c.requestInfo().body || {}
     const empresaId = data.empresa_id
     const modelo = String(data.modelo || '55').trim()
@@ -852,6 +860,8 @@ routerAdd(
     if (!authRecord) {
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
+
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
     const data = c.requestInfo().body || {}
     const empresaId = data.empresa_id
@@ -1039,6 +1049,8 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
     const data = c.requestInfo().body || {}
     const empresaId = data.empresa_id
     const ref = (data.ref || '').trim()
@@ -1222,6 +1234,8 @@ routerAdd(
     if (!authRecord) {
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
+
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
     const data = c.requestInfo().body || {}
     const empresaId = data.empresa_id
@@ -1498,6 +1512,8 @@ routerAdd(
     if (!authRecord) {
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
+
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
     const data = c.requestInfo().body || {}
     const empresaId = data.empresa_id

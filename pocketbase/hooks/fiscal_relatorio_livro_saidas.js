@@ -28,6 +28,8 @@ routerAdd('POST', '/backend/v1/relatorios/livro-saidas', (c) => {
     return c.json(401, { sucesso: false, message: 'Autenticação necessária.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   const body = c.requestInfo().body || {}
   const empresaId = String(body.empresaId || body.empresa_id || '').trim()
   const dataInicio = String(body.dataInicio || body.data_inicio || '').trim()

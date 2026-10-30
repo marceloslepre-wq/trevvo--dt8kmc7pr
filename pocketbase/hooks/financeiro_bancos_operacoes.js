@@ -18,6 +18,8 @@ routerAdd('POST', '/financeiro/bancos/transferir', (c) => {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     const reqInfo = c.requestInfo()
@@ -188,6 +190,8 @@ routerAdd('POST', '/financeiro/bancos/avulso', (c) => {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     const reqInfo = c.requestInfo()
@@ -317,6 +321,8 @@ routerAdd('POST', '/financeiro/bancos/estornar', (c) => {
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
+
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
   let body = {}
   try {
@@ -495,6 +501,8 @@ routerAdd('POST', '/financeiro/bancos/importar-ofx', (c) => {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     const reqInfo = c.requestInfo()
@@ -578,6 +586,8 @@ routerAdd('POST', '/financeiro/bancos/conciliar', (c) => {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     const reqInfo = c.requestInfo()
@@ -640,6 +650,8 @@ routerAdd('POST', '/financeiro/bancos/desconciliar', (c) => {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     const reqInfo = c.requestInfo()
@@ -698,6 +710,8 @@ routerAdd('POST', '/financeiro/bancos/alternar-ignorar-ofx', (c) => {
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
+
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
   let body = {}
   try {

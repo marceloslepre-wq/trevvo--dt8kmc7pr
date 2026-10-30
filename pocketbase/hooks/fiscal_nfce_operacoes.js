@@ -29,6 +29,8 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
     const encodeBase64 = (str) => {
       if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
         try {
@@ -518,6 +520,8 @@ routerAdd(
     if (!authRecord) {
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
+
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
     const encodeBase64 = (str) => {
       if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {

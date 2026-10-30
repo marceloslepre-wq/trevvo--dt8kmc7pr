@@ -23,6 +23,8 @@ routerAdd(
       })
     }
 
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
     const userId = authRecord.id
     const data = c.requestInfo().body || {}
     const vendaId = data.venda_id
@@ -1011,6 +1013,8 @@ routerAdd(
         message: 'Acesso negado: autenticação obrigatória.',
       })
     }
+
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
     const userId = authRecord.id
     const data = c.requestInfo().body || {}

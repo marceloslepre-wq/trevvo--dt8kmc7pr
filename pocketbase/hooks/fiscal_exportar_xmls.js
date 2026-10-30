@@ -37,6 +37,8 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
     const data = c.requestInfo().body || {}
     const empresaId = (data.empresa_id || '').trim()
     const mes = parseInt(data.mes, 10)

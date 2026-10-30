@@ -14,6 +14,8 @@ routerAdd('POST', '/backend/v1/caixa/abrir', (c) => {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     const reqInfo = c.requestInfo()
@@ -286,6 +288,8 @@ routerAdd('POST', '/backend/v1/caixa/sangria', (c) => {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     const reqInfo = c.requestInfo()
@@ -478,6 +482,8 @@ routerAdd('POST', '/backend/v1/caixa/suprimento', (c) => {
     return c.json(401, { message: 'Não autenticado.' })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   let body = {}
   try {
     const reqInfo = c.requestInfo()
@@ -669,6 +675,8 @@ routerAdd('POST', '/backend/v1/caixa/fechar', (c) => {
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
+
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
   let body = {}
   try {
@@ -1069,6 +1077,8 @@ routerAdd('POST', '/backend/v1/caixa/conferir', (c) => {
   if (!authRecord) {
     return c.json(401, { message: 'Não autenticado.' })
   }
+
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
   let body = {}
   try {

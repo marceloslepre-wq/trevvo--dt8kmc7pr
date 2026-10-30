@@ -22,6 +22,8 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
     })
   }
 
+  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
   const userId = authRecord.id
   const data = c.requestInfo().body || {}
   const origem = data.origem || 'Venda' // 'Venda' | 'Devolução de venda' | 'Devolução de compra'

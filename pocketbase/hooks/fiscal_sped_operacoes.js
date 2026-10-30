@@ -18,6 +18,8 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+
     const userId = authRecord.id
 
     // Verificar se o usuário autenticado é Administrador via perfis_acesso
@@ -158,6 +160,8 @@ routerAdd(
     if (!authRecord) {
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
+
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
     // Validação de Administrador
     let usuarioErp = null
@@ -338,6 +342,8 @@ routerAdd(
     if (!authRecord) {
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
+
+    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
 
     // Validação de Administrador
     try {
