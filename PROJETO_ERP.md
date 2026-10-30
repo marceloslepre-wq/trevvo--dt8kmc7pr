@@ -3556,6 +3556,20 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.175** — Garantia Obrigatória da Assinatura `<?xml` no Upload de XML de Notas de Entrada:
+
+1. **Garantia da Assinatura `<?xml` no Conteúdo de `xml_arquivo` (`src/services/notasEntrada.ts`):**
+   - O validador de MIME type do PocketBase inspeciona os primeiros bytes do arquivo (`gabriel-vasile/mimetype`), classificando como `text/xml` ou `application/xml` estritamente se o conteúdo iniciar com a assinatura `<?xml`.
+   - Mesmo com a remoção de BOM UTF-8 e espaços iniciais (v0.0.174), arquivos XML sem declaração explícita (que iniciam direto na tag `<nfeProc>`) ou contendo caracteres/lixo residual antes da declaração continuavam resultando em erro HTTP 400 (`validation_invalid_mime_type: "arquivo.xml" mime type must be one of: text/xml, application/xml`).
+   - Na função `importarXmlNotaEntrada` (`src/services/notasEntrada.ts`), após a sanitização de `xmlStringParaUpload` (tanto no caminho do arquivo escolhido quanto no fallback `parsed.rawXml`):
+     - Localiza o índice `idx = xmlStringParaUpload.indexOf('<?xml')`.
+     - Se `idx > 0`, fatia com `.slice(idx)` para eliminar qualquer caractere/lixo anterior à declaração XML.
+     - Se `idx === -1` (XML sem declaração), prepende a declaração `'<?xml version="1.0" encoding="UTF-8"?>\n'` mantendo o documento como XML válido.
+   - O conteúdo do `Blob` do `FormData` agora inicia obrigatoriamente com a assinatura `<?xml`, eliminando em definitivo o erro `validation_invalid_mime_type`.
+   - Mantidos intactos o nome do arquivo, o Blob `application/xml`, os demais campos do FormData, itens, parcelas e todo o fluxo da função.
+
+---
+
 **Versão 0.0.174** — Correção da Validação de MIME Type no Upload de XML de Notas de Entrada (Remoção de BOM UTF-8 e Espaços Iniciais):
 
 1. **Sanitização de BOM UTF-8 e Espaços Iniciais no Conteúdo XML (`src/services/notasEntrada.ts`):**

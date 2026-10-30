@@ -1620,7 +1620,8 @@ export async function importarXmlNotaEntrada(params: {
   }
 
   // Sanitiza o conteúdo XML antes de criar o Blob para garantir detecção correta de mime type pelo PocketBase
-  // Remove BOM UTF-8 (\uFEFF) e espaços/quebras de linha em branco no início para que o arquivo comece com "<?xml"
+  // O PocketBase valida o mime pelo CONTEÚDO (biblioteca gabriel-vasile/mimetype):
+  // só classifica como text/xml/application/xml se os primeiros bytes forem a assinatura '<?xml'
   let xmlStringParaUpload: string | null = null
   if (arquivoXml) {
     try {
@@ -1635,6 +1636,15 @@ export async function importarXmlNotaEntrada(params: {
   }
 
   if (xmlStringParaUpload) {
+    const idx = xmlStringParaUpload.indexOf('<?xml')
+    if (idx > 0) {
+      // Elimina qualquer caractere/lixo antes da declaração XML
+      xmlStringParaUpload = xmlStringParaUpload.slice(idx)
+    } else if (idx === -1) {
+      // XML sem declaração (começa direto em <nfeProc, etc.): prepende a declaração XML
+      xmlStringParaUpload = `<?xml version="1.0" encoding="UTF-8"?>\n${xmlStringParaUpload}`
+    }
+
     const xmlBlob = new Blob([xmlStringParaUpload], { type: 'application/xml' })
     const nomeArquivo = arquivoXml?.name || `nfe_${parsed.chaveAcesso || parsed.numero}.xml`
     formData.append('xml_arquivo', xmlBlob, nomeArquivo)
