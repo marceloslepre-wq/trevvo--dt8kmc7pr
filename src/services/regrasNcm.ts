@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
+import { obterUsuarioCacheLocal } from '@/services/usuarios'
 
 export interface RegraFiscalNcm {
   id: string
@@ -70,6 +71,10 @@ export async function salvarRegraNcm(dados: Partial<RegraFiscalNcm>): Promise<Re
   const user = pb.authStore.record
   const prefixoLimpo = (dados.ncm_prefixo || '').replace(/\D/g, '')
 
+  const assinanteIdAtivo =
+    (user as { assinante_id?: string } | null)?.assinante_id ||
+    obterUsuarioCacheLocal()?.assinante_id
+
   const payload: Record<string, unknown> = {
     ncm_prefixo: prefixoLimpo,
     cest: dados.cest ? dados.cest.replace(/\D/g, '') : '',
@@ -97,6 +102,10 @@ export async function salvarRegraNcm(dados: Partial<RegraFiscalNcm>): Promise<Re
       valores_depois: salva as unknown as Record<string, unknown>,
     })
   } else {
+    if (!assinanteIdAtivo) {
+      throw new Error('Não foi possível identificar o assinante ativo do usuário autenticado.')
+    }
+    payload.assinante_id = assinanteIdAtivo
     payload.created_by = user?.id || null
     salva = await pb.collection('regras_fiscais_ncm').create<RegraFiscalNcm>(payload)
     await registrarAuditoria({

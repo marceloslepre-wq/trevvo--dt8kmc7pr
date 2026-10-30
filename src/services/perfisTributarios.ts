@@ -1,6 +1,7 @@
 import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
 import { Cfop } from '@/services/cfop'
+import { obterUsuarioCacheLocal } from '@/services/usuarios'
 export { extrairCamposFiscaisDoPerfil } from '@/services/produtos'
 
 export type RegimePerfilTributario = 'Simples Nacional' | 'Regime Normal'
@@ -370,18 +371,30 @@ export async function salvarPerfilTributarioCompleto(dados: {
     throw new Error('O nome do perfil tributário é obrigatório.')
   }
 
-  // Validação de unicidade de nome
-  const dupNome = await pb.collection('perfis_tributarios').getList<PerfilTributario>(1, 1, {
-    filter: dados.id
+  // Determina assinante_id para tenancy multi-tenant
+  const assinanteIdAtivo =
+    (pb.authStore.record as { assinante_id?: string } | null)?.assinante_id ||
+    obterUsuarioCacheLocal()?.assinante_id
+
+  // Validação de unicidade de nome dentro do escopo do assinante
+  const condsDup: string[] = [
+    dados.id
       ? `nome = '${nomeLimpo.replace(/'/g, "\\'")}' && id != '${dados.id}'`
       : `nome = '${nomeLimpo.replace(/'/g, "\\'")}'`,
+  ]
+  if (assinanteIdAtivo) {
+    condsDup.push(`assinante_id = '${assinanteIdAtivo}'`)
+  }
+
+  const dupNome = await pb.collection('perfis_tributarios').getList<PerfilTributario>(1, 1, {
+    filter: condsDup.join(' && '),
   })
   if (dupNome.totalItems > 0) {
     throw new Error(`Já existe um perfil tributário com o nome "${nomeLimpo}".`)
   }
 
-  // Prepara payload do cabeçalho
-  const payloadCabecalho = {
+  // Prepara payload do cabeçalho sanitizado para UPDATE
+  const payloadUpdate = {
     nome: nomeLimpo,
     descricao: dados.descricao?.trim() || '',
     regime: dados.regime,
@@ -400,10 +413,15 @@ export async function salvarPerfilTributarioCompleto(dados: {
     antes = await obterPerfilTributarioCompleto(dados.id)
     perfilSalvo = await pb
       .collection('perfis_tributarios')
-      .update<PerfilTributario>(dados.id, payloadCabecalho)
+      .update<PerfilTributario>(dados.id, payloadUpdate)
   } else {
+    if (!assinanteIdAtivo) {
+      throw new Error('Não foi possível identificar o assinante ativo do usuário autenticado.')
+    }
+
     perfilSalvo = await pb.collection('perfis_tributarios').create<PerfilTributario>({
-      ...payloadCabecalho,
+      ...payloadUpdate,
+      assinante_id: assinanteIdAtivo,
       created_by: pb.authStore.record?.id || null,
     })
   }

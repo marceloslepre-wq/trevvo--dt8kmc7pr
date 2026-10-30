@@ -3556,6 +3556,22 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.167** — Correção de Criação e Atualização de Perfis Tributários e Regras por NCM (Tenancy no CREATE e Sanitização no UPDATE):
+
+1. **Inclusão de `assinante_id` no Cadastro de Perfis Tributários (`src/services/perfisTributarios.ts`):**
+   - Na função `salvarPerfilTributarioCompleto` (fluxo de criação `POST /api/collections/perfis_tributarios/records`), inclusão explícita de `assinante_id` obtido do usuário autenticado (`pb.authStore.record.assinante_id` ou via `obterUsuarioCacheLocal`).
+   - Cumpre a regra de criação da coleção `perfis_tributarios` (`assinante_id = @request.auth.assinante_id`), eliminando o erro HTTP 400 ("Failed to create record.") ao criar novos perfis tributários no ERP em `/cadastros/tabelas-fiscais/perfis`.
+   - Validação de unicidade de nome do perfil tributário restrita ao escopo do assinante ativo (`assinante_id`).
+
+2. **Sanitização de Payload no Update de Perfis Tributários (`src/services/perfisTributarios.ts`):**
+   - No fluxo de atualização (`PATCH /api/collections/perfis_tributarios/records/:id`), garantia de que `assinante_id` NÃO seja enviado no corpo da requisição (cumprindo a regra `@request.body.assinante_id:isset = false`).
+   - Omissão de campos de sistema e metadados (`id`, `collectionId`, `collectionName`, `created`, `updated`, `created_by`, `expand`), prevenindo erros ao salvar edição de perfis tributários.
+
+3. **Padronização na Tabela Fiscal Relacionada `regras_fiscais_ncm` (`src/services/regrasNcm.ts`):**
+   - Na função `salvarRegraNcm`, inclusão explícita de `assinante_id` obtido do usuário logado no CREATE e sanitização sem reenvio de `assinante_id` no UPDATE, mantendo a consistência multi-tenant com as coleções de tenancy.
+
+---
+
 **Versão 0.0.166** — Classificação Real de Produtos da HOSPITAL HOME e Sincronização de Sequências (Prompt G2 do ERP):
 
 1. **Classificação Mercadológica Real da HOSPITAL HOME (Migration 0094):**
