@@ -1100,8 +1100,9 @@ function getNodeNumber(parent: Element | null, tag: string): number {
 }
 
 export function parseNfeXml(xmlString: string): NfeXmlParsed {
+  const xmlLimpo = (xmlString || '').replace(/^\uFEFF+/, '').trimStart()
   const parser = new DOMParser()
-  const xmlDoc = parser.parseFromString(xmlString, 'text/xml')
+  const xmlDoc = parser.parseFromString(xmlLimpo, 'text/xml')
 
   const parserError = xmlDoc.getElementsByTagName('parsererror')[0]
   if (parserError) {
@@ -1477,7 +1478,7 @@ export function parseNfeXml(xmlString: string): NfeXmlParsed {
 
     itens,
     parcelas,
-    rawXml: xmlString,
+    rawXml: xmlLimpo,
   }
 }
 
@@ -1618,13 +1619,25 @@ export async function importarXmlNotaEntrada(params: {
     formData.append('updated_by', user.id)
   }
 
-  // Anexa arquivo .xml se fornecido ou cria blob a partir do rawXml forçando application/xml
+  // Sanitiza o conteúdo XML antes de criar o Blob para garantir detecção correta de mime type pelo PocketBase
+  // Remove BOM UTF-8 (\uFEFF) e espaços/quebras de linha em branco no início para que o arquivo comece com "<?xml"
+  let xmlStringParaUpload: string | null = null
   if (arquivoXml) {
-    const xmlBlob = new Blob([arquivoXml], { type: 'application/xml' })
-    formData.append('xml_arquivo', xmlBlob, arquivoXml.name)
+    try {
+      const conteudoBruto = await arquivoXml.text()
+      xmlStringParaUpload = conteudoBruto.replace(/^\uFEFF+/, '').trimStart()
+    } catch {
+      // Se falhar ao ler texto do arquivo, usa parsed.rawXml como fallback
+      xmlStringParaUpload = parsed.rawXml ? parsed.rawXml.replace(/^\uFEFF+/, '').trimStart() : null
+    }
   } else if (parsed.rawXml) {
-    const xmlBlob = new Blob([parsed.rawXml], { type: 'application/xml' })
-    formData.append('xml_arquivo', xmlBlob, `nfe_${parsed.chaveAcesso || parsed.numero}.xml`)
+    xmlStringParaUpload = parsed.rawXml.replace(/^\uFEFF+/, '').trimStart()
+  }
+
+  if (xmlStringParaUpload) {
+    const xmlBlob = new Blob([xmlStringParaUpload], { type: 'application/xml' })
+    const nomeArquivo = arquivoXml?.name || `nfe_${parsed.chaveAcesso || parsed.numero}.xml`
+    formData.append('xml_arquivo', xmlBlob, nomeArquivo)
   }
 
   const notaCriada = await pb.collection('notas_entrada').create<NotaEntrada>(formData)

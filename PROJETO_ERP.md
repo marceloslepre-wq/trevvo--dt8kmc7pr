@@ -3556,6 +3556,18 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.174** — Correção da Validação de MIME Type no Upload de XML de Notas de Entrada (Remoção de BOM UTF-8 e Espaços Iniciais):
+
+1. **Sanitização de BOM UTF-8 e Espaços Iniciais no Conteúdo XML (`src/services/notasEntrada.ts`):**
+   - O validador de MIME type do PocketBase inspeciona os primeiros bytes do arquivo (`gabriel-vasile/mimetype`), ignorando o cabeçalho `Content-Type` do cliente.
+   - Arquivos XML de NF-e da SEFAZ comumente começam com BOM UTF-8 (`\uFEFF` / `EF BB BF`) e/ou quebras de linha/espaços em branco antes de `<?xml`, fazendo com que a detecção de conteúdo resulte em `text/plain`, retornando erro HTTP 400 (`validation_invalid_mime_type: "arquivo.xml" mime type must be one of: text/xml, application/xml`).
+   - Na função `importarXmlNotaEntrada`, o conteúdo do XML (tanto de `arquivoXml` lido via `.text()` quanto do fallback `parsed.rawXml`) é sanitizado com `.replace(/^\uFEFF+/, '').trimStart()`, garantindo que os primeiros bytes comecem com `<?xml`.
+   - Um novo `Blob([xmlStringParaUpload], { type: 'application/xml' })` é montado com o conteúdo limpo e anexado ao `FormData` mantendo o nome de arquivo original (`arquivoXml.name` ou `nfe_${chaveAcesso || numero}.xml`).
+   - Também sanitizado na leitura/parse em `parseNfeXml`, garantindo que `rawXml` e o documento DOM sejam gerados limpos desde a raiz.
+   - Nenhuma outra tela, regra, hook, migration ou fluxo de importação foi modificado.
+
+---
+
 **Versão 0.0.173** — Correção Cirúrgica de Tenancy em Notas de Entrada (Frontend):
 
 1. **Inclusão de `assinante_id` nos Creates de `notas_entrada` (`src/services/notasEntrada.ts`):**
