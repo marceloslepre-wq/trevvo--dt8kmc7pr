@@ -368,7 +368,7 @@ export async function atualizarNotaEntrada(
 // ==========================================
 
 export interface DadosEmpresaCalculo {
-  crt?: number
+  crt?: number | string
   regime_apuracao?: string
   regime_pis_cofins?: string
   contribuinte_ipi?: boolean
@@ -426,7 +426,11 @@ export function calcularCreditosItem(params: {
     aproveitaCreditoIpi: usuarioPermitiuIpi = true,
   } = params
 
-  const ehRegimeNormal = empresa.crt === 3
+  const crtNum = Number(empresa.crt)
+  const ehRegimeNormal =
+    crtNum === 3 ||
+    empresa.regime_apuracao === 'Lucro Real' ||
+    empresa.regime_apuracao === 'Lucro Presumido'
   const ehRevendaOuInd =
     tipoEntrada === 'Compra para revenda' || tipoEntrada === 'Compra para industrialização'
   const ehIndustrializacao = tipoEntrada === 'Compra para industrialização'
@@ -554,7 +558,11 @@ export function sugerirCstPisCofinsEntrada(params: {
     return { cstPis: produtoCstPis, cstCofins: produtoCstCofins }
   }
 
-  const ehRegimeNormal = empresa.crt === 3
+  const crtNum = Number(empresa.crt)
+  const ehRegimeNormal =
+    crtNum === 3 ||
+    empresa.regime_apuracao === 'Lucro Real' ||
+    empresa.regime_apuracao === 'Lucro Presumido'
   const naoCumulativo = empresa.regime_pis_cofins === 'Não cumulativo'
   const ehRevendaOuInd =
     tipoEntrada === 'Compra para revenda' || tipoEntrada === 'Compra para industrialização'

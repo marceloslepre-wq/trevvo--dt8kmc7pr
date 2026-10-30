@@ -85,8 +85,14 @@ export const ConferenciaFiscalPage: React.FC = () => {
   const podeEditar = administrador || pode('produtos', 'editar')
 
   const crtEmpresa = empresaAtiva?.crt ?? 1
-  const regimeEmpresa: 'Simples Nacional' | 'Regime Normal' =
-    crtEmpresa === 3 ? 'Regime Normal' : 'Simples Nacional'
+  const regimeEmpresa: 'Simples Nacional' | 'Regime Normal' = empresaAtiva?.regime_apuracao
+    ? empresaAtiva.regime_apuracao === 'Lucro Real' ||
+      empresaAtiva.regime_apuracao === 'Lucro Presumido'
+      ? 'Regime Normal'
+      : 'Simples Nacional'
+    : crtEmpresa === 3
+      ? 'Regime Normal'
+      : 'Simples Nacional'
 
   // Estados de dados e filtros
   const [carregando, setCarregando] = useState(true)

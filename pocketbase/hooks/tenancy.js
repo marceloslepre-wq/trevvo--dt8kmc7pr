@@ -516,6 +516,9 @@ routerAdd(
         municipio: e.getString('municipio') || '',
         ativo: e.getBool('ativo'),
         assinante_id: e.getString('assinante_id') || '',
+        crt: e.getInt('crt') || 0,
+        regime_apuracao: e.getString('regime_apuracao') || '',
+        regime_pis_cofins: e.getString('regime_pis_cofins') || '',
       }))
 
       return c.json(200, {

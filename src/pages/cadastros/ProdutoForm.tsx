@@ -96,8 +96,14 @@ export const ProdutoForm: React.FC = () => {
 
   // Determinar regime da empresa ativa
   const crtEmpresaAtiva = empresaAtiva?.crt ?? 1
-  const regimeEmpresaAtiva: 'Simples Nacional' | 'Regime Normal' =
-    crtEmpresaAtiva === 3 ? 'Regime Normal' : 'Simples Nacional'
+  const regimeEmpresaAtiva: 'Simples Nacional' | 'Regime Normal' = empresaAtiva?.regime_apuracao
+    ? empresaAtiva.regime_apuracao === 'Lucro Real' ||
+      empresaAtiva.regime_apuracao === 'Lucro Presumido'
+      ? 'Regime Normal'
+      : 'Simples Nacional'
+    : crtEmpresaAtiva === 3
+      ? 'Regime Normal'
+      : 'Simples Nacional'
 
   const podeSalvar = ehEdicao ? pode('produtos', 'editar') : pode('produtos', 'criar')
 
