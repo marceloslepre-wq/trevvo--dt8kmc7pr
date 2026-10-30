@@ -3556,6 +3556,50 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.168** — Perfil Tributário Completo de Teste "Teste Normal 00" para HOSPITAL HOME (Migration 0095):
+
+1. **Criação do Perfil Tributário Completo de Teste (Migration 0095):**
+   - Migration 0095 idempotente criando/atualizando o perfil `Teste Normal 00` para o assinante `HOSPITAL HOME` (`wqxiw7olvkup3sm`):
+     - **Cabeçalho do Perfil:**
+       - Nome: `Teste Normal 00`
+       - Descrição: `Perfil de teste, Lucro Real, mercadoria importada adquirida no mercado interno, sem ST`
+       - Regime: `Regime Normal` (usa CST)
+       - Origem padrão: `2` (Estrangeira - adquirida no mercado interno)
+       - Tipo de item SPED padrão: `00` (Mercadoria para revenda)
+       - cBenef: `""` (vazio)
+       - Situação: `ativo = true`
+       - Assinante: `wqxiw7olvkup3sm` (`HOSPITAL HOME`)
+     - **Campos Iguais nos 8 Cenários:**
+       - Modalidade BC ICMS: `3` (Valor da operação)
+       - Alíquota FCP: `null` (0)
+       - Diferimento ICMS: `null` (0)
+       - Enquadramento IPI: `999`
+       - Alíquota IPI: `null` (0)
+       - CST IBS/CBS: `000` (Tributação integral)
+       - cClassTrib: `000001` (Situações tributadas integralmente pelo IBS e CBS)
+       - Redução IBS/CBS: `null` (0)
+       - Alíquota IBS Estadual (`aliquota_ibs_uf`): `0.1`
+       - Alíquota IBS Municipal (`aliquota_ibs_municipio`): `0`
+       - Alíquota CBS (`aliquota_cbs`): `0.9`
+       - Observação fiscal: `""` (vazio)
+     - **Configuração dos 8 Cenários Gravados no Banco Vivo:**
+       1. `VENDA_INTERNA_CONTRIBUINTE`: CFOP `5102` (id `7a5xo6gm918mtl9`), CST ICMS `00`, Aliq ICMS `17%`, CST PIS/COFINS `01`, Aliq PIS `1.65%`, Aliq COFINS `7.6%`, CST IPI `99`
+       2. `VENDA_INTERNA_CONSUMIDOR`: CFOP `5102` (id `7a5xo6gm918mtl9`), CST ICMS `00`, Aliq ICMS `17%`, CST PIS/COFINS `01`, Aliq PIS `1.65%`, Aliq COFINS `7.6%`, CST IPI `99`
+       3. `VENDA_INTERESTADUAL_CONTRIBUINTE`: CFOP `6102` (id `fprn4zrlwrmwh0x`), CST ICMS `00`, Aliq ICMS `4%`, CST PIS/COFINS `01`, Aliq PIS `1.65%`, Aliq COFINS `7.6%`, CST IPI `99`
+       4. `VENDA_INTERESTADUAL_CONSUMIDOR`: CFOP `6108` (id `yaxu8lsceli24is`), CST ICMS `00`, Aliq ICMS `4%`, CST PIS/COFINS `01`, Aliq PIS `1.65%`, Aliq COFINS `7.6%`, CST IPI `99`
+       5. `DEVOLUCAO_COMPRA`: CFOP `5202` (id `lag9w7o536u0f5l`), CST ICMS `00`, Aliq ICMS `17%`, CST PIS/COFINS `49`, Aliq PIS `0%`, Aliq COFINS `0%`, CST IPI `99`
+       6. `TRANSFERENCIA`: CFOP `5152` (id `wemr60mhlpe8jjv`), CST ICMS `41`, Aliq ICMS `null` (0), CST PIS/COFINS `49`, Aliq PIS `0%`, Aliq COFINS `0%`, CST IPI `99`
+       7. `COMPRA_INTERNA`: CFOP `1102` (id `5hca13gg307sj3d`), CST ICMS `00`, Aliq ICMS `17%`, CST PIS/COFINS `50`, Aliq PIS `1.65%`, Aliq COFINS `7.6%`, CST IPI `49`
+       8. `COMPRA_INTERESTADUAL`: CFOP `2102` (id `j7ikbotbsxld8vi`), CST ICMS `00`, Aliq ICMS `4%`, CST PIS/COFINS `50`, Aliq PIS `1.65%`, Aliq COFINS `7.6%`, CST IPI `49`
+
+2. **Idempotência e Segurança:**
+   - A migration busca os registros pelo par `(assinante_id, nome)` e atualiza se já existirem, garantindo idempotência total sem duplicidade.
+   - IDs de CFOP consultados e validados diretamente na tabela global `cfop`.
+   - Códigos fiscais validados na tabela global `tabelas_fiscais_codigos` (`CST_ICMS`, `CST_PIS_COFINS`, `CST_IPI`, `MOD_BC_ICMS`, `CST_IBS_CBS`, `CCLASSTRIB`, `ORIGEM`, `TIPO_ITEM_SPED`).
+   - Zero "Invalid module" no log do backend e isolamento estrito preservado.
+
+---
+
 **Versão 0.0.167** — Correção de Criação e Atualização de Perfis Tributários e Regras por NCM (Tenancy no CREATE e Sanitização no UPDATE):
 
 1. **Inclusão de `assinante_id` no Cadastro de Perfis Tributários (`src/services/perfisTributarios.ts`):**
