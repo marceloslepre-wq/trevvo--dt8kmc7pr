@@ -7,9 +7,11 @@ import {
 import {
   validarGTIN,
   salvarProdutoFornecedor,
+  salvarProduto,
   sugerirPrecoVenda,
   Produto,
 } from '@/services/produtos'
+import { obterAssinanteIdAtivo } from '@/services/tenancyHelper'
 import { registrarAuditoria } from '@/services/auditoria'
 import { sugerirTributacao, SugestaoFiscalResultado } from '@/services/motorFiscal'
 import { obterConfigFiscalEmpresa } from '@/services/configFiscal'
@@ -157,6 +159,7 @@ export async function processarCadastroAutomaticoProdutos(params: {
 
   const todasUnidades = await listarTodasUnidadesMedidaAtivas()
   const user = pb.authStore.record
+  const assinanteIdAtivo = obterAssinanteIdAtivo()
 
   for (const itemInput of itensParaProcessar) {
     const { itemNota, criar, vincularProdutoId, fatorConversao, unidadeVendaId } = itemInput
@@ -284,6 +287,7 @@ export async function processarCadastroAutomaticoProdutos(params: {
         fiscal_revisado: false,
         observacoes: `Criado automaticamente pela NF ${notaInfo.modelo || '55'}/${notaInfo.serie || '1'}/${notaInfo.numero || ''} de ${notaInfo.fornecedorNome || ''} em ${notaInfo.dataEmissao || new Date().toLocaleDateString('pt-BR')}`,
         ativo: true,
+        assinante_id: assinanteIdAtivo || undefined,
         created_by: user?.id || null,
         updated_by: user?.id || null,
       }
@@ -314,8 +318,8 @@ export async function processarCadastroAutomaticoProdutos(params: {
         Object.assign(payloadProduto, sugestao.campos)
       }
 
-      // Criação do produto
-      const produtoCriado = await pb.collection('produtos').create<Produto>(payloadProduto)
+      // Criação do produto utilizando salvarProduto para centralizar numeração e assinante_id
+      const produtoCriado = await salvarProduto(payloadProduto as Partial<Produto>)
 
       // Gravar produtos_fornecedores
       if (fornecedorId) {

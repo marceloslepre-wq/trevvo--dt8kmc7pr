@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
+import { obterAssinanteIdAtivo, sanitizarPayloadUpdate } from '@/services/tenancyHelper'
 
 export type TipoProduto = 'Produto' | 'Serviço' | 'Kit'
 
@@ -7,6 +8,7 @@ export interface Produto {
   id: string
   ativo: boolean
   codigo: number
+  assinante_id?: string
   tipo: TipoProduto
   descricao: string
   descricao_reduzida?: string
@@ -1151,35 +1153,65 @@ export async function salvarProduto(
     updated_by: pb.authStore.record?.id || null,
   }
 
+  const assinanteIdAtivo = obterAssinanteIdAtivo(dados.assinante_id)
+
   let recordFinal: Produto
 
   if (temArquivos) {
-    const formData = new FormData()
-    Object.entries(payload).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) {
-        formData.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v))
-      }
-    })
-    if (dados.fotoArquivo) {
-      formData.append('foto', dados.fotoArquivo)
-    }
-    if (dados.fotosAdicionaisArquivos && dados.fotosAdicionaisArquivos.length > 0) {
-      dados.fotosAdicionaisArquivos.forEach((file) => {
-        formData.append('fotos_adicionais', file)
-      })
-    }
-
     if (ehEdicao && dados.id) {
+      // No UPDATE: sanitizar e remover assinante_id e campos de sistema
+      const payloadLimpo = sanitizarPayloadUpdate(payload)
+      const formData = new FormData()
+      Object.entries(payloadLimpo).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) {
+          formData.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v))
+        }
+      })
+      if (dados.fotoArquivo) {
+        formData.append('foto', dados.fotoArquivo)
+      }
+      if (dados.fotosAdicionaisArquivos && dados.fotosAdicionaisArquivos.length > 0) {
+        dados.fotosAdicionaisArquivos.forEach((file) => {
+          formData.append('fotos_adicionais', file)
+        })
+      }
       recordFinal = await pb.collection('produtos').update<Produto>(dados.id, formData)
     } else {
-      formData.append('created_by', pb.authStore.record?.id || '')
+      // No CREATE: injetar assinante_id obrigatório
+      if (assinanteIdAtivo) {
+        payload.assinante_id = assinanteIdAtivo
+      }
+      payload.created_by = pb.authStore.record?.id || null
+      delete payload.id
+
+      const formData = new FormData()
+      Object.entries(payload).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) {
+          formData.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v))
+        }
+      })
+      if (dados.fotoArquivo) {
+        formData.append('foto', dados.fotoArquivo)
+      }
+      if (dados.fotosAdicionaisArquivos && dados.fotosAdicionaisArquivos.length > 0) {
+        dados.fotosAdicionaisArquivos.forEach((file) => {
+          formData.append('fotos_adicionais', file)
+        })
+      }
       recordFinal = await pb.collection('produtos').create<Produto>(formData)
     }
   } else {
     if (ehEdicao && dados.id) {
-      recordFinal = await pb.collection('produtos').update<Produto>(dados.id, payload)
+      // No UPDATE: sanitizar e remover assinante_id e campos de sistema
+      const payloadLimpo = sanitizarPayloadUpdate(payload)
+      recordFinal = await pb.collection('produtos').update<Produto>(dados.id, payloadLimpo)
     } else {
+      // No CREATE: injetar assinante_id obrigatório
+      if (assinanteIdAtivo) {
+        payload.assinante_id = assinanteIdAtivo
+      }
       payload.created_by = pb.authStore.record?.id || null
+      delete payload.id
       recordFinal = await pb.collection('produtos').create<Produto>(payload)
     }
   }
@@ -1256,6 +1288,7 @@ export async function duplicarProduto(produtoIdOrigem: string): Promise<Produto>
     ...origem,
     id: undefined,
     codigo: undefined,
+    assinante_id: origem.assinante_id,
     descricao: `${origem.descricao} (Cópia)`.slice(0, 120),
     descricao_reduzida: origem.descricao_reduzida
       ? `${origem.descricao_reduzida} (Cópia)`.slice(0, 40)

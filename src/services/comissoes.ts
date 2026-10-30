@@ -1,4 +1,5 @@
 import pb from '@/lib/pocketbase/client'
+import { salvarFornecedor } from '@/services/fornecedores'
 
 export interface ItemComissaoVendedor {
   vendedor_id: string
@@ -269,15 +270,17 @@ export async function gerarContaPagarComissao(params: {
   }
 
   if (!fornecedorId) {
-    // Criar fornecedor
-    const novoForn = await pb.collection('fornecedores').create({
-      nome: nomeVendedor,
+    // Criar fornecedor passando pelo serviço corrigido com assinante_id
+    const tipoPessoa =
+      cpfVendedor && cpfVendedor.replace(/\D/g, '').length > 11 ? 'Jurídica' : 'Física'
+    const novoForn = await salvarFornecedor({
+      nome_fantasia: nomeVendedor,
       razao_social: nomeVendedor,
-      tipo_pessoa: cpfVendedor && cpfVendedor.replace(/\D/g, '').length > 11 ? 'PJ' : 'PF',
+      tipo_pessoa: tipoPessoa,
       cpf_cnpj: cpfVendedor || undefined,
       email: emailVendedor || undefined,
       ativo: true,
-      observacao: `Fornecedor criado automaticamente para pagamento de comissão (Usuário ID: ${vendedor_id})`,
+      observacoes: `Fornecedor criado automaticamente para pagamento de comissão (Usuário ID: ${vendedor_id})`,
     })
     fornecedorId = novoForn.id
   }
