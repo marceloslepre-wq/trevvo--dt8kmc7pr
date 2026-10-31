@@ -3556,6 +3556,20 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.194** — Eliminação de `require` em `fiscal_documentos_operacoes.js` (Montar Rascunho Fiscal):
+
+1. **Substituição de `require` por Funções Locais no Hook de Montagem Fiscal (`pocketbase/hooks/fiscal_documentos_operacoes.js`):**
+   - No ambiente Skip Cloud / PocketBase JSVM (Goja isolate pool), chamadas de `require("${__hooks}/tenancy.js")` dentro dos callbacks de rotas falham com `Invalid module` → HTTP 400 genérico ao acionar "Pré-visualizar impostos" (`POST /backend/v1/fiscal/montar-rascunho`).
+   - Removido o `require("${__hooks}/tenancy.js")` interno do callback da rota `POST /backend/v1/fiscal/montar-rascunho`.
+   - Incorporadas as funções locais de governança multi-tenant (`eMaster`, `empresasDoUsuario`, `exigirEmpresaDoUsuario`) diretamente no escopo do callback.
+   - O `routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', ...)` foi rigorosamente preservado no nível superior do arquivo (nunca dentro de funções ou callbacks).
+   - O callback foi totalmente envolvido em `try / catch` com registro explícito em log (`console.log('[fiscal/montar-rascunho] Erro: ...')`) e devolução de mensagem clara e real em português para o cliente HTTP em caso de erro.
+   - Preservada a ordenação real dos itens da venda por `item,created` (corrigida na v0.0.193).
+   - Respeitada a leitura dos campos reais das coleções: `vendas_itens` (campos `item`, `produto_id`, `quantidade`, `preco_unitario`, `desconto_valor`, etc.), `produtos`, `perfis_tributarios_regras` (suporte a percentuais de redução de BC e MVA com fallbacks), `empresas` e `clientes`.
+   - Backend reimplantado com sucesso (`deploy_backend`) e logs de hooks/requests limpos sem erros `Invalid module`.
+
+---
+
 **Versão 0.0.193** — Correção de Ordenação de Itens da Venda (`vendas_itens` ordenado por `item,created`):
 
 1. **Correção do Campo de Ordenação em `pocketbase/hooks/vendas_operacoes.js` e `pocketbase/hooks/fiscal_documentos_operacoes.js`:**

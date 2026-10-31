@@ -14,79 +14,226 @@
  */
 
 routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
-  const authRecord = c.auth || c.get('authRecord')
-  if (!authRecord) {
-    return c.json(401, {
-      sucesso: false,
-      message: 'Acesso negado: autenticação obrigatória.',
-    })
-  }
-
-  const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-  const userId = authRecord.id
-  const data = c.requestInfo().body || {}
-  const origem = data.origem || 'Venda' // 'Venda' | 'Devolução de venda' | 'Devolução de compra'
-  const idOrigem = data.id || data.venda_id
-  const modelo = String(data.modelo || '55') // '55' ou '65'
-
-  if (!idOrigem) {
-    return c.json(400, {
-      sucesso: false,
-      message: 'O parâmetro id (ou venda_id) é obrigatório.',
-    })
-  }
-
-  // Funções auxiliares inline para garantir escopo dentro do callback JSVM
-  const round2 = (val) => Math.round((Number(val) || 0) * 100) / 100
-
-  const calcularAliquotaInterestadualBackend = (ufOrigem, ufDestino, origemMercadoria) => {
-    const origemStr = String(origemMercadoria || '0')
-    if (['1', '2', '3', '8'].includes(origemStr)) {
-      return 4
-    }
-    const sulSudeste = ['SP', 'RJ', 'MG', 'RS', 'SC', 'PR']
-    const origemSulSudeste = sulSudeste.includes(ufOrigem)
-    const destinoSulSudeste = sulSudeste.includes(ufDestino)
-    if (origemSulSudeste && !destinoSulSudeste) {
-      return 7
-    }
-    return 12
-  }
-
-  const converterCstParaCsosn = (cst) => {
-    const mapa = {
-      '00': '102',
-      10: '201',
-      20: '102',
-      30: '203',
-      40: '400',
-      41: '400',
-      50: '400',
-      60: '500',
-      70: '201',
-      90: '900',
-    }
-    return mapa[cst] || '102'
-  }
-
-  const converterCsosnParaCst = (csosn) => {
-    const mapa = {
-      101: '00',
-      102: '00',
-      103: '40',
-      201: '10',
-      202: '30',
-      203: '30',
-      300: '40',
-      400: '40',
-      500: '60',
-      900: '90',
-    }
-    return mapa[csosn] || '00'
-  }
-
   try {
+    const authRecord = c.auth || c.get('authRecord')
+    if (!authRecord) {
+      return c.json(401, {
+        sucesso: false,
+        message: 'Acesso negado: autenticação obrigatória.',
+      })
+    }
+
+    // -------------------------------------------------------------
+    // Funções locais de tenancy e governança multi-tenant (evita require)
+    // -------------------------------------------------------------
+    function eMaster(auth) {
+      if (!auth) return false
+      try {
+        const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+        return !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
+
+    function empresasDoUsuario(auth) {
+      if (!auth) return []
+
+      let usuarioRec = null
+      try {
+        const uRecs = $app.findRecordsByFilter(
+          'usuarios',
+          "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (uRecs && uRecs.length > 0) {
+          usuarioRec = uRecs[0]
+        }
+      } catch (_) {}
+
+      if (!usuarioRec && auth.getString && auth.getString('email')) {
+        try {
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "email = '" + auth.getString('email') + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (uRecs && uRecs.length > 0) {
+            usuarioRec = uRecs[0]
+          }
+        } catch (_) {}
+      }
+
+      if (!usuarioRec) return []
+
+      let assinanteId = usuarioRec.getString('assinante_id')
+      if (!assinanteId) return []
+
+      function obterAssinanteImpersonadoLocal(userId, appInstance) {
+        const app = appInstance || $app
+        if (!userId) return null
+        try {
+          if (!app.hasTable('master_impersonacoes')) return null
+          const recs = app.findRecordsByFilter(
+            'master_impersonacoes',
+            "user_id = '" + userId + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (recs && recs.length > 0) {
+            return recs[0].getString('assinante_id') || null
+          }
+        } catch (_) {}
+        return null
+      }
+
+      const ehMasterUser = eMaster(auth)
+      if (ehMasterUser) {
+        try {
+          const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
+          if (impersonadoId) {
+            assinanteId = impersonadoId
+          }
+        } catch (_) {}
+      }
+
+      let isAdmin = false
+      const perfilId = usuarioRec.getString('perfil_id')
+      if (perfilId) {
+        try {
+          const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+          if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+            isAdmin = true
+          }
+        } catch (_) {}
+      }
+
+      if (isAdmin || ehMasterUser) {
+        try {
+          const empresas = $app.findRecordsByFilter(
+            'empresas',
+            "assinante_id = '" + assinanteId + "' && ativo = true",
+            'codigo',
+            500,
+            0,
+          )
+          return empresas
+        } catch (_) {
+          return []
+        }
+      }
+
+      const permitidosIds = new Set()
+      const padraoId = usuarioRec.getString('empresa_padrao_id')
+      if (padraoId) permitidosIds.add(padraoId)
+
+      try {
+        const vinculos = $app.findRecordsByFilter(
+          'usuarios_empresas',
+          "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+          '',
+          500,
+          0,
+        )
+        for (let i = 0; i < vinculos.length; i++) {
+          const eId = vinculos[i].getString('empresa_id')
+          if (eId) permitidosIds.add(eId)
+        }
+      } catch (_) {}
+
+      const empresas = []
+      permitidosIds.forEach((eId) => {
+        try {
+          const emp = $app.findRecordById('empresas', eId)
+          if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+            empresas.push(emp)
+          }
+        } catch (_) {}
+      })
+
+      empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+      return empresas
+    }
+
+    function exigirEmpresaDoUsuario(auth, empresaId) {
+      if (!empresaId) {
+        throw new Error('ID da empresa é obrigatório.')
+      }
+      const permitidas = empresasDoUsuario(auth)
+      const encontrada = permitidas.find((e) => e.id === empresaId)
+      if (!encontrada) {
+        throw new Error('Acesso negado à empresa especificada para este usuário/assinante.')
+      }
+      return encontrada
+    }
+
+    const userId = authRecord.id
+    const data = c.requestInfo().body || {}
+    const origem = data.origem || 'Venda' // 'Venda' | 'Devolução de venda' | 'Devolução de compra'
+    const idOrigem = data.id || data.venda_id
+    const modelo = String(data.modelo || '55') // '55' ou '65'
+
+    if (!idOrigem) {
+      return c.json(400, {
+        sucesso: false,
+        message: 'O parâmetro id (ou venda_id) é obrigatório.',
+      })
+    }
+
+    // Funções auxiliares inline para garantir escopo dentro do callback JSVM
+    const round2 = (val) => Math.round((Number(val) || 0) * 100) / 100
+
+    const calcularAliquotaInterestadualBackend = (ufOrigem, ufDestino, origemMercadoria) => {
+      const origemStr = String(origemMercadoria || '0')
+      if (['1', '2', '3', '8'].includes(origemStr)) {
+        return 4
+      }
+      const sulSudeste = ['SP', 'RJ', 'MG', 'RS', 'SC', 'PR']
+      const origemSulSudeste = sulSudeste.includes(ufOrigem)
+      const destinoSulSudeste = sulSudeste.includes(ufDestino)
+      if (origemSulSudeste && !destinoSulSudeste) {
+        return 7
+      }
+      return 12
+    }
+
+    const converterCstParaCsosn = (cst) => {
+      const mapa = {
+        '00': '102',
+        10: '201',
+        20: '102',
+        30: '203',
+        40: '400',
+        41: '400',
+        50: '400',
+        60: '500',
+        70: '201',
+        90: '900',
+      }
+      return mapa[cst] || '102'
+    }
+
+    const converterCsosnParaCst = (csosn) => {
+      const mapa = {
+        101: '00',
+        102: '00',
+        103: '40',
+        201: '10',
+        202: '30',
+        203: '30',
+        300: '40',
+        400: '40',
+        500: '60',
+        900: '90',
+      }
+      return mapa[csosn] || '00'
+    }
+
     let resultado = null
 
     $app.runInTransaction((txApp) => {
@@ -546,7 +693,11 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
           itRec.getString('cst_icms') || (regraRec ? regraRec.getString('cst_icms') : '')
         let csosn = itRec.getString('csosn') || (regraRec ? regraRec.getString('csosn') : '')
         const modBcIcms = regraRec ? regraRec.getString('mod_bc_icms') || '3' : '3'
-        const reducaoBcIcms = regraRec ? regraRec.getFloat('reducao_bc_icms') || 0 : 0
+        const reducaoBcIcms = regraRec
+          ? regraRec.getFloat('reducao_bc_icms_percentual') ||
+            regraRec.getFloat('reducao_bc_icms') ||
+            0
+          : 0
         let aliqIcms =
           itRec.getFloat('aliquota_icms') ||
           (regraRec ? regraRec.getFloat('aliquota_icms') || 0 : 0)
@@ -554,9 +705,15 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
 
         // ST
         const modBcIcmsSt = regraRec ? regraRec.getString('mod_bc_icms_st') || '4' : '4'
-        const mva = regraRec ? regraRec.getFloat('mva') || 0 : 0
+        const mva = regraRec
+          ? regraRec.getFloat('mva_percentual') || regraRec.getFloat('mva') || 0
+          : 0
         const aliqIcmsSt = regraRec ? regraRec.getFloat('aliquota_icms_st') || 0 : 0
-        const reducaoBcIcmsSt = regraRec ? regraRec.getFloat('reducao_bc_icms_st') || 0 : 0
+        const reducaoBcIcmsSt = regraRec
+          ? regraRec.getFloat('reducao_bc_icms_st_percentual') ||
+            regraRec.getFloat('reducao_bc_icms_st') ||
+            0
+          : 0
 
         // IPI
         const cstIpi = regraRec ? regraRec.getString('cst_ipi') : ''
@@ -733,7 +890,7 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
           try {
             const mats = txApp.findRecordsByFilter(
               'icms_aliquotas_uf',
-              `uf_origem = '${ufEmitente}' && uf_destino = '${destinatarioUf}' && ativo = true`,
+              `uf = '${destinatarioUf}' && ativo = true`,
               '',
               1,
               0,
@@ -743,14 +900,32 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
 
           if (!matIcmsDestino) {
             pendencias.push(
-              `Não foi encontrada a alíquota de ICMS na matriz (icms_aliquotas_uf) para ${ufEmitente} -> ${destinatarioUf}.`,
+              `Não foi encontrada a alíquota de ICMS interna na tabela icms_aliquotas_uf para o destino ${destinatarioUf}.`,
             )
+            aliqInternaUfDest = 18
+            aliqFcpUfDest = 0
           } else {
             aliqInternaUfDest =
+              matIcmsDestino.getFloat('aliquota_interna') ||
               matIcmsDestino.getFloat('aliquota_interna_destino') ||
               matIcmsDestino.getFloat('aliquota') ||
               18
             aliqFcpUfDest = matIcmsDestino.getFloat('aliquota_fcp') || 0
+          }
+
+          if (!aliqInterestadual) {
+            try {
+              const matsInter = txApp.findRecordsByFilter(
+                'icms_interestadual',
+                `uf_origem = '${ufEmitente}' && uf_destino = '${destinatarioUf}' && ativo = true`,
+                '',
+                1,
+                0,
+              )
+              if (matsInter.length > 0) {
+                aliqInterestadual = matsInter[0].getFloat('aliquota') || aliqInterestadual
+              }
+            } catch (_) {}
           }
 
           baseIcmsUfDest = valorBaseInicial
@@ -1428,9 +1603,11 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       avisos: resultado.avisos,
     })
   } catch (err) {
+    const msg = err && err.message ? err.message : String(err)
+    console.log('[fiscal/montar-rascunho] Erro: ' + msg)
     return c.json(400, {
       sucesso: false,
-      message: err.message || 'Falha ao montar documento fiscal.',
+      message: msg || 'Falha ao montar documento fiscal.',
     })
   }
 })
