@@ -3556,6 +3556,14 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.191** — Eliminação de `require` em `numeracao_movimentos.js` (Correção do 400 em "Salvar como Pedido"):
+
+1. **Substituição de `require` por Funções Locais nos Callbacks de Movimentos (`pocketbase/hooks/numeracao_movimentos.js`):**
+   - A numeração de vendas via navegador deixou de usar `require` dentro do callback (`Invalid module` → 400 no "Salvar como Pedido").
+   - A função `proximoNumero` foi copiada como função local no início de cada um dos 4 callbacks (`vendas`, `inventarios`, `pedidos_compra` e `transferencias`), mantendo a busca atômica na coleção `sequencias`, mesma semente e `runInTransaction`.
+
+---
+
 **Versão 0.0.190** — Eliminação de `require` nos Callbacks de NF-e (`fiscal_nfe_operacoes.js`):
 
 1. **Substituição de `require` por Funções Locais em `pocketbase/hooks/fiscal_nfe_operacoes.js`:**
