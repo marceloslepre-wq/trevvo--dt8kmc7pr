@@ -394,7 +394,7 @@ routerAdd(
         const itens = txApp.findRecordsByFilter(
           'vendas_itens',
           `venda_id = '${vendaId}' && ativo = true`,
-          'sequencial,created',
+          'item,created',
         )
 
         if (!itens || itens.length === 0) {

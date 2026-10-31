@@ -158,7 +158,7 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         itensOrigem = txApp.findRecordsByFilter(
           'vendas_itens',
           `venda_id = '${idOrigem}' && ativo = true`,
-          'sequencial,created',
+          'item,created',
         )
         if (!itensOrigem || itensOrigem.length === 0) {
           throw new Error('O registro não possui itens cadastrados.')

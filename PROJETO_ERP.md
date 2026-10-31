@@ -3556,6 +3556,18 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.193** — Correção de Ordenação de Itens da Venda (`vendas_itens` ordenado por `item,created`):
+
+1. **Correção do Campo de Ordenação em `pocketbase/hooks/vendas_operacoes.js` e `pocketbase/hooks/fiscal_documentos_operacoes.js`:**
+   - A coleção `vendas_itens` possui a coluna numérica `item` (número sequencial do item na venda) e não possui o campo `sequencial`. Consultas anteriores ordenando por `sequencial,created` causavam erro no SQLite/PocketBase: `400 {"sucesso":false,"message":"invalid sort field \"sequencial\""}` ao executar `POST /backend/v1/vendas/finalizar` ou ao montar rascunho fiscal.
+   - Substituída a ordenação de `sequencial,created` para `item,created` nos dois pontos:
+     - `pocketbase/hooks/vendas_operacoes.js`: linha 397 (busca de itens da venda na finalização).
+     - `pocketbase/hooks/fiscal_documentos_operacoes.js`: linha 161 (busca de itens da venda na montagem do rascunho fiscal).
+   - Preservados todos os `routerAdd` no nível superior e a integridade de todas as regras de negócio e numeração.
+   - Deploy do backend validado com sucesso (`deploy_backend`) e logs de hooks/requests limpos sem erros.
+
+---
+
 **Versão 0.0.192** — Eliminação de `require` em `vendas_operacoes.js` e Validação Clara de Conta Financeira Padrão:
 
 1. **Substituição de `require` por Funções Locais nos Callbacks de Operações de Venda (`pocketbase/hooks/vendas_operacoes.js`):**
