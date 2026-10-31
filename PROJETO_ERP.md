@@ -3556,6 +3556,14 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.195** — Eliminação de Loopback em `emitir-nfe-venda` (Reutilização de Rascunho e Montagem Local) e Destinatário no Modal:
+
+- No hook `pocketbase/hooks/fiscal_nfe_operacoes.js` (`POST /backend/v1/fiscal/emitir-nfe-venda`), eliminação da chamada de loopback `$http.send` para `127.0.0.1:8090/backend/v1/fiscal/montar-rascunho` que causava timeout de 30s e erro "Não foi possível estruturar os dados fiscais da venda".
+- Substituição por busca e reaproveitamento do `documentos_fiscais` mais recente em status Rascunho, Processando ou Rejeitada com `json_enviado` preenchido (mesma referência e documento, sem gerar nova numeração), ou montagem local transacional dos dados fiscais com base nas tabelas reais (`vendas_itens` ordenado por `item,created`).
+- No modal de conferência `src/components/fiscal/ModalEmitirNFe.tsx`, exibição correta dos dados reais do destinatário priorizando o rascunho (`destinatario_nome`, `destinatario_cpf_cnpj`, `destinatario_ie`) e suporte aos dados da venda / `expand.cliente_id`, sem fallback indevido para "Consumidor não identificado".
+
+---
+
 **Versão 0.0.194** — Eliminação de `require` em `fiscal_documentos_operacoes.js` (Montar Rascunho Fiscal):
 
 1. **Substituição de `require` por Funções Locais no Hook de Montagem Fiscal (`pocketbase/hooks/fiscal_documentos_operacoes.js`):**

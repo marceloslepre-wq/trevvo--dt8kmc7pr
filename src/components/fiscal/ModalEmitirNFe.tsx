@@ -29,6 +29,7 @@ import { listarIntermediadores, Intermediador } from '@/services/intermediadores
 import { listarTodosFornecedoresAtivos, Fornecedor } from '@/services/fornecedores'
 import { obterConfigFiscalEmpresa } from '@/services/configEmissaoFiscal'
 import { obterEmpresaPorId } from '@/services/empresas'
+import { formatarCPF, formatarCNPJ } from '@/lib/validacoes'
 import pb from '@/lib/pocketbase/client'
 import {
   FileText,
@@ -158,7 +159,8 @@ export function ModalEmitirNFe({ open, onOpenChange, venda, onSucesso }: ModalEm
         }
 
         // Calcular destino e consumidor
-        const clienteUf = venda?.cliente_uf || venda?.endereco_entrega_uf || ''
+        const clienteUf =
+          venda?.cliente_uf || venda?.endereco_entrega_uf || venda?.expand?.cliente_id?.uf || ''
         if (!clienteUf || clienteUf.toUpperCase() === ufEmitente.toUpperCase()) {
           setLocalDestinoTexto('1 - Operação Interna (mesma UF)')
         } else if (clienteUf.toUpperCase() === 'EX') {
@@ -167,8 +169,18 @@ export function ModalEmitirNFe({ open, onOpenChange, venda, onSucesso }: ModalEm
           setLocalDestinoTexto(`2 - Operação Interestadual (${ufEmitente} -> ${clienteUf})`)
         }
 
-        const cpfCnpjCliente = (venda.cliente_cpf_cnpj || '').replace(/\D/g, '')
-        const ieCliente = (venda.cliente_ie || venda.cliente_inscricao_estadual || '')
+        const cpfCnpjCliente = (
+          venda?.cliente_cpf_cnpj ||
+          venda?.cpf_cnpj_consumidor ||
+          venda?.expand?.cliente_id?.cpf_cnpj ||
+          ''
+        ).replace(/\D/g, '')
+        const ieCliente = (
+          venda?.cliente_ie ||
+          venda?.cliente_inscricao_estadual ||
+          venda?.expand?.cliente_id?.inscricao_estadual ||
+          ''
+        )
           .trim()
           .toUpperCase()
         const isConsumidor = cpfCnpjCliente.length === 11 || !ieCliente || ieCliente === 'ISENTO'
@@ -515,46 +527,75 @@ export function ModalEmitirNFe({ open, onOpenChange, venda, onSucesso }: ModalEm
             </div>
 
             {/* Cartão de Resumo do Destinatário */}
-            <Card className="bg-muted/30">
-              <CardHeader className="py-2 px-4 border-b">
-                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5" />
-                  Destinatário da Venda
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="py-3 px-4 text-xs space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Nome / Razão Social:</span>
-                  <span className="font-semibold">
-                    {venda?.cliente_nome || 'Consumidor não identificado'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">CPF / CNPJ:</span>
-                  <span className="font-mono">{venda?.cliente_cpf_cnpj || 'Não informado'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Inscrição Estadual:</span>
-                  <span>
-                    {venda?.cliente_ie ||
-                      venda?.cliente_inscricao_estadual ||
-                      'ISENTO / Não Contribuinte'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Local de Destino (SEFAZ):</span>
-                  <Badge variant="outline" className="text-xs">
-                    {localDestinoTexto}
-                  </Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Consumidor Final:</span>
-                  <Badge variant="outline" className="text-xs">
-                    {consumidorFinalTexto}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+            {(() => {
+              const destNome =
+                doc?.destinatario_nome ||
+                venda?.expand?.cliente_id?.nome_razao_social ||
+                venda?.expand?.cliente_id?.nome ||
+                venda?.cliente_nome ||
+                'Consumidor não identificado'
+
+              const rawCpfCnpj = (
+                doc?.destinatario_cpf_cnpj ||
+                venda?.cpf_cnpj_consumidor ||
+                venda?.expand?.cliente_id?.cpf_cnpj ||
+                venda?.cliente_cpf_cnpj ||
+                ''
+              ).replace(/\D/g, '')
+
+              let cpfCnpjFormatado = 'Não informado'
+              if (rawCpfCnpj.length === 11) {
+                cpfCnpjFormatado = formatarCPF(rawCpfCnpj)
+              } else if (rawCpfCnpj.length === 14) {
+                cpfCnpjFormatado = formatarCNPJ(rawCpfCnpj)
+              } else if (rawCpfCnpj.length > 0) {
+                cpfCnpjFormatado = rawCpfCnpj
+              }
+
+              const destIe =
+                doc?.destinatario_ie ||
+                venda?.expand?.cliente_id?.inscricao_estadual ||
+                venda?.cliente_ie ||
+                venda?.cliente_inscricao_estadual ||
+                'ISENTO / Não Contribuinte'
+
+              return (
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-2 px-4 border-b">
+                    <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <Building2 className="h-3.5 w-3.5" />
+                      Destinatário da Venda
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="py-3 px-4 text-xs space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Nome / Razão Social:</span>
+                      <span className="font-semibold">{destNome}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">CPF / CNPJ:</span>
+                      <span className="font-mono">{cpfCnpjFormatado}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Inscrição Estadual:</span>
+                      <span>{destIe}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Local de Destino (SEFAZ):</span>
+                      <Badge variant="outline" className="text-xs">
+                        {localDestinoTexto}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Consumidor Final:</span>
+                      <Badge variant="outline" className="text-xs">
+                        {consumidorFinalTexto}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })()}
 
             <div className="space-y-1.5">
               <Label htmlFor="info-compl">
