@@ -17,7 +17,6 @@ routerAdd(
   'POST',
   '/backend/v1/sped/gerar',
   function (c) {
-    const { SpedGerador } = require(`${__hooks}/sped/gerador.js`)
     try {
       var authRecord = c.auth || c.get('authRecord')
       if (!authRecord) {
@@ -4448,7 +4447,7 @@ routerAdd(
 
       // 5. Monta o arquivo SPED através do motor SpedGerador
       try {
-        var resultado = SpedGerador.gerarArquivoCompleto({
+        var resultado = SpedGeradorLocal.gerarArquivoCompleto({
           empresa: empresa,
           configSped: configSped,
           periodo: periodo,
