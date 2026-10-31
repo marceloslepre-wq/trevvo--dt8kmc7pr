@@ -24,7 +24,7 @@ import {
   CredenciaisFiscaisResponse,
   FocusHookItem,
 } from '@/services/fiscalIntegracao'
-import { listarEmpresasAtivas, Empresa } from '@/services/empresas'
+import { listarEmpresasAtivas, obterEmpresaPorId, Empresa } from '@/services/empresas'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -73,6 +73,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
   const { administrador } = usePermissoes()
   const { toast } = useToast()
 
+  const [empresaCompleta, setEmpresaCompleta] = useState<Empresa | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [testandoConexao, setTestandoConexao] = useState(false)
@@ -350,6 +351,13 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
     setCarregando(true)
     setResultadoTeste(null)
     try {
+      try {
+        const emp = await obterEmpresaPorId(empresaAtiva.id)
+        setEmpresaCompleta(emp)
+      } catch (errEmp) {
+        console.warn('Erro ao carregar dados completos da empresa:', errEmp)
+      }
+
       const cfg = await obterOuCriarConfigEmissaoFiscal(empresaAtiva.id)
       setConfig(cfg)
       setEmiteDocs(cfg.emite_documentos_fiscais)
@@ -406,34 +414,34 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
     }
   }
 
-  // Validação: empresa tem IE vazia ou ISENTO
-  const ieEmpresa = (empresaAtiva?.inscricao_estadual || '').trim().toUpperCase()
+  // Validação: empresa tem IE vazia ou ISENTO (usa empresaCompleta com fallback para empresaAtiva)
+  const empAlvo = empresaCompleta || empresaAtiva
+  const ieEmpresa = (empAlvo?.inscricao_estadual || '').trim().toUpperCase()
   const semIeValida = !ieEmpresa || ieEmpresa === 'ISENTO'
 
-  // Checklist de prontidão da empresa ativa
+  // Checklist de prontidão da empresa ativa baseado no registro completo
   const checklist = {
-    cnpj: Boolean(empresaAtiva?.cnpj && empresaAtiva.cnpj.replace(/\D/g, '').length === 14),
+    cnpj: Boolean(empAlvo?.cnpj && empAlvo.cnpj.replace(/\D/g, '').length === 14),
     inscricao_estadual: Boolean(
-      empresaAtiva?.inscricao_estadual &&
-      empresaAtiva.inscricao_estadual.trim().toUpperCase() !== 'ISENTO',
+      empAlvo?.inscricao_estadual && empAlvo.inscricao_estadual.trim().toUpperCase() !== 'ISENTO',
     ),
-    crt: Boolean(empresaAtiva?.crt && [1, 2, 3, 4].includes(Number(empresaAtiva.crt))),
+    crt: Boolean(empAlvo?.crt && [1, 2, 3, 4].includes(Number(empAlvo.crt))),
     endereco_completo: Boolean(
-      empresaAtiva?.logradouro &&
-      empresaAtiva?.numero &&
-      empresaAtiva?.bairro &&
-      empresaAtiva?.municipio &&
-      empresaAtiva?.uf &&
-      empresaAtiva?.cep,
+      empAlvo?.logradouro &&
+      empAlvo?.numero &&
+      empAlvo?.bairro &&
+      empAlvo?.municipio &&
+      empAlvo?.uf &&
+      empAlvo?.cep,
     ),
     codigo_municipio_ibge: Boolean(
-      empresaAtiva?.codigo_municipio_ibge && empresaAtiva.codigo_municipio_ibge.trim().length === 7,
+      empAlvo?.codigo_municipio_ibge && empAlvo.codigo_municipio_ibge.trim().length === 7,
     ),
-    cnae: Boolean(empresaAtiva?.cnae_principal && empresaAtiva.cnae_principal.trim().length >= 4),
+    cnae: Boolean(empAlvo?.cnae_principal && empAlvo.cnae_principal.trim().length >= 4),
     email_fiscal: Boolean(
-      empresaAtiva?.email_fiscal &&
-      empresaAtiva.email_fiscal.includes('@') &&
-      empresaAtiva.email_fiscal.includes('.'),
+      empAlvo?.email_fiscal &&
+      empAlvo.email_fiscal.includes('@') &&
+      empAlvo.email_fiscal.includes('.'),
     ),
   }
 
