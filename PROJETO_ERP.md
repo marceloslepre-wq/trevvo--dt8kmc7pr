@@ -3557,6 +3557,27 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.198** — Correção de Gravação de `documento_fiscal_status` na Venda e Mensagens Reais de Erro no Backend Fiscal:
+
+1. **Eliminação de Gravação de 'Processando' em `vendas.documento_fiscal_status`:**
+   - O campo select `documento_fiscal_status` da coleção `vendas` aceita exclusivamente as opções `"Não emitido | Autorizada | Cancelada | Rejeitada"` (apenas a coleção `documentos_fiscais` aceita `"Processando"` em seu campo `status`).
+   - Corrigidos os 3 pontos de gravação inválida:
+     - `pocketbase/hooks/fiscal_nfe_operacoes.js` (bloco pós-transmissão de `POST /backend/v1/fiscal/emitir-nfe-venda`): removido `venda.set('documento_fiscal_status', 'Processando')`, mantendo `venda.set('documento_fiscal_id', docRec.id)` e `$app.save(venda)`.
+     - `pocketbase/hooks/fiscal_webhook_focus.js` (rota de reenvio de NF-e Focus): removido o bloco que tentava gravar `'Processando'` na venda vinculada.
+     - `pocketbase/hooks/fiscal_devolucao_venda.js` (rota de emissão de NF-e de devolução): removido `devolucaoRec.set('documento_fiscal_status', 'Processando')`, mantendo `'Pendente de nota'`, `documento_fiscal_id` e o save.
+   - O campo `documento_fiscal_status` da venda permanece intacto até que o webhook da Focus NFe receba a resposta final e grave `"Autorizada"`, `"Rejeitada"` ou `"Cancelada"`.
+
+2. **Tratamento de Exceções e Mensagens Reais de Erro:**
+   - Callback da rota `POST /backend/v1/fiscal/emitir-nfe-venda` encapsulado integralmente em bloco `try / catch`.
+   - Em caso de falha, registra no log do servidor `console.error('[fiscal/emitir-nfe-venda]', msg)` e devolve resposta HTTP 400 com a mensagem real do erro em português (`message: msg`), nunca a mensagem genérica "Something went wrong".
+   - Confirmado que a rota `POST /backend/v1/fiscal/montar-rascunho` já contava com captura e devolução de mensagem clara de erro.
+
+3. **Deploy e Estabilidade:**
+   - Deploy realizado com sucesso no Skip Cloud (`deploy_backend`).
+   - Logs de backend conferidos sem erros "Invalid module" e sem erro "Invalid value Processando".
+
+---
+
 **Versão 0.0.197** — xNome do Emitente com `nome_documentos_fiscais` e Truncamento em 60 Caracteres (Backend Fiscal):
 
 - Nos hooks `fiscal_documentos_operacoes.js` (`POST /backend/v1/fiscal/montar-rascunho`) e `fiscal_nfe_operacoes.js` (`POST /backend/v1/fiscal/emitir-nfe-venda`), o campo `xNome` (`nome_emitente`) do emitente passa a usar `empresa.nome_documentos_fiscais` quando preenchido, com fallback para `empresa.razao_social`.

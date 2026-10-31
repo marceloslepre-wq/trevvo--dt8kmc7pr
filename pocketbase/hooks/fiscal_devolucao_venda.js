@@ -927,7 +927,6 @@ routerAdd(
 
     // Marcar a devolução com status 'Pendente de nota'
     devolucaoRec.set('status', 'Pendente de nota')
-    devolucaoRec.set('documento_fiscal_status', 'Processando')
     devolucaoRec.set('documento_fiscal_id', docRec.id)
     $app.save(devolucaoRec)
 

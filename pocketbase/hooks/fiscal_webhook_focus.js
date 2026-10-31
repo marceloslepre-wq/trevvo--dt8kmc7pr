@@ -1934,18 +1934,6 @@ routerAdd(
       docRec.set('json_retorno', respJson)
       $app.save(docRec)
 
-      // Atualizar venda vinculada se houver
-      const vendaId = docRec.getString('venda_id')
-      if (vendaId) {
-        try {
-          const vRec = $app.findRecordById('vendas', vendaId)
-          if (vRec) {
-            vRec.set('documento_fiscal_status', 'Processando')
-            $app.save(vRec)
-          }
-        } catch (_) {}
-      }
-
       return c.json(200, {
         sucesso: true,
         status: 'Processando',
