@@ -4114,3 +4114,5 @@ var SpedGerador = (function () {
     gerarArquivoCompleto: gerarArquivoCompleto,
   }
 })()
+
+module.exports = { SpedGerador: SpedGerador }
