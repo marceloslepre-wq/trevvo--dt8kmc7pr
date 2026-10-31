@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-31T10:58:58.249Z",
+  "generatedAt": "2026-10-31T11:29:51.142Z",
   "collections": [
     {
       "name": "users",
@@ -519,6 +519,12 @@
           "required": false,
           "system": false,
           "collectionRef": "assinantes"
+        },
+        {
+          "name": "nome_documentos_fiscais",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

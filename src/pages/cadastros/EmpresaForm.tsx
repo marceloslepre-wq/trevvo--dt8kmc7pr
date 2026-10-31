@@ -92,6 +92,7 @@ export const EmpresaForm: React.FC = () => {
     codigo: undefined,
     razao_social: '',
     nome_fantasia: '',
+    nome_documentos_fiscais: '',
     cnpj: '',
     inscricao_estadual: '',
     inscricao_estadual_st: '',
@@ -455,6 +456,11 @@ export const EmpresaForm: React.FC = () => {
 
     if (formData.nome_fantasia && formData.nome_fantasia.length > 60) {
       novosErros.nome_fantasia = 'Nome Fantasia deve ter no máximo 60 caracteres'
+    }
+
+    if (formData.nome_documentos_fiscais && formData.nome_documentos_fiscais.length > 60) {
+      novosErros.nome_documentos_fiscais =
+        'Nome do emitente nas notas deve ter no máximo 60 caracteres'
     }
 
     // CNPJ obrigatório e válido
@@ -1089,6 +1095,35 @@ export const EmpresaForm: React.FC = () => {
                   </span>
                 </div>
               )}
+            </div>
+
+            {/* Nome do Emitente nas Notas Fiscais (SEFAZ - até 60 caracteres) */}
+            <div className="pt-2 border-t border-slate-100">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">
+                Documentos Fiscais Eletrônicos (NF-e / NFC-e)
+              </h3>
+              <div className="max-w-xl">
+                <Label className="text-xs font-semibold text-slate-700">
+                  Nome do emitente nas notas
+                </Label>
+                <Input
+                  type="text"
+                  maxLength={60}
+                  value={formData.nome_documentos_fiscais || ''}
+                  onChange={(e) => setCampo('nome_documentos_fiscais', e.target.value)}
+                  className="mt-1 text-xs h-9"
+                  placeholder="Nome abreviado aceito pela SEFAZ (até 60 caracteres)"
+                />
+                <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1">
+                  <span>
+                    Nome do emitente nas notas (até 60 caracteres). Use a forma abreviada aceita
+                    pela SEFAZ. Se ficar vazio, o sistema usa a razão social.
+                  </span>
+                  <span className="ml-2 shrink-0">
+                    {(formData.nome_documentos_fiscais || '').length}/60
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Parâmetros do SPED e IPI */}

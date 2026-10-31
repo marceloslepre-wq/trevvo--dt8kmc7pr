@@ -17,6 +17,7 @@ export interface Empresa {
   codigo: number
   razao_social: string
   nome_fantasia?: string
+  nome_documentos_fiscais?: string
   cnpj: string
   inscricao_estadual?: string
   inscricao_estadual_st?: string
