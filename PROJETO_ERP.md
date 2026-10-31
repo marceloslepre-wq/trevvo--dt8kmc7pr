@@ -3556,6 +3556,22 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.192** — Eliminação de `require` em `vendas_operacoes.js` e Validação Clara de Conta Financeira Padrão:
+
+1. **Substituição de `require` por Funções Locais nos Callbacks de Operações de Venda (`pocketbase/hooks/vendas_operacoes.js`):**
+   - No ambiente Skip Cloud / PocketBase JSVM (Goja isolate pool), chamadas de `require("${__hooks}/tenancy.js")` e `require("${__hooks}/numeracao_lib.js")` dentro dos callbacks causavam erro de runtime `Invalid module` → HTTP 400 genérico ao finalizar vendas.
+   - Removidos todos os `require` internos dos callbacks de `POST /backend/v1/vendas/finalizar` e `POST /backend/v1/vendas/cancelar`.
+   - Incorporadas as funções locais de governança multi-tenant e numeração sequencial no início de cada callback (`eMaster`, `empresasDoUsuario`, `exigirEmpresaDoUsuario` e `proximoNumero`).
+   - Preservados todos os `routerAdd` no nível superior do arquivo, com os mesmos métodos e rotas registradas sob `$apis.requireAuth()`.
+
+2. **Validação Clara de Conta Financeira Padrão de Recebimentos:**
+   - Na rota `POST /backend/v1/vendas/finalizar`, se a venda não informar conta financeira na linha de pagamento nem na forma e a empresa não possuir conta padrão configurada, o hook retorna mensagem clara em português: `"Conta financeira padrão de recebimentos não configurada para esta empresa. Configure em Financeiro > Configuração financeira."`, eliminando o erro genérico anterior.
+
+3. **Tratamento de Exceções e Auditoria Estruturada:**
+   - Envolvidos os callbacks em `try / catch` robusto com log via `console.error` (sem expor dados sensíveis) e devolução da mensagem real ao cliente HTTP com código 400 (ou 401/403 conforme autorização).
+
+---
+
 **Versão 0.0.191** — Eliminação de `require` em `numeracao_movimentos.js` (Correção do 400 em "Salvar como Pedido"):
 
 1. **Substituição de `require` por Funções Locais nos Callbacks de Movimentos (`pocketbase/hooks/numeracao_movimentos.js`):**

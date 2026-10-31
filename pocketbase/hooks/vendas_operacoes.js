@@ -1,4 +1,3 @@
-// reenvio 9.8r2
 // @ts-check
 /// <reference path="../types.d.ts" />
 
@@ -9,44 +8,266 @@
  *
  * Garante atomicidade: estoque, financeiro, crediário, cartões e auditoria.
  * O navegador NÃO grava diretamente em vendas_pagamentos ou no estoque.
+ *
+ * Funções de tenancy e numeração copiadas como funções locais no início de cada
+ * callback para evitar require(`${__hooks}/...`) no runtime JSVM (Goja).
  */
 
 routerAdd(
   'POST',
   '/backend/v1/vendas/finalizar',
   (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, {
-        sucesso: false,
-        message: 'Acesso negado: autenticação obrigatória.',
-      })
-    }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const userId = authRecord.id
-    const data = c.requestInfo().body || {}
-    const vendaId = data.venda_id
-    const pagamentosInput = Array.isArray(data.pagamentos) ? data.pagamentos : []
-
-    if (!vendaId) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'Campo venda_id é obrigatório.',
-      })
-    }
-
-    if (!pagamentosInput || pagamentosInput.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'A venda deve conter ao menos uma forma de pagamento.',
-      })
-    }
-
-    let resposta = null
-
     try {
+      const authRecord = c.auth || c.get('authRecord')
+      if (!authRecord) {
+        return c.json(401, {
+          sucesso: false,
+          message: 'Acesso negado: autenticação obrigatória.',
+        })
+      }
+
+      // -------------------------------------------------------------
+      // Funções locais de tenancy e governança multi-tenant
+      // -------------------------------------------------------------
+      function eMaster(auth) {
+        if (!auth) return false
+        try {
+          const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+          return !!(userRec && userRec.getString('tipo') === 'master')
+        } catch (_) {
+          return false
+        }
+      }
+
+      function empresasDoUsuario(auth) {
+        if (!auth) return []
+
+        let usuarioRec = null
+        try {
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (uRecs && uRecs.length > 0) {
+            usuarioRec = uRecs[0]
+          }
+        } catch (_) {}
+
+        if (!usuarioRec && auth.getString && auth.getString('email')) {
+          try {
+            const uRecs = $app.findRecordsByFilter(
+              'usuarios',
+              "email = '" + auth.getString('email') + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (uRecs && uRecs.length > 0) {
+              usuarioRec = uRecs[0]
+            }
+          } catch (_) {}
+        }
+
+        if (!usuarioRec) return []
+
+        let assinanteId = usuarioRec.getString('assinante_id')
+        if (!assinanteId) return []
+
+        function obterAssinanteImpersonadoLocal(userId, appInstance) {
+          const app = appInstance || $app
+          if (!userId) return null
+          try {
+            if (!app.hasTable('master_impersonacoes')) return null
+            const recs = app.findRecordsByFilter(
+              'master_impersonacoes',
+              "user_id = '" + userId + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (recs && recs.length > 0) {
+              return recs[0].getString('assinante_id') || null
+            }
+          } catch (_) {}
+          return null
+        }
+
+        const ehMasterUser = eMaster(auth)
+        if (ehMasterUser) {
+          try {
+            const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
+            if (impersonadoId) {
+              assinanteId = impersonadoId
+            }
+          } catch (_) {}
+        }
+
+        let isAdmin = false
+        const perfilId = usuarioRec.getString('perfil_id')
+        if (perfilId) {
+          try {
+            const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+            if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+              isAdmin = true
+            }
+          } catch (_) {}
+        }
+
+        if (isAdmin || ehMasterUser) {
+          try {
+            const empresas = $app.findRecordsByFilter(
+              'empresas',
+              "assinante_id = '" + assinanteId + "' && ativo = true",
+              'codigo',
+              500,
+              0,
+            )
+            return empresas
+          } catch (_) {
+            return []
+          }
+        }
+
+        const permitidosIds = new Set()
+        const padraoId = usuarioRec.getString('empresa_padrao_id')
+        if (padraoId) permitidosIds.add(padraoId)
+
+        try {
+          const vinculos = $app.findRecordsByFilter(
+            'usuarios_empresas',
+            "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+            '',
+            500,
+            0,
+          )
+          for (let i = 0; i < vinculos.length; i++) {
+            const eId = vinculos[i].getString('empresa_id')
+            if (eId) permitidosIds.add(eId)
+          }
+        } catch (_) {}
+
+        const empresas = []
+        permitidosIds.forEach((eId) => {
+          try {
+            const emp = $app.findRecordById('empresas', eId)
+            if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+              empresas.push(emp)
+            }
+          } catch (_) {}
+        })
+
+        empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+        return empresas
+      }
+
+      function exigirEmpresaDoUsuario(auth, empresaId) {
+        if (!empresaId) {
+          throw new BadRequestError('ID da empresa é obrigatório.')
+        }
+        const permitidas = empresasDoUsuario(auth)
+        const encontrada = permitidas.find((e) => e.id === empresaId)
+        if (!encontrada) {
+          throw new ForbiddenError(
+            'Acesso negado à empresa especificada para este usuário/assinante.',
+          )
+        }
+        return encontrada
+      }
+
+      // -------------------------------------------------------------
+      // Função local de numeração atômica sequencial por empresa
+      // -------------------------------------------------------------
+      function proximoNumero(assinanteId, empresaId, tipo, txApp) {
+        if (!assinanteId) {
+          throw new BadRequestError('assinanteId é obrigatório para gerar numeração.')
+        }
+        const empId = empresaId || ''
+
+        const executar = (tx) => {
+          const seqCol = tx.findCollectionByNameOrId('sequencias')
+
+          let filtro = "assinante_id = '" + assinanteId + "' && tipo = '" + tipo + "'"
+          if (empId) {
+            filtro += " && empresa_id = '" + empId + "'"
+          } else {
+            filtro += " && (empresa_id = '' || empresa_id = null)"
+          }
+
+          const existentes = tx.findRecordsByFilter('sequencias', filtro, '', 1, 0)
+
+          if (existentes && existentes.length > 0) {
+            const seqRec = existentes[0]
+            const atual = seqRec.getInt('ultimo_numero') || 0
+            const proximo = atual + 1
+            seqRec.set('ultimo_numero', proximo)
+            tx.save(seqRec)
+            return proximo
+          }
+
+          let seed = 0
+          try {
+            if (tipo === 'vendas') {
+              const ult = tx.findRecordsByFilter(
+                'vendas',
+                "empresa_id = '" + empId + "'",
+                '-numero',
+                1,
+                0,
+              )
+              if (ult && ult.length > 0) seed = ult[0].getInt('numero') || 0
+            }
+          } catch (errSeed) {
+            console.log(
+              '[vendas_finalizar] Aviso ao buscar seed para ' + tipo + ': ' + errSeed.message,
+            )
+            seed = 0
+          }
+
+          const proximo = seed + 1
+          const novoRec = new Record(seqCol)
+          novoRec.set('assinante_id', assinanteId)
+          novoRec.set('empresa_id', empId)
+          novoRec.set('tipo', tipo)
+          novoRec.set('ultimo_numero', proximo)
+          tx.save(novoRec)
+          return proximo
+        }
+
+        if (txApp) {
+          return executar(txApp)
+        }
+
+        let resultado = 0
+        $app.runInTransaction((tx) => {
+          resultado = executar(tx)
+        })
+        return resultado
+      }
+
+      const userId = authRecord.id
+      const data = c.requestInfo().body || {}
+      const vendaId = data.venda_id
+      const pagamentosInput = Array.isArray(data.pagamentos) ? data.pagamentos : []
+
+      if (!vendaId) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Campo venda_id é obrigatório.',
+        })
+      }
+
+      if (!pagamentosInput || pagamentosInput.length === 0) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'A venda deve conter ao menos uma forma de pagamento.',
+        })
+      }
+
+      let resposta = null
+
       $app.runInTransaction((txApp) => {
         // 1. Obter venda
         const venda = txApp.findRecordById('vendas', vendaId)
@@ -75,7 +296,6 @@ routerAdd(
           } catch (_) {}
 
           if (assinanteEmpresaId) {
-            const { proximoNumero } = require(`${__hooks}/numeracao_lib.js`)
             docNumero = proximoNumero(assinanteEmpresaId, empresaId, 'vendas', txApp)
           } else {
             try {
@@ -685,9 +905,25 @@ routerAdd(
           }
           // B) À VISTA (Dinheiro, PIX, débito imediato, transferência)
           else if (ehAVista) {
-            // Resolver conta financeira
+            // Resolver conta financeira com validação clara em português
             let contaFinId =
               pgInput.conta_financeira_id || formaRec.getString('conta_financeira_padrao_id')
+
+            // Se não informada na linha nem na forma, busca conta padrão de recebimentos da empresa
+            if (!contaFinId) {
+              try {
+                const cfsPadrao = txApp.findRecordsByFilter(
+                  'contas_financeiras',
+                  `empresa_id = '${empresaId}' && conta_padrao_recebimentos = true && ativo = true`,
+                  '-saldo_atual',
+                  1,
+                  0,
+                )
+                if (cfsPadrao.length > 0) contaFinId = cfsPadrao[0].id
+              } catch (_) {}
+            }
+
+            // Fallback: qualquer conta financeira ativa da empresa
             if (!contaFinId) {
               try {
                 const cfs = txApp.findRecordsByFilter(
@@ -700,13 +936,18 @@ routerAdd(
                 if (cfs.length > 0) contaFinId = cfs[0].id
               } catch (_) {}
             }
+
             if (!contaFinId) {
-              throw new Error('Conta financeira para recebimento à vista não encontrada.')
+              throw new Error(
+                'Conta financeira padrão de recebimentos não configurada para esta empresa. Configure em Financeiro > Configuração financeira.',
+              )
             }
 
             const contaRec = txApp.findRecordById('contas_financeiras', contaFinId)
             if (!contaRec || !contaRec.getBool('ativo')) {
-              throw new Error('Conta financeira de destino inválida ou inativa.')
+              throw new Error(
+                'Conta financeira padrão de recebimentos não configurada para esta empresa. Configure em Financeiro > Configuração financeira.',
+              )
             }
 
             // Gerar título de contas a receber já baixado na hora
@@ -993,6 +1234,7 @@ routerAdd(
       return c.json(200, resposta)
     } catch (err) {
       const msg = err && err.message ? err.message : String(err)
+      console.error('[vendas/finalizar] Erro:', msg)
       return c.json(400, {
         sucesso: false,
         message: msg,
@@ -1006,78 +1248,227 @@ routerAdd(
   'POST',
   '/backend/v1/vendas/cancelar',
   (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, {
-        sucesso: false,
-        message: 'Acesso negado: autenticação obrigatória.',
-      })
-    }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const userId = authRecord.id
-    const data = c.requestInfo().body || {}
-    const vendaId = data.venda_id
-    const motivo = (data.motivo || '').trim()
-
-    if (!vendaId) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'Campo venda_id é obrigatório.',
-      })
-    }
-
-    if (!motivo || motivo.length < 5) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'Motivo do cancelamento é obrigatório (mínimo de 5 caracteres).',
-      })
-    }
-
-    // 1. Checar permissão de exclusão no módulo de vendas
-    let isAllowed = false
     try {
-      let callerUser = null
-      const uRecs = $app.findRecordsByFilter(
-        'usuarios',
-        `auth_user_id = '${userId}' || id = '${userId}'`,
-        '',
-        1,
-        0,
-      )
-      if (uRecs.length > 0) callerUser = uRecs[0]
+      const authRecord = c.auth || c.get('authRecord')
+      if (!authRecord) {
+        return c.json(401, {
+          sucesso: false,
+          message: 'Acesso negado: autenticação obrigatória.',
+        })
+      }
 
-      if (callerUser && callerUser.getBool('ativo')) {
-        const perfilRec = $app.findRecordById('perfis_acesso', callerUser.getString('perfil_id'))
-        if (perfilRec && perfilRec.getBool('ativo')) {
-          if (perfilRec.getBool('administrador')) {
-            isAllowed = true
-          } else {
-            const perms = $app.findRecordsByFilter(
-              'permissoes',
-              `perfil_id = '${perfilRec.id}' && modulo = 'vendas' && pode_excluir = true && ativo = true`,
-              '',
+      // -------------------------------------------------------------
+      // Funções locais de tenancy e governança multi-tenant
+      // -------------------------------------------------------------
+      function eMaster(auth) {
+        if (!auth) return false
+        try {
+          const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+          return !!(userRec && userRec.getString('tipo') === 'master')
+        } catch (_) {
+          return false
+        }
+      }
+
+      function empresasDoUsuario(auth) {
+        if (!auth) return []
+
+        let usuarioRec = null
+        try {
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (uRecs && uRecs.length > 0) {
+            usuarioRec = uRecs[0]
+          }
+        } catch (_) {}
+
+        if (!usuarioRec && auth.getString && auth.getString('email')) {
+          try {
+            const uRecs = $app.findRecordsByFilter(
+              'usuarios',
+              "email = '" + auth.getString('email') + "'",
+              '-created',
               1,
               0,
             )
-            if (perms && perms.length > 0) isAllowed = true
+            if (uRecs && uRecs.length > 0) {
+              usuarioRec = uRecs[0]
+            }
+          } catch (_) {}
+        }
+
+        if (!usuarioRec) return []
+
+        let assinanteId = usuarioRec.getString('assinante_id')
+        if (!assinanteId) return []
+
+        function obterAssinanteImpersonadoLocal(userId, appInstance) {
+          const app = appInstance || $app
+          if (!userId) return null
+          try {
+            if (!app.hasTable('master_impersonacoes')) return null
+            const recs = app.findRecordsByFilter(
+              'master_impersonacoes',
+              "user_id = '" + userId + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (recs && recs.length > 0) {
+              return recs[0].getString('assinante_id') || null
+            }
+          } catch (_) {}
+          return null
+        }
+
+        const ehMasterUser = eMaster(auth)
+        if (ehMasterUser) {
+          try {
+            const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
+            if (impersonadoId) {
+              assinanteId = impersonadoId
+            }
+          } catch (_) {}
+        }
+
+        let isAdmin = false
+        const perfilId = usuarioRec.getString('perfil_id')
+        if (perfilId) {
+          try {
+            const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+            if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+              isAdmin = true
+            }
+          } catch (_) {}
+        }
+
+        if (isAdmin || ehMasterUser) {
+          try {
+            const empresas = $app.findRecordsByFilter(
+              'empresas',
+              "assinante_id = '" + assinanteId + "' && ativo = true",
+              'codigo',
+              500,
+              0,
+            )
+            return empresas
+          } catch (_) {
+            return []
           }
         }
+
+        const permitidosIds = new Set()
+        const padraoId = usuarioRec.getString('empresa_padrao_id')
+        if (padraoId) permitidosIds.add(padraoId)
+
+        try {
+          const vinculos = $app.findRecordsByFilter(
+            'usuarios_empresas',
+            "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+            '',
+            500,
+            0,
+          )
+          for (let i = 0; i < vinculos.length; i++) {
+            const eId = vinculos[i].getString('empresa_id')
+            if (eId) permitidosIds.add(eId)
+          }
+        } catch (_) {}
+
+        const empresas = []
+        permitidosIds.forEach((eId) => {
+          try {
+            const emp = $app.findRecordById('empresas', eId)
+            if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+              empresas.push(emp)
+            }
+          } catch (_) {}
+        })
+
+        empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+        return empresas
       }
-    } catch (_) {}
 
-    if (!isAllowed) {
-      return c.json(403, {
-        sucesso: false,
-        message:
-          'Acesso negado: perfil sem permissão para cancelar vendas (módulo vendas, ação excluir).',
-      })
-    }
+      function exigirEmpresaDoUsuario(auth, empresaId) {
+        if (!empresaId) {
+          throw new BadRequestError('ID da empresa é obrigatório.')
+        }
+        const permitidas = empresasDoUsuario(auth)
+        const encontrada = permitidas.find((e) => e.id === empresaId)
+        if (!encontrada) {
+          throw new ForbiddenError(
+            'Acesso negado à empresa especificada para este usuário/assinante.',
+          )
+        }
+        return encontrada
+      }
 
-    let resposta = null
+      const userId = authRecord.id
+      const data = c.requestInfo().body || {}
+      const vendaId = data.venda_id
+      const motivo = (data.motivo || '').trim()
 
-    try {
+      if (!vendaId) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Campo venda_id é obrigatório.',
+        })
+      }
+
+      if (!motivo || motivo.length < 5) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Motivo do cancelamento é obrigatório (mínimo de 5 caracteres).',
+        })
+      }
+
+      // 1. Checar permissão de exclusão no módulo de vendas
+      let isAllowed = false
+      try {
+        let callerUser = null
+        const uRecs = $app.findRecordsByFilter(
+          'usuarios',
+          `auth_user_id = '${userId}' || id = '${userId}'`,
+          '',
+          1,
+          0,
+        )
+        if (uRecs.length > 0) callerUser = uRecs[0]
+
+        if (callerUser && callerUser.getBool('ativo')) {
+          const perfilRec = $app.findRecordById('perfis_acesso', callerUser.getString('perfil_id'))
+          if (perfilRec && perfilRec.getBool('ativo')) {
+            if (perfilRec.getBool('administrador')) {
+              isAllowed = true
+            } else {
+              const perms = $app.findRecordsByFilter(
+                'permissoes',
+                `perfil_id = '${perfilRec.id}' && modulo = 'vendas' && pode_excluir = true && ativo = true`,
+                '',
+                1,
+                0,
+              )
+              if (perms && perms.length > 0) isAllowed = true
+            }
+          }
+        }
+      } catch (_) {}
+
+      if (!isAllowed) {
+        return c.json(403, {
+          sucesso: false,
+          message:
+            'Acesso negado: perfil sem permissão para cancelar vendas (módulo vendas, ação excluir).',
+        })
+      }
+
+      let resposta = null
+
       $app.runInTransaction((txApp) => {
         const venda = txApp.findRecordById('vendas', vendaId)
         if (!venda || !venda.getBool('ativo')) {
@@ -1360,6 +1751,7 @@ routerAdd(
       return c.json(200, resposta)
     } catch (err) {
       const msg = err && err.message ? err.message : String(err)
+      console.error('[vendas/cancelar] Erro:', msg)
       return c.json(400, {
         sucesso: false,
         message: msg,
