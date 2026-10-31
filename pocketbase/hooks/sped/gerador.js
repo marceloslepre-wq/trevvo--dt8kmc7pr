@@ -178,9 +178,13 @@ var SpedGerador = (function () {
     var totalVlDoc = 0
     var totalVlIcms = 0
 
-    // Verifica se a empresa é do Simples Nacional (CRT 1 ou 4)
-    var crt = ctx.empresa.getInt('crt') || 1
-    var ehSimples = crt === 1 || crt === 4
+    // Verifica se a empresa é do Simples Nacional (CRT 1 ou 4) aceitando texto ou número, sem presumir Simples
+    var regimeApuracaoEmpresa = (ctx.empresa.getString('regime_apuracao') || '').trim()
+    var crtRaw = ctx.empresa.get('crt')
+    var crt = crtRaw !== null && crtRaw !== undefined && crtRaw !== '' ? Number(crtRaw) : null
+    var ehSimples = regimeApuracaoEmpresa
+      ? regimeApuracaoEmpresa === 'Simples Nacional'
+      : crt === 1 || crt === 2 || crt === 4
 
     // Configuração do SPED da empresa
     var incluirHomologacaoEmTeste = true

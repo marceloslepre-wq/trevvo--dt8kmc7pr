@@ -25,7 +25,7 @@ export interface Empresa {
   cnaes_secundarios?: string[]
   data_abertura?: string
   logo?: string
-  crt: number
+  crt: number | string
   regime_apuracao?: RegimeApuracao
   regime_pis_cofins?: RegimePisCofins
   aliquota_credito_simples?: number

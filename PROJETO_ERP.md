@@ -3556,6 +3556,24 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.185** — Correção do Regime da Empresa (CRT como Texto/Número e Eliminação de Fallback para Simples):
+
+1. **Correção do Regime da Empresa em Telas, Serviços e Hooks do Backend:**
+   - O regime da empresa vem de `empresas.crt` / `regime_apuracao` / `regime_pis_cofins`, aceitando texto ou número; nunca assumir Simples por padrão quando o campo não vier; o custo de entrada desconta os créditos marcados.
+   - Corrigidos cirurgicamente os 8 pontos identificados:
+     - `src/pages/cadastros/ConferenciaFiscalPage.tsx`: removido `?? 1`, lendo CRT da empresa ativa aceitando texto ou número (3 ou "3" para Regime Normal).
+     - `src/pages/cadastros/ProdutoForm.tsx`: removido `?? 1`, lendo CRT da empresa ativa aceitando texto ou número (3 ou "3" para Regime Normal).
+     - `src/pages/compras/NotaEntradaConferenciaPage.tsx`: removido `Number(crt ?? 1)`, checando CRT como 3 ou '3' sem presumir Simples.
+     - `src/pages/configuracoes/ConfiguracaoFiscalPage.tsx`: comparação aceitando texto ou número (`1`, `'1'`, `2`, `'2'`).
+     - `src/components/ProdutoAbaFiscal.tsx`: normalização de `crtEmpresaAtiva` sem fallback `|| 1`.
+     - `src/services/motorFiscal.ts`: CRT lido diretamente sem presumir Simples quando não preenchido.
+     - `pocketbase/hooks/fiscal_documentos_operacoes.js`: removido `getInt('crt') || 1`, lendo `empresaRec.get('crt')` aceitando texto ou número e avaliando regime de apuração sem fallback Simples.
+     - `pocketbase/hooks/sped/gerador.js`: removido `getInt('crt') || 1`, lendo `ctx.empresa.get('crt')` aceitando texto ou número e regime de apuração sem fallback Simples.
+   - Atualizada a tipagem de `Empresa.crt` em `src/services/empresas.ts` para `number | string`.
+   - Realizado deploy dos hooks do backend via `deploy_backend` e homologação verde no `run_qa`.
+
+---
+
 **Versão 0.0.183** — Correção no Hook de Auditoria Modo Master (`Object has no member "get"`):
 
 1. **Correção de Acesso ao Usuário Autenticado em `pocketbase/hooks/auditoria_modo_master.js`:**

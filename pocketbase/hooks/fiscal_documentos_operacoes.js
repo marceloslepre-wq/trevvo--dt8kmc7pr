@@ -190,7 +190,11 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       const cnpjEmitenteLimpo = (empresaRec.getString('cnpj') || '').replace(/\D/g, '')
       const ieEmitente = (empresaRec.getString('inscricao_estadual') || '').trim()
       const ufEmitente = (empresaRec.getString('uf') || '').trim().toUpperCase()
-      const crtEmitente = empresaRec.getInt('crt') || 1 // 1 Simples, 2 Sublimite, 3 Normal, 4 MEI
+      const crtEmitenteRaw = empresaRec.get('crt')
+      const crtEmitente =
+        crtEmitenteRaw !== null && crtEmitenteRaw !== undefined && crtEmitenteRaw !== ''
+          ? Number(crtEmitenteRaw)
+          : null // 1 Simples, 2 Sublimite, 3 Normal, 4 MEI (sem presumir Simples)
       const aliqCreditoSimples = empresaRec.getFloat('aliquota_credito_simples') || 0
 
       if (!cnpjEmitenteLimpo || cnpjEmitenteLimpo.length !== 14) {
@@ -621,7 +625,10 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         if (!cfopPrimeiroItem) cfopPrimeiroItem = cfop
 
         // CRT
-        const ehSimples = crtEmitente === 1 || crtEmitente === 2 || crtEmitente === 4
+        const regimeApuracaoEmitente = (empresaRec.getString('regime_apuracao') || '').trim()
+        const ehSimples = regimeApuracaoEmitente
+          ? regimeApuracaoEmitente === 'Simples Nacional'
+          : crtEmitente === 1 || crtEmitente === 2 || crtEmitente === 4
         if (ehSimples) {
           if (!csosn && cstIcms) {
             csosn = converterCstParaCsosn(cstIcms)

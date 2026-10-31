@@ -67,7 +67,9 @@ export function ConfiguracaoFiscalPage() {
   const ehSimples =
     empresaAtiva?.regime_apuracao === 'Simples Nacional' ||
     empresaAtiva?.crt === 1 ||
-    empresaAtiva?.crt === 2
+    empresaAtiva?.crt === '1' ||
+    empresaAtiva?.crt === 2 ||
+    empresaAtiva?.crt === '2'
 
   useEffect(() => {
     carregarDados()

@@ -1950,10 +1950,10 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                             size="sm"
                             className="h-6 text-[10px] bg-white text-amber-900 border-amber-300 hover:bg-amber-100"
                             onClick={async () => {
-                              const crtNum = Number(empresaAtiva?.crt ?? 1)
+                              const crtVal = empresaAtiva?.crt
                               const ehSimples = empresaAtiva?.regime_apuracao
                                 ? empresaAtiva.regime_apuracao === 'Simples Nacional'
-                                : crtNum !== 3
+                                : !(crtVal === 3 || crtVal === '3')
                               const upd: Record<string, any> = {}
                               if (stFornecedor) {
                                 if (ehSimples) upd.csosn = '500'

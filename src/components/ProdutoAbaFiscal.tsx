@@ -277,7 +277,11 @@ export function ProdutoAbaFiscal({
           }
         : {
             crt:
-              typeof crtEmpresaAtiva === 'number' ? crtEmpresaAtiva : Number(crtEmpresaAtiva) || 1,
+              typeof crtEmpresaAtiva === 'number'
+                ? crtEmpresaAtiva
+                : crtEmpresaAtiva
+                  ? Number(crtEmpresaAtiva) || undefined
+                  : undefined,
             regime_apuracao:
               regimeEmpresaAtiva === 'Regime Normal' ? 'Lucro Presumido' : 'Simples Nacional',
           }

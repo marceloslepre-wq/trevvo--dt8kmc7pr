@@ -109,8 +109,10 @@ export async function sugerirTributacao(params: {
   const cest = (itemXml?.cest || produtoExistente?.cest || '').replace(/\D/g, '')
 
   const ufEmpresa = (empresa.uf || 'ES').toUpperCase().trim()
-  const crt = empresa.crt || (empresa.regime_apuracao === 'Simples Nacional' ? 1 : 3)
-  const ehSimples = crt === 1 || crt === 2 || empresa.regime_apuracao === 'Simples Nacional'
+  const crt = empresa.crt
+  const ehSimples = empresa.regime_apuracao
+    ? empresa.regime_apuracao === 'Simples Nacional'
+    : crt === 1 || crt === '1' || crt === 2 || crt === '2'
   const regimeEmpresa: 'Simples Nacional' | 'Regime Normal' = ehSimples
     ? 'Simples Nacional'
     : 'Regime Normal'
