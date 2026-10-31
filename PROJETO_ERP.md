@@ -3556,6 +3556,18 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.186** — Registro e Restauração dos Endpoints Fiscais em `fiscal_focus_integracao.js`:
+
+1. **Restauração dos Handlers HTTP no Hook de Integração Fiscal (`pocketbase/hooks/fiscal_focus_integracao.js`):**
+   - O arquivo possuía apenas a documentação em comentários e declarações sem os devidos `routerAdd`, provocando 404 em `GET /backend/v1/fiscal/status-segredos` e `POST /backend/v1/fiscal/testar-conexao` chamados pela tela Fiscal &gt; Configuração de emissão (`ConfiguracaoEmissaoFiscalPage.tsx`).
+   - Implementadas as duas rotas em conformidade estrita com o JSVM do PocketBase (Goja / isolate pool):
+     - `POST /backend/v1/fiscal/testar-conexao`: autenticação com `authRecord`, validação de tenancy e empresa do usuário, consulta do token via `obterTokenFocus` (banco de `credenciais_fiscais` com fallback para segredos de ambiente `$os.getenv`), chamada HTTP segura para `GET ${baseUrl}/hooks` da Focus NFe via `$http.send`, registro de histórico em `config_emissao_fiscal` e retorno do contrato `TestarConexaoResponse` com status 200.
+     - `GET /backend/v1/fiscal/status-segredos`: autenticação com `authRecord`, listagem das empresas do assinante do usuário logado e retorno do mapa de status de segredos/tokens no contrato `StatusSegredosResponse` com status 200.
+   - Padrão arquitetural rígido mantido: zero `require("${__hooks}/...")` e zero chamadas a funções top-level dentro de callbacks; todas as rotinas (`assinanteDoUsuario`, `empresasDoUsuario`, `exigirEmpresaDoUsuario`, `obterTokenFocus`) declaradas diretamente no corpo de cada callback.
+   - Backend deployado com sucesso (`deploy_backend`) e confirmado com resposta 401/200 (nunca 404) e logs sem erro `Invalid module`.
+
+---
+
 **Versão 0.0.185** — Correção do Regime da Empresa (CRT como Texto/Número e Eliminação de Fallback para Simples):
 
 1. **Correção do Regime da Empresa em Telas, Serviços e Hooks do Backend:**
