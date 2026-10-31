@@ -1,4 +1,3 @@
-// reenvio 9.8r2
 // @ts-check
 /// <reference path="../types.d.ts" />
 
@@ -10,6 +9,8 @@
  *
  * Em conformidade com o JSVM do PocketBase (Goja / isolate pool), todas as
  * rotinas de negócio e chamadas $http são executadas internamente em cada callback.
+ * Funções de tenancy e fiscal_token_lib são copiadas localmente dentro dos callbacks
+ * para evitar require(`${__hooks}/...`) que causa 'Invalid module' no JSVM.
  *
  * Endpoints:
  * - POST /backend/v1/fiscal/testar-conexao
@@ -23,1636 +24,377 @@
  * - GET  /backend/v1/fiscal/status-segredos
  */
 
-/**
- * POST /backend/v1/fiscal/testar-conexao
- * Testa conexão GET /hooks no ambiente da empresa
- * Body: { empresa_id: string }
- */
-routerAdd(
-  'POST',
-  '/backend/v1/fiscal/testar-conexao',
-  (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
+function copiarTenancyLocal(auth) {
+  function assinanteDoUsuario(authRec) {
+    if (!authRec) {
+      throw new BadRequestError('Autenticação necessária para identificar o assinante.')
     }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const data = c.requestInfo().body || {}
-    const empresaId = data.empresa_id
-
-    if (!empresaId) {
-      return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
-    }
-
+    let usuarioRec = null
     try {
-      exigirEmpresaDoUsuario(authRecord, empresaId)
-    } catch (errEmp) {
-      return c.json(403, {
-        sucesso: false,
-        message: errEmp.message || 'Acesso negado à empresa especificada.',
-      })
-    }
-
-    // Validação da empresa
-    let empresa = null
-    try {
-      empresa = $app.findRecordById('empresas', empresaId)
-    } catch (_) {
-      empresa = null
-    }
-
-    if (!empresa || !empresa.getBool('ativo')) {
-      return c.json(200, {
-        sucesso: false,
-        message: 'Empresa emitente não encontrada ou inativa no sistema.',
-      })
-    }
-
-    const nomeEmpresa =
-      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
-
-    // Carregar config fiscal
-    let configs = []
-    try {
-      configs = $app.findRecordsByFilter(
-        'config_emissao_fiscal',
-        `empresa_id = '${empresaId}' && ativo = true`,
+      const uRecs = $app.findRecordsByFilter(
+        'usuarios',
+        "auth_user_id = '" + authRec.id + "' || id = '" + authRec.id + "'",
         '-created',
         1,
         0,
       )
-    } catch (_) {
-      configs = []
-    }
-
-    if (!configs || configs.length === 0) {
-      return c.json(200, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa. Salve os parâmetros antes de testar.`,
-      })
-    }
-
-    const config = configs[0]
-    if (!config.getBool('emite_documentos_fiscais')) {
-      return c.json(200, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não está configurada para emitir NF-e/NFC-e (opção desativada).`,
-      })
-    }
-
-    const ie = (empresa.getString('inscricao_estadual') || '').trim().toUpperCase()
-    if (!ie || ie === 'ISENTO') {
-      return c.json(200, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) possui Inscrição Estadual ${ie || 'vazia'} e não pode emitir NF-e/NFC-e.`,
-      })
-    }
-
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-    const tokenInfo = obterTokenFocus(empresaId, $app)
-    const ambiente = tokenInfo.ambiente
-    const nomeSegredo = tokenInfo.nomeSegredo
-    const token = tokenInfo.token
-
-    if (!token) {
-      const msgSemToken = `Token da empresa ${nomeEmpresa} não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${nomeSegredo} no Skip Cloud.`
-      try {
-        config.set('ultimo_teste_conexao_data', new Date().toISOString())
-        config.set('ultimo_teste_conexao_sucesso', false)
-        config.set('ultimo_teste_conexao_mensagem', msgSemToken)
-        config.set('updated_by', authRecord.id)
-        $app.save(config)
-      } catch (_) {}
-
-      return c.json(200, {
-        sucesso: false,
-        message: msgSemToken,
-        ambiente: ambiente,
-        segredo_nome: nomeSegredo,
-        origem: tokenInfo.origem,
-        status_code: null,
-      })
-    }
-
-    const baseUrl =
-      ambiente === 'Produção'
-        ? 'https://api.focusnfe.com.br/v2'
-        : 'https://homologacao.focusnfe.com.br/v2'
-
-    const encodeBase64 = (str) => {
-      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-        try {
-          return Buffer.from(str, 'utf8').toString('base64')
-        } catch (_) {}
-      }
-      if (typeof btoa === 'function') {
-        try {
-          return btoa(str)
-        } catch (_) {}
-      }
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let out = ''
-      let i = 0
-      const len = str.length
-      while (i < len) {
-        const c1 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt((c1 & 0x3) << 4)
-          out += '=='
-          break
-        }
-        const c2 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-          out += chars.charAt((c2 & 0x0f) << 2)
-          out += '='
-          break
-        }
-        const c3 = str.charCodeAt(i++) & 0xff
-        out += chars.charAt(c1 >> 2)
-        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
-        out += chars.charAt(c3 & 0x3f)
-      }
-      return out
-    }
-
-    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
-    let sucesso = false
-    let mensagemRetorno = ''
-    let statusCode = 0
-    let jsonResp = null
-
-    try {
-      const res = $http.send({
-        method: 'GET',
-        url: `${baseUrl}/hooks`,
-        headers: {
-          Authorization: basicAuthHeader,
-          Accept: 'application/json',
-        },
-        timeout: 60,
-      })
-
-      statusCode = res.statusCode || 200
-      const rawText = res.raw ? res.raw : ''
-      try {
-        jsonResp = JSON.parse(rawText)
-      } catch (_) {
-        jsonResp = null
-      }
-
-      if (statusCode === 200) {
-        sucesso = true
-        mensagemRetorno = 'Conexão com a Focus NFe funcionando'
-      } else if (statusCode === 401) {
-        sucesso = false
-        mensagemRetorno = 'Token inválido: confira o segredo do ambiente'
-      } else {
-        sucesso = false
-        if (jsonResp && (jsonResp.mensagem || jsonResp.message)) {
-          mensagemRetorno = jsonResp.mensagem || jsonResp.message
-        } else {
-          mensagemRetorno = `Focus NFe retornou status HTTP ${statusCode}`
-        }
-      }
-    } catch (err) {
-      sucesso = false
-      mensagemRetorno = 'Sem comunicação com a API emissora'
-    }
-
-    // Gravar resultado na config_emissao_fiscal
-    try {
-      config.set('ultimo_teste_conexao_data', new Date().toISOString())
-      config.set('ultimo_teste_conexao_sucesso', sucesso)
-      config.set('ultimo_teste_conexao_mensagem', mensagemRetorno)
-      config.set('updated_by', authRecord.id)
-      $app.save(config)
+      if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
     } catch (_) {}
 
-    return c.json(200, {
-      sucesso: sucesso,
-      message: mensagemRetorno,
-      ambiente: ambiente,
-      segredo_nome: nomeSegredo,
-      status_code: statusCode,
-      dados: jsonResp,
+    if (!usuarioRec && authRec.getString && authRec.getString('email')) {
+      try {
+        const uRecs = $app.findRecordsByFilter(
+          'usuarios',
+          "email = '" + authRec.getString('email') + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
+      } catch (_) {}
+    }
+
+    if (!usuarioRec) {
+      throw new BadRequestError('Registro de usuário ERP não encontrado.')
+    }
+
+    let assinanteId = usuarioRec.getString('assinante_id')
+    if (!assinanteId) {
+      throw new BadRequestError('Usuário não possui vínculo com nenhum assinante cadastrado.')
+    }
+
+    function obterAssinanteImpersonadoLocal(userId, appInstance) {
+      const app = appInstance || $app
+      if (!userId) return null
+      try {
+        if (!app.hasTable('master_impersonacoes')) return null
+        const recs = app.findRecordsByFilter(
+          'master_impersonacoes',
+          "user_id = '" + userId + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) {
+          return recs[0].getString('assinante_id') || null
+        }
+      } catch (_) {}
+      return null
+    }
+
+    function checarSeMasterLocal(aRec, appInstance) {
+      const app = appInstance || $app
+      if (!aRec || !aRec.id) return false
+      try {
+        const userRec = app.findRecordById('_pb_users_auth_', aRec.id)
+        return !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
+
+    function validarLicencaAtivaOuBloquearLocal(assinanteRec, aRecord) {
+      if (!assinanteRec) return
+      if (
+        assinanteRec.getBool('origem') ||
+        assinanteRec.getString('numero_licenca') === 'HH-RFR8HF'
+      ) {
+        return
+      }
+      if (aRecord && checarSeMasterLocal(aRecord)) {
+        return
+      }
+      const status = assinanteRec.getString('status')
+      if (status === 'Pausada' || status === 'Expirada' || status === 'Cancelada') {
+        throw new ForbiddenError('Licença pausada ou vencida. Fale com o suporte.')
+      }
+    }
+
+    if (eMaster(authRec)) {
+      try {
+        const impersonadoId = obterAssinanteImpersonadoLocal(authRec.id, $app)
+        if (impersonadoId) {
+          assinanteId = impersonadoId
+        }
+      } catch (_) {}
+    }
+
+    const assinante = $app.findRecordById('assinantes', assinanteId)
+    if (!assinante) {
+      throw new BadRequestError('Assinante não encontrado.')
+    }
+
+    try {
+      validarLicencaAtivaOuBloquearLocal(assinante, authRec)
+    } catch (errBloq) {
+      throw errBloq
+    }
+
+    return assinante
+  }
+
+  function eMaster(authRec) {
+    if (!authRec) return false
+    try {
+      const userRec = $app.findRecordById('_pb_users_auth_', authRec.id)
+      return !!(userRec && userRec.getString('tipo') === 'master')
+    } catch (_) {
+      return false
+    }
+  }
+
+  function empresasDoUsuario(authRec) {
+    if (!authRec) return []
+
+    let usuarioRec = null
+    try {
+      const uRecs = $app.findRecordsByFilter(
+        'usuarios',
+        "auth_user_id = '" + authRec.id + "' || id = '" + authRec.id + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
+    } catch (_) {}
+
+    if (!usuarioRec && authRec.getString && authRec.getString('email')) {
+      try {
+        const uRecs = $app.findRecordsByFilter(
+          'usuarios',
+          "email = '" + authRec.getString('email') + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
+      } catch (_) {}
+    }
+
+    if (!usuarioRec) return []
+
+    let assinanteId = usuarioRec.getString('assinante_id')
+    if (!assinanteId) return []
+
+    function obterAssinanteImpersonadoLocal(userId, appInstance) {
+      const app = appInstance || $app
+      if (!userId) return null
+      try {
+        if (!app.hasTable('master_impersonacoes')) return null
+        const recs = app.findRecordsByFilter(
+          'master_impersonacoes',
+          "user_id = '" + userId + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) {
+          return recs[0].getString('assinante_id') || null
+        }
+      } catch (_) {}
+      return null
+    }
+
+    const ehMasterUser = eMaster(authRec)
+    if (ehMasterUser) {
+      try {
+        const impersonadoId = obterAssinanteImpersonadoLocal(authRec.id, $app)
+        if (impersonadoId) {
+          assinanteId = impersonadoId
+        }
+      } catch (_) {}
+    }
+
+    let isAdmin = false
+    const perfilId = usuarioRec.getString('perfil_id')
+    if (perfilId) {
+      try {
+        const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+        if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+          isAdmin = true
+        }
+      } catch (_) {}
+    }
+
+    if (isAdmin || ehMasterUser) {
+      try {
+        const empresas = $app.findRecordsByFilter(
+          'empresas',
+          "assinante_id = '" + assinanteId + "' && ativo = true",
+          'codigo',
+          500,
+          0,
+        )
+        return empresas
+      } catch (_) {
+        return []
+      }
+    }
+
+    const permitidosIds = new Set()
+    const padraoId = usuarioRec.getString('empresa_padrao_id')
+    if (padraoId) permitidosIds.add(padraoId)
+
+    try {
+      const vinculos = $app.findRecordsByFilter(
+        'usuarios_empresas',
+        "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+        '',
+        500,
+        0,
+      )
+      for (let i = 0; i < vinculos.length; i++) {
+        const eId = vinculos[i].getString('empresa_id')
+        if (eId) permitidosIds.add(eId)
+      }
+    } catch (_) {}
+
+    const empresas = []
+    permitidosIds.forEach((eId) => {
+      try {
+        const emp = $app.findRecordById('empresas', eId)
+        if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+          empresas.push(emp)
+        }
+      } catch (_) {}
     })
-  },
-  $apis.requireAuth(),
-)
 
-/**
- * GET /backend/v1/fiscal/status-segredos
- * Retorna, por empresa acessível, a origem do token ('banco' ou 'segredo'), se está configurado e ambiente, sem NUNCA mostrar o valor.
- */
-routerAdd(
-  'GET',
-  '/backend/v1/fiscal/status-segredos',
-  (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
-    }
+    empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+    return empresas
+  }
 
-    const { empresasDoUsuario } = require(`${__hooks}/tenancy.js`)
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-
-    const permitidas = empresasDoUsuario(authRecord)
-    const statusPorEmpresa = {}
-
-    for (let i = 0; i < permitidas.length; i++) {
-      const emp = permitidas[i]
-      const empId = emp.id
-      const tokenInfo = obterTokenFocus(empId, $app)
-
-      statusPorEmpresa[empId] = {
-        empresa_nome: emp.getString('nome_fantasia') || emp.getString('razao_social') || '',
-        segredo_nome: tokenInfo.nomeSegredo,
-        segredo_configurado: Boolean(tokenInfo.token && tokenInfo.token.length > 0),
-        origem: tokenInfo.origem, // 'banco', 'segredo' ou 'nenhuma'
-        ambiente: tokenInfo.ambiente,
-        codigo_token: tokenInfo.codigoToken,
-      }
-    }
-
-    return c.json(200, { sucesso: true, status: statusPorEmpresa })
-  },
-  $apis.requireAuth(),
-)
-
-/**
- * POST /backend/v1/fiscal/emitir-nfce
- * POST /nfce?ref={ref} (síncrona; status "autorizado" ou "erro_autorizacao").
- * Body: { empresa_id: string, ref: string, dados: object, forma_emissao?: string }
- */
-routerAdd(
-  'POST',
-  '/backend/v1/fiscal/emitir-nfce',
-  (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
-    }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const data = c.requestInfo().body || {}
-    const empresaId = data.empresa_id
-    const ref = (data.ref || '').trim()
-    const dados = data.dados || {}
-    const formaEmissao = (data.forma_emissao || '').trim()
-
-    if (!empresaId || !ref) {
-      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
-    }
-
-    try {
-      exigirEmpresaDoUsuario(authRecord, empresaId)
-    } catch (errEmp) {
-      return c.json(403, {
-        sucesso: false,
-        message: errEmp.message || 'Acesso negado à empresa especificada.',
-      })
-    }
-
-    const empresa = $app.findRecordById('empresas', empresaId)
-    if (!empresa || !empresa.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
-    }
-
-    const nomeEmpresa =
-      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
-
-    const configs = $app.findRecordsByFilter(
-      'config_emissao_fiscal',
-      `empresa_id = '${empresaId}' && ativo = true`,
-      '-created',
-      1,
-      0,
-    )
-
-    if (!configs || configs.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
-      })
-    }
-
-    const config = configs[0]
-    if (!config.getBool('emite_documentos_fiscais')) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não emite NF-e/NFC-e.`,
-      })
-    }
-
-    const ie = (empresa.getString('inscricao_estadual') || '').trim().toUpperCase()
-    if (!ie || ie === 'ISENTO') {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) possui Inscrição Estadual ${ie || 'vazia'} e não pode emitir NF-e/NFC-e.`,
-      })
-    }
-
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-    const tokenInfo = obterTokenFocus(empresaId, $app)
-    const ambiente = tokenInfo.ambiente
-    const token = tokenInfo.token
-
-    if (!token) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Token da empresa ${nomeEmpresa} não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
-      })
-    }
-
-    const baseUrl =
-      ambiente === 'Produção'
-        ? 'https://api.focusnfe.com.br/v2'
-        : 'https://homologacao.focusnfe.com.br/v2'
-
-    let url = `${baseUrl}/nfce?ref=${encodeURIComponent(ref)}`
-    if (formaEmissao) {
-      url += `&forma_emissao=${encodeURIComponent(formaEmissao)}`
-    }
-
-    const encodeBase64 = (str) => {
-      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-        try {
-          return Buffer.from(str, 'utf8').toString('base64')
-        } catch (_) {}
-      }
-      if (typeof btoa === 'function') {
-        try {
-          return btoa(str)
-        } catch (_) {}
-      }
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let out = ''
-      let i = 0
-      const len = str.length
-      while (i < len) {
-        const c1 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt((c1 & 0x3) << 4)
-          out += '=='
-          break
-        }
-        const c2 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-          out += chars.charAt((c2 & 0x0f) << 2)
-          out += '='
-          break
-        }
-        const c3 = str.charCodeAt(i++) & 0xff
-        out += chars.charAt(c1 >> 2)
-        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
-        out += chars.charAt(c3 & 0x3f)
-      }
-      return out
-    }
-
-    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
-
-    try {
-      const res = $http.send({
-        method: 'POST',
-        url: url,
-        headers: {
-          Authorization: basicAuthHeader,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dados),
-        timeout: 60,
-      })
-
-      const statusCode = res.statusCode || 200
-      const rawText = res.raw ? res.raw : ''
-      let jsonResp = null
-      try {
-        jsonResp = JSON.parse(rawText)
-      } catch (_) {}
-
-      if (statusCode >= 200 && statusCode < 300) {
-        return c.json(200, {
-          sucesso: true,
-          ambiente: ambiente,
-          dados: jsonResp,
-        })
-      }
-
-      let msg = ''
-      if (statusCode === 401) {
-        msg = 'Token inválido: confira o segredo do ambiente'
-      } else if (jsonResp && typeof jsonResp === 'object') {
-        const principal = jsonResp.mensagem || jsonResp.message || ''
-        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
-        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
-          const det = jsonResp.erros
-            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
-            .join('; ')
-          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
-        } else {
-          msg = `${cod}${principal || 'Erro na Focus NFe'}`
-        }
-      } else {
-        msg = `Focus NFe retornou status HTTP ${statusCode}`
-      }
-
-      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
-        sucesso: false,
-        message: msg,
-        detalhes: jsonResp || rawText,
-      })
-    } catch (err) {
-      return c.json(500, {
-        sucesso: false,
-        message: 'Sem comunicação com a API emissora',
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
-
-/**
- * POST /backend/v1/fiscal/emitir-nfe
- * POST /nfe?ref={ref} (assíncrona; volta "processando_autorizacao").
- * Body: { empresa_id: string, ref: string, dados: object }
- */
-routerAdd(
-  'POST',
-  '/backend/v1/fiscal/emitir-nfe',
-  (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
-    }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const data = c.requestInfo().body || {}
-    const empresaId = data.empresa_id
-    const ref = (data.ref || '').trim()
-    const dados = data.dados || {}
-
-    if (!empresaId || !ref) {
-      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
-    }
-
-    try {
-      exigirEmpresaDoUsuario(authRecord, empresaId)
-    } catch (errEmp) {
-      return c.json(403, {
-        sucesso: false,
-        message: errEmp.message || 'Acesso negado à empresa especificada.',
-      })
-    }
-
-    const empresa = $app.findRecordById('empresas', empresaId)
-    if (!empresa || !empresa.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
-    }
-
-    const nomeEmpresa =
-      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
-
-    const configs = $app.findRecordsByFilter(
-      'config_emissao_fiscal',
-      `empresa_id = '${empresaId}' && ativo = true`,
-      '-created',
-      1,
-      0,
-    )
-
-    if (!configs || configs.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
-      })
-    }
-
-    const config = configs[0]
-    if (!config.getBool('emite_documentos_fiscais')) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não emite NF-e/NFC-e.`,
-      })
-    }
-
-    const ie = (empresa.getString('inscricao_estadual') || '').trim().toUpperCase()
-    if (!ie || ie === 'ISENTO') {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) possui Inscrição Estadual ${ie || 'vazia'} e não pode emitir NF-e/NFC-e.`,
-      })
-    }
-
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-    const tokenInfo = obterTokenFocus(empresaId, $app)
-    const ambiente = tokenInfo.ambiente
-    const token = tokenInfo.token
-
-    if (!token) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Token da empresa ${nomeEmpresa} não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
-      })
-    }
-
-    const baseUrl =
-      ambiente === 'Produção'
-        ? 'https://api.focusnfe.com.br/v2'
-        : 'https://homologacao.focusnfe.com.br/v2'
-
-    const encodeBase64 = (str) => {
-      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-        try {
-          return Buffer.from(str, 'utf8').toString('base64')
-        } catch (_) {}
-      }
-      if (typeof btoa === 'function') {
-        try {
-          return btoa(str)
-        } catch (_) {}
-      }
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let out = ''
-      let i = 0
-      const len = str.length
-      while (i < len) {
-        const c1 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt((c1 & 0x3) << 4)
-          out += '=='
-          break
-        }
-        const c2 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-          out += chars.charAt((c2 & 0x0f) << 2)
-          out += '='
-          break
-        }
-        const c3 = str.charCodeAt(i++) & 0xff
-        out += chars.charAt(c1 >> 2)
-        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
-        out += chars.charAt(c3 & 0x3f)
-      }
-      return out
-    }
-
-    const url = `${baseUrl}/nfe?ref=${encodeURIComponent(ref)}`
-    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
-
-    try {
-      const res = $http.send({
-        method: 'POST',
-        url: url,
-        headers: {
-          Authorization: basicAuthHeader,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dados),
-        timeout: 60,
-      })
-
-      const statusCode = res.statusCode || 200
-      const rawText = res.raw ? res.raw : ''
-      let jsonResp = null
-      try {
-        jsonResp = JSON.parse(rawText)
-      } catch (_) {}
-
-      if (statusCode >= 200 && statusCode < 300) {
-        return c.json(200, {
-          sucesso: true,
-          ambiente: ambiente,
-          dados: jsonResp,
-        })
-      }
-
-      let msg = ''
-      if (statusCode === 401) {
-        msg = 'Token inválido: confira o segredo do ambiente'
-      } else if (jsonResp && typeof jsonResp === 'object') {
-        const principal = jsonResp.mensagem || jsonResp.message || ''
-        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
-        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
-          const det = jsonResp.erros
-            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
-            .join('; ')
-          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
-        } else {
-          msg = `${cod}${principal || 'Erro na Focus NFe'}`
-        }
-      } else {
-        msg = `Focus NFe retornou status HTTP ${statusCode}`
-      }
-
-      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
-        sucesso: false,
-        message: msg,
-        detalhes: jsonResp || rawText,
-      })
-    } catch (err) {
-      return c.json(500, {
-        sucesso: false,
-        message: 'Sem comunicação com a API emissora',
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
-
-/**
- * POST /backend/v1/fiscal/consultar
- * GET /nfe/{ref}?completa=1 ou GET /nfce/{ref}?completa=1
- * Body: { empresa_id: string, modelo: '55' | '65', ref: string }
- */
-routerAdd(
-  'POST',
-  '/backend/v1/fiscal/consultar',
-  (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
-    }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const data = c.requestInfo().body || {}
-    const empresaId = data.empresa_id
-    const modelo = String(data.modelo || '55').trim()
-    const ref = (data.ref || '').trim()
-
-    if (!empresaId || !ref) {
-      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
-    }
-
-    try {
-      exigirEmpresaDoUsuario(authRecord, empresaId)
-    } catch (errEmp) {
-      return c.json(403, {
-        sucesso: false,
-        message: errEmp.message || 'Acesso negado à empresa especificada.',
-      })
-    }
-
-    const empresa = $app.findRecordById('empresas', empresaId)
-    if (!empresa || !empresa.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
-    }
-
-    const nomeEmpresa =
-      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
-
-    const configs = $app.findRecordsByFilter(
-      'config_emissao_fiscal',
-      `empresa_id = '${empresaId}' && ativo = true`,
-      '-created',
-      1,
-      0,
-    )
-
-    if (!configs || configs.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
-      })
-    }
-
-    const config = configs[0]
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-    const tokenInfo = obterTokenFocus(empresaId, $app)
-    const ambiente = tokenInfo.ambiente
-    const token = tokenInfo.token
-
-    if (!token) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Token da empresa ${nomeEmpresa} não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
-      })
-    }
-
-    const baseUrl =
-      ambiente === 'Produção'
-        ? 'https://api.focusnfe.com.br/v2'
-        : 'https://homologacao.focusnfe.com.br/v2'
-
-    const encodeBase64 = (str) => {
-      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-        try {
-          return Buffer.from(str, 'utf8').toString('base64')
-        } catch (_) {}
-      }
-      if (typeof btoa === 'function') {
-        try {
-          return btoa(str)
-        } catch (_) {}
-      }
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let out = ''
-      let i = 0
-      const len = str.length
-      while (i < len) {
-        const c1 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt((c1 & 0x3) << 4)
-          out += '=='
-          break
-        }
-        const c2 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-          out += chars.charAt((c2 & 0x0f) << 2)
-          out += '='
-          break
-        }
-        const c3 = str.charCodeAt(i++) & 0xff
-        out += chars.charAt(c1 >> 2)
-        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
-        out += chars.charAt(c3 & 0x3f)
-      }
-      return out
-    }
-
-    const endpoint = modelo === '65' ? 'nfce' : 'nfe'
-    const url = `${baseUrl}/${endpoint}/${encodeURIComponent(ref)}?completa=1`
-    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
-
-    try {
-      const res = $http.send({
-        method: 'GET',
-        url: url,
-        headers: {
-          Authorization: basicAuthHeader,
-          Accept: 'application/json',
-        },
-        timeout: 60,
-      })
-
-      const statusCode = res.statusCode || 200
-      const rawText = res.raw ? res.raw : ''
-      let jsonResp = null
-      try {
-        jsonResp = JSON.parse(rawText)
-      } catch (_) {}
-
-      if (statusCode >= 200 && statusCode < 300) {
-        return c.json(200, {
-          sucesso: true,
-          ambiente: ambiente,
-          dados: jsonResp,
-        })
-      }
-
-      let msg = ''
-      if (statusCode === 401) {
-        msg = 'Token inválido: confira o segredo do ambiente'
-      } else if (jsonResp && (jsonResp.mensagem || jsonResp.message)) {
-        msg = jsonResp.mensagem || jsonResp.message
-      } else {
-        msg = `Focus NFe retornou status HTTP ${statusCode}`
-      }
-
-      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
-        sucesso: false,
-        message: msg,
-        detalhes: jsonResp || rawText,
-      })
-    } catch (err) {
-      return c.json(500, {
-        sucesso: false,
-        message: 'Sem comunicação com a API emissora',
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
-
-/**
- * POST /backend/v1/fiscal/cancelar
- * DELETE /nfe/{ref} ou /nfce/{ref} com {"justificativa": ...} (15 a 255 caracteres)
- * Body: { empresa_id: string, modelo: '55' | '65', ref: string, justificativa: string }
- */
-routerAdd(
-  'POST',
-  '/backend/v1/fiscal/cancelar',
-  (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
-    }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const data = c.requestInfo().body || {}
-    const empresaId = data.empresa_id
-    const modelo = String(data.modelo || '55').trim()
-    const ref = (data.ref || '').trim()
-    const justificativa = (data.justificativa || '').trim()
-
-    if (!empresaId || !ref) {
-      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
-    }
-
-    try {
-      exigirEmpresaDoUsuario(authRecord, empresaId)
-    } catch (errEmp) {
-      return c.json(403, {
-        sucesso: false,
-        message: errEmp.message || 'Acesso negado à empresa especificada.',
-      })
-    }
-
-    if (!justificativa || justificativa.length < 15 || justificativa.length > 255) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'A justificativa de cancelamento deve ter entre 15 e 255 caracteres.',
-      })
-    }
-
-    const empresa = $app.findRecordById('empresas', empresaId)
-    if (!empresa || !empresa.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
-    }
-
-    const nomeEmpresa =
-      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
-
-    const configs = $app.findRecordsByFilter(
-      'config_emissao_fiscal',
-      `empresa_id = '${empresaId}' && ativo = true`,
-      '-created',
-      1,
-      0,
-    )
-
-    if (!configs || configs.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
-      })
-    }
-
-    const config = configs[0]
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-    const tokenInfo = obterTokenFocus(empresaId, $app)
-    const ambiente = tokenInfo.ambiente
-    const token = tokenInfo.token
-
-    if (!token) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Token da empresa ${nomeEmpresa} não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
-      })
-    }
-
-    const baseUrl =
-      ambiente === 'Produção'
-        ? 'https://api.focusnfe.com.br/v2'
-        : 'https://homologacao.focusnfe.com.br/v2'
-
-    const encodeBase64 = (str) => {
-      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-        try {
-          return Buffer.from(str, 'utf8').toString('base64')
-        } catch (_) {}
-      }
-      if (typeof btoa === 'function') {
-        try {
-          return btoa(str)
-        } catch (_) {}
-      }
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let out = ''
-      let i = 0
-      const len = str.length
-      while (i < len) {
-        const c1 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt((c1 & 0x3) << 4)
-          out += '=='
-          break
-        }
-        const c2 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-          out += chars.charAt((c2 & 0x0f) << 2)
-          out += '='
-          break
-        }
-        const c3 = str.charCodeAt(i++) & 0xff
-        out += chars.charAt(c1 >> 2)
-        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
-        out += chars.charAt(c3 & 0x3f)
-      }
-      return out
-    }
-
-    const endpoint = modelo === '65' ? 'nfce' : 'nfe'
-    const url = `${baseUrl}/${endpoint}/${encodeURIComponent(ref)}`
-    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
-
-    try {
-      const res = $http.send({
-        method: 'DELETE',
-        url: url,
-        headers: {
-          Authorization: basicAuthHeader,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ justificativa: justificativa }),
-        timeout: 60,
-      })
-
-      const statusCode = res.statusCode || 200
-      const rawText = res.raw ? res.raw : ''
-      let jsonResp = null
-      try {
-        jsonResp = JSON.parse(rawText)
-      } catch (_) {}
-
-      if (statusCode >= 200 && statusCode < 300) {
-        return c.json(200, {
-          sucesso: true,
-          ambiente: ambiente,
-          dados: jsonResp,
-        })
-      }
-
-      let msg = ''
-      if (statusCode === 401) {
-        msg = 'Token inválido: confira o segredo do ambiente'
-      } else if (jsonResp && typeof jsonResp === 'object') {
-        const principal = jsonResp.mensagem || jsonResp.message || ''
-        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
-        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
-          const det = jsonResp.erros
-            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
-            .join('; ')
-          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
-        } else {
-          msg = `${cod}${principal || 'Erro na Focus NFe'}`
-        }
-      } else {
-        msg = `Focus NFe retornou status HTTP ${statusCode}`
-      }
-
-      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
-        sucesso: false,
-        message: msg,
-        detalhes: jsonResp || rawText,
-      })
-    } catch (err) {
-      return c.json(500, {
-        sucesso: false,
-        message: 'Sem comunicação com a API emissora',
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
-
-/**
- * POST /backend/v1/fiscal/carta-correcao
- * POST /nfe/{ref}/carta_correcao com {"correcao": ...} (15 a 1000 caracteres)
- * Body: { empresa_id: string, ref: string, correcao: string }
- */
-routerAdd(
-  'POST',
-  '/backend/v1/fiscal/carta-correcao',
-  (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
-    }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const data = c.requestInfo().body || {}
-    const empresaId = data.empresa_id
-    const ref = (data.ref || '').trim()
-    const correcao = (data.correcao || '').trim()
-
-    if (!empresaId || !ref) {
-      return c.json(400, { sucesso: false, message: 'Campos empresa_id e ref são obrigatórios.' })
-    }
-
-    try {
-      exigirEmpresaDoUsuario(authRecord, empresaId)
-    } catch (errEmp) {
-      return c.json(403, {
-        sucesso: false,
-        message: errEmp.message || 'Acesso negado à empresa especificada.',
-      })
-    }
-
-    if (!correcao || correcao.length < 15 || correcao.length > 1000) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'A carta de correção deve ter entre 15 e 1000 caracteres.',
-      })
-    }
-
-    const empresa = $app.findRecordById('empresas', empresaId)
-    if (!empresa || !empresa.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
-    }
-
-    const nomeEmpresa =
-      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
-
-    const configs = $app.findRecordsByFilter(
-      'config_emissao_fiscal',
-      `empresa_id = '${empresaId}' && ativo = true`,
-      '-created',
-      1,
-      0,
-    )
-
-    if (!configs || configs.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
-      })
-    }
-
-    const config = configs[0]
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-    const tokenInfo = obterTokenFocus(empresaId, $app)
-    const ambiente = tokenInfo.ambiente
-    const token = tokenInfo.token
-
-    if (!token) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Token da empresa ${nomeEmpresa} não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
-      })
-    }
-
-    const baseUrl =
-      ambiente === 'Produção'
-        ? 'https://api.focusnfe.com.br/v2'
-        : 'https://homologacao.focusnfe.com.br/v2'
-
-    const encodeBase64 = (str) => {
-      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-        try {
-          return Buffer.from(str, 'utf8').toString('base64')
-        } catch (_) {}
-      }
-      if (typeof btoa === 'function') {
-        try {
-          return btoa(str)
-        } catch (_) {}
-      }
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let out = ''
-      let i = 0
-      const len = str.length
-      while (i < len) {
-        const c1 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt((c1 & 0x3) << 4)
-          out += '=='
-          break
-        }
-        const c2 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-          out += chars.charAt((c2 & 0x0f) << 2)
-          out += '='
-          break
-        }
-        const c3 = str.charCodeAt(i++) & 0xff
-        out += chars.charAt(c1 >> 2)
-        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
-        out += chars.charAt(c3 & 0x3f)
-      }
-      return out
-    }
-
-    const url = `${baseUrl}/nfe/${encodeURIComponent(ref)}/carta_correcao`
-    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
-
-    try {
-      const res = $http.send({
-        method: 'POST',
-        url: url,
-        headers: {
-          Authorization: basicAuthHeader,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ correcao: correcao }),
-        timeout: 60,
-      })
-
-      const statusCode = res.statusCode || 200
-      const rawText = res.raw ? res.raw : ''
-      let jsonResp = null
-      try {
-        jsonResp = JSON.parse(rawText)
-      } catch (_) {}
-
-      if (statusCode >= 200 && statusCode < 300) {
-        return c.json(200, {
-          sucesso: true,
-          ambiente: ambiente,
-          dados: jsonResp,
-        })
-      }
-
-      let msg = ''
-      if (statusCode === 401) {
-        msg = 'Token inválido: confira o segredo do ambiente'
-      } else if (jsonResp && typeof jsonResp === 'object') {
-        const principal = jsonResp.mensagem || jsonResp.message || ''
-        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
-        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
-          const det = jsonResp.erros
-            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
-            .join('; ')
-          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
-        } else {
-          msg = `${cod}${principal || 'Erro na Focus NFe'}`
-        }
-      } else {
-        msg = `Focus NFe retornou status HTTP ${statusCode}`
-      }
-
-      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
-        sucesso: false,
-        message: msg,
-        detalhes: jsonResp || rawText,
-      })
-    } catch (err) {
-      return c.json(500, {
-        sucesso: false,
-        message: 'Sem comunicação com a API emissora',
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
-
-/**
- * POST /backend/v1/fiscal/inutilizar
- * POST /nfe/inutilizacao ou /nfce/inutilizacao com cnpj, serie, numero_inicial, numero_final e justificativa (mínimo 15 caracteres)
- * Body: { empresa_id: string, modelo: '55' | '65', serie: string, numero_inicial: number, numero_final: number, justificativa: string }
- */
-routerAdd(
-  'POST',
-  '/backend/v1/fiscal/inutilizar',
-  (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
-    }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const data = c.requestInfo().body || {}
-    const empresaId = data.empresa_id
-    const modelo = String(data.modelo || '55').trim()
-    const serie = String(data.serie || '1').trim()
-    const numeroInicial = Number(data.numero_inicial)
-    const numeroFinal = Number(data.numero_final)
-    const justificativa = (data.justificativa || '').trim()
-
+  function exigirEmpresaDoUsuario(authRec, empresaId) {
     if (!empresaId) {
-      return c.json(400, { sucesso: false, message: 'empresa_id é obrigatório.' })
+      throw new BadRequestError('ID da empresa é obrigatório.')
     }
-
-    try {
-      exigirEmpresaDoUsuario(authRecord, empresaId)
-    } catch (errEmp) {
-      return c.json(403, {
-        sucesso: false,
-        message: errEmp.message || 'Acesso negado à empresa especificada.',
-      })
+    const permitidas = empresasDoUsuario(authRec)
+    const encontrada = permitidas.find((e) => e.id === empresaId)
+    if (!encontrada) {
+      throw new ForbiddenError('Acesso negado à empresa especificada para este usuário/assinante.')
     }
+    return encontrada
+  }
 
-    if (
-      !serie ||
-      isNaN(numeroInicial) ||
-      isNaN(numeroFinal) ||
-      numeroInicial <= 0 ||
-      numeroFinal < numeroInicial
-    ) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'Parâmetros de numeração inválidos (série, número inicial e número final).',
-      })
+  return { assinanteDoUsuario, eMaster, empresasDoUsuario, exigirEmpresaDoUsuario }
+}
+
+function obterTokenFocusLocal(empresaId, appInstance) {
+  const app = appInstance || $app
+  if (!empresaId) {
+    return {
+      token: '',
+      origem: 'nenhuma',
+      ambiente: 'Homologação',
+      nomeSegredo: 'FOCUS_NFE_TOKEN_HOMOLOGACAO',
+      codigoToken: '',
     }
+  }
 
-    if (!justificativa || justificativa.length < 15) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'A justificativa de inutilização deve ter no mínimo 15 caracteres.',
-      })
-    }
-
-    const empresa = $app.findRecordById('empresas', empresaId)
-    if (!empresa || !empresa.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
-    }
-
-    const nomeEmpresa =
-      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
-
-    const configs = $app.findRecordsByFilter(
+  let ambiente = 'Homologação'
+  let codigoToken = ''
+  try {
+    const configs = app.findRecordsByFilter(
       'config_emissao_fiscal',
       `empresa_id = '${empresaId}' && ativo = true`,
       '-created',
       1,
       0,
     )
-
-    if (!configs || configs.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
-      })
+    if (configs && configs.length > 0) {
+      const cfg = configs[0]
+      ambiente = cfg.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+      codigoToken = (cfg.getString('codigo_token') || '').trim().toUpperCase()
     }
+  } catch (_) {}
 
-    const config = configs[0]
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-    const tokenInfo = obterTokenFocus(empresaId, $app)
-    const ambiente = tokenInfo.ambiente
-    const token = tokenInfo.token
+  const ehProducao = ambiente === 'Produção'
+  const sufixoAmbiente = ehProducao ? 'PRODUCAO' : 'HOMOLOGACAO'
+  let nomeSegredo = codigoToken
+    ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+    : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
 
-    if (!token) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Token da empresa ${nomeEmpresa} não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
-      })
-    }
-
-    const baseUrl =
-      ambiente === 'Produção'
-        ? 'https://api.focusnfe.com.br/v2'
-        : 'https://homologacao.focusnfe.com.br/v2'
-
-    const cnpjLimpo = (empresa.getString('cnpj') || '').replace(/\D/g, '')
-    const encodeBase64 = (str) => {
-      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-        try {
-          return Buffer.from(str, 'utf8').toString('base64')
-        } catch (_) {}
-      }
-      if (typeof btoa === 'function') {
-        try {
-          return btoa(str)
-        } catch (_) {}
-      }
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let out = ''
-      let i = 0
-      const len = str.length
-      while (i < len) {
-        const c1 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt((c1 & 0x3) << 4)
-          out += '=='
-          break
-        }
-        const c2 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-          out += chars.charAt((c2 & 0x0f) << 2)
-          out += '='
-          break
-        }
-        const c3 = str.charCodeAt(i++) & 0xff
-        out += chars.charAt(c1 >> 2)
-        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
-        out += chars.charAt(c3 & 0x3f)
-      }
-      return out
-    }
-
-    const endpoint = modelo === '65' ? 'nfce' : 'nfe'
-    const url = `${baseUrl}/${endpoint}/inutilizacao`
-    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
-
-    const bodyInutilizacao = {
-      cnpj: cnpjLimpo,
-      serie: serie,
-      numero_inicial: numeroInicial,
-      numero_final: numeroFinal,
-      justificativa: justificativa,
-    }
-
-    try {
-      const res = $http.send({
-        method: 'POST',
-        url: url,
-        headers: {
-          Authorization: basicAuthHeader,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(bodyInutilizacao),
-        timeout: 60,
-      })
-
-      const statusCode = res.statusCode || 200
-      const rawText = res.raw ? res.raw : ''
-      let jsonResp = null
-      try {
-        jsonResp = JSON.parse(rawText)
-      } catch (_) {}
-
-      // Gravar na tabela inutilizacoes
-      const statusRet = statusCode >= 200 && statusCode < 300 ? 'Autorizada' : 'Rejeitada'
-      const protocoloRet =
-        jsonResp?.protocolo_sefaz ||
-        jsonResp?.protocolo ||
-        jsonResp?.dados?.protocolo_sefaz ||
-        jsonResp?.dados?.protocolo ||
-        ''
-      const msgSefazRet = jsonResp?.mensagem_sefaz || jsonResp?.mensagem || ''
-      const caminhoXmlRet = jsonResp?.caminho_xml || jsonResp?.dados?.caminho_xml || ''
-
-      // Se retornou caminho_xml e status foi autorizado, podemos baixar o XML e persistir no registro
-      let xmlArquivoFile = null
-      if (caminhoXmlRet && statusRet === 'Autorizada') {
-        try {
-          let urlXml = caminhoXmlRet
-          if (caminhoXmlRet.startsWith('/')) {
-            const serverOrigin =
-              ambiente === 'Produção'
-                ? 'https://api.focusnfe.com.br'
-                : 'https://homologacao.focusnfe.com.br'
-            urlXml = `${serverOrigin}${caminhoXmlRet}`
-          }
-          const resXml = $http.send({
-            method: 'GET',
-            url: urlXml,
-            headers: {
-              Authorization: basicAuthHeader,
-            },
-            timeout: 30,
-          })
-          if (resXml.statusCode >= 200 && resXml.statusCode < 300 && resXml.raw) {
-            const nomeArquivo = `inutilizacao_${modelo}_serie${serie}_${numeroInicial}_${numeroFinal}.xml`
-            xmlArquivoFile = $filesystem.fileFromBytes(
-              typeof resXml.raw === 'string' ? $security.stringToBytes(resXml.raw) : resXml.raw,
-              nomeArquivo,
-            )
-          }
-        } catch (errXml) {
-          console.warn('Não foi possível pré-baixar XML da inutilização:', errXml)
-        }
-      }
-
-      try {
-        const inutCol = $app.findCollectionByNameOrId('inutilizacoes')
-        const inutRec = new Record(inutCol)
-        inutRec.set('empresa_id', empresaId)
-        inutRec.set('modelo', modelo)
-        inutRec.set('serie', serie)
-        inutRec.set('numero_inicial', numeroInicial)
-        inutRec.set('numero_final', numeroFinal)
-        inutRec.set('justificativa', justificativa)
-        inutRec.set('status', statusRet)
-        inutRec.set('protocolo', protocoloRet)
-        inutRec.set('mensagem_sefaz', msgSefazRet)
-        inutRec.set('usuario_id', authRecord.id)
-        inutRec.set('data_inutilizacao', new Date().toISOString())
-        inutRec.set('ativo', true)
-        if (xmlArquivoFile) {
-          inutRec.set('xml_arquivo', xmlArquivoFile)
-        }
-        $app.save(inutRec)
-      } catch (errInut) {
-        console.warn('Erro ao salvar registro de inutilizacao:', errInut)
-      }
-
-      if (statusCode >= 200 && statusCode < 300) {
-        return c.json(200, {
-          sucesso: true,
-          ambiente: ambiente,
-          dados: jsonResp,
-        })
-      }
-
-      let msg = ''
-      if (statusCode === 401) {
-        msg = 'Token inválido: confira o segredo do ambiente'
-      } else if (jsonResp && typeof jsonResp === 'object') {
-        const principal = jsonResp.mensagem || jsonResp.message || ''
-        const cod = jsonResp.codigo ? `[${jsonResp.codigo}] ` : ''
-        if (Array.isArray(jsonResp.erros) && jsonResp.erros.length > 0) {
-          const det = jsonResp.erros
-            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
-            .join('; ')
-          msg = `${cod}${principal ? principal + ' - ' : ''}${det}`
-        } else {
-          msg = `${cod}${principal || 'Erro na Focus NFe'}`
-        }
-      } else {
-        msg = `Focus NFe retornou status HTTP ${statusCode}`
-      }
-
-      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
-        sucesso: false,
-        message: msg,
-        detalhes: jsonResp || rawText,
-      })
-    } catch (err) {
-      return c.json(500, {
-        sucesso: false,
-        message: 'Sem comunicação com a API emissora',
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
-
-/**
- * POST /backend/v1/fiscal/baixar-arquivo
- * Baixa o XML ou DANFE retornado pela Focus NFe
- * Body: { empresa_id: string, caminho: string }
- */
-routerAdd(
-  'POST',
-  '/backend/v1/fiscal/baixar-arquivo',
-  (c) => {
-    const authRecord = c.auth || c.get('authRecord')
-    if (!authRecord) {
-      return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
-    }
-
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const data = c.requestInfo().body || {}
-    const empresaId = data.empresa_id
-    const caminho = (data.caminho || '').trim()
-
-    if (!empresaId || !caminho) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'Campos empresa_id e caminho são obrigatórios.',
-      })
-    }
-
-    try {
-      exigirEmpresaDoUsuario(authRecord, empresaId)
-    } catch (errEmp) {
-      return c.json(403, {
-        sucesso: false,
-        message: errEmp.message || 'Acesso negado à empresa especificada.',
-      })
-    }
-
-    const empresa = $app.findRecordById('empresas', empresaId)
-    if (!empresa || !empresa.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Empresa emitente não encontrada ou inativa.' })
-    }
-
-    const nomeEmpresa =
-      empresa.getString('nome_fantasia') || empresa.getString('razao_social') || 'Empresa'
-
-    const configs = $app.findRecordsByFilter(
-      'config_emissao_fiscal',
-      `empresa_id = '${empresaId}' && ativo = true`,
+  try {
+    const creds = app.findRecordsByFilter(
+      'credenciais_fiscais',
+      `empresa_id = '${empresaId}'`,
       '-created',
       1,
       0,
     )
+    if (creds && creds.length > 0) {
+      const credRec = creds[0]
+      const tokenBanco = (
+        ehProducao ? credRec.getString('token_producao') : credRec.getString('token_homologacao')
+      ).trim()
 
-    if (!configs || configs.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Esta empresa (${nomeEmpresa}) não possui configuração fiscal ativa.`,
-      })
-    }
-
-    const config = configs[0]
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-    const tokenInfo = obterTokenFocus(empresaId, $app)
-    const ambiente = tokenInfo.ambiente
-    const token = tokenInfo.token
-
-    if (!token) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Token da empresa ${nomeEmpresa} não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
-      })
-    }
-
-    let urlFinal = caminho
-    if (caminho.startsWith('/')) {
-      const serverOrigin =
-        ambiente === 'Produção'
-          ? 'https://api.focusnfe.com.br'
-          : 'https://homologacao.focusnfe.com.br'
-      urlFinal = `${serverOrigin}${caminho}`
-    }
-
-    const encodeBase64 = (str) => {
-      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-        try {
-          return Buffer.from(str, 'utf8').toString('base64')
-        } catch (_) {}
-      }
-      if (typeof btoa === 'function') {
-        try {
-          return btoa(str)
-        } catch (_) {}
-      }
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let out = ''
-      let i = 0
-      const len = str.length
-      while (i < len) {
-        const c1 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt((c1 & 0x3) << 4)
-          out += '=='
-          break
-        }
-        const c2 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-          out += chars.charAt((c2 & 0x0f) << 2)
-          out += '='
-          break
-        }
-        const c3 = str.charCodeAt(i++) & 0xff
-        out += chars.charAt(c1 >> 2)
-        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
-        out += chars.charAt(c3 & 0x3f)
-      }
-      return out
-    }
-
-    const basicAuthHeader = 'Basic ' + encodeBase64(token + ':')
-
-    try {
-      const res = $http.send({
-        method: 'GET',
-        url: urlFinal,
-        headers: {
-          Authorization: basicAuthHeader,
-        },
-        timeout: 60,
-      })
-
-      const statusCode = res.statusCode || 200
-      const rawText = res.raw ? res.raw : ''
-
-      if (statusCode >= 200 && statusCode < 300) {
-        return c.json(200, {
-          sucesso: true,
+      if (tokenBanco && tokenBanco.length > 0) {
+        return {
+          token: tokenBanco,
+          origem: 'banco',
           ambiente: ambiente,
-          conteudo: rawText,
-        })
+          nomeSegredo: nomeSegredo,
+          codigoToken: codigoToken,
+        }
       }
-
-      return c.json(statusCode >= 400 && statusCode < 500 ? statusCode : 400, {
-        sucesso: false,
-        message: `Erro ao baixar arquivo (HTTP ${statusCode})`,
-      })
-    } catch (err) {
-      return c.json(500, {
-        sucesso: false,
-        message: 'Sem comunicação com a API emissora',
-      })
     }
-  },
-  $apis.requireAuth(),
-)
+  } catch (_) {}
+
+  let tokenSegredo = ''
+  try {
+    if (codigoToken) {
+      tokenSegredo = ($os.getenv(nomeSegredo) || '').trim()
+    }
+  } catch (_) {
+    tokenSegredo = ''
+  }
+
+  if (!tokenSegredo) {
+    try {
+      const empRec = app.findRecordById('empresas', empresaId)
+      const codEmp = empRec.getInt('codigo')
+      if (codEmp === 2) {
+        const segEcommerce = (
+          $os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}_ECOMMERCE`) || ''
+        ).trim()
+        if (segEcommerce) {
+          tokenSegredo = segEcommerce
+          nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}_ECOMMERCE`
+        }
+      } else if (codEmp === 3) {
+        const segFilial05 = ($os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}_FILIAL05`) || '').trim()
+        if (segFilial05) {
+          tokenSegredo = segFilial05
+          nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}_FILIAL05`
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (!tokenSegredo) {
+    try {
+      const segPadrao = ($os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}`) || '').trim()
+      if (segPadrao) {
+        tokenSegredo = segPadrao
+        nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+      }
+    } catch (_) {}
+  }
+
+  if (tokenSegredo && tokenSegredo.length > 0) {
+    return {
+      token: tokenSegredo,
+      origem: 'segredo',
+      ambiente: ambiente,
+      nomeSegredo: nomeSegredo,
+      codigoToken: codigoToken,
+    }
+  }
+
+  return {
+    token: '',
+    origem: 'nenhuma',
+    ambiente: ambiente,
+    nomeSegredo: nomeSegredo,
+    codigoToken: codigoToken,
+  }
+}
