@@ -15,7 +15,7 @@ onRecordCreate((e) => {
   }
 
   // Verificar se o usuário autenticado é master em modo impersonado
-  const auth = e.auth || e.get('authRecord')
+  const auth = e.httpContext ? e.httpContext.auth || e.httpContext.get('authRecord') : null
   if (auth && auth.id) {
     function checarSeMasterLocal(authRec, appInstance) {
       const app = appInstance || $app

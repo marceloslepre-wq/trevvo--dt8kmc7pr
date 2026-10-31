@@ -3556,6 +3556,16 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.183** — Correção no Hook de Auditoria Modo Master (`Object has no member "get"`):
+
+1. **Correção de Acesso ao Usuário Autenticado em `pocketbase/hooks/auditoria_modo_master.js`:**
+   - O hook dispara em `onRecordCreate(..., 'logs_auditoria')` (evento de Record, onde `e.auth` vem indefinido e o objeto do evento não possui o método `.get`).
+   - Substituída a instrução `const auth = e.auth || e.get('authRecord')` pelo padrão seguro de RecordEvent: `const auth = e.httpContext ? e.httpContext.auth || e.httpContext.get('authRecord') : null`.
+   - Elimina o erro HTTP 400 (`Object has no member 'get'`) no disparo de auditoria ao lançar notas em `POST /notas-entrada/lancar`.
+   - Backend reimplantado com sucesso via `deploy_backend` com logs limpos.
+
+---
+
 **Versão 0.0.182** — Ajuste do Usuário de Lançamento em Notas de Entrada e Deploy do Backend:
 
 1. **Gravação Segura do Usuário Autenticado em `POST /notas-entrada/lancar` (`pocketbase/hooks/nota_entrada_lancar.js`):**
