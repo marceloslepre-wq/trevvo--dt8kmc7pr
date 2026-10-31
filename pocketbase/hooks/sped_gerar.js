@@ -1051,7 +1051,7 @@ routerAdd(
             linhas.push(SpedFormato.montarLinha(['9900', codReg, String(qtd)]))
           }
 
-          var totalLinhas9 = linhas.length + 1
+          var totalLinhas9 = linhas.length + 2
           linhas.push(SpedFormato.montarLinha(['9990', String(totalLinhas9)]))
 
           var totalArquivo = linhasAnteriores.length + linhas.length + 1
@@ -1437,7 +1437,7 @@ routerAdd(
             }
           }
 
-          var linhasReaisBloco9 = (contagemReal['9001'] || 0) + (contagemReal['9900'] || 0) + 1
+          var linhasReaisBloco9 = (contagemReal['9001'] || 0) + (contagemReal['9900'] || 0) + 2
           if (reg9990Gravado !== linhasReaisBloco9) {
             ctx.adicionarValidacao(
               'erro',
@@ -1760,7 +1760,7 @@ routerAdd(
               'documentos_fiscais',
               "empresa_id = '" +
                 empresaId +
-                "' && (modelo = '55' || modelo = '65') && ativo = true",
+                "' && (modelo = '55' || modelo = '65') && (status = 'Autorizada' || status = 'Cancelada' || status = 'Denegada')",
               'data_emissao,numero',
               10000,
               0,
@@ -2491,7 +2491,7 @@ routerAdd(
                 SpedFormato.formatarValor(somaCreditoIcmsNe),
                 SpedFormato.formatarValor(vlBcIcmsStNe),
                 SpedFormato.formatarValor(vlIcmsStNe),
-                SpedFormato.formatarValor(somaCreditoIpiNe),
+                SpedFormato.formatarValor(totIpiNe),
                 somaCreditoPisNe > 0 ? SpedFormato.formatarValor(somaCreditoPisNe) : '',
                 somaCreditoCofinsNe > 0 ? SpedFormato.formatarValor(somaCreditoCofinsNe) : '',
                 '',
@@ -2677,6 +2677,8 @@ routerAdd(
                 sBcIpiNe = bcIpiNe > 0 ? SpedFormato.formatarValor(bcIpiNe) : ''
                 sAliqIpiNe = aliqIpiNe > 0 ? SpedFormato.formatarValor(aliqIpiNe) : ''
                 sVlIpiNe = vIpiCred > 0 ? SpedFormato.formatarValor(vIpiCred) : ''
+              } else if (ipiItem > 0) {
+                sVlIpiNe = SpedFormato.formatarValor(ipiItem)
               }
 
               var cstPisNe = SpedFormato.formatarDigitos(itRec.getString('cst_pis_entrada'))
@@ -2758,7 +2760,7 @@ routerAdd(
                 vlIcms: vlIcmsCredItem,
                 vlBcSt: bcStItemNe,
                 vlSt: vlStItemNe,
-                vlIpi: vlIpiCredItem,
+                vlIpi: ipiItem,
               })
             }
 
@@ -2865,7 +2867,7 @@ routerAdd(
           try {
             docsTrfBrutos = $app.findRecordsByFilter(
               'documentos_fiscais',
-              "(origem = 'Transferência' || origem = 'Transferencia') && transferencia_id != '' && (status = 'Autorizada' || status = 'Cancelada') && ativo = true",
+              "(origem = 'Transferência' || origem = 'Transferencia') && transferencia_id != '' && (status = 'Autorizada' || status = 'Cancelada')",
               'data_emissao,numero',
               5000,
               0,
