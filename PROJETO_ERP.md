@@ -3556,6 +3556,23 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.190** — Eliminação de `require` nos Callbacks de NF-e (`fiscal_nfe_operacoes.js`):
+
+1. **Substituição de `require` por Funções Locais em `pocketbase/hooks/fiscal_nfe_operacoes.js`:**
+   - No ambiente Skip Cloud / PocketBase JSVM (Goja isolate pool), chamadas de `require("${__hooks}/tenancy.js")` e `require("${__hooks}/fiscal_token_lib.js")` dentro dos callbacks de rotas falham com `GoError: Invalid module`.
+   - Removidos todos os `require` dos 5 endpoints de NF-e e copiadas as funções auxiliares como funções locais no início de cada callback:
+     - `POST /backend/v1/fiscal/emitir-nfe-venda`
+     - `POST /backend/v1/fiscal/consultar-situacao-nfe`
+     - `POST /backend/v1/fiscal/cancelar-nfe`
+     - `POST /backend/v1/fiscal/carta-correcao-nfe`
+     - `POST /backend/v1/fiscal/enviar-email-nfe`
+   - Funções locais incorporadas em cada callback: `eMaster`, `empresasDoUsuario`, `exigirEmpresaDoUsuario` e `obterTokenFocus` (com consulta à coleção `credenciais_fiscais` e fallback para segredos `$os.getenv`).
+   - Todos os 5 `routerAdd` preservados no nível superior do arquivo, intactos, com os mesmos métodos e caminhos.
+   - Deploy realizado com sucesso (`deploy_backend`), sem erros "Invalid module" nos logs do backend (`requests` e `hooks`).
+   - Rotas protegidas por `$apis.requireAuth()`, respondendo HTTP 401 sem token (nunca 404 nem "Invalid module").
+
+---
+
 **Versão 0.0.186** — Registro e Restauração dos Endpoints Fiscais em `fiscal_focus_integracao.js`:
 
 1. **Restauração dos Handlers HTTP no Hook de Integração Fiscal (`pocketbase/hooks/fiscal_focus_integracao.js`):**
