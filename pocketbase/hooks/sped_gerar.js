@@ -17,6 +17,7 @@ routerAdd(
   'POST',
   '/backend/v1/sped/gerar',
   function (c) {
+    const { SpedGerador } = require(`${__hooks}/sped/gerador.js`)
     try {
       var authRecord = c.auth || c.get('authRecord')
       if (!authRecord) {
@@ -175,7 +176,7 @@ routerAdd(
       }
 
       // Utilitários de formatação para SPED Fiscal (EFD ICMS/IPI)
-      var SpedFormato = (function () {
+      var SpedFormatoLocal = (function () {
         function removerAcentosECaracteresEspeciais(valor) {
           if (valor === null || valor === undefined) return ''
           var str = String(valor)
@@ -342,7 +343,7 @@ routerAdd(
       })()
 
       // Motor do SPED Fiscal local no callback
-      var SpedGerador = (function () {
+      var SpedGeradorLocal = (function () {
         function criarContexto(params) {
           var empresa = params.empresa
           var configSped = params.configSped
