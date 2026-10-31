@@ -340,6 +340,7 @@ routerAdd(
           montarLinha: montarLinha,
         }
       })()
+      var SpedFormato = SpedFormatoLocal
 
       // Motor do SPED Fiscal local no callback
       var SpedGeradorLocal = (function () {
