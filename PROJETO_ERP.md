@@ -1325,6 +1325,7 @@ Tabela que armazena os estabelecimentos (Matriz e Filiais), cada um com seu CNPJ
 - codigo: número sequencial curto para exibir (1, 2, 3...)
 - razao_social: texto obrigatório, até 60 caracteres
 - nome_fantasia: texto, até 60 caracteres
+- nome_documentos_fiscais: texto opcional, até 60 caracteres (campo opcional da migration 0099; quando preenchido, substitui a razão social no campo xNome do emitente na emissão fiscal e no rascunho SEFAZ)
 - cnpj: texto obrigatório, único, validado com DV conforme especificação alfanumérica
 - inscricao_estadual: texto, obrigatório para contribuinte de ICMS; aceita "ISENTO"; validação com pesos 9 a 2 para UF ES
 - inscricao_estadual_st: texto opcional, IE de substituto tributário em outra UF
@@ -3555,6 +3556,14 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 ---
 
 ## Versão Atual do Projeto
+
+**Versão 0.0.197** — xNome do Emitente com `nome_documentos_fiscais` e Truncamento em 60 Caracteres (Backend Fiscal):
+
+- Nos hooks `fiscal_documentos_operacoes.js` (`POST /backend/v1/fiscal/montar-rascunho`) e `fiscal_nfe_operacoes.js` (`POST /backend/v1/fiscal/emitir-nfe-venda`), o campo `xNome` (`nome_emitente`) do emitente passa a usar `empresa.nome_documentos_fiscais` quando preenchido, com fallback para `empresa.razao_social`.
+- Aplicado corte estrito de no máximo 60 caracteres sem espaço final (`truncar60`) nos três campos: `nome_emitente` (xNome), `nome_fantasia_emitente` (xFant) e `nome_destinatario` (xNome do destinatário).
+- Função `truncar60` implementada localmente em cada callback (zero `require` interno prevenindo erro "Invalid module"), preservando todos os `routerAdd` no nível superior e a reemissão de documentos rejeitados reaproveitando o mesmo registro/número com dados atualizados.
+
+---
 
 **Versão 0.0.195** — Eliminação de Loopback em `emitir-nfe-venda` (Reutilização de Rascunho e Montagem Local) e Destinatário no Modal:
 

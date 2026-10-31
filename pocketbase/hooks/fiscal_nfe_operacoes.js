@@ -305,6 +305,11 @@ routerAdd(
       }
     }
 
+    function truncar60(texto) {
+      if (!texto) return ''
+      return String(texto).trim().slice(0, 60).trim()
+    }
+
     const encodeBase64 = (str) => {
       if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
         try {
@@ -527,6 +532,25 @@ routerAdd(
           if (parsedJson && (parsedJson.items || parsedJson.cnpj_emitente)) {
             docRec = docEncontrado
             refFocus = docEncontrado.getString('referencia')
+
+            // Atualizar/regenerar os campos de emitente e destinatário com truncar60 e nome_documentos_fiscais
+            const nomeDocEmp = (empresa.getString('nome_documentos_fiscais') || '').trim()
+            const razaoSocialEmp = (empresa.getString('razao_social') || '').trim()
+            const fantasiaEmp = (empresa.getString('nome_fantasia') || '').trim()
+            const emitenteNomeAtualizado = truncar60(nomeDocEmp || razaoSocialEmp)
+            const emitenteFantasiaAtualizado = truncar60(fantasiaEmp)
+
+            parsedJson.nome_emitente = emitenteNomeAtualizado
+            if (emitenteFantasiaAtualizado) {
+              parsedJson.nome_fantasia_emitente = emitenteFantasiaAtualizado
+            } else {
+              delete parsedJson.nome_fantasia_emitente
+            }
+
+            if (parsedJson.nome_destinatario) {
+              parsedJson.nome_destinatario = truncar60(parsedJson.nome_destinatario)
+            }
+
             payloadFocus = parsedJson
           }
         }
@@ -611,6 +635,11 @@ routerAdd(
           const ieEmitente = (empresa.getString('inscricao_estadual') || '').trim()
           const ufEmitente = (empresa.getString('uf') || '').trim().toUpperCase()
           const crtEmitenteRaw = empresa.get('crt')
+          const nomeDocEmp = (empresa.getString('nome_documentos_fiscais') || '').trim()
+          const razaoSocialEmp = (empresa.getString('razao_social') || '').trim()
+          const fantasiaEmp = (empresa.getString('nome_fantasia') || '').trim()
+          const nomeEmitenteFinal = truncar60(nomeDocEmp || razaoSocialEmp)
+          const nomeFantasiaEmitenteFinal = truncar60(fantasiaEmp)
           const crtEmitente =
             crtEmitenteRaw !== null && crtEmitenteRaw !== undefined && crtEmitenteRaw !== ''
               ? Number(crtEmitenteRaw)
@@ -1361,10 +1390,11 @@ routerAdd(
           }
 
           const dataHojeIso = new Date().toISOString()
-          const nomeDestinatarioFinal =
+          const nomeDestinatarioFinal = truncar60(
             ambiente === 'Homologação'
               ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-              : destinatarioNome
+              : destinatarioNome,
+          )
 
           const presencaInput =
             data.presenca_comprador !== undefined
@@ -1399,6 +1429,8 @@ routerAdd(
             presenca_comprador: presencaCompradorFinal,
             modalidade_frete: modalidadeFreteFinal,
             cnpj_emitente: cnpjEmitenteLimpo,
+            nome_emitente: nomeEmitenteFinal,
+            nome_fantasia_emitente: nomeFantasiaEmitenteFinal || undefined,
 
             nome_destinatario: nomeDestinatarioFinal,
             indicador_inscricao_estadual_destinatario: indicadorIe,
@@ -1582,7 +1614,7 @@ routerAdd(
           novoDocRec.set('data_emissao', dataHojeIso)
           novoDocRec.set('natureza_operacao', naturezaOperacaoInput)
           novoDocRec.set('cfop_principal', cfopPrimeiroItem || '5102')
-          novoDocRec.set('destinatario_nome', destinatarioNome)
+          novoDocRec.set('destinatario_nome', truncar60(destinatarioNome))
           novoDocRec.set('destinatario_cpf_cnpj', destinatarioCpfCnpj)
           novoDocRec.set('destinatario_uf', destinatarioUf)
           novoDocRec.set('presenca_comprador', presencaCompradorFinal)

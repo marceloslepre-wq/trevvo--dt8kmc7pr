@@ -188,6 +188,11 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
     // Funções auxiliares inline para garantir escopo dentro do callback JSVM
     const round2 = (val) => Math.round((Number(val) || 0) * 100) / 100
 
+    function truncar60(texto) {
+      if (!texto) return ''
+      return String(texto).trim().slice(0, 60).trim()
+    }
+
     const calcularAliquotaInterestadualBackend = (ufOrigem, ufDestino, origemMercadoria) => {
       const origemStr = String(origemMercadoria || '0')
       if (['1', '2', '3', '8'].includes(origemStr)) {
@@ -338,6 +343,11 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       const ieEmitente = (empresaRec.getString('inscricao_estadual') || '').trim()
       const ufEmitente = (empresaRec.getString('uf') || '').trim().toUpperCase()
       const crtEmitenteRaw = empresaRec.get('crt')
+      const nomeDocEmitente = (empresaRec.getString('nome_documentos_fiscais') || '').trim()
+      const razaoSocialEmitente = (empresaRec.getString('razao_social') || '').trim()
+      const fantasiaEmitente = (empresaRec.getString('nome_fantasia') || '').trim()
+      const nomeEmitenteFinal = truncar60(nomeDocEmitente || razaoSocialEmitente)
+      const nomeFantasiaEmitenteFinal = truncar60(fantasiaEmitente)
       const crtEmitente =
         crtEmitenteRaw !== null && crtEmitenteRaw !== undefined && crtEmitenteRaw !== ''
           ? Number(crtEmitenteRaw)
@@ -1174,12 +1184,13 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
 
       // 8. Montar JSON Focus NFe Completo
       const dataHojeIso = new Date().toISOString()
-      const nomeDestinatarioFinal =
+      const nomeDestinatarioFinal = truncar60(
         ambiente === 'Homologação'
           ? modelo === '65'
             ? 'NF-C-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
             : 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-          : destinatarioNome
+          : destinatarioNome,
+      )
 
       // Parâmetros recebidos no body para customização na janela de conferência da NF-e
       const presencaInput =
@@ -1224,6 +1235,8 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         presenca_comprador: presencaCompradorFinal,
         modalidade_frete: modalidadeFreteFinal,
         cnpj_emitente: cnpjEmitenteLimpo,
+        nome_emitente: nomeEmitenteFinal,
+        nome_fantasia_emitente: nomeFantasiaEmitenteFinal || undefined,
 
         nome_destinatario: nomeDestinatarioFinal,
         indicador_inscricao_estadual_destinatario: indicadorIe,
@@ -1417,7 +1430,7 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       docRec.set('data_emissao', dataHojeIso)
       docRec.set('natureza_operacao', naturezaOperacaoInput)
       docRec.set('cfop_principal', cfopPrimeiroItem || '5102')
-      docRec.set('destinatario_nome', destinatarioNome)
+      docRec.set('destinatario_nome', truncar60(destinatarioNome))
       docRec.set('destinatario_cpf_cnpj', destinatarioCpfCnpj)
       docRec.set('destinatario_uf', destinatarioUf)
       docRec.set('presenca_comprador', presencaCompradorFinal)
