@@ -711,6 +711,48 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         let aliqIcms =
           itRec.getFloat('aliquota_icms') ||
           (regraRec ? regraRec.getFloat('aliquota_icms') || 0 : 0)
+
+        // Se a alíquota de ICMS não foi informada manualmente no item da venda
+        // e for operação interestadual com CST de ICMS tributado com destaque (00, 10, 20, 70, 90),
+        // busca a alíquota na matriz icms_interestadual (UF emitente × UF destino × origem do item).
+        const aliqIcmsInformadaManualmente = (itRec.getFloat('aliquota_icms') || 0) > 0
+        if (!ehOperacaoInterna && !aliqIcmsInformadaManualmente) {
+          const cstsTributadosDestaque = ['00', '10', '20', '70', '90']
+          if (cstsTributadosDestaque.includes(cstIcms)) {
+            let aliqMatriz = null
+            const origMercStr = String(origemMercadoria || '0').trim()
+            if (['1', '2', '3', '8'].includes(origMercStr)) {
+              aliqMatriz = 4
+            } else if (ufEmitente && destinatarioUf) {
+              try {
+                const matsInter = txApp.findRecordsByFilter(
+                  'icms_interestadual',
+                  `uf_origem = '${ufEmitente}' && uf_destino = '${destinatarioUf}' && ativo = true`,
+                  '',
+                  1,
+                  0,
+                )
+                if (
+                  matsInter.length > 0 &&
+                  matsInter[0].get('aliquota') !== null &&
+                  matsInter[0].get('aliquota') !== undefined &&
+                  matsInter[0].get('aliquota') !== ''
+                ) {
+                  aliqMatriz = matsInter[0].getFloat('aliquota')
+                }
+              } catch (_) {}
+            }
+
+            if (aliqMatriz !== null && aliqMatriz !== undefined) {
+              aliqIcms = aliqMatriz
+            } else {
+              avisos.push(
+                `Item ${numItem} (${descricao}): alíquota interestadual não encontrada na matriz`,
+              )
+            }
+          }
+        }
+
         let aliqFcp = regraRec ? regraRec.getFloat('aliquota_fcp') || 0 : 0
 
         // ST
@@ -923,7 +965,10 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
             aliqFcpUfDest = matIcmsDestino.getFloat('aliquota_fcp') || 0
           }
 
-          if (!aliqInterestadual) {
+          // Regra DIFAL: usa a mesma alíquota interestadual do item calculada/vigente
+          if (aliqIcms > 0 && ['00', '10', '20', '70', '90'].includes(cstIcms)) {
+            aliqInterestadual = aliqIcms
+          } else if (!aliqInterestadual) {
             try {
               const matsInter = txApp.findRecordsByFilter(
                 'icms_interestadual',
