@@ -15,7 +15,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileSpreadsheet,
-  FileJson,
   X,
   Percent,
 } from 'lucide-react'
@@ -61,10 +60,13 @@ import {
   ativarNcm,
   formatarCodigoNcm,
   normalizarCodigoNcm,
+} from '@/services/ncm'
+import {
   analisarArquivoNcm,
   executarImportacaoNcmEmLotes,
   ResumoImportacaoNcm,
-} from '@/services/ncm'
+  ResultadoImportacaoNcm,
+} from '@/services/ncmImportacao'
 
 export const NcmPage: React.FC = () => {
   const { pode } = usePermissoes()
@@ -111,13 +113,9 @@ export const NcmPage: React.FC = () => {
   const [progresso, setProgresso] = useState<{
     processados: number
     total: number
-    stats: { inseridos: number; atualizados: number }
+    stats: { criados: number; atualizados: number; semMudanca: number }
   } | null>(null)
-  const [resultadoFinal, setResultadoFinal] = useState<{
-    inseridos: number
-    atualizados: number
-    erros: number
-  } | null>(null)
+  const [resultadoFinal, setResultadoFinal] = useState<ResultadoImportacaoNcm | null>(null)
 
   const carregarDados = useCallback(async () => {
     setCarregando(true)
@@ -406,7 +404,7 @@ export const NcmPage: React.FC = () => {
       setResultadoFinal(res)
       toast({
         title: 'Importação concluída',
-        description: `${res.inseridos} NCM(s) inserida(s) e ${res.atualizados} atualizada(s).`,
+        description: `${res.criados} criada(s), ${res.atualizados} atualizada(s), ${res.semMudanca} sem mudança e ${res.erros} erro(s).`,
       })
       carregarDados()
     } catch (err: unknown) {
@@ -885,10 +883,14 @@ export const NcmPage: React.FC = () => {
               Importar Tabela NCM
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Aceita o <strong>arquivo JSON oficial do Portal Único Siscomex</strong> (com a lista
-              &quot;Nomenclaturas&quot;) ou{' '}
-              <strong>CSV com colunas codigo;descricao;aliquota_ipi</strong>. Apenas códigos de 8
-              dígitos válidos serão importados com atualização inteligente (upsert).
+              Envie o <strong>CSV oficial da Receita/Siscomex</strong> (ncm_vigente_AAAA-MM-DD.csv,
+              separado por ponto e vírgula) com as colunas{' '}
+              <strong>
+                codigo; codigo_formatado; descricao; descricao_completa; data_inicio; data_fim;
+                ato_legal
+              </strong>
+              . Importação em lotes com upsert pelo código: atualiza o que existe, cria o que falta,
+              sem duplicar e sem alterar a alíquota de IPI dos registros existentes.
             </DialogDescription>
           </DialogHeader>
 
@@ -898,7 +900,7 @@ export const NcmPage: React.FC = () => {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".json,.csv,.txt"
+                accept=".csv,.txt"
                 onChange={handleSelecionarArquivo}
                 className="hidden"
                 id="ncm-file-input"
@@ -911,11 +913,11 @@ export const NcmPage: React.FC = () => {
                   <FileSpreadsheet className="h-6 w-6" />
                 </div>
                 <span className="font-semibold text-slate-800 text-xs">
-                  Clique para selecionar o arquivo JSON ou CSV
+                  Clique para selecionar o CSV oficial da Receita/Siscomex
                 </span>
                 <span className="text-[11px] text-slate-400">
-                  Suporta JSON Siscomex (.json) ou CSV (.csv) com colunas separadas por ponto e
-                  vírgula
+                  Arquivo .csv separado por ponto e vírgula (codigo; codigo_formatado; descricao;
+                  descricao_completa; data_inicio; data_fim; ato_legal)
                 </span>
               </label>
             </div>
@@ -980,24 +982,66 @@ export const NcmPage: React.FC = () => {
                 </div>
                 <Progress value={porcentagemProgresso} className="h-2 bg-blue-100" />
                 <div className="flex justify-between text-[10px] text-blue-700 pt-1">
-                  <span>Novos inseridos: {progresso.stats.inseridos}</span>
+                  <span>Criados: {progresso.stats.criados}</span>
                   <span>Atualizados: {progresso.stats.atualizados}</span>
+                  <span>Sem mudança: {progresso.stats.semMudanca}</span>
                 </div>
               </div>
             )}
 
             {/* Resultado Final */}
             {resultadoFinal && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 space-y-1">
-                <div className="font-semibold text-xs flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  Importação concluída com sucesso!
+              <div className="space-y-2">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 space-y-1">
+                  <div className="font-semibold text-xs flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    Importação concluída!
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 text-center text-[11px]">
+                    <div className="p-1.5 bg-white rounded border border-emerald-200">
+                      <span className="text-emerald-600 block text-[10px]">Criados</span>
+                      <strong className="text-emerald-800 text-sm">{resultadoFinal.criados}</strong>
+                    </div>
+                    <div className="p-1.5 bg-white rounded border border-emerald-200">
+                      <span className="text-emerald-600 block text-[10px]">Atualizados</span>
+                      <strong className="text-emerald-800 text-sm">
+                        {resultadoFinal.atualizados}
+                      </strong>
+                    </div>
+                    <div className="p-1.5 bg-white rounded border border-emerald-200">
+                      <span className="text-emerald-600 block text-[10px]">Sem mudança</span>
+                      <strong className="text-emerald-800 text-sm">
+                        {resultadoFinal.semMudanca}
+                      </strong>
+                    </div>
+                    <div className="p-1.5 bg-white rounded border border-rose-200">
+                      <span className="text-rose-600 block text-[10px]">Erros</span>
+                      <strong className="text-rose-800 text-sm">{resultadoFinal.erros}</strong>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-[11px]">
-                  {resultadoFinal.inseridos} nova(s) NCM(s) inserida(s),{' '}
-                  {resultadoFinal.atualizados} atualizada(s)
-                  {resultadoFinal.erros > 0 && ` e ${resultadoFinal.erros} erro(s)`}.
-                </p>
+
+                {resultadoFinal.erros > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
+                    <div className="font-semibold text-amber-900 text-xs flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      Primeiras {resultadoFinal.primeirosErros.length} linhas com erro
+                    </div>
+                    <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                      {resultadoFinal.primeirosErros.map((e, idx) => (
+                        <div
+                          key={`${e.linha}-${idx}`}
+                          className="text-[11px] bg-white rounded border border-amber-200 p-2"
+                        >
+                          <span className="font-mono font-semibold text-amber-900">
+                            Linha {e.linha} (NCM {formatarCodigoNcm(e.codigo) || e.codigo})
+                          </span>
+                          <span className="text-amber-800 block mt-0.5">{e.motivo}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
