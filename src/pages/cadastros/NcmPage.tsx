@@ -114,6 +114,8 @@ export const NcmPage: React.FC = () => {
     processados: number
     total: number
     stats: { criados: number; atualizados: number; semMudanca: number }
+    aguardandoLimite: boolean
+    tentativasLimite: number
   } | null>(null)
   const [resultadoFinal, setResultadoFinal] = useState<ResultadoImportacaoNcm | null>(null)
 
@@ -396,8 +398,14 @@ export const NcmPage: React.FC = () => {
     try {
       const res = await executarImportacaoNcmEmLotes(
         resumoImportacao.itensValidos,
-        (processados, total, stats) => {
-          setProgresso({ processados, total, stats })
+        (processados, total, stats, status) => {
+          setProgresso({
+            processados,
+            total,
+            stats,
+            aguardandoLimite: status?.aguardandoLimite || false,
+            tentativasLimite: status?.tentativas || 0,
+          })
         },
       )
 
@@ -986,6 +994,13 @@ export const NcmPage: React.FC = () => {
                   <span>Atualizados: {progresso.stats.atualizados}</span>
                   <span>Sem mudança: {progresso.stats.semMudanca}</span>
                 </div>
+                {progresso.aguardandoLimite && (
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    aguardando limite do servidor... (tentativa de reenvio nº{' '}
+                    {progresso.tentativasLimite})
+                  </div>
+                )}
               </div>
             )}
 

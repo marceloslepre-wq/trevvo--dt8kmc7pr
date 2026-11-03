@@ -34,6 +34,11 @@ export interface ResultadoImportacaoNcm {
   primeirosErros: ErroImportacaoNcm[]
 }
 
+export interface StatusProgressoImportacao {
+  aguardandoLimite: boolean
+  tentativas: number
+}
+
 interface NcmRegistro {
   id: string
   codigo: string
@@ -43,8 +48,18 @@ interface NcmRegistro {
   data_fim?: string
 }
 
-const TAMANHO_LOTE = 200
-const CONCORRENCIA = 10
+/** Pausa entre requisições de gravação (uma por vez, sem paralelismo). */
+const PAUSA_ENTRE_REQUISICOES_MS = 60
+
+/** Intervalo entre lotes: só para manter a UI responsiva. */
+const PAUSA_UI_MS = 10
+
+/** Frequência de atualização do progresso (a cada N linhas). */
+const FREQUENCIA_PROGRESSO = 10
+
+/** Retry em 429: 5 tentativas no total, esperando 1s, 2s, 4s, 8s entre elas. */
+const MAX_TENTATIVAS = 5
+const ATRASOS_RETRY_MS = [1000, 2000, 4000, 8000]
 
 /**
  * Parser de linha CSV com separador ";" respeitando campos entre aspas
@@ -108,6 +123,74 @@ function motivoErroPb(err: unknown): string {
   }
 
   return partes.join(' | ')
+}
+
+/** Reconhece o erro de limite do servidor (HTTP 429 / Too Many Requests). */
+function ehErroLimite(err: unknown): boolean {
+  const e = err as { status?: number; message?: string; response?: { message?: string } }
+  if (e?.status === 429) return true
+  const texto = `${e?.message || ''} ${e?.response?.message || ''}`
+  return /429|too many requests/i.test(texto)
+}
+
+/**
+ * Lê o cabeçalho Retry-After (em segundos) do erro, quando o servidor o envia.
+ * Procura em err.headers, err.originalError.headers e err.response.headers.
+ */
+function extrairRetryAfterMs(err: unknown): number | null {
+  const candidatos: unknown[] = [
+    err,
+    (err as { originalError?: unknown })?.originalError,
+    (err as { response?: unknown })?.response,
+  ]
+
+  for (const c of candidatos) {
+    const headers = (c as { headers?: unknown })?.headers
+    if (!headers) continue
+
+    let valor: string | undefined
+    if (typeof (headers as Headers).get === 'function') {
+      valor = (headers as Headers).get('retry-after') || undefined
+    } else if (typeof headers === 'object') {
+      for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
+        if (k.toLowerCase() === 'retry-after') valor = String(v)
+      }
+    }
+
+    if (valor) {
+      const segundos = parseInt(valor, 10)
+      if (!Number.isNaN(segundos) && segundos > 0) {
+        return Math.min(segundos, 60) * 1000
+      }
+    }
+  }
+
+  return null
+}
+
+function aguardar(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Executa uma chamada ao servidor repetindo em caso de 429 (Too Many Requests):
+ * respeita o cabeçalho Retry-After quando presente; sem ele espera 1s, 2s, 4s, 8s,
+ * até 5 tentativas. Só propaga o erro depois de esgotar as tentativas.
+ */
+async function executarComRetry<T>(
+  fn: () => Promise<T>,
+  onTentativa?: (tentativa: number, esperaMs: number) => void,
+): Promise<T> {
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (tentativa >= MAX_TENTATIVAS || !ehErroLimite(err)) throw err
+      const espera = extrairRetryAfterMs(err) ?? ATRASOS_RETRY_MS[tentativa - 1] ?? 8000
+      onTentativa?.(tentativa, espera)
+      await aguardar(espera)
+    }
+  }
 }
 
 /**
@@ -236,12 +319,16 @@ export async function analisarArquivoNcm(conteudo: string): Promise<ResumoImport
 }
 
 /**
- * Executa a importação em lotes de 200 linhas com upsert pelo código:
+ * Executa a importação linha a linha (uma requisição por vez, sem paralelismo)
+ * com upsert pelo código:
+ * - carrega antes, em páginas, o que já existe na coleção e compara em memória:
+ *   linha igual ao registro gravado é "sem mudança" e NÃO chama o servidor;
  * - atualiza SOMENTE os campos que vêm no CSV (descricao, descricao_completa,
  *   data_inicio, data_fim); nunca mexe em aliquota_ipi, ex_tipi,
  *   unidade_tributavel ou ativo dos registros existentes;
  * - cria o que falta; nunca duplica (código é único no banco);
- * - linha idêntica ao registro gravado é contada como "sem mudança".
+ * - em 429 (Too Many Requests) repete a mesma linha até 5 vezes, respeitando
+ *   o Retry-After do servidor; só conta erro se as 5 falharem.
  */
 export async function executarImportacaoNcmEmLotes(
   itens: ItemImportacaoNcm[],
@@ -249,99 +336,132 @@ export async function executarImportacaoNcmEmLotes(
     processados: number,
     total: number,
     stats: { criados: number; atualizados: number; semMudanca: number },
+    status?: StatusProgressoImportacao,
   ) => void,
 ): Promise<ResultadoImportacaoNcm> {
   const usuarioId = pb.authStore.record?.id || null
 
-  // Carrega os códigos existentes uma única vez para o upsert
+  // Carrega os códigos e descrições existentes uma única vez (em páginas)
+  // para comparar em memória: linha igual não gera requisição alguma.
   const existentes = new Map<string, NcmRegistro>()
   let pagina = 1
   for (;;) {
-    const res = await pb.collection('ncm').getList<NcmRegistro>(pagina, 500, { sort: 'codigo' })
+    const res = await executarComRetry(() =>
+      pb.collection('ncm').getList<NcmRegistro>(pagina, 500, {
+        sort: 'codigo',
+        fields: 'id,codigo,descricao,descricao_completa,data_inicio,data_fim',
+      }),
+    )
     for (const reg of res.items) {
       existentes.set(normalizarCodigoNcm(reg.codigo) || reg.codigo, reg)
     }
     if (pagina >= res.totalPages) break
     pagina++
+    await aguardar(PAUSA_UI_MS)
   }
 
   let criados = 0
   let atualizados = 0
   let semMudanca = 0
   const erros: ErroImportacaoNcm[] = []
+  let aguardandoLimite = false
+  let tentativasLimite = 0
 
-  const processarItem = async (item: ItemImportacaoNcm) => {
+  const emitirProgresso = (processados: number, total: number) => {
+    onProgresso?.(
+      processados,
+      total,
+      { criados, atualizados, semMudanca },
+      {
+        aguardandoLimite,
+        tentativas: tentativasLimite,
+      },
+    )
+  }
+
+  const aoTentarDeNovo = (processados: number, total: number) => {
+    tentativasLimite++
+    aguardandoLimite = true
+    emitirProgresso(processados, total)
+  }
+
+  const total = itens.length
+
+  for (let idx = 0; idx < total; idx++) {
+    const item = itens[idx]
     const existente = existentes.get(item.codigo)
 
     try {
       if (!existente) {
-        await pb.collection('ncm').create({
-          codigo: item.codigo,
-          descricao: item.descricao,
-          descricao_completa: item.descricaoCompleta,
-          data_inicio: item.dataInicio,
-          data_fim: item.dataFim,
-          ativo: true,
-          created_by: usuarioId,
-        })
+        await executarComRetry(
+          () =>
+            pb.collection('ncm').create({
+              codigo: item.codigo,
+              descricao: item.descricao,
+              descricao_completa: item.descricaoCompleta,
+              data_inicio: item.dataInicio,
+              data_fim: item.dataFim,
+              ativo: true,
+              created_by: usuarioId,
+            }),
+          (tentativa) => aoTentarDeNovo(idx, total),
+        )
         criados++
-        return
-      }
+        aguardandoLimite = false
+        await aguardar(PAUSA_ENTRE_REQUISICOES_MS)
+      } else {
+        const payload: Record<string, unknown> = { updated_by: usuarioId }
+        let mudou = false
 
-      const payload: Record<string, unknown> = { updated_by: usuarioId }
-      let mudou = false
+        if ((existente.descricao || '').trim() !== item.descricao) {
+          payload.descricao = item.descricao
+          mudou = true
+        }
+        if ((existente.descricao_completa || '') !== item.descricaoCompleta) {
+          payload.descricao_completa = item.descricaoCompleta
+          mudou = true
+        }
+        if ((existente.data_inicio || '') !== item.dataInicio) {
+          payload.data_inicio = item.dataInicio
+          mudou = true
+        }
+        if ((existente.data_fim || '') !== item.dataFim) {
+          payload.data_fim = item.dataFim
+          mudou = true
+        }
 
-      if ((existente.descricao || '').trim() !== item.descricao) {
-        payload.descricao = item.descricao
-        mudou = true
+        if (mudou) {
+          await executarComRetry(
+            () => pb.collection('ncm').update(existente.id, payload),
+            (tentativa) => aoTentarDeNovo(idx, total),
+          )
+          atualizados++
+          aguardandoLimite = false
+          await aguardar(PAUSA_ENTRE_REQUISICOES_MS)
+        } else {
+          // Linha idêntica ao registro gravado: nada é enviado ao servidor.
+          semMudanca++
+          aguardandoLimite = false
+        }
       }
-      if ((existente.descricao_completa || '') !== item.descricaoCompleta) {
-        payload.descricao_completa = item.descricaoCompleta
-        mudou = true
-      }
-      if ((existente.data_inicio || '') !== item.dataInicio) {
-        payload.data_inicio = item.dataInicio
-        mudou = true
-      }
-      if ((existente.data_fim || '') !== item.dataFim) {
-        payload.data_fim = item.dataFim
-        mudou = true
-      }
-
-      if (!mudou) {
-        semMudanca++
-        return
-      }
-
-      await pb.collection('ncm').update(existente.id, payload)
-      atualizados++
     } catch (err) {
       erros.push({
         linha: item.linha,
         codigo: item.codigo,
         motivo: motivoErroPb(err),
       })
+      aguardandoLimite = false
+    }
+
+    if ((idx + 1) % FREQUENCIA_PROGRESSO === 0 || idx + 1 === total) {
+      emitirProgresso(idx + 1, total)
+      // Yield para manter a UI responsiva
+      await aguardar(PAUSA_UI_MS)
     }
   }
 
-  for (let i = 0; i < itens.length; i += TAMANHO_LOTE) {
-    const lote = itens.slice(i, i + TAMANHO_LOTE)
-
-    for (let j = 0; j < lote.length; j += CONCORRENCIA) {
-      await Promise.all(lote.slice(j, j + CONCORRENCIA).map(processarItem))
-    }
-
-    if (onProgresso) {
-      onProgresso(Math.min(i + TAMANHO_LOTE, itens.length), itens.length, {
-        criados,
-        atualizados,
-        semMudanca,
-      })
-    }
-
-    // Yield para manter a UI responsiva
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  aguardandoLimite = false
+  emitirProgresso(total, total)
 
   return {
     criados,
