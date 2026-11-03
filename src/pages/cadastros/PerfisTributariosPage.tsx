@@ -56,7 +56,6 @@ import { SelectCodigoFiscal } from '@/components/SelectCodigoFiscal'
 import { CenarioCard } from '@/components/CenarioCard'
 import {
   PerfilTributario,
-  PerfilTributarioCompleto,
   PerfilTributarioRegra,
   RegimePerfilTributario,
   CenarioPerfil,
@@ -68,9 +67,10 @@ import {
   inativarPerfilTributario,
   ativarPerfilTributario,
   duplicarPerfilTributario,
+  validarCfopCenario,
   criarRegraPadrao,
 } from '@/services/perfisTributarios'
-
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 export const PerfisTributariosPage: React.FC = () => {
   const { pode } = usePermissoes()
   const podeCriar = pode('tabelas_fiscais', 'criar')
@@ -276,7 +276,7 @@ export const PerfisTributariosPage: React.FC = () => {
       setModo('lista')
       carregarLista()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao salvar perfil tributário'
+      const msg = getErrorMessage(err)
       toast({
         title: 'Erro ao salvar perfil',
         description: msg,

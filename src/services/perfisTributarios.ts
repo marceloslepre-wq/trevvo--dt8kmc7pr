@@ -1,6 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
-import { Cfop } from '@/services/cfop'
+import { Cfop, obterCfopPorCodigo } from '@/services/cfop'
 import { obterUsuarioCacheLocal } from '@/services/usuarios'
 export { extrairCamposFiscaisDoPerfil } from '@/services/produtos'
 
@@ -336,9 +336,19 @@ export async function obterPerfilTributarioCompleto(
       })
 
     // Garante que todos os 8 cenários existam na lista retornada
+    // Se a regra veio com cfop expandido ou como relação ID, extrair o código de 4 dígitos
     const regrasCompletas: PerfilTributarioRegra[] = CENARIOS_PERFIL.map((cenario) => {
       const encontrada = regras.find((r) => r.cenario === cenario)
-      if (encontrada) return encontrada
+      if (encontrada) {
+        const expandCfop = (encontrada as unknown as { expand?: { cfop?: { codigo?: string } } })
+          .expand?.cfop?.codigo
+        const cfopCodigo =
+          expandCfop || (encontrada.cfop?.length === 15 ? '' : encontrada.cfop) || ''
+        return {
+          ...encontrada,
+          cfop: cfopCodigo,
+        }
+      }
       return {
         ...criarRegraPadrao(cenario),
         perfil_id: id,
@@ -541,11 +551,30 @@ export async function salvarPerfilTributarioCompleto(dados: {
       updated_by: pb.authStore.record?.id || null,
     }
 
+    // O campo cfop na coleção perfis_tributarios_regras é uma relação com a coleção global cfop.
+    // Se o valor fornecido for um código (ex: "5102"), converte para o id do registro em cfop
+    // para permitir update/create sem erro de validação de relation.
+    let cfopRelationId: string | null = null
+    const cfopBruto = dadosRegra.cfop?.trim() || ''
+    if (cfopBruto) {
+      if (cfopBruto.length === 15) {
+        cfopRelationId = cfopBruto
+      } else {
+        const cfopObj = await obterCfopPorCodigo(cfopBruto)
+        cfopRelationId = cfopObj?.id || null
+      }
+    }
+
+    const payloadFinal = {
+      ...payloadRegra,
+      cfop: cfopRelationId,
+    }
+
     if (existente) {
-      await pb.collection('perfis_tributarios_regras').update(existente.id as string, payloadRegra)
+      await pb.collection('perfis_tributarios_regras').update(existente.id as string, payloadFinal)
     } else {
       await pb.collection('perfis_tributarios_regras').create({
-        ...payloadRegra,
+        ...payloadFinal,
         created_by: pb.authStore.record?.id || null,
       })
     }
