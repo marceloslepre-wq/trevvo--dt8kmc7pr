@@ -355,69 +355,64 @@ export const TransferenciaFormPage: React.FC = () => {
     [itens],
   )
 
-  // Salvar Rascunho
-  const handleSalvarRascunho = async () => {
+  // Validação comum do formulário (retorna mensagem de erro ou null)
+  const validarFormulario = (): string | null => {
     if (!empresaOrigemId || !empresaDestinoId) {
-      toast({
-        title: 'Destino obrigatório',
-        description: 'Selecione a empresa de destino.',
-        variant: 'destructive',
-      })
-      return
+      return 'Selecione a empresa de destino.'
     }
-
     if (empresaOrigemId === empresaDestinoId) {
-      toast({
-        title: 'Origem e destino iguais',
-        description: 'A empresa de destino deve ser diferente da origem.',
-        variant: 'destructive',
-      })
-      return
+      return 'A empresa de destino deve ser diferente da origem.'
     }
-
     if (itens.length === 0) {
-      toast({
-        title: 'Nenhum item adicionado',
-        description: 'Adicione pelo menos um produto na transferência.',
-        variant: 'destructive',
-      })
-      return
+      return 'Adicione pelo menos um produto na transferência.'
     }
-
-    // Valida lote obrigatório
     for (const item of itens) {
       if (item.produto?.controla_lote_validade && !item.lote_id) {
-        toast({
-          title: 'Lote obrigatório',
-          description: `Selecione o lote para o produto "${item.produto.descricao}".`,
-          variant: 'destructive',
-        })
-        return
+        return `Selecione o lote para o produto "${item.produto.descricao}".`
       }
+    }
+    return null
+  }
+
+  // Persiste o rascunho no banco sem navegar (gera o número TR e grava os itens)
+  const persistirRascunho = async (): Promise<TransferenciaCompleta> => {
+    const payload: NovoItemTransferenciaInput[] = itens.map((i) => ({
+      id: i.tempId.startsWith('temp_') ? undefined : i.tempId,
+      produto_id: i.produto_id,
+      lote_id: i.lote_id,
+      quantidade: i.quantidade,
+      custo_unitario: i.custo_unitario,
+    }))
+
+    return salvarRascunhoTransferencia(
+      {
+        id: isEdicao ? id : undefined,
+        empresa_origem_id: empresaOrigemId,
+        empresa_destino_id: empresaDestinoId,
+        observacao,
+        nota_fiscal_numero: notaFiscalNumero,
+        nota_fiscal_chave: notaFiscalChave,
+        itens: payload,
+      },
+      usuarioERP?.id,
+    )
+  }
+
+  // Salvar Rascunho
+  const handleSalvarRascunho = async () => {
+    const erro = validarFormulario()
+    if (erro) {
+      toast({
+        title: 'Verifique o formulário',
+        description: erro,
+        variant: 'destructive',
+      })
+      return
     }
 
     setSalvando(true)
     try {
-      const payload: NovoItemTransferenciaInput[] = itens.map((i) => ({
-        id: i.tempId.startsWith('temp_') ? undefined : i.tempId,
-        produto_id: i.produto_id,
-        lote_id: i.lote_id,
-        quantidade: i.quantidade,
-        custo_unitario: i.custo_unitario,
-      }))
-
-      const salva = await salvarRascunhoTransferencia(
-        {
-          id: isEdicao ? id : undefined,
-          empresa_origem_id: empresaOrigemId,
-          empresa_destino_id: empresaDestinoId,
-          observacao,
-          nota_fiscal_numero: notaFiscalNumero,
-          nota_fiscal_chave: notaFiscalChave,
-          itens: payload,
-        },
-        usuarioERP?.id,
-      )
+      const salva = await persistirRascunho()
 
       toast({
         title: 'Transferência salva',
@@ -443,13 +438,29 @@ export const TransferenciaFormPage: React.FC = () => {
 
   // Executar Envio
   const handleConfirmarEnvio = async () => {
-    if (!transferencia?.id) return
     setSalvando(true)
     try {
-      await enviarTransferencia(transferencia.id, empresaAtiva!.id, usuarioERP?.id)
+      // Rascunho ainda não gravado (rota /novo): valida e grava antes de enviar.
+      // Antes o fluxo retornava em silêncio quando transferencia era null.
+      let transfAtual = transferencia
+      if (!transfAtual?.id) {
+        const erro = validarFormulario()
+        if (erro) {
+          toast({
+            title: 'Verifique o formulário',
+            description: erro,
+            variant: 'destructive',
+          })
+          return
+        }
+        transfAtual = await persistirRascunho()
+        setTransferencia(transfAtual)
+      }
+
+      await enviarTransferencia(transfAtual.id, empresaAtiva!.id, usuarioERP?.id)
       toast({
         title: 'Transferência enviada!',
-        description: `TR-${transferencia.numero} enviada. Estoque baixado na origem.`,
+        description: `TR-${transfAtual.numero} enviada. Estoque baixado na origem.`,
       })
       setModalEnviarAberto(false)
 
@@ -463,7 +474,12 @@ export const TransferenciaFormPage: React.FC = () => {
         setModalEmitirNFeAberto(true)
       }
 
-      carregarTransferencia()
+      if (isEdicao) {
+        carregarTransferencia()
+      } else {
+        // Rascunho criado durante o envio: abre a transferência já gravada
+        navigate(`/estoque/transferencias/${transfAtual.id}`)
+      }
     } catch (err: any) {
       console.error('Erro ao enviar:', err)
       toast({
