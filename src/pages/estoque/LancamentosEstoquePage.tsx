@@ -17,6 +17,7 @@ import {
   ArrowRight,
   RefreshCw,
   FileText,
+  Undo2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,12 +38,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import {
   movimentarEstoque,
+  estornarMovimento,
   ItemMovimentacaoEstoque,
   OrigemMovimentoEstoque,
   TipoMovimentoEstoque,
@@ -152,6 +155,7 @@ export const LancamentosEstoquePage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
   const { pode, administrador } = usePermissoes()
   const podeCriar = administrador || pode('estoque', 'criar')
+  const podeEstornar = administrador || pode('estoque', 'criar')
 
   // Aba ativa: 'novo' (formulário) ou 'historico' (listagem de lançamentos)
   const [abaAtiva, setAbaAtiva] = useState<'novo' | 'historico'>('novo')
@@ -198,6 +202,12 @@ export const LancamentosEstoquePage: React.FC = () => {
 
   // Cache de lotes disponíveis por produto para saídas
   const [lotesPorProduto, setLotesPorProduto] = useState<Record<string, Lote[]>>({})
+
+  // Estorno de lançamento (histórico)
+  const [movimentoParaEstornar, setMovimentoParaEstornar] = useState<EstoqueMovimento | null>(null)
+  const [motivoEstorno, setMotivoEstorno] = useState('')
+  const [modalEstornoAberto, setModalEstornoAberto] = useState(false)
+  const [estornando, setEstornando] = useState(false)
 
   // Carrega lista de usuários para filtro de histórico
   useEffect(() => {
@@ -566,6 +576,8 @@ export const LancamentosEstoquePage: React.FC = () => {
         usuarioId: primeiro.usuario_id,
         motivo: primeiro.motivo,
         observacao: primeiro.observacao,
+        estornado: itens.some((m) => m.estornado),
+        eEstorno: primeiro.origem === 'ESTORNO',
         itens,
       }
     })
@@ -580,6 +592,53 @@ export const LancamentosEstoquePage: React.FC = () => {
 
   const formatarMoeda = (val?: number) => {
     return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  }
+
+  const abrirModalEstorno = (mov: EstoqueMovimento) => {
+    setMovimentoParaEstornar(mov)
+    setMotivoEstorno('')
+    setModalEstornoAberto(true)
+  }
+
+  const confirmarEstorno = async () => {
+    if (!movimentoParaEstornar) return
+    if (!motivoEstorno.trim()) {
+      toast({
+        title: 'Motivo obrigatório',
+        description: 'Informe uma justificativa detalhada para o estorno.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setEstornando(true)
+    try {
+      const res = await estornarMovimento(movimentoParaEstornar.id, motivoEstorno)
+      if (res.sucesso) {
+        toast({
+          title: 'Lançamento estornado com sucesso!',
+          description: 'Um movimento inverso foi gravado e o saldo foi recalculado.',
+        })
+        setModalEstornoAberto(false)
+        setMovimentoParaEstornar(null)
+        carregarHistorico()
+      } else {
+        toast({
+          title: 'Não foi possível estornar',
+          description: res.message,
+          variant: 'destructive',
+        })
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Falha no estorno',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setEstornando(false)
+    }
   }
 
   return (
@@ -1208,8 +1267,40 @@ export const LancamentosEstoquePage: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="text-xs text-slate-500 font-medium">
-                      {grupo.itens.length} produto(s) movimentado(s)
+                    <div className="flex items-center gap-2">
+                      {grupo.estornado && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] text-rose-600 border-rose-300"
+                        >
+                          Estornado
+                        </Badge>
+                      )}
+                      {podeEstornar &&
+                        !grupo.estornado &&
+                        grupo.origem !== 'ESTORNO' &&
+                        !grupo.eEstorno &&
+                        (() => {
+                          const alvo = grupo.itens.find(
+                            (m) => !m.estornado && !m.movimento_estornado_id,
+                          )
+                          return alvo ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => abrirModalEstorno(alvo)}
+                              className="h-7 px-2 text-[11px] text-rose-600 hover:text-rose-800 hover:bg-rose-50"
+                              title="Estornar lançamento de estoque"
+                            >
+                              <Undo2 className="h-3 w-3 mr-1" />
+                              Estornar
+                            </Button>
+                          ) : null
+                        })()}
+                      <div className="text-xs text-slate-500 font-medium">
+                        {grupo.itens.length} produto(s) movimentado(s)
+                      </div>
                     </div>
                   </CardHeader>
 
@@ -1292,6 +1383,93 @@ export const LancamentosEstoquePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmação de Estorno */}
+      <Dialog open={modalEstornoAberto} onOpenChange={setModalEstornoAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Undo2 className="h-5 w-5 text-rose-600" />
+              <DialogTitle className="text-base font-bold text-slate-900">
+                Confirmar Estorno de Lançamento
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-slate-600">
+              Esta ação criará um movimento inverso (entrada↔saída) com a mesma quantidade e custo,
+              recalculando o saldo e mantendo o histórico no Kardex. O lançamento original ficará
+              marcado como "Estornado".
+            </DialogDescription>
+          </DialogHeader>
+
+          {movimentoParaEstornar && (
+            <div className="space-y-3 py-2 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-md space-y-1">
+                <div>
+                  <strong>Produto:</strong>{' '}
+                  {movimentoParaEstornar.expand?.produto_id?.descricao || 'Produto'}
+                </div>
+                <div>
+                  <strong>Operação:</strong> {movimentoParaEstornar.origem} (
+                  {movimentoParaEstornar.tipo})
+                </div>
+                <div>
+                  <strong>Quantidade:</strong>{' '}
+                  <span className="font-mono font-bold">
+                    {formatarQtd(movimentoParaEstornar.quantidade)}
+                  </span>
+                </div>
+                <div>
+                  <strong>Custo unitário:</strong>{' '}
+                  {formatarMoeda(movimentoParaEstornar.custo_unitario)}
+                </div>
+                <div>
+                  <strong>Data:</strong>{' '}
+                  {new Date(movimentoParaEstornar.data_movimento).toLocaleString('pt-BR')}
+                </div>
+                {movimentoParaEstornar.motivo && (
+                  <div>
+                    <strong>Motivo original:</strong> {movimentoParaEstornar.motivo}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-800 mb-1 block">
+                  Motivo do Estorno *
+                </label>
+                <Textarea
+                  value={motivoEstorno}
+                  onChange={(e) => setMotivoEstorno(e.target.value)}
+                  placeholder="Descreva a razão do estorno (ex: Digitação incorreta da quantidade)..."
+                  className="text-xs min-h-[80px]"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setModalEstornoAberto(false)}
+              disabled={estornando}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={confirmarEstorno}
+              disabled={estornando || !motivoEstorno.trim()}
+              className="text-xs bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              {estornando ? 'Estornando...' : 'Confirmar Estorno'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Importação CSV */}
       <ImportarSaldoInicialModal
