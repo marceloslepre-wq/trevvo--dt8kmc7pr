@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -80,6 +80,8 @@ export const ModalFinalizarVenda: React.FC<ModalFinalizarVendaProps> = ({
 
   // Parcelas do Crediário calculadas
   const [parcelasCrediario, setParcelasCrediario] = useState<ParcelaCalculada[]>([])
+  // Preserva a forma escolhida pelo usuário quando o efeito de carga reexecuta
+  const chaveInicializacaoRef = useRef('')
 
   const totalVenda = Number(venda.valor_total || 0)
 
@@ -107,6 +109,13 @@ export const ModalFinalizarVenda: React.FC<ModalFinalizarVendaProps> = ({
         const defaultContaId =
           (cfgFin as any)?.conta_padrao_recebimentos_id || contasRes.find((c) => c.ativo)?.id || ''
         setContaPadraoRecebimentosId(defaultContaId)
+
+        // Só monta a linha inicial uma vez por venda/valor/condição: se o efeito
+        // reexecutar (ex.: totalVenda/condicao mudando de referência), não descarta
+        // a forma de pagamento já escolhida pelo usuário.
+        const chaveInicializacao = `${venda.id}-${totalVenda}-${condicaoVendaId || ''}`
+        if (chaveInicializacaoRef.current === chaveInicializacao) return
+        chaveInicializacaoRef.current = chaveInicializacao
 
         // Linha inicial com a primeira forma de pagamento
         const primeiraForma = formasRes[0]

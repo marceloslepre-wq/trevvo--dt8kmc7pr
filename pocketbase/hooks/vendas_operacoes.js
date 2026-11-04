@@ -722,29 +722,41 @@ routerAdd(
           const operadoraClienteId = formaRec.getString('operadora_cliente_id') || ''
           const parceladoOperadora = formaRec.getBool('parcelado_pela_operadora')
 
-          const ehCrediario =
-            tipoForma === 'Crédito loja' ||
-            tipoForma === 'Boleto' ||
-            codTpag === '05' ||
-            codTpag === '15' ||
-            Boolean(pgInput.condicao_pagamento_id) ||
-            Boolean(
-              venda.getString('condicao_pagamento_id') &&
-              (tipoForma.includes('Prazo') || descForma.toLowerCase().includes('crediário')),
-            )
-
           const ehCartao =
             tipoForma === 'Cartão de crédito' ||
             tipoForma === 'Cartão de débito' ||
             codTpag === '03' ||
             codTpag === '04'
 
+          // Formas à vista explícitas nunca são tratadas como a prazo, mesmo que
+          // a venda tenha condição de pagamento informada.
+          const ehDinheiroAvista = tipoForma === 'Dinheiro' || codTpag === '01'
+          const descFormaLower = descForma.toLowerCase()
+
+          // Qualquer forma que não seja à vista é tratada como a prazo: boleto,
+          // duplicata, crediário, "Boleto bancário", etc. As contas a receber são
+          // geradas pela condição de pagamento da venda (branch A abaixo).
+          const ehCrediario =
+            !ehDinheiroAvista &&
+            !ehCartao &&
+            (tipoForma === 'Crédito loja' ||
+              tipoForma === 'Boleto' ||
+              tipoForma === 'Boleto bancário' ||
+              tipoForma.includes('Prazo') ||
+              codTpag === '05' ||
+              codTpag === '15' ||
+              descFormaLower.includes('boleto') ||
+              descFormaLower.includes('crediário') ||
+              descFormaLower.includes('crediario') ||
+              Boolean(pgInput.condicao_pagamento_id) ||
+              Boolean(venda.getString('condicao_pagamento_id')))
+
           const ehAVista =
             !ehCrediario &&
-            (tipoForma === 'Dinheiro' ||
+            !ehCartao &&
+            (ehDinheiroAvista ||
               tipoForma === 'PIX' ||
               tipoForma === 'Transferência bancária' ||
-              codTpag === '01' ||
               codTpag === '17' ||
               codTpag === '18' ||
               (tipoForma === 'Cartão de débito' &&
