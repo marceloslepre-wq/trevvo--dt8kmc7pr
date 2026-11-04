@@ -18,7 +18,7 @@
  * - Expansão automática de produtos do tipo "kit"
  */
 
-routerAdd('POST', '/estoque/movimentar', (c) => {
+routerAdd('POST', '/backend/v1/estoque/movimentar', (c) => {
   const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })

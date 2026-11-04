@@ -13,7 +13,7 @@
  * - Tudo executado dentro de uma transação atômica do SQLite (runInTransaction)
  */
 
-routerAdd('POST', '/estoque/estornar', (c) => {
+routerAdd('POST', '/backend/v1/estoque/estornar', (c) => {
   const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
