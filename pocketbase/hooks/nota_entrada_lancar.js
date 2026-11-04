@@ -349,7 +349,7 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
         throw new Error('A data de entrada não pode ser anterior à data de emissão.')
       }
 
-      const tipoEntrada = nota.getString('tipo_entrada') || 'Compra para revenda'
+      const tipoEntrada = (nota.getString('tipo_entrada') || '').trim()
       const valorTotalNota = nota.getFloat('valor_total') || 0
 
       // 2. Carregar itens ativos
@@ -761,20 +761,62 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
             const cfg = configsFin[0]
             centroCustoIdPadrao = cfg.getString('centro_custo_padrao_id') || ''
 
-            switch (tipoEntrada) {
-              case 'Revenda':
+            // Determinar classificação financeira:
+            // 1) Tipo de entrada da nota
+            // 2) Se vazio, fallback pelo CFOP do primeiro item (ex: x102/x403, x556/x407, x551/x406)
+            let categoriaPlano = ''
+            const tipoLower = (tipoEntrada || '').toLowerCase()
+
+            if (tipoLower === 'compra para revenda' || tipoLower === 'revenda') {
+              categoriaPlano = 'revenda'
+            } else if (
+              tipoLower === 'matéria-prima' ||
+              tipoLower === 'materia-prima' ||
+              tipoLower === 'compra para industrialização' ||
+              tipoLower === 'compra para industrializacao' ||
+              tipoLower === 'industrialização' ||
+              tipoLower === 'industrializacao'
+            ) {
+              categoriaPlano = 'industrializacao'
+            } else if (tipoLower === 'uso e consumo') {
+              categoriaPlano = 'uso_consumo'
+            } else if (tipoLower === 'ativo imobilizado') {
+              categoriaPlano = 'imobilizado'
+            } else if (!tipoLower) {
+              // Fallback por CFOP
+              let cfopBase = ''
+              if (itens.length > 0) {
+                cfopBase = String(itens[0].getString('cfop_entrada') || '').trim()
+              }
+              const ultimos3 = cfopBase.length >= 3 ? cfopBase.slice(-3) : ''
+
+              if (ultimos3 === '102' || ultimos3 === '403') {
+                categoriaPlano = 'revenda'
+              } else if (ultimos3 === '556' || ultimos3 === '407') {
+                categoriaPlano = 'uso_consumo'
+              } else if (ultimos3 === '551' || ultimos3 === '406') {
+                categoriaPlano = 'imobilizado'
+              } else {
+                categoriaPlano = 'outras'
+              }
+            } else {
+              categoriaPlano = 'outras'
+            }
+
+            switch (categoriaPlano) {
+              case 'revenda':
                 planoContaIdFinal = cfg.getString('plano_compras_revenda_id') || ''
                 break
-              case 'Industrialização':
+              case 'industrializacao':
                 planoContaIdFinal = cfg.getString('plano_industrializacao_id') || ''
                 break
-              case 'Uso e consumo':
+              case 'uso_consumo':
                 planoContaIdFinal = cfg.getString('plano_uso_consumo_id') || ''
                 break
-              case 'Ativo imobilizado':
+              case 'imobilizado':
                 planoContaIdFinal = cfg.getString('plano_imobilizado_id') || ''
                 break
-              case 'Outras':
+              case 'outras':
               default:
                 planoContaIdFinal = cfg.getString('plano_outras_entradas_id') || ''
                 break
