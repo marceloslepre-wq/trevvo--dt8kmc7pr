@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-04T20:54:33.558Z",
+  "generatedAt": "2026-11-04T22:16:10.007Z",
   "collections": [
     {
       "name": "users",
@@ -5051,6 +5051,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "qtd_recebida",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

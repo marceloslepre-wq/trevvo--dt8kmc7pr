@@ -631,6 +631,14 @@ const App = () => (
                     }
                   />
                   <Route
+                    path="/compras/notas-entrada/novo"
+                    element={
+                      <PermissaoGuard modulo="notas_entrada" acao="criar">
+                        <NotaEntradaDigitacaoPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
                     path="/compras/notas-entrada/:id"
                     element={
                       <PermissaoGuard modulo="notas_entrada" acao="ver">

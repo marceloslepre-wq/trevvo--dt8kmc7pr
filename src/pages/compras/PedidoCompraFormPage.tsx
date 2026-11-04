@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Clock,
   Package,
+  FileCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -728,6 +729,21 @@ export const PedidoCompraFormPage: React.FC = () => {
               Duplicar
             </Button>
           )}
+
+          {/* Gerar nota de entrada (Enviado ou Parcialmente recebido) */}
+          {isEdicao &&
+            id &&
+            (statusAtual === 'Enviado' || statusAtual === 'Parcialmente recebido') && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => navigate(`/compras/notas-entrada/novo?pedido=${id}`)}
+                className="text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+              >
+                <FileCheck className="h-4 w-4 mr-1.5" />
+                Gerar nota de entrada
+              </Button>
+            )}
 
           {/* Reabrir (Enviado -> Rascunho) */}
           {isEdicao && statusAtual === 'Enviado' && pode('compras', 'editar') && (

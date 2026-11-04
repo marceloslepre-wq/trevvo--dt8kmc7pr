@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   FileText,
   Plus,
@@ -48,6 +48,8 @@ import { TIPOS_ENTRADA, TipoEntradaNota, converterCfopEntrada } from '@/services
 import { Produto } from '@/services/produtos'
 import { Fornecedor, obterFornecedorPorId } from '@/services/fornecedores'
 import { gerarParcelas, obterCondicaoPorId } from '@/services/condicoesPagamento'
+import { obterPedidoCompraPorId, PedidoCompraCompleto } from '@/services/pedidosCompra'
+import { obterProdutoPorId } from '@/services/produtos'
 
 interface ItemFormulario {
   idTemp: string
@@ -90,7 +92,9 @@ interface ItemFormulario {
 
 export const NotaEntradaDigitacaoPage: React.FC = () => {
   const navigate = useNavigate()
-  const { empresaAtiva } = useEmpresaAtiva()
+  const [searchParams] = useSearchParams()
+  const pedidoParamId = searchParams.get('pedido') || ''
+  const { empresaAtiva, selecionarEmpresa } = useEmpresaAtiva()
   const { toast } = useToast()
 
   // Cabeçalho
@@ -113,6 +117,9 @@ export const NotaEntradaDigitacaoPage: React.FC = () => {
   const [modalidadeFrete, setModalidadeFrete] = useState<number>(9)
   const [transportadoraId, setTransportadoraId] = useState('')
   const [informacoesComplementares, setInformacoesComplementares] = useState('')
+  const [pedidoCompraId, setPedidoCompraId] = useState<string>(pedidoParamId)
+  const [pedidoOrigem, setPedidoOrigem] = useState<PedidoCompraCompleto | null>(null)
+  const pedidoCarregadoRef = useRef(false)
 
   // Totais adicionais globais a ratear
   const [freteGlobal, setFreteGlobal] = useState<number>(0)
@@ -232,6 +239,146 @@ export const NotaEntradaDigitacaoPage: React.FC = () => {
       aliquotaIpi: prod.aliquota_ipi || 0,
     }
   }
+
+  // Carregamento inicial do Pedido de Compra quando informado via ?pedido=<id>
+  useEffect(() => {
+    if (!pedidoParamId || pedidoCarregadoRef.current) return
+
+    let cancelado = false
+    pedidoCarregadoRef.current = true
+
+    async function carregarPedidoVinculado() {
+      try {
+        const ped = await obterPedidoCompraPorId(pedidoParamId)
+        if (cancelado) return
+
+        setPedidoOrigem(ped)
+        setPedidoCompraId(ped.id)
+
+        // Alinhar empresa se necessário
+        if (ped.empresa_id && (!empresaAtiva || empresaAtiva.id !== ped.empresa_id)) {
+          try {
+            selecionarEmpresa(ped.empresa_id)
+          } catch {
+            // mantém
+          }
+        }
+
+        // Fornecedor e Condição de Pagamento do pedido
+        if (ped.fornecedor_id) {
+          setFornecedorId(ped.fornecedor_id)
+        }
+        if (ped.condicao_pagamento_id) {
+          setCondicaoPagamentoId(ped.condicao_pagamento_id)
+        }
+
+        // Carregar fornecedor para obter detalhes de UF para derivação fiscal
+        let fornObj: Fornecedor | null = null
+        if (ped.fornecedor_id) {
+          try {
+            fornObj = await obterFornecedorPorId(ped.fornecedor_id)
+            if (!cancelado && fornObj) setFornecedorSelecionado(fornObj)
+          } catch {
+            // ignora
+          }
+        }
+
+        // Preencher itens: quantidade (pedida - recebida) e custo do pedido
+        const novosItens: ItemFormulario[] = []
+        let itemIndex = 1
+
+        for (const itemPed of ped.itens || []) {
+          const qtdPedida = Number(itemPed.quantidade || 0)
+          const qtdRecebida = Number(
+            itemPed.quantidade_recebida !== undefined
+              ? itemPed.quantidade_recebida
+              : (itemPed as any).qtd_recebida || 0,
+          )
+          const qtdPendente = Math.max(0, Number((qtdPedida - qtdRecebida).toFixed(4)))
+
+          // Se a quantidade pendente for zero, não adiciona por padrão
+          if (qtdPendente <= 0) continue
+
+          const custoUnit = Number(itemPed.custo_unitario || 0)
+
+          let prod = itemPed.expand?.produto_id
+          if (!prod && itemPed.produto_id) {
+            try {
+              prod = await obterProdutoPorId(itemPed.produto_id)
+            } catch {
+              // ignora
+            }
+          }
+
+          if (!prod) continue
+
+          const dadosFiscais = await derivarCamposEntradaProduto(prod)
+          const vProd = Number((qtdPendente * custoUnit).toFixed(2))
+
+          novosItens.push({
+            idTemp: Math.random().toString(36).substring(2, 9),
+            numero_item: itemIndex++,
+            produto: prod,
+            codigo_fornecedor: String(prod.codigo || ''),
+            descricao_fornecedor: prod.descricao,
+            gtin_fornecedor: prod.gtin || '',
+            ncm_fornecedor: prod.ncm || '',
+            cest_fornecedor: prod.cest || '',
+            unidade_fornecedor: prod.expand?.unidade_id?.sigla || 'UN',
+            cfop_fornecedor: dadosFiscais.cfopFornecedor,
+            quantidade_fornecedor: qtdPendente,
+            valor_unitario_fornecedor: custoUnit,
+            valor_produto: vProd,
+            valor_desconto: 0,
+            valor_frete: 0,
+            valor_seguro: 0,
+            valor_outras: 0,
+            origem: prod.origem || '0',
+            cst_icms_fornecedor: dadosFiscais.cstIcmsFornecedor,
+            base_icms: vProd,
+            aliquota_icms: dadosFiscais.aliquotaIcms,
+            valor_icms: Number(((vProd * (dadosFiscais.aliquotaIcms || 0)) / 100).toFixed(2)),
+            base_icms_st: 0,
+            aliquota_icms_st: 0,
+            valor_icms_st: 0,
+            valor_fcp_st: 0,
+            cst_ipi: prod.cst_ipi_entrada || '',
+            base_ipi: vProd,
+            aliquota_ipi: dadosFiscais.aliquotaIpi,
+            valor_ipi: Number(((vProd * (dadosFiscais.aliquotaIpi || 0)) / 100).toFixed(2)),
+            cst_pis_fornecedor: prod.cst_pis_entrada || '50',
+            valor_pis: 0,
+            cst_cofins_fornecedor: prod.cst_cofins_entrada || '50',
+            valor_cofins: 0,
+            cfop_entrada: dadosFiscais.cfopEntrada,
+            cst_icms_entrada: dadosFiscais.cstIcmsEntrada,
+          })
+        }
+
+        if (!cancelado && novosItens.length > 0) {
+          setItens(novosItens)
+          toast({
+            title: `Pedido #${ped.numero} carregado`,
+            description: `${novosItens.length} item(ns) pendente(s) preenchido(s) na nota de entrada.`,
+          })
+        }
+      } catch (err: any) {
+        if (!cancelado) {
+          toast({
+            title: 'Erro ao carregar pedido de compra',
+            description: err?.message || 'Não foi possível carregar os dados do pedido vinculado.',
+            variant: 'destructive',
+          })
+        }
+      }
+    }
+
+    carregarPedidoVinculado()
+
+    return () => {
+      cancelado = true
+    }
+  }, [pedidoParamId, empresaAtiva, selecionarEmpresa, toast])
 
   // Adicionar produto selecionado à grade de itens
   const handleAdicionarProduto = async (prod: Produto, qtd = 1) => {
@@ -606,6 +753,7 @@ export const NotaEntradaDigitacaoPage: React.FC = () => {
         condicao_pagamento_id: condicaoPagamentoId || undefined,
         modalidade_frete: modalidadeFrete,
         transportadora_id: transportadoraId || undefined,
+        pedido_compra_id: pedidoCompraId || undefined,
         informacoes_complementares: informacoesComplementares || undefined,
         valor_produtos: totaisCalculados.valorProdutos,
         valor_frete: totaisCalculados.valorFrete,
@@ -670,10 +818,24 @@ export const NotaEntradaDigitacaoPage: React.FC = () => {
               >
                 Sem XML
               </Badge>
+              {pedidoOrigem && (
+                <Badge
+                  variant="outline"
+                  className="text-[11px] bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold"
+                >
+                  Pedido #{pedidoOrigem.numero}
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Digitação manual de documentos fiscais ou físicos. Salva como &quot;Em
-              conferência&quot; e segue o mesmo fluxo de conferência fiscal e estoque.
+              {pedidoOrigem ? (
+                <span>
+                  Gerando nota vinculada ao <strong>Pedido de Compra #{pedidoOrigem.numero}</strong>
+                  . Fornecedor, condição e itens pendentes foram preenchidos previamente.
+                </span>
+              ) : (
+                'Digitação manual de documentos fiscais ou físicos. Salva como "Em conferência" e segue o mesmo fluxo de conferência fiscal e estoque.'
+              )}
             </p>
           </div>
         </div>
