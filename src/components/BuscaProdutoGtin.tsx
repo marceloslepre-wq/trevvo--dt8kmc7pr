@@ -246,14 +246,13 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
                     )}
                   </span>
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 w-7 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                {/* span decorativo: evita <button> aninhado dentro do botão da linha */}
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-blue-600"
                 >
                   <Plus className="h-4 w-4" />
-                </Button>
+                </span>
               </div>
             </button>
           ))}
