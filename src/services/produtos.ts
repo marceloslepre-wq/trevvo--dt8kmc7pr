@@ -640,6 +640,15 @@ export function extrairCamposFiscaisDoPerfil(perfil: any): Partial<Produto> {
     if (regraImpostos.natureza_receita_pis_cofins !== undefined)
       novosCampos.natureza_receita_pis_cofins = regraImpostos.natureza_receita_pis_cofins
 
+    // CST de ENTRADA de PIS/COFINS vem do cenário "Compra interna" (fallback: compra interestadual)
+    const regraPisCofinsEntrada = regraCompraInterna || regraCompraInterestadual
+    if (regraPisCofinsEntrada) {
+      if (regraPisCofinsEntrada.cst_pis !== undefined)
+        novosCampos.cst_pis_entrada = regraPisCofinsEntrada.cst_pis
+      if (regraPisCofinsEntrada.cst_cofins !== undefined)
+        novosCampos.cst_cofins_entrada = regraPisCofinsEntrada.cst_cofins
+    }
+
     // IBS / CBS
     if (regraImpostos.cst_ibs_cbs !== undefined) novosCampos.cst_ibs_cbs = regraImpostos.cst_ibs_cbs
     if (regraImpostos.c_class_trib !== undefined)

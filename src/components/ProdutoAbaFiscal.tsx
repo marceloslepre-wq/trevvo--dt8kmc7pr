@@ -168,6 +168,9 @@ export function ProdutoAbaFiscal({
   // Alíquota IPI da NCM sugerida
   const [aliquotaIpiNcmSugerida, setAliquotaIpiNcmSugerida] = useState<number | null>(null)
 
+  // Aviso: botão de sugestão PIS/COFINS bloqueado porque o produto segue um perfil
+  const [avisoPerfilPisCofins, setAvisoPerfilPisCofins] = useState<string | null>(null)
+
   // Seção IPI recolhida para não contribuinte
   const empresaNaoContribuinteIpi =
     String(crtEmpresaAtiva) === '1' || String(crtEmpresaAtiva) === '2' // Simples Nacional costuma não ser contribuinte de IPI padrão
@@ -418,8 +421,24 @@ export function ProdutoAbaFiscal({
     }
   }
 
-  // Sugestões padrão de PIS/COFINS conforme CRT da empresa
-  const aplicarSugestoesPisCofinsEmpresa = () => {
+  // Sugestões padrão de PIS/COFINS conforme CRT e regime de apuração da empresa
+  const aplicarSugestoesPisCofinsEmpresa = async () => {
+    // Produto com perfil vinculado: a sugestão não sobrescreve o que veio do perfil
+    if (formData.perfil_tributario_id) {
+      let nomePerfil = 'vinculado'
+      try {
+        const p = await obterPerfilTributarioCompleto(formData.perfil_tributario_id)
+        if (p?.nome) nomePerfil = p.nome
+      } catch {
+        // mantém texto genérico
+      }
+      setAvisoPerfilPisCofins(
+        `Este produto segue o perfil ${nomePerfil}. Para mudar, edite o perfil ou desvincule.`,
+      )
+      return
+    }
+    setAvisoPerfilPisCofins(null)
+
     const crtStr = String(crtEmpresaAtiva)
     if (crtStr === '1' || crtStr === '2' || crtStr === '4') {
       // Simples Nacional: CST saída 49, entrada 98, alíquotas 0
@@ -434,14 +453,23 @@ export function ProdutoAbaFiscal({
         fiscal_revisado: false,
       })
     } else {
-      // Lucro Presumido (0,65% e 3%) ou Lucro Real (1,65% e 7,6%)
+      // CRT 3: o regime de apuração do PIS/COFINS vem da configuração fiscal da empresa
+      // ("Não cumulativo" = Lucro Real, "Cumulativo" = Lucro Presumido). O CRT sozinho não diz.
+      const regimePisCofins =
+        empresaAtiva?.regime_pis_cofins ||
+        (empresaAtiva?.regime_apuracao === 'Lucro Real'
+          ? 'Não cumulativo'
+          : empresaAtiva?.regime_apuracao === 'Lucro Presumido'
+            ? 'Cumulativo'
+            : 'Não cumulativo')
+      const naoCumulativo = regimePisCofins !== 'Cumulativo'
       onMudarCamposEmLote({
         cst_pis_saida: '01',
         cst_cofins_saida: '01',
-        cst_pis_entrada: '50',
-        cst_cofins_entrada: '50',
-        aliquota_pis: 0.65,
-        aliquota_cofins: 3.0,
+        cst_pis_entrada: naoCumulativo ? '50' : '70',
+        cst_cofins_entrada: naoCumulativo ? '50' : '70',
+        aliquota_pis: naoCumulativo ? 1.65 : 0.65,
+        aliquota_cofins: naoCumulativo ? 7.6 : 3.0,
         tipo_calculo_pis_cofins: 'Percentual',
         fiscal_revisado: false,
       })
@@ -1566,13 +1594,20 @@ export function ProdutoAbaFiscal({
               type="button"
               variant="outline"
               size="sm"
-              onClick={aplicarSugestoesPisCofinsEmpresa}
+              onClick={() => aplicarSugestoesPisCofinsEmpresa()}
               className="text-xs h-8 border-slate-300 hover:bg-slate-50"
             >
               <Sparkles className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
               Sugerir pelo Regime da Empresa
             </Button>
           </div>
+
+          {avisoPerfilPisCofins && (
+            <Alert className="bg-amber-50 border-amber-200 text-amber-900 py-2.5">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-xs">{avisoPerfilPisCofins}</AlertDescription>
+            </Alert>
+          )}
 
           {/* CSTs de Saída e Entrada */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
