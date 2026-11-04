@@ -54,7 +54,11 @@ import {
   tentarVincularItemAutomatico,
   executarVinculoAutomaticoNota,
   vincularProdutoAoItemNota,
+  criarParcelaNotaEntrada,
+  atualizarParcelaNotaEntrada,
+  excluirParcelaNotaEntrada,
 } from '@/services/notasEntrada'
+import { obterCondicaoPorId, gerarParcelas } from '@/services/condicoesPagamento'
 import {
   listarPedidosCompra,
   obterPedidoCompraPorId,
@@ -98,6 +102,9 @@ import {
   HelpCircle,
   Truck,
   Calculator,
+  Pencil,
+  Trash2,
+  DollarSign,
 } from 'lucide-react'
 
 export const NotaEntradaConferenciaPage: React.FC = () => {
@@ -134,6 +141,15 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
   const [cancelarModalAberto, setCancelarModalAberto] = useState(false)
   const [motivoCancelamento, setMotivoCancelamento] = useState('')
   const [cancelando, setCancelando] = useState(false)
+
+  // Gerenciamento da Aba Parcelas (incluir, editar, excluir, recalcular)
+  const [modalParcelaAberto, setModalParcelaAberto] = useState(false)
+  const [parcelaEditando, setParcelaEditando] = useState<NotaEntradaParcela | null>(null)
+  const [parcelaFormNumero, setParcelaFormNumero] = useState('')
+  const [parcelaFormDataVencimento, setParcelaFormDataVencimento] = useState('')
+  const [parcelaFormValor, setParcelaFormValor] = useState<number>(0)
+  const [parcelaFormFormaPagamento, setParcelaFormFormaPagamento] = useState('15')
+  const [salvandoParcela, setSalvandoParcela] = useState(false)
 
   // Vínculo com Pedido de Compra
   const [pedidosFornecedor, setPedidosFornecedor] = useState<PedidoCompra[]>([])
@@ -1008,14 +1024,16 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
     // 4. Validação parcelas vs total (exceto Bonificação)
     if (nota.tipo_entrada !== 'Bonificação') {
       const somaParcelas = parcelas.reduce((acc, p) => acc + (p.valor || 0), 0)
-      const diffParcelas = Math.abs(somaParcelas - (nota.valor_total || 0))
-      if (diffParcelas > 0.05 && parcelas.length > 0) {
-        toast({
-          title: 'Divergência nas parcelas',
-          description: `A soma das parcelas (R$ ${somaParcelas.toFixed(2)}) difere do total da nota (R$ ${nota.valor_total.toFixed(2)}) em mais de R$ 0,05.`,
-          variant: 'destructive',
-        })
-        return
+      if (parcelas.length > 0) {
+        const diffParcelas = Math.abs(somaParcelas - (nota.valor_total || 0))
+        if (diffParcelas > 0.05) {
+          toast({
+            title: 'Divergência nas parcelas',
+            description: `A soma das parcelas (R$ ${somaParcelas.toFixed(2)}) difere do total da nota (R$ ${nota.valor_total.toFixed(2)}) em mais de R$ 0,05. A soma das parcelas deve bater com o total da nota para poder lançar.`,
+            variant: 'destructive',
+          })
+          return
+        }
       }
     }
 
@@ -1070,6 +1088,154 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
   const [formasPagamentoDisponiveis, setFormasPagamentoDisponiveis] = useState<
     { id: string; descricao: string }[]
   >([])
+
+  // Ações CRUD da Aba Parcelas
+  const handleAbrirNovaParcela = () => {
+    const proximoNum = String(parcelas.length + 1).padStart(3, '0')
+    const somaAtual = parcelas.reduce((acc, p) => acc + (p.valor || 0), 0)
+    const saldoRestante = Math.max(0, Number(((nota?.valor_total || 0) - somaAtual).toFixed(2)))
+    setParcelaEditando(null)
+    setParcelaFormNumero(proximoNum)
+    setParcelaFormDataVencimento(nota?.data_emissao || new Date().toISOString().split('T')[0])
+    setParcelaFormValor(saldoRestante)
+    setParcelaFormFormaPagamento('15')
+    setModalParcelaAberto(true)
+  }
+
+  const handleAbrirEditarParcela = (parc: NotaEntradaParcela) => {
+    setParcelaEditando(parc)
+    setParcelaFormNumero(parc.numero)
+    setParcelaFormDataVencimento(parc.data_vencimento)
+    setParcelaFormValor(parc.valor)
+    setParcelaFormFormaPagamento(parc.forma_pagamento || '15')
+    setModalParcelaAberto(true)
+  }
+
+  const handleSalvarParcela = async () => {
+    if (!nota) return
+    if (!parcelaFormDataVencimento) {
+      toast({
+        title: 'Data de vencimento obrigatória',
+        description: 'Informe a data de vencimento da parcela.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (parcelaFormValor <= 0) {
+      toast({
+        title: 'Valor inválido',
+        description: 'O valor da parcela deve ser maior que zero.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSalvandoParcela(true)
+    try {
+      if (parcelaEditando) {
+        await atualizarParcelaNotaEntrada(parcelaEditando.id, {
+          numero: parcelaFormNumero,
+          data_vencimento: parcelaFormDataVencimento,
+          valor: parcelaFormValor,
+          forma_pagamento: parcelaFormFormaPagamento,
+        })
+        toast({ title: 'Parcela atualizada com sucesso!' })
+      } else {
+        await criarParcelaNotaEntrada({
+          nota_id: nota.id,
+          numero: parcelaFormNumero || String(parcelas.length + 1).padStart(3, '0'),
+          data_vencimento: parcelaFormDataVencimento,
+          valor: parcelaFormValor,
+          forma_pagamento: parcelaFormFormaPagamento,
+        })
+        toast({ title: 'Parcela adicionada com sucesso!' })
+      }
+      setModalParcelaAberto(false)
+      await carregarDados()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar parcela',
+        description: err?.message || 'Falha ao gravar parcela.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoParcela(false)
+    }
+  }
+
+  const handleExcluirParcela = async (parcId: string) => {
+    if (!confirm('Deseja realmente remover esta parcela?')) return
+    try {
+      await excluirParcelaNotaEntrada(parcId)
+      toast({ title: 'Parcela excluída com sucesso!' })
+      await carregarDados()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao excluir parcela',
+        description: err?.message || 'Falha ao excluir parcela.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleGerarParcelasAutomaticasPelaCondicao = async () => {
+    if (!nota) return
+    const condId = nota.condicao_pagamento_id
+    if (!condId) {
+      toast({
+        title: 'Nota sem condição de pagamento',
+        description: 'Esta nota não possui condição de pagamento associada.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const totalNota = nota.valor_total || 0
+    if (totalNota <= 0) {
+      toast({
+        title: 'Total da nota zerado',
+        description: 'Não é possível calcular parcelas para nota com valor zero.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      setSalvandoParcela(true)
+      const cond = await obterCondicaoPorId(condId)
+      const parcelasCalculadas = gerarParcelas(cond, totalNota, nota.data_emissao)
+
+      // Exclui parcelas atuais existentes
+      for (const p of parcelas) {
+        await excluirParcelaNotaEntrada(p.id)
+      }
+
+      // Cria novas parcelas geradas pela condição
+      for (const p of parcelasCalculadas) {
+        await criarParcelaNotaEntrada({
+          nota_id: nota.id,
+          numero: String(p.numero).padStart(3, '0'),
+          data_vencimento: p.data_vencimento,
+          valor: p.valor,
+          forma_pagamento: '15', // Boleto padrão
+        })
+      }
+
+      toast({
+        title: 'Parcelas recalculadas',
+        description: `${parcelasCalculadas.length} parcela(s) gerada(s) conforme a condição "${cond.nome}".`,
+      })
+      await carregarDados()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao gerar parcelas',
+        description: err?.message || 'Falha ao calcular parcelas da condição.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoParcela(false)
+    }
+  }
 
   // Confirmar Lançamento Efetivo
   const handleConfirmarLancamento = async () => {
@@ -2838,41 +3004,178 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
 
         {/* ================= ABA PARCELAS ================= */}
         <TabsContent value="parcelas" className="mt-4 space-y-3">
-          <div className="bg-blue-50/70 p-3 rounded-lg border border-blue-200 text-xs text-blue-900 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-blue-600 shrink-0" />
-            <span>
-              <strong>Integração Financeira:</strong> Na Etapa 4, o módulo de Contas a Pagar será
-              gerado a partir destas parcelas registradas na nota fiscal.
-            </span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
+            <div>
+              <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                <DollarSign className="h-4 w-4 text-emerald-600" />
+                <span>Parcelas da Nota de Entrada</span>
+                {nota.expand?.condicao_pagamento_id && (
+                  <Badge variant="outline" className="text-[10px] ml-2 font-normal">
+                    Condição:{' '}
+                    {nota.expand.condicao_pagamento_id.descricao ||
+                      (nota.expand.condicao_pagamento_id as any).nome}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Total da Nota:{' '}
+                <strong className="font-mono text-slate-900">
+                  R$ {(nota.valor_total || 0).toFixed(2)}
+                </strong>
+                {' | '}
+                Soma das Parcelas:{' '}
+                <strong
+                  className={`font-mono ${Math.abs(parcelas.reduce((acc, p) => acc + (p.valor || 0), 0) - (nota.valor_total || 0)) <= 0.05 ? 'text-emerald-700' : 'text-rose-600'}`}
+                >
+                  R$ {parcelas.reduce((acc, p) => acc + (p.valor || 0), 0).toFixed(2)}
+                </strong>
+                {Math.abs(
+                  parcelas.reduce((acc, p) => acc + (p.valor || 0), 0) - (nota.valor_total || 0),
+                ) > 0.05 && (
+                  <span className="text-rose-600 font-semibold ml-2">
+                    (Divergência: R${' '}
+                    {Math.abs(
+                      parcelas.reduce((acc, p) => acc + (p.valor || 0), 0) -
+                        (nota.valor_total || 0),
+                    ).toFixed(2)}
+                    )
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {nota.status === 'Em conferência' && podeEditar && (
+              <div className="flex items-center gap-2">
+                {nota.condicao_pagamento_id && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGerarParcelasAutomaticasPelaCondicao}
+                    disabled={salvandoParcela}
+                    className="h-8 text-xs gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50"
+                  >
+                    <Sparkles size={13} />
+                    Recalcular pela Condição
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAbrirNovaParcela}
+                  disabled={salvandoParcela}
+                  className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Plus size={13} />
+                  Incluir Parcela
+                </Button>
+              </div>
+            )}
           </div>
 
           <Card className="border-slate-200 overflow-hidden">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 font-semibold text-slate-600">
-                  <th className="py-2.5 px-4 w-28">Nº Parcela</th>
-                  <th className="py-2.5 px-4 w-40">Data de Vencimento</th>
-                  <th className="py-2.5 px-4 w-48 text-right">Valor da Parcela</th>
-                  <th className="py-2.5 px-4">Forma de Pagamento (tPag)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {parcelas.map((parc) => (
-                  <tr key={parc.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-2.5 px-4 font-mono font-medium text-slate-900">
-                      {parc.numero}
-                    </td>
-                    <td className="py-2.5 px-4 text-slate-700">{parc.data_vencimento}</td>
-                    <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
-                      R$ {parc.valor.toFixed(2)}
-                    </td>
-                    <td className="py-2.5 px-4 text-slate-600">
-                      {parc.forma_pagamento ? `Código tPag: ${parc.forma_pagamento}` : 'A combinar'}
-                    </td>
+            {parcelas.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 border border-dashed rounded-lg m-4">
+                <DollarSign className="h-6 w-6 mx-auto mb-1 text-slate-300" />
+                <p className="text-xs">Nenhuma parcela cadastrada para esta nota fiscal.</p>
+                {nota.status === 'Em conferência' && podeEditar && (
+                  <div className="mt-3 flex justify-center gap-2">
+                    {nota.condicao_pagamento_id && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleGerarParcelasAutomaticasPelaCondicao}
+                        disabled={salvandoParcela}
+                        className="text-xs h-8 gap-1.5"
+                      >
+                        <Sparkles size={13} />
+                        Gerar pela Condição de Pagamento
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAbrirNovaParcela}
+                      disabled={salvandoParcela}
+                      className="text-xs h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <Plus size={13} />
+                      Incluir Parcela Manual
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 font-semibold text-slate-600">
+                    <th className="py-2.5 px-4 w-28">Nº Parcela</th>
+                    <th className="py-2.5 px-4 w-40">Data de Vencimento</th>
+                    <th className="py-2.5 px-4 w-48 text-right">Valor da Parcela</th>
+                    <th className="py-2.5 px-4">Forma de Pagamento (tPag)</th>
+                    {nota.status === 'Em conferência' && podeEditar && (
+                      <th className="py-2.5 px-4 w-24 text-center">Ações</th>
+                    )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {parcelas.map((parc) => (
+                    <tr key={parc.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-2.5 px-4 font-mono font-medium text-slate-900">
+                        {parc.numero}
+                      </td>
+                      <td className="py-2.5 px-4 text-slate-700">{parc.data_vencimento}</td>
+                      <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
+                        R$ {parc.valor.toFixed(2)}
+                      </td>
+                      <td className="py-2.5 px-4 text-slate-600">
+                        {parc.forma_pagamento === '01' && '01 - Dinheiro'}
+                        {parc.forma_pagamento === '02' && '02 - Cheque'}
+                        {parc.forma_pagamento === '03' && '03 - Cartão de Crédito'}
+                        {parc.forma_pagamento === '04' && '04 - Cartão de Débito'}
+                        {parc.forma_pagamento === '15' && '15 - Boleto Bancário'}
+                        {parc.forma_pagamento === '16' && '16 - Depósito Bancário'}
+                        {parc.forma_pagamento === '17' && '17 - PIX'}
+                        {parc.forma_pagamento === '99' && '99 - Outros'}
+                        {!['01', '02', '03', '04', '15', '16', '17', '99'].includes(
+                          parc.forma_pagamento || '',
+                        ) &&
+                          (parc.forma_pagamento
+                            ? `Código tPag: ${parc.forma_pagamento}`
+                            : '15 - Boleto Bancário')}
+                      </td>
+                      {nota.status === 'Em conferência' && podeEditar && (
+                        <td className="py-2.5 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleAbrirEditarParcela(parc)}
+                              className="h-7 w-7 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                              title="Editar Parcela"
+                            >
+                              <Pencil size={13} />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleExcluirParcela(parc.id)}
+                              className="h-7 w-7 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                              title="Excluir Parcela"
+                            >
+                              <Trash2 size={13} />
+                            </Button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </Card>
         </TabsContent>
 
@@ -3203,6 +3506,109 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
             >
               {lancando ? 'Lançando...' : 'Confirmar Lançamento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Incluir/Editar Parcela */}
+      <Dialog open={modalParcelaAberto} onOpenChange={setModalParcelaAberto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800 text-sm font-semibold">
+              <DollarSign className="h-4 w-4 text-emerald-600" />
+              {parcelaEditando ? 'Editar Parcela' : 'Incluir Parcela'}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Informe o número, vencimento, valor e a forma de pagamento da parcela.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="parc_numero" className="text-xs font-medium">
+                  Número Parcela *
+                </Label>
+                <Input
+                  id="parc_numero"
+                  value={parcelaFormNumero}
+                  onChange={(e) => setParcelaFormNumero(e.target.value)}
+                  placeholder="001"
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="parc_vencimento" className="text-xs font-medium">
+                  Vencimento *
+                </Label>
+                <Input
+                  id="parc_vencimento"
+                  type="date"
+                  value={parcelaFormDataVencimento}
+                  onChange={(e) => setParcelaFormDataVencimento(e.target.value)}
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="parc_valor" className="text-xs font-medium">
+                Valor da Parcela (R$) *
+              </Label>
+              <Input
+                id="parc_valor"
+                type="number"
+                step="0.01"
+                min="0"
+                value={parcelaFormValor}
+                onChange={(e) => setParcelaFormValor(parseFloat(e.target.value) || 0)}
+                className="h-8 text-xs font-mono font-semibold"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="parc_forma" className="text-xs font-medium">
+                Forma de Pagamento (tPag)
+              </Label>
+              <Select
+                value={parcelaFormFormaPagamento}
+                onValueChange={(val) => setParcelaFormFormaPagamento(val)}
+              >
+                <SelectTrigger id="parc_forma" className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="01">01 - Dinheiro</SelectItem>
+                  <SelectItem value="02">02 - Cheque</SelectItem>
+                  <SelectItem value="03">03 - Cartão de Crédito</SelectItem>
+                  <SelectItem value="04">04 - Cartão de Débito</SelectItem>
+                  <SelectItem value="15">15 - Boleto Bancário</SelectItem>
+                  <SelectItem value="16">16 - Depósito Bancário</SelectItem>
+                  <SelectItem value="17">17 - PIX</SelectItem>
+                  <SelectItem value="99">99 - Outros</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalParcelaAberto(false)}
+              disabled={salvandoParcela}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSalvarParcela}
+              disabled={salvandoParcela}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+            >
+              {salvandoParcela ? 'Salvando...' : 'Salvar Parcela'}
             </Button>
           </DialogFooter>
         </DialogContent>

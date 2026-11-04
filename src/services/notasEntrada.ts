@@ -290,6 +290,41 @@ export async function listarNotasEntrada(
   }
 }
 
+export async function criarParcelaNotaEntrada(data: {
+  nota_id: string
+  numero: string
+  data_vencimento: string
+  valor: number
+  forma_pagamento?: string
+}): Promise<NotaEntradaParcela> {
+  const record = await pb.collection('notas_entrada_parcelas').create<NotaEntradaParcela>({
+    nota_id: data.nota_id,
+    numero: data.numero,
+    data_vencimento: data.data_vencimento,
+    valor: data.valor,
+    forma_pagamento: data.forma_pagamento || '15',
+    ativo: true,
+  })
+  return record
+}
+
+export async function atualizarParcelaNotaEntrada(
+  id: string,
+  data: Partial<{
+    numero: string
+    data_vencimento: string
+    valor: number
+    forma_pagamento: string
+  }>,
+): Promise<NotaEntradaParcela> {
+  const record = await pb.collection('notas_entrada_parcelas').update<NotaEntradaParcela>(id, data)
+  return record
+}
+
+export async function excluirParcelaNotaEntrada(id: string): Promise<void> {
+  await pb.collection('notas_entrada_parcelas').delete(id)
+}
+
 export async function obterNotaEntradaPorId(id: string): Promise<{
   nota: NotaEntrada
   itens: NotaEntradaItem[]

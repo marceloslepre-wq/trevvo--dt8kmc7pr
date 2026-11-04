@@ -357,6 +357,32 @@ export const NotaEntradaDigitacaoPage: React.FC = () => {
 
         if (!cancelado && novosItens.length > 0) {
           setItens(novosItens)
+
+          // Se o pedido tiver condição de pagamento, já calcula e pré-preenche as parcelas
+          if (ped.condicao_pagamento_id) {
+            try {
+              const totalPedidoItens = novosItens.reduce(
+                (acc, it) => acc + (it.valor_produto || 0),
+                0,
+              )
+              if (totalPedidoItens > 0) {
+                const cond = await obterCondicaoPorId(ped.condicao_pagamento_id)
+                const parcelasCalc = gerarParcelas(cond, totalPedidoItens, dataEmissao)
+                const novasParcelas: ParcelaNotaDigitadaInput[] = parcelasCalc.map((p) => ({
+                  numero: String(p.numero).padStart(3, '0'),
+                  data_vencimento: p.data_vencimento,
+                  valor: p.valor,
+                  forma_pagamento: '15', // Boleto bancário como padrão se não houver
+                }))
+                if (!cancelado) {
+                  setParcelas(novasParcelas)
+                }
+              }
+            } catch {
+              // não bloqueia o carregamento dos itens
+            }
+          }
+
           toast({
             title: `Pedido #${ped.numero} carregado`,
             description: `${novosItens.length} item(ns) pendente(s) preenchido(s) na nota de entrada.`,
@@ -699,6 +725,42 @@ export const NotaEntradaDigitacaoPage: React.FC = () => {
       return
     }
 
+    // Se houver condição de pagamento preenchida (especialmente a prazo) e ainda não houver parcelas,
+    // calcula automaticamente antes de salvar a nota
+    let parcelasFinais = parcelas
+    if (parcelasFinais.length === 0 && condicaoPagamentoId && totaisCalculados.valorTotal > 0) {
+      try {
+        const cond = await obterCondicaoPorId(condicaoPagamentoId)
+        const parcelasCalc = gerarParcelas(cond, totaisCalculados.valorTotal, dataEmissao)
+        if (parcelasCalc.length > 0) {
+          parcelasFinais = parcelasCalc.map((p) => ({
+            numero: String(p.numero).padStart(3, '0'),
+            data_vencimento: p.data_vencimento,
+            valor: p.valor,
+            forma_pagamento: '15', // Boleto padrão
+          }))
+          setParcelas(parcelasFinais)
+        }
+      } catch {
+        // segue com parcelas vazias se falhar
+      }
+    }
+
+    // Se houver parcelas geradas ou informadas, a soma deve bater com o total da nota
+    if (parcelasFinais.length > 0) {
+      const somaParc = parcelasFinais.reduce((acc, p) => acc + (p.valor || 0), 0)
+      const diff = Math.abs(somaParc - totaisCalculados.valorTotal)
+      if (diff > 0.05) {
+        toast({
+          title: 'Divergência nas parcelas',
+          description: `A soma das parcelas (R$ ${somaParc.toFixed(2)}) difere do total da nota (R$ ${totaisCalculados.valorTotal.toFixed(2)}). Ajuste as parcelas na aba "Parcelas".`,
+          variant: 'destructive',
+        })
+        setAbaAtiva('parcelas')
+        return
+      }
+    }
+
     setSalvando(true)
     try {
       const itensPayload: ItemNotaDigitadaInput[] = itens.map((it) => ({
@@ -770,7 +832,7 @@ export const NotaEntradaDigitacaoPage: React.FC = () => {
         valor_cofins: totaisCalculados.valorCofins,
         valor_total: totaisCalculados.valorTotal,
         itens: itensPayload,
-        parcelas,
+        parcelas: parcelasFinais,
       }
 
       const notaCriada = await salvarNotaEntradaDigitada(payload)

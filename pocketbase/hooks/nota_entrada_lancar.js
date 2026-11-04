@@ -799,11 +799,117 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
         }
 
         // Buscar parcelas da nota em notas_entrada_parcelas
-        const parcelasNota = txApp.findRecordsByFilter(
+        let parcelasNota = txApp.findRecordsByFilter(
           'notas_entrada_parcelas',
           `nota_id = '${notaId}' && ativo = true`,
           'numero',
         )
+
+        // Se a nota tiver condição de pagamento a prazo e nenhuma parcela,
+        // gerar as parcelas pela condição antes de criar o contas a pagar
+        const condicaoPagamentoId = nota.getString('condicao_pagamento_id') || ''
+        const valorTotalNota = nota.getFloat('valor_total') || 0
+
+        if (parcelasNota.length === 0 && condicaoPagamentoId && valorTotalNota > 0) {
+          try {
+            const condRec = txApp.findRecordById('condicoes_pagamento', condicaoPagamentoId)
+            if (condRec && condRec.getBool('ativo')) {
+              const tipoCond = condRec.getString('tipo') || ''
+              const parcelasJson = condRec.get('parcelas')
+              let parcelasDef = []
+              if (Array.isArray(parcelasJson)) {
+                parcelasDef = parcelasJson
+              } else if (typeof parcelasJson === 'string' && parcelasJson.trim()) {
+                try {
+                  parcelasDef = JSON.parse(parcelasJson)
+                } catch (_) {}
+              }
+
+              // Verifica se é a prazo
+              const ehPrazo =
+                tipoCond !== 'A vista' &&
+                tipoCond !== 'À vista' &&
+                (parcelasDef.length > 0 || condRec.getInt('dias_intervalo') > 0)
+
+              if (ehPrazo) {
+                const baseDataStr =
+                  dataEmissao || dataEntrada || new Date().toISOString().split('T')[0]
+                const baseDate = new Date(baseDataStr + 'T12:00:00Z')
+                const parcelasCol = txApp.findCollectionByNameOrId('notas_entrada_parcelas')
+
+                if (parcelasDef.length > 0) {
+                  let somaValores = 0
+                  for (let i = 0; i < parcelasDef.length; i++) {
+                    const pDef = parcelasDef[i]
+                    const numParc = String(pDef.numero || i + 1).padStart(3, '0')
+                    const dias = Number(pDef.dias || 0)
+                    const pct = Number(pDef.percentual || 0)
+
+                    let val = Number((valorTotalNota * (pct / 100)).toFixed(2))
+                    if (i === parcelasDef.length - 1) {
+                      val = Number((valorTotalNota - somaValores).toFixed(2))
+                    } else {
+                      somaValores += val
+                    }
+
+                    const dtVenc = new Date(baseDate.getTime())
+                    dtVenc.setDate(dtVenc.getDate() + dias)
+                    const vencStr = dtVenc.toISOString().split('T')[0]
+
+                    const newParcRec = new Record(parcelasCol)
+                    newParcRec.set('nota_id', notaId)
+                    newParcRec.set('numero', numParc)
+                    newParcRec.set('data_vencimento', vencStr)
+                    newParcRec.set('valor', val)
+                    newParcRec.set('forma_pagamento', '15') // Boleto padrão
+                    newParcRec.set('ativo', true)
+                    txApp.save(newParcRec)
+                  }
+                } else {
+                  // Fallback para condição simples por quantidade_parcelas e dias_intervalo
+                  const qtdParc = Math.max(1, condRec.getInt('quantidade_parcelas') || 1)
+                  const diasInt = condRec.getInt('dias_intervalo') || 30
+                  const diasPri = condRec.getInt('dias_primeira_parcela') || diasInt
+                  let somaValores = 0
+                  const valBase = Number((valorTotalNota / qtdParc).toFixed(2))
+
+                  for (let i = 0; i < qtdParc; i++) {
+                    const numParc = String(i + 1).padStart(3, '0')
+                    const dias = diasPri + i * diasInt
+                    let val = valBase
+                    if (i === qtdParc - 1) {
+                      val = Number((valorTotalNota - somaValores).toFixed(2))
+                    } else {
+                      somaValores += val
+                    }
+
+                    const dtVenc = new Date(baseDate.getTime())
+                    dtVenc.setDate(dtVenc.getDate() + dias)
+                    const vencStr = dtVenc.toISOString().split('T')[0]
+
+                    const newParcRec = new Record(parcelasCol)
+                    newParcRec.set('nota_id', notaId)
+                    newParcRec.set('numero', numParc)
+                    newParcRec.set('data_vencimento', vencStr)
+                    newParcRec.set('valor', val)
+                    newParcRec.set('forma_pagamento', '15')
+                    newParcRec.set('ativo', true)
+                    txApp.save(newParcRec)
+                  }
+                }
+
+                // Recarrega as parcelas recém criadas
+                parcelasNota = txApp.findRecordsByFilter(
+                  'notas_entrada_parcelas',
+                  `nota_id = '${notaId}' && ativo = true`,
+                  'numero',
+                )
+              }
+            }
+          } catch (errCond) {
+            console.log('[nota_entrada_lancar] Aviso ao gerar parcelas pela condição:', errCond)
+          }
+        }
 
         const pagarCol = txApp.findCollectionByNameOrId('contas_pagar')
         const titulosGerados = []
