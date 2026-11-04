@@ -701,7 +701,8 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
               const itPed = itensPedido[ip]
               const prodPedId = itPed.getString('produto_id')
               const qtdPedTotal = itPed.getFloat('quantidade') || 0
-              let qtdRecAtual = itPed.getFloat('quantidade_recebida') || 0
+              let qtdRecAtual =
+                itPed.getFloat('qtd_recebida') || itPed.getFloat('quantidade_recebida') || 0
 
               // Somar quantidade recebida casando pelo produto_id da nota
               for (let inota = 0; inota < itens.length; inota++) {
@@ -710,6 +711,7 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
                 }
               }
 
+              itPed.set('qtd_recebida', qtdRecAtual)
               itPed.set('quantidade_recebida', qtdRecAtual)
               itPed.set('updated_by', userId)
               txApp.save(itPed)

@@ -37,6 +37,7 @@ export interface PedidoCompra {
   updated?: string
   created_by?: string
   updated_by?: string
+  percentual_recebido?: number
   expand?: {
     empresa_id?: Empresa
     fornecedor_id?: Fornecedor
@@ -56,6 +57,7 @@ export interface PedidoCompraItem {
   valor_icms_st_estimado: number
   valor_total: number
   quantidade_recebida: number
+  qtd_recebida?: number
   observacao?: string
   ativo: boolean
   created?: string
@@ -211,8 +213,59 @@ export async function listarPedidosCompra(
     expand: 'empresa_id,fornecedor_id,comprador_id,condicao_pagamento_id',
   })
 
+  // Calcular % Recebido para cada pedido somando qtd_recebida / soma das quantidades pedidas dos itens
+  let itemsComPercentual = res.items
+  if (res.items.length > 0) {
+    try {
+      const pedidoIds = res.items.map((p) => p.id)
+      const idsFilter = pedidoIds.map((id) => `pedido_id = '${id}'`).join(' || ')
+      const itensDosPedidos = await pb
+        .collection('pedidos_compra_itens')
+        .getFullList<PedidoCompraItem>({
+          filter: `(${idsFilter}) && ativo != false`,
+          fields: 'id,pedido_id,quantidade,quantidade_recebida,qtd_recebida',
+        })
+
+      const totaisPorPedido = new Map<string, { pedida: number; recebida: number }>()
+      for (const it of itensDosPedidos) {
+        const pedId = it.pedido_id
+        const atual = totaisPorPedido.get(pedId) || { pedida: 0, recebida: 0 }
+        const qtdPedida = Number(it.quantidade || 0)
+        const qtdRecebida = Number(
+          it.qtd_recebida !== undefined && it.qtd_recebida !== null
+            ? it.qtd_recebida
+            : it.quantidade_recebida || 0,
+        )
+        totaisPorPedido.set(pedId, {
+          pedida: atual.pedida + qtdPedida,
+          recebida: atual.recebida + qtdRecebida,
+        })
+      }
+
+      itemsComPercentual = res.items.map((p) => {
+        const totais = totaisPorPedido.get(p.id)
+        let perc = 0
+        if (p.status === 'Recebido') {
+          perc = 100
+        } else if (totais && totais.pedida > 0) {
+          perc = Math.min(100, Math.round((totais.recebida / totais.pedida) * 100))
+        }
+        return {
+          ...p,
+          percentual_recebido: perc,
+        }
+      })
+    } catch {
+      // Fallback: se falhar o carregamento dos itens em lote, mantém fallback pelo status
+      itemsComPercentual = res.items.map((p) => ({
+        ...p,
+        percentual_recebido: p.status === 'Recebido' ? 100 : 0,
+      }))
+    }
+  }
+
   return {
-    items: res.items,
+    items: itemsComPercentual,
     totalItems: res.totalItems,
     page: res.page,
     perPage: res.perPage,
@@ -442,6 +495,7 @@ export async function salvarPedidoCompra(
       valor_icms_st_estimado: item.valor_icms_st_estimado || 0,
       valor_total: item.valor_total || 0,
       quantidade_recebida: 0,
+      qtd_recebida: 0,
       observacao: item.observacao || '',
       ativo: true,
       created_by: pb.authStore.record?.id || null,
@@ -632,6 +686,7 @@ export async function duplicarPedidoCompra(
       valor_icms_st_estimado: it.valor_icms_st_estimado || 0,
       valor_total: it.valor_total,
       quantidade_recebida: 0,
+      qtd_recebida: 0,
       observacao: it.observacao || '',
       ativo: true,
       created_by: pb.authStore.record?.id || null,

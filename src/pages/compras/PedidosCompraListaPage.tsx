@@ -587,13 +587,15 @@ export const PedidosCompraListaPage: React.FC = () => {
                     'Fornecedor não identificado'
                   const compradorNome = pedido.expand?.comprador_id?.nome || '-'
 
-                  // Cálculo de % recebido quando existir
+                  // Cálculo de % recebido a partir da soma dos itens (ou fallback por status)
                   const percRecebido =
-                    pedido.status === 'Recebido'
-                      ? '100%'
-                      : pedido.status === 'Rascunho' || pedido.status === 'Enviado'
-                        ? '0%'
-                        : '-'
+                    pedido.percentual_recebido !== undefined && pedido.percentual_recebido !== null
+                      ? `${pedido.percentual_recebido}%`
+                      : pedido.status === 'Recebido'
+                        ? '100%'
+                        : pedido.status === 'Rascunho' || pedido.status === 'Enviado'
+                          ? '0%'
+                          : '-'
 
                   return (
                     <tr key={pedido.id} className="hover:bg-slate-50/70 transition-colors">

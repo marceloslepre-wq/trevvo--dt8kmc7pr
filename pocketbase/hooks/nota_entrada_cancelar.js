@@ -483,7 +483,8 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
               const itPed = itensPedido[ip]
               const prodPedId = itPed.getString('produto_id')
               const qtdPedTotal = itPed.getFloat('quantidade') || 0
-              let qtdRec = itPed.getFloat('quantidade_recebida') || 0
+              let qtdRec =
+                itPed.getFloat('qtd_recebida') || itPed.getFloat('quantidade_recebida') || 0
 
               for (let inota = 0; inota < itensNota.length; inota++) {
                 if (itensNota[inota].getString('produto_id') === prodPedId) {
@@ -494,6 +495,7 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
                 }
               }
 
+              itPed.set('qtd_recebida', qtdRec)
               itPed.set('quantidade_recebida', qtdRec)
               itPed.set('updated_by', userId)
               txApp.save(itPed)
