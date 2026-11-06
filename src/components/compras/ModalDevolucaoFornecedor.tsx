@@ -214,9 +214,15 @@ export function ModalDevolucaoFornecedor({
         }
       }, 3000)
     } catch (err: any) {
+      const msgErro =
+        err?.response?.message ||
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Erro ao processar devolução.'
       toast({
         title: 'Falha na devolução',
-        description: err.message || 'Erro ao processar devolução.',
+        description: msgErro,
         variant: 'destructive',
       })
       setCarregando(false)
