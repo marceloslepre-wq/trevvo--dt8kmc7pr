@@ -296,15 +296,89 @@ export async function sugerirTributacao(params: {
       cfopForn.startsWith('2') ||
       cfopForn.startsWith('6')
 
-    if (temSt) {
-      if (ehSimples) {
+    const fornecedorEhSimples = cstForn.length === 3
+
+    if (ehSimples) {
+      if (temSt) {
         campos.csosn = '500'
         motivosPorCampo['csosn'] = 'Item com Substituição Tributária na entrada (Simples)'
       } else {
-        campos.cst_icms = '60'
-        motivosPorCampo['cst_icms'] = 'Item com Substituição Tributária na entrada (Regime Normal)'
+        const isentoNaoTrib =
+          ['40', '41'].includes(cstForn) || ['103', '300', '400'].includes(cstForn)
+        if (isentoNaoTrib) {
+          campos.csosn = '400'
+          motivosPorCampo['csosn'] = 'Fornecedor isento/não tributado'
+          confiancaGeral = 'Baixa'
+          avisos.push('Isenção do fornecedor nem sempre vale para a sua venda.')
+        } else {
+          campos.csosn = csosnPadraoTributado
+          motivosPorCampo['csosn'] = `Configuração padrão para Simples (${csosnPadraoTributado})`
+        }
       }
+    } else {
+      // Empresa Destinatária: Regime Normal (CRT 3 / Não-Simples) - NUNCA gera CSOSN
+      if (fornecedorEhSimples) {
+        // Conversão quando o fornecedor é Simples Nacional (CSOSN de 3 dígitos)
+        if (['101', '201'].includes(cstForn)) {
+          campos.cst_icms = '00'
+          const pCred = itemXml.pCredSN ?? 0
+          if (pCred > 0) {
+            campos.aliquota_icms = pCred
+            motivosPorCampo['cst_icms'] =
+              `CSOSN ${cstForn} convertido para CST 00 com crédito de ${pCred}% (pCredSN)`
+            motivosPorCampo['aliquota_icms'] =
+              `Alíquota de crédito Simples Nacional informada no XML (${pCred}%)`
+          } else {
+            campos.aliquota_icms = aliqIcmsInternaPadrao
+            campos.aliquota_fcp = aliqFcpPadrao
+            motivosPorCampo['cst_icms'] =
+              `CSOSN ${cstForn} convertido para CST 00 com crédito de ICMS`
+            motivosPorCampo['aliquota_icms'] = `Alíquota interna padrão (${aliqIcmsInternaPadrao}%)`
+          }
+        } else if (['102', '103', '300', '400'].includes(cstForn)) {
+          campos.cst_icms = '90'
+          motivosPorCampo['cst_icms'] =
+            `CSOSN ${cstForn} convertido para CST 90 (outras / sem crédito)`
+        } else if (cstForn === '500' || ['202', '203'].includes(cstForn)) {
+          campos.cst_icms = '60'
+          motivosPorCampo['cst_icms'] =
+            `CSOSN ${cstForn} convertido para CST 60 (ICMS cobrado anteriormente por ST)`
+        } else {
+          // Outros CSOSN (ex: 900)
+          campos.cst_icms = '90'
+          motivosPorCampo['cst_icms'] = `CSOSN ${cstForn} convertido para CST 90 (Regime Normal)`
+        }
+      } else {
+        // Fornecedor Regime Normal (CST 2 dígitos ou sem fornecedor Simples)
+        if (temSt) {
+          campos.cst_icms = '60'
+          motivosPorCampo['cst_icms'] =
+            'Item com Substituição Tributária na entrada (Regime Normal)'
+        } else if (cstForn === '20') {
+          campos.cst_icms = '20'
+          campos.reducao_bc_icms_percentual = 0
+          motivosPorCampo['cst_icms'] = 'Fornecedor tributou com redução de base'
+          confiancaGeral = 'Baixa'
+        } else if (cstForn === '40' || cstForn === '41') {
+          campos.cst_icms = cstForn === '41' ? '41' : '40'
+          motivosPorCampo['cst_icms'] = 'Fornecedor isento/não tributado'
+          confiancaGeral = 'Baixa'
+          avisos.push('Isenção do fornecedor nem sempre vale para a sua venda.')
+        } else {
+          // 00 ou outros tributados integralmente
+          campos.cst_icms = '00'
+          campos.aliquota_icms = aliqIcmsInternaPadrao
+          campos.aliquota_fcp = aliqFcpPadrao
+          motivosPorCampo['cst_icms'] = 'Tributação integral na saída'
+          motivosPorCampo['aliquota_icms'] =
+            `Alíquota interna padrão do estado (${aliqIcmsInternaPadrao}%)`
+        }
+      }
+    }
 
+    // Definição de CFOPs conforme ST
+    const ehStFinal = ehSimples ? campos.csosn === '500' : campos.cst_icms === '60'
+    if (ehStFinal) {
       campos.cfop_venda_interna = '5405'
       campos.cfop_venda_interestadual = '6404'
       motivosPorCampo['cfop_venda_interna'] =
@@ -318,45 +392,6 @@ export async function sugerirTributacao(params: {
         )
       }
     } else {
-      // Sem ST
-      const tributouIntegral =
-        ['00', '20', '90'].includes(cstForn) || ['101', '102', '900'].includes(cstForn)
-
-      const isentoNaoTrib =
-        ['40', '41'].includes(cstForn) || ['103', '300', '400'].includes(cstForn)
-
-      if (isentoNaoTrib) {
-        if (ehSimples) {
-          campos.csosn = '400'
-          motivosPorCampo['csosn'] = 'Fornecedor isento/não tributado'
-        } else {
-          campos.cst_icms = cstForn === '41' ? '41' : '40'
-          motivosPorCampo['cst_icms'] = 'Fornecedor isento/não tributado'
-        }
-        confiancaGeral = 'Baixa'
-        avisos.push('Isenção do fornecedor nem sempre vale para a sua venda.')
-      } else {
-        // Tributado normal
-        if (ehSimples) {
-          campos.csosn = csosnPadraoTributado
-          motivosPorCampo['csosn'] = `Configuração padrão para Simples (${csosnPadraoTributado})`
-        } else {
-          if (cstForn === '20') {
-            campos.cst_icms = '20'
-            campos.reducao_bc_icms_percentual = 0
-            motivosPorCampo['cst_icms'] = 'Fornecedor tributou com redução de base'
-            confiancaGeral = 'Baixa'
-          } else {
-            campos.cst_icms = '00'
-            campos.aliquota_icms = aliqIcmsInternaPadrao
-            campos.aliquota_fcp = aliqFcpPadrao
-            motivosPorCampo['cst_icms'] = 'Tributação integral na saída'
-            motivosPorCampo['aliquota_icms'] =
-              `Alíquota interna padrão do estado (${aliqIcmsInternaPadrao}%)`
-          }
-        }
-      }
-
       const ehIndustrializacao = tipoEntrada === 'Compra para industrialização'
       campos.cfop_venda_interna = ehIndustrializacao ? '5101' : '5102'
       campos.cfop_venda_interestadual = ehIndustrializacao ? '6101' : '6102'
@@ -508,6 +543,16 @@ export async function sugerirTributacao(params: {
       }
     } catch {
       // ignora se falhar busca de perfis
+    }
+
+    // Garantia dura: se empresa não é Simples (Regime Normal / CRT 3), nunca retorna CSOSN
+    // e garante que cst_icms tenha exatamente 2 dígitos
+    if (!ehSimples) {
+      delete campos.csosn
+      delete motivosPorCampo['csosn']
+      if (campos.cst_icms) {
+        campos.cst_icms = campos.cst_icms.slice(-2).padStart(2, '0')
+      }
     }
 
     return {

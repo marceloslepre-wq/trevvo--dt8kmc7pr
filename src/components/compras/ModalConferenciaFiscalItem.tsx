@@ -46,7 +46,9 @@ export function ModalConferenciaFiscalItem({
     sugestao?.campos.cfop_venda_interna || produto?.cfop_venda_interna || '5102',
   )
   const [cstIcms, setCstIcms] = useState(sugestao?.campos.cst_icms || produto?.cst_icms || '')
-  const [csosn, setCsosn] = useState(sugestao?.campos.csosn || produto?.csosn || '')
+  const [csosn, setCsosn] = useState(
+    sugestao?.campos.cst_icms ? '' : sugestao?.campos.csosn || produto?.csosn || '',
+  )
   const [aliquotaIcms, setAliquotaIcms] = useState(
     sugestao?.campos.aliquota_icms !== undefined
       ? String(sugestao.campos.aliquota_icms)
@@ -75,13 +77,14 @@ export function ModalConferenciaFiscalItem({
     if (!produto) return
     setSalvando(true)
     try {
+      const cstIcmsLimpo = cstIcms.trim()
       const payload: Partial<Produto> = {
         ncm: ncm.trim(),
         cest: cest.trim(),
         origem: origem.trim(),
         cfop_venda_interna: cfopVenda.trim(),
-        cst_icms: cstIcms.trim() || undefined,
-        csosn: csosn.trim() || undefined,
+        cst_icms: cstIcmsLimpo || undefined,
+        csosn: cstIcmsLimpo ? undefined : csosn.trim() || undefined,
         aliquota_icms: aliquotaIcms ? parseFloat(aliquotaIcms) : undefined,
         cst_pis_saida: cstPis.trim() || undefined,
         cst_cofins_saida: cstCofins.trim() || undefined,
