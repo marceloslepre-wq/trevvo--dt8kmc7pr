@@ -1344,14 +1344,30 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
       const res = await cancelarNotaEntrada(nota.id, motivoCancelamento)
       toast({
         title: 'Nota cancelada com sucesso',
-        description: res.message || 'Status atualizado para Cancelada e movimentos estornados.',
+        description:
+          res.message ||
+          (nota.status === 'Lançada'
+            ? 'Status atualizado para Cancelada e movimentos estornados.'
+            : 'Nota de entrada cancelada com sucesso.'),
       })
       setCancelarModalAberto(false)
+      setMotivoCancelamento('')
       await carregarDados()
     } catch (err: unknown) {
+      const pbErr = err as {
+        response?: { message?: string }
+        data?: { message?: string }
+        message?: string
+      }
+      const mensagemErro =
+        pbErr.response?.message ||
+        pbErr.data?.message ||
+        pbErr.message ||
+        'Falha ao processar cancelamento da nota'
+
       toast({
         title: 'Cancelamento não permitido',
-        description: err instanceof Error ? err.message : 'Falha ao processar cancelamento',
+        description: mensagemErro,
         variant: 'destructive',
       })
     } finally {

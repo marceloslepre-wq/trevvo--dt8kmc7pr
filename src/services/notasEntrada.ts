@@ -885,14 +885,35 @@ export async function cancelarNotaEntrada(
   id: string,
   motivo: string,
 ): Promise<{ sucesso: boolean; message: string }> {
-  const res = await pb.send<{ sucesso: boolean; message: string }>('/notas-entrada/cancelar', {
-    method: 'POST',
-    body: {
-      nota_id: id,
-      motivo,
-    },
-  })
-  return res
+  const body = {
+    nota_id: id,
+    motivo: (motivo || '').trim(),
+  }
+
+  // Tenta o endpoint padrão /backend/v1/notas-entrada/cancelar e faz fallback para /notas-entrada/cancelar se 404
+  try {
+    const res = await pb.send<{ sucesso: boolean; message: string }>(
+      '/backend/v1/notas-entrada/cancelar',
+      {
+        method: 'POST',
+        body,
+      },
+    )
+    return res
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 404) {
+      const resFallback = await pb.send<{ sucesso: boolean; message: string }>(
+        '/notas-entrada/cancelar',
+        {
+          method: 'POST',
+          body,
+        },
+      )
+      return resFallback
+    }
+    throw err
+  }
 }
 
 export interface ItemDevolucaoCompra {
