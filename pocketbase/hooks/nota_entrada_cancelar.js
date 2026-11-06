@@ -318,32 +318,81 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
         throw new Error('Nota de entrada não encontrada.')
       }
 
-      if (nota.getString('status') !== 'Lançada') {
-        throw new Error('Apenas notas com status "Lançada" podem ter seu lançamento cancelado.')
+      const statusNota = nota.getString('status')
+      if (statusNota !== 'Lançada' && statusNota !== 'Em conferência') {
+        throw new Error(
+          'Apenas notas com status "Lançada" ou "Em conferência" podem ser canceladas.',
+        )
       }
 
       const empresaId = nota.getString('empresa_id')
 
-      // Verificar permissão de estoque negativo na empresa
-      const empresa = txApp.findRecordById('empresas', empresaId)
-      const permiteEstoqueNegativo = empresa ? empresa.getBool('permite_estoque_negativo') : false
+      // Se a nota já foi Lançada, realiza estornos de estoque e financeiro
+      if (statusNota === 'Lançada') {
+        // Verificar permissão de estoque negativo na empresa
+        const empresa = txApp.findRecordById('empresas', empresaId)
+        const permiteEstoqueNegativo = empresa ? empresa.getBool('permite_estoque_negativo') : false
 
-      // 2. Buscar movimentos de estoque gerados pela nota
-      const movimentos = txApp.findRecordsByFilter(
-        'estoque_movimentos',
-        `documento_id = '${notaId}' && documento_tipo = 'NF Entrada' && estornado = false && ativo = true`,
-        'created',
-      )
+        // 2. Buscar movimentos de estoque gerados pela nota
+        const movimentos = txApp.findRecordsByFilter(
+          'estoque_movimentos',
+          `documento_id = '${notaId}' && documento_tipo = 'NF Entrada' && estornado = false && ativo = true`,
+          'created',
+        )
 
-      // 3. Se a empresa não permite estoque negativo, verificar se o estorno deixaria saldo < 0
-      if (!permiteEstoqueNegativo && movimentos.length > 0) {
-        const produtosNegativos = []
+        // 3. Se a empresa não permite estoque negativo, verificar se o estorno deixaria saldo < 0
+        if (!permiteEstoqueNegativo && movimentos.length > 0) {
+          const produtosNegativos = []
+
+          for (let i = 0; i < movimentos.length; i++) {
+            const mov = movimentos[i]
+            const prodId = mov.getString('produto_id')
+            const qtdMov = mov.getFloat('quantidade') || 0
+
+            const saldos = txApp.findRecordsByFilter(
+              'estoque_saldos',
+              `empresa_id = '${empresaId}' && produto_id = '${prodId}'`,
+              '',
+              1,
+              0,
+            )
+
+            const saldoAtual = saldos.length > 0 ? saldos[0].getFloat('quantidade') || 0 : 0
+            if (saldoAtual - qtdMov < -0.0001) {
+              let nomeProd = prodId
+              try {
+                const p = txApp.findRecordById('produtos', prodId)
+                if (p) nomeProd = `${p.getString('descricao')} (Cód ${p.getInt('codigo')})`
+              } catch (_) {}
+              produtosNegativos.push(
+                `${nomeProd}: Saldo atual ${saldoAtual}, estorno de ${qtdMov} deixaria saldo ${(saldoAtual - qtdMov).toFixed(3)}`,
+              )
+            }
+          }
+
+          if (produtosNegativos.length > 0) {
+            throw new Error(
+              `Cancelamento recusado: a empresa não permite estoque negativo e os seguintes produtos ficariam com saldo negativo:\n- ${produtosNegativos.join('\n- ')}`,
+            )
+          }
+        }
+
+        // 4. Estornar movimentos de estoque
+        const saldosCol = txApp.findCollectionByNameOrId('estoque_saldos')
+        const movsCol = txApp.findCollectionByNameOrId('estoque_movimentos')
 
         for (let i = 0; i < movimentos.length; i++) {
-          const mov = movimentos[i]
-          const prodId = mov.getString('produto_id')
-          const qtdMov = mov.getFloat('quantidade') || 0
+          const movOriginal = movimentos[i]
+          const prodId = movOriginal.getString('produto_id')
+          const qtdEstorno = movOriginal.getFloat('quantidade') || 0
+          const loteId = movOriginal.getString('lote_id')
 
+          // Marcar movimento original como estornado
+          movOriginal.set('estornado', true)
+          movOriginal.set('updated_by', userId)
+          txApp.save(movOriginal)
+
+          // Atualizar saldo
           const saldos = txApp.findRecordsByFilter(
             'estoque_saldos',
             `empresa_id = '${empresaId}' && produto_id = '${prodId}'`,
@@ -352,220 +401,180 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
             0,
           )
 
-          const saldoAtual = saldos.length > 0 ? saldos[0].getFloat('quantidade') || 0 : 0
-          if (saldoAtual - qtdMov < -0.0001) {
-            let nomeProd = prodId
-            try {
-              const p = txApp.findRecordById('produtos', prodId)
-              if (p) nomeProd = `${p.getString('descricao')} (Cód ${p.getInt('codigo')})`
-            } catch (_) {}
-            produtosNegativos.push(
-              `${nomeProd}: Saldo atual ${saldoAtual}, estorno de ${qtdMov} deixaria saldo ${(saldoAtual - qtdMov).toFixed(3)}`,
-            )
+          let saldoRec = null
+          if (saldos.length > 0) {
+            saldoRec = saldos[0]
+          } else {
+            saldoRec = new Record(saldosCol)
+            saldoRec.set('empresa_id', empresaId)
+            saldoRec.set('produto_id', prodId)
+            saldoRec.set('quantidade', 0)
+            saldoRec.set('custo_medio', 0)
+            saldoRec.set('valor_total', 0)
+            saldoRec.set('ativo', true)
+            saldoRec.set('created_by', userId)
           }
-        }
 
-        if (produtosNegativos.length > 0) {
-          throw new Error(
-            `Cancelamento recusado: a empresa não permite estoque negativo e os seguintes produtos ficariam com saldo negativo:\n- ${produtosNegativos.join('\n- ')}`,
-          )
-        }
-      }
+          const saldoAnterior = saldoRec.getFloat('quantidade') || 0
+          const custoMedioAnterior = saldoRec.getFloat('custo_medio') || 0
+          const saldoPosterior = saldoAnterior - qtdEstorno
+          const valorTotalNovo = Math.max(0, saldoPosterior * custoMedioAnterior)
 
-      // 4. Estornar movimentos de estoque
-      const saldosCol = txApp.findCollectionByNameOrId('estoque_saldos')
-      const movsCol = txApp.findCollectionByNameOrId('estoque_movimentos')
+          saldoRec.set('quantidade', saldoPosterior)
+          saldoRec.set('valor_total', valorTotalNovo)
+          saldoRec.set('updated_by', userId)
+          txApp.save(saldoRec)
 
-      for (let i = 0; i < movimentos.length; i++) {
-        const movOriginal = movimentos[i]
-        const prodId = movOriginal.getString('produto_id')
-        const qtdEstorno = movOriginal.getFloat('quantidade') || 0
-        const loteId = movOriginal.getString('lote_id')
-
-        // Marcar movimento original como estornado
-        movOriginal.set('estornado', true)
-        movOriginal.set('updated_by', userId)
-        txApp.save(movOriginal)
-
-        // Atualizar saldo
-        const saldos = txApp.findRecordsByFilter(
-          'estoque_saldos',
-          `empresa_id = '${empresaId}' && produto_id = '${prodId}'`,
-          '',
-          1,
-          0,
-        )
-
-        let saldoRec = null
-        if (saldos.length > 0) {
-          saldoRec = saldos[0]
-        } else {
-          saldoRec = new Record(saldosCol)
-          saldoRec.set('empresa_id', empresaId)
-          saldoRec.set('produto_id', prodId)
-          saldoRec.set('quantidade', 0)
-          saldoRec.set('custo_medio', 0)
-          saldoRec.set('valor_total', 0)
-          saldoRec.set('ativo', true)
-          saldoRec.set('created_by', userId)
-        }
-
-        const saldoAnterior = saldoRec.getFloat('quantidade') || 0
-        const custoMedioAnterior = saldoRec.getFloat('custo_medio') || 0
-        const saldoPosterior = saldoAnterior - qtdEstorno
-        const valorTotalNovo = Math.max(0, saldoPosterior * custoMedioAnterior)
-
-        saldoRec.set('quantidade', saldoPosterior)
-        saldoRec.set('valor_total', valorTotalNovo)
-        saldoRec.set('updated_by', userId)
-        txApp.save(saldoRec)
-
-        // Estornar lote se houver
-        if (loteId) {
-          try {
-            const loteRec = txApp.findRecordById('lotes', loteId)
-            if (loteRec) {
-              const qtdLoteAnt = loteRec.getFloat('quantidade') || 0
-              loteRec.set('quantidade', Math.max(0, qtdLoteAnt - qtdEstorno))
-              loteRec.set('updated_by', userId)
-              txApp.save(loteRec)
-            }
-          } catch (_) {}
-        }
-
-        // Criar registro de movimento de estorno (tipo Saída, origem AJUSTE ou ESTORNO)
-        const estornoMovRec = new Record(movsCol)
-        estornoMovRec.set('empresa_id', empresaId)
-        estornoMovRec.set('produto_id', prodId)
-        estornoMovRec.set('data_movimento', new Date().toISOString())
-        estornoMovRec.set('tipo', 'Saída')
-        estornoMovRec.set('origem', 'AJUSTE')
-        estornoMovRec.set('quantidade', qtdEstorno)
-        estornoMovRec.set('custo_unitario', movOriginal.getFloat('custo_unitario') || 0)
-        estornoMovRec.set('valor_total', qtdEstorno * (movOriginal.getFloat('custo_unitario') || 0))
-        estornoMovRec.set('saldo_anterior', saldoAnterior)
-        estornoMovRec.set('saldo_posterior', saldoPosterior)
-        estornoMovRec.set('custo_medio_anterior', custoMedioAnterior)
-        estornoMovRec.set('custo_medio_posterior', custoMedioAnterior)
-        estornoMovRec.set('lote_id', loteId)
-        estornoMovRec.set('documento_tipo', 'NF Entrada')
-        estornoMovRec.set('documento_id', notaId)
-        estornoMovRec.set('documento_numero', movOriginal.getString('documento_numero'))
-        estornoMovRec.set('motivo', `Estorno por cancelamento da NF: ${motivoCancelamento}`)
-        estornoMovRec.set('observacao', `Cancelamento efetuado em ${new Date().toISOString()}`)
-        estornoMovRec.set('usuario_id', userId)
-        estornoMovRec.set('estornado', false)
-        estornoMovRec.set('ativo', true)
-        estornoMovRec.set('created_by', userId)
-        estornoMovRec.set('updated_by', userId)
-        txApp.save(estornoMovRec)
-      }
-
-      // 5. Desfazer quantidade_recebida nos itens do pedido de compra vinculado
-      const pedidoCompraId = nota.getString('pedido_compra_id')
-      if (pedidoCompraId) {
-        try {
-          const pedido = txApp.findRecordById('pedidos_compra', pedidoCompraId)
-          if (pedido) {
-            const itensNota = txApp.findRecordsByFilter(
-              'notas_entrada_itens',
-              `nota_id = '${notaId}' && ativo = true`,
-            )
-            const itensPedido = txApp.findRecordsByFilter(
-              'pedidos_compra_itens',
-              `pedido_id = '${pedidoCompraId}' && ativo = true`,
-            )
-
-            let algumRecebido = false
-            let todosRecebidos = true
-
-            for (let ip = 0; ip < itensPedido.length; ip++) {
-              const itPed = itensPedido[ip]
-              const prodPedId = itPed.getString('produto_id')
-              const qtdPedTotal = itPed.getFloat('quantidade') || 0
-              let qtdRec =
-                itPed.getFloat('qtd_recebida') || itPed.getFloat('quantidade_recebida') || 0
-
-              for (let inota = 0; inota < itensNota.length; inota++) {
-                if (itensNota[inota].getString('produto_id') === prodPedId) {
-                  qtdRec = Math.max(
-                    0,
-                    qtdRec - (itensNota[inota].getFloat('quantidade_estoque') || 0),
-                  )
-                }
+          // Estornar lote se houver
+          if (loteId) {
+            try {
+              const loteRec = txApp.findRecordById('lotes', loteId)
+              if (loteRec) {
+                const qtdLoteAnt = loteRec.getFloat('quantidade') || 0
+                loteRec.set('quantidade', Math.max(0, qtdLoteAnt - qtdEstorno))
+                loteRec.set('updated_by', userId)
+                txApp.save(loteRec)
               }
+            } catch (_) {}
+          }
 
-              itPed.set('qtd_recebida', qtdRec)
-              itPed.set('quantidade_recebida', qtdRec)
-              itPed.set('updated_by', userId)
-              txApp.save(itPed)
+          // Criar registro de movimento de estorno (tipo Saída, origem AJUSTE ou ESTORNO)
+          const estornoMovRec = new Record(movsCol)
+          estornoMovRec.set('empresa_id', empresaId)
+          estornoMovRec.set('produto_id', prodId)
+          estornoMovRec.set('data_movimento', new Date().toISOString())
+          estornoMovRec.set('tipo', 'Saída')
+          estornoMovRec.set('origem', 'AJUSTE')
+          estornoMovRec.set('quantidade', qtdEstorno)
+          estornoMovRec.set('custo_unitario', movOriginal.getFloat('custo_unitario') || 0)
+          estornoMovRec.set(
+            'valor_total',
+            qtdEstorno * (movOriginal.getFloat('custo_unitario') || 0),
+          )
+          estornoMovRec.set('saldo_anterior', saldoAnterior)
+          estornoMovRec.set('saldo_posterior', saldoPosterior)
+          estornoMovRec.set('custo_medio_anterior', custoMedioAnterior)
+          estornoMovRec.set('custo_medio_posterior', custoMedioAnterior)
+          estornoMovRec.set('lote_id', loteId)
+          estornoMovRec.set('documento_tipo', 'NF Entrada')
+          estornoMovRec.set('documento_id', notaId)
+          estornoMovRec.set('documento_numero', movOriginal.getString('documento_numero'))
+          estornoMovRec.set('motivo', `Estorno por cancelamento da NF: ${motivoCancelamento}`)
+          estornoMovRec.set('observacao', `Cancelamento efetuado em ${new Date().toISOString()}`)
+          estornoMovRec.set('usuario_id', userId)
+          estornoMovRec.set('estornado', false)
+          estornoMovRec.set('ativo', true)
+          estornoMovRec.set('created_by', userId)
+          estornoMovRec.set('updated_by', userId)
+          txApp.save(estornoMovRec)
+        }
 
-              if (qtdRec > 0) {
-                algumRecebido = true
-                if (qtdRec < qtdPedTotal) {
+        // 5. Desfazer quantidade_recebida nos itens do pedido de compra vinculado
+        const pedidoCompraId = nota.getString('pedido_compra_id')
+        if (pedidoCompraId) {
+          try {
+            const pedido = txApp.findRecordById('pedidos_compra', pedidoCompraId)
+            if (pedido) {
+              const itensNota = txApp.findRecordsByFilter(
+                'notas_entrada_itens',
+                `nota_id = '${notaId}' && ativo = true`,
+              )
+              const itensPedido = txApp.findRecordsByFilter(
+                'pedidos_compra_itens',
+                `pedido_id = '${pedidoCompraId}' && ativo = true`,
+              )
+
+              let algumRecebido = false
+              let todosRecebidos = true
+
+              for (let ip = 0; ip < itensPedido.length; ip++) {
+                const itPed = itensPedido[ip]
+                const prodPedId = itPed.getString('produto_id')
+                const qtdPedTotal = itPed.getFloat('quantidade') || 0
+                let qtdRec =
+                  itPed.getFloat('qtd_recebida') || itPed.getFloat('quantidade_recebida') || 0
+
+                for (let inota = 0; inota < itensNota.length; inota++) {
+                  if (itensNota[inota].getString('produto_id') === prodPedId) {
+                    qtdRec = Math.max(
+                      0,
+                      qtdRec - (itensNota[inota].getFloat('quantidade_estoque') || 0),
+                    )
+                  }
+                }
+
+                itPed.set('qtd_recebida', qtdRec)
+                itPed.set('quantidade_recebida', qtdRec)
+                itPed.set('updated_by', userId)
+                txApp.save(itPed)
+
+                if (qtdRec > 0) {
+                  algumRecebido = true
+                  if (qtdRec < qtdPedTotal) {
+                    todosRecebidos = false
+                  }
+                } else {
                   todosRecebidos = false
                 }
+              }
+
+              if (todosRecebidos && itensPedido.length > 0) {
+                pedido.set('status', 'Recebido')
+              } else if (algumRecebido) {
+                pedido.set('status', 'Parcialmente recebido')
               } else {
-                todosRecebidos = false
+                pedido.set('status', 'Enviado')
+              }
+              pedido.set('updated_by', userId)
+              txApp.save(pedido)
+            }
+          } catch (errPed) {
+            console.warn('Erro ao atualizar status do pedido vinculado no cancelamento:', errPed)
+          }
+        }
+
+        // 6. INTEGRAÇÃO ETAPA 4: VERIFICAR E CANCELAR TÍTULOS CONTAS A PAGAR
+        if (txApp.hasTable('contas_pagar')) {
+          const titulosNota = txApp.findRecordsByFilter(
+            'contas_pagar',
+            `origem_id = '${notaId}' && origem = 'NF Entrada' && ativo = true`,
+          )
+
+          // Se algum título possuir baixa ativa (não estornada), RECUSA o cancelamento
+          if (titulosNota.length > 0 && txApp.hasTable('pagamentos_baixas')) {
+            const titulosComBaixaAtiva = []
+
+            for (let tn = 0; tn < titulosNota.length; tn++) {
+              const tit = titulosNota[tn]
+              const baixasAtivas = txApp.findRecordsByFilter(
+                'pagamentos_baixas',
+                `conta_pagar_id = '${tit.id}' && estornado = false && ativo = true`,
+              )
+              if (baixasAtivas.length > 0) {
+                titulosComBaixaAtiva.push(
+                  `Doc ${tit.getString('numero_documento')} Parc ${tit.getString('parcela')} (${baixasAtivas.length} pagamento(s) ativo(s))`,
+                )
               }
             }
 
-            if (todosRecebidos && itensPedido.length > 0) {
-              pedido.set('status', 'Recebido')
-            } else if (algumRecebido) {
-              pedido.set('status', 'Parcialmente recebido')
-            } else {
-              pedido.set('status', 'Enviado')
-            }
-            pedido.set('updated_by', userId)
-            txApp.save(pedido)
-          }
-        } catch (errPed) {
-          console.warn('Erro ao atualizar status do pedido vinculado no cancelamento:', errPed)
-        }
-      }
-
-      // 6. INTEGRAÇÃO ETAPA 4: VERIFICAR E CANCELAR TÍTULOS CONTAS A PAGAR
-      if (txApp.hasTable('contas_pagar')) {
-        const titulosNota = txApp.findRecordsByFilter(
-          'contas_pagar',
-          `origem_id = '${notaId}' && origem = 'NF Entrada' && ativo = true`,
-        )
-
-        // Se algum título possuir baixa ativa (não estornada), RECUSA o cancelamento
-        if (titulosNota.length > 0 && txApp.hasTable('pagamentos_baixas')) {
-          const titulosComBaixaAtiva = []
-
-          for (let tn = 0; tn < titulosNota.length; tn++) {
-            const tit = titulosNota[tn]
-            const baixasAtivas = txApp.findRecordsByFilter(
-              'pagamentos_baixas',
-              `conta_pagar_id = '${tit.id}' && estornado = false && ativo = true`,
-            )
-            if (baixasAtivas.length > 0) {
-              titulosComBaixaAtiva.push(
-                `Doc ${tit.getString('numero_documento')} Parc ${tit.getString('parcela')} (${baixasAtivas.length} pagamento(s) ativo(s))`,
+            if (titulosComBaixaAtiva.length > 0) {
+              throw new Error(
+                `Cancelamento recusado: a nota possui títulos a pagar com pagamentos já realizados. É necessário estornar os seguintes pagamentos no Contas a Pagar antes de cancelar a nota:\n- ${titulosComBaixaAtiva.join('\n- ')}`,
               )
             }
-          }
 
-          if (titulosComBaixaAtiva.length > 0) {
-            throw new Error(
-              `Cancelamento recusado: a nota possui títulos a pagar com pagamentos já realizados. É necessário estornar os seguintes pagamentos no Contas a Pagar antes de cancelar a nota:\n- ${titulosComBaixaAtiva.join('\n- ')}`,
-            )
-          }
-
-          // Se não houver baixas ativas, cancela os títulos da nota com o mesmo motivo
-          for (let tc = 0; tc < titulosNota.length; tc++) {
-            const titParaCancelar = titulosNota[tc]
-            titParaCancelar.set('status', 'Cancelado')
-            titParaCancelar.set(
-              'motivo_cancelamento',
-              `Cancelamento da Nota Fiscal de Entrada: ${motivoCancelamento}`,
-            )
-            titParaCancelar.set('saldo', 0)
-            titParaCancelar.set('updated_by', userId)
-            txApp.save(titParaCancelar)
+            // Se não houver baixas ativas, cancela os títulos da nota com o mesmo motivo
+            for (let tc = 0; tc < titulosNota.length; tc++) {
+              const titParaCancelar = titulosNota[tc]
+              titParaCancelar.set('status', 'Cancelado')
+              titParaCancelar.set(
+                'motivo_cancelamento',
+                `Cancelamento da Nota Fiscal de Entrada: ${motivoCancelamento}`,
+              )
+              titParaCancelar.set('saldo', 0)
+              titParaCancelar.set('updated_by', userId)
+              txApp.save(titParaCancelar)
+            }
           }
         }
       }
@@ -599,8 +608,7 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
 
     return c.json(200, {
       sucesso: true,
-      message:
-        'Lançamento da nota de entrada cancelado com sucesso. Movimentos de estoque foram estornados.',
+      message: 'Nota de entrada cancelada com sucesso.',
     })
   } catch (err) {
     const msg = err && err.message ? err.message : String(err)
