@@ -142,8 +142,15 @@ export function ModalProdutosNaoCadastrados({
       // Monta as linhas
       const linhas: ItemNaoCadastradoInput[] = []
       for (const item of itensSemProduto) {
-        const uResolvida = await resolverUnidadeMedida(item.unidade_xml || 'UN', unidadesList)
-        const custo = item.custo_unitario_estoque || item.valor_unitario_xml || 0
+        const uResolvida = await resolverUnidadeMedida(
+          item.unidade_fornecedor || item.unidade_xml || 'UN',
+          unidadesList,
+        )
+        const custo =
+          item.custo_unitario_estoque ||
+          item.valor_unitario_fornecedor ||
+          item.valor_unitario_xml ||
+          0
         const margemNum = parseFloat(margem) || 50
         const precoVenda = custo > 0 ? Number((custo * (1 + margemNum / 100)).toFixed(2)) : 0
 
@@ -151,15 +158,15 @@ export function ModalProdutosNaoCadastrados({
           itemNota: item,
           criar: true,
           descricao: (item.descricao_fornecedor || '').slice(0, 120),
-          unidadeCompra: item.unidade_xml || 'UN',
+          unidadeCompra: item.unidade_fornecedor || item.unidade_xml || 'UN',
           unidadeVendaId: uResolvida ? uResolvida.id : unidadesList[0]?.id || '',
           fatorConversao: 1,
           precoCusto: custo,
           margemPercentual: margemNum,
           precoVenda,
-          ncm: item.ncm_xml || '',
-          cest: item.cest_xml || '',
-          gtin: item.codigo_barras_xml || '',
+          ncm: item.ncm_fornecedor || item.ncm_xml || '',
+          cest: item.cest_fornecedor || item.cest_xml || '',
+          gtin: item.gtin_fornecedor || item.codigo_barras_xml || '',
         })
       }
       setItens(linhas)

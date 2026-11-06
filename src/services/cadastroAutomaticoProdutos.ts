@@ -189,20 +189,25 @@ export async function processarCadastroAutomaticoProdutos(params: {
     // Criar novo produto
     try {
       // 1. Tratar GTIN e verificar se já existe produto com esse GTIN
-      const rawEan = itemNota.codigo_barras_xml || ''
-      let gtinValido = 'SEM GTIN'
-      if (rawEan && rawEan !== 'SEM GTIN' && validarGTIN(rawEan)) {
+      const rawEan = (
+        itemInput.gtin ||
+        itemNota.gtin_fornecedor ||
+        itemNota.codigo_barras_xml ||
+        ''
+      ).trim()
+      let gtinValido = ''
+      if (rawEan && rawEan !== 'SEM GTIN') {
         gtinValido = rawEan
       }
 
-      const rawEanTrib = itemNota.dados_adicionais_xml?.cEANTrib || ''
-      let gtinTribValido = 'SEM GTIN'
-      if (rawEanTrib && rawEanTrib !== 'SEM GTIN' && validarGTIN(rawEanTrib)) {
+      const rawEanTrib = (itemNota.dados_adicionais_xml?.cEANTrib || '').trim()
+      let gtinTribValido = ''
+      if (rawEanTrib && rawEanTrib !== 'SEM GTIN') {
         gtinTribValido = rawEanTrib
       }
 
       // Se o GTIN já existir em outro produto, NÃO criar: vincular a esse produto e avisar
-      if (gtinValido !== 'SEM GTIN') {
+      if (gtinValido && gtinValido !== 'SEM GTIN') {
         const produtosComGtin = await pb.collection('produtos').getList<Produto>(1, 1, {
           filter: `gtin = '${gtinValido}' && ativo = true`,
         })
@@ -221,7 +226,9 @@ export async function processarCadastroAutomaticoProdutos(params: {
       // 2. Unidade de Medida
       let unidIdFinal = unidadeVendaId
       if (!unidIdFinal) {
-        const u = await obterOuCriarUnidadeMedida(itemNota.unidade_xml || 'UN')
+        const u = await obterOuCriarUnidadeMedida(
+          itemNota.unidade_fornecedor || itemNota.unidade_xml || 'UN',
+        )
         unidIdFinal = u.id
       }
 
@@ -233,12 +240,16 @@ export async function processarCadastroAutomaticoProdutos(params: {
         unidTribIdFinal = uTrib.id
       }
 
-      const qCom = itemNota.quantidade_xml || 1
+      const qCom = itemNota.quantidade_fornecedor || itemNota.quantidade_xml || 1
       const qTrib = itemNota.dados_adicionais_xml?.qTrib || qCom
       const fatorConversaoTributavel = qCom > 0 ? Number((qTrib / qCom).toFixed(4)) : 1
 
       // 3. Preços e Custos
-      const custoFinalItem = itemNota.custo_unitario_estoque || itemNota.valor_unitario_xml || 0
+      const custoFinalItem =
+        itemNota.custo_unitario_estoque ||
+        itemNota.valor_unitario_fornecedor ||
+        itemNota.valor_unitario_xml ||
+        0
       const margemFinal =
         itemInput.margemPercentual !== undefined ? itemInput.margemPercentual : margemPadrao || 50
       const precoVendaCalculado = sugerirPrecoVenda(custoFinalItem, margemFinal)
@@ -259,6 +270,10 @@ export async function processarCadastroAutomaticoProdutos(params: {
       const codAnpXml = itemNota.dados_adicionais_xml?.codigo_anp || ''
       const descAnpXml = itemNota.dados_adicionais_xml?.descricao_anp || ''
 
+      const origemItem = itemNota.origem || itemNota.origem_mercadoria_xml || '0'
+      const ncmFinal = itemInput.ncm || itemNota.ncm_fornecedor || itemNota.ncm_xml || ''
+      const cestFinal = itemInput.cest || itemNota.cest_fornecedor || itemNota.cest_xml || ''
+
       const payloadProduto: Record<string, unknown> = {
         tipo: 'Produto',
         descricao: desc120,
@@ -270,9 +285,10 @@ export async function processarCadastroAutomaticoProdutos(params: {
         unidade_id: unidIdFinal,
         unidade_tributavel_id: unidTribIdFinal,
         fator_conversao_tributavel: fatorConversaoTributavel,
-        ncm: itemInput.ncm || itemNota.ncm_xml || '',
+        ncm: ncmFinal,
         ex_tipi: exTipiXml,
-        cest: itemInput.cest || itemNota.cest_xml || '',
+        cest: cestFinal,
+        origem: origemItem,
         c_benef: cBenefXml,
         codigo_anp: codAnpXml,
         descricao_anp: descAnpXml,
@@ -296,15 +312,15 @@ export async function processarCadastroAutomaticoProdutos(params: {
       let confiancaGeral = 'Média'
       if (aplicarClassificacaoFiscal) {
         const itemXmlSimulado = {
-          ncm: itemInput.ncm || itemNota.ncm_xml,
-          cest: itemInput.cest || itemNota.cest_xml,
-          origem: itemNota.origem_mercadoria_xml || '0',
-          cstIcms: itemNota.cst_icms_xml,
-          cfop: itemNota.cfop_xml,
-          cstPis: itemNota.dados_adicionais_xml?.cstPis,
-          cstCofins: itemNota.dados_adicionais_xml?.cstCofins,
-          cstIbsCbs: itemNota.dados_adicionais_xml?.cstIbsCbs,
-          cClassTrib: itemNota.dados_adicionais_xml?.cClassTrib,
+          ncm: ncmFinal,
+          cest: cestFinal,
+          origem: origemItem,
+          cstIcms: itemNota.cst_icms_fornecedor || itemNota.cst_icms_xml,
+          cfop: itemNota.cfop_fornecedor || itemNota.cfop_xml,
+          cstPis: itemNota.cst_pis_fornecedor || itemNota.dados_adicionais_xml?.cstPis,
+          cstCofins: itemNota.cst_cofins_fornecedor || itemNota.dados_adicionais_xml?.cstCofins,
+          cstIbsCbs: itemNota.cst_ibs_cbs || itemNota.dados_adicionais_xml?.cstIbsCbs,
+          cClassTrib: itemNota.c_class_trib || itemNota.dados_adicionais_xml?.cClassTrib,
         }
 
         const sugestao = await sugerirTributacao({
@@ -328,9 +344,10 @@ export async function processarCadastroAutomaticoProdutos(params: {
           fornecedor_id: fornecedorId,
           codigo_no_fornecedor: itemNota.codigo_fornecedor || '',
           descricao_no_fornecedor: itemNota.descricao_fornecedor || '',
-          unidade_fornecedor: itemNota.unidade_xml || '',
+          unidade_fornecedor: itemNota.unidade_fornecedor || itemNota.unidade_xml || '',
           fator_conversao: fatorConversao || 1,
-          ultimo_preco_compra: itemNota.valor_unitario_xml || 0,
+          ultimo_preco_compra:
+            itemNota.valor_unitario_fornecedor || itemNota.valor_unitario_xml || 0,
           data_ultima_compra: notaInfo.dataEmissao || new Date().toISOString(),
         })
       }
