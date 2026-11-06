@@ -1,9 +1,11 @@
 /**
  * Hook de cancelamento transacional de nota de entrada
- * Endpoint: POST /notas-entrada/cancelar
+ * Endpoints:
+ * - POST /backend/v1/notas-entrada/cancelar (padrão do sistema)
+ * - POST /notas-entrada/cancelar (fallback compatível)
  */
 
-routerAdd('POST', '/notas-entrada/cancelar', (c) => {
+function handlerCancelarNotaEntrada(c) {
   const authRecord = c.auth || c.get('authRecord')
   if (!authRecord) {
     return c.json(401, { sucesso: false, message: 'Usuário não autenticado.' })
@@ -105,9 +107,7 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
       }
     }
 
-    // Se for Master e estiver com modo master (impersonação) ligado no servidor,
-    // tenancy.js passa a usar o assinante do cliente que o master está atendendo
-    if (eMaster(auth)) {
+    if (checarSeMasterLocal(auth)) {
       try {
         const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
         if (impersonadoId) {
@@ -118,30 +118,24 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
 
     const assinante = $app.findRecordById('assinantes', assinanteId)
     if (!assinante) {
-      throw new BadRequestError('Assinante não encontrado.')
+      throw new BadRequestError('Assinante vinculado não encontrado.')
     }
 
-    try {
-      validarLicencaAtivaOuBloquearLocal(assinante, auth)
-    } catch (errBloq) {
-      throw errBloq
-    }
-
+    validarLicencaAtivaOuBloquearLocal(assinante, auth)
     return assinante
-  }
-
-  function eMaster(auth) {
-    if (!auth) return false
-    try {
-      const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
-      return !!(userRec && userRec.getString('tipo') === 'master')
-    } catch (_) {
-      return false
-    }
   }
 
   function empresasDoUsuario(auth) {
     if (!auth) return []
+
+    let assinanteId = null
+    try {
+      const ass = assinanteDoUsuario(auth)
+      assinanteId = ass ? ass.id : null
+    } catch (_) {
+      return []
+    }
+    if (!assinanteId) return []
 
     let usuarioRec = null
     try {
@@ -152,9 +146,7 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
         1,
         0,
       )
-      if (uRecs && uRecs.length > 0) {
-        usuarioRec = uRecs[0]
-      }
+      if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
     } catch (_) {}
 
     if (!usuarioRec && auth.getString && auth.getString('email')) {
@@ -166,16 +158,22 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
           1,
           0,
         )
-        if (uRecs && uRecs.length > 0) {
-          usuarioRec = uRecs[0]
-        }
+        if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
       } catch (_) {}
     }
 
     if (!usuarioRec) return []
 
-    let assinanteId = usuarioRec.getString('assinante_id')
-    if (!assinanteId) return []
+    function checarSeMasterLocal(authRec, appInstance) {
+      const app = appInstance || $app
+      if (!authRec || !authRec.id) return false
+      try {
+        const userRec = app.findRecordById('_pb_users_auth_', authRec.id)
+        return !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
 
     function obterAssinanteImpersonadoLocal(userId, appInstance) {
       const app = appInstance || $app
@@ -196,7 +194,7 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
       return null
     }
 
-    const ehMasterUser = eMaster(auth)
+    const ehMasterUser = checarSeMasterLocal(auth)
     if (ehMasterUser) {
       try {
         const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
@@ -283,8 +281,17 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
     return c.json(400, { sucesso: false, message: 'Corpo da requisição inválido.' })
   }
 
-  const notaId = body.nota_id
-  const motivoCancelamento = (body.motivo || '').trim()
+  // Aceita flexivelmente nota_id ou id, e motivo ou justificativa ou motivo_cancelamento
+  const notaId = body.nota_id || body.id
+  const motivoCancelamento = (
+    body.motivo ||
+    body.justificativa ||
+    body.motivo_cancelamento ||
+    ''
+  ).trim()
+  // O campo "acao" enviado pelo payload (quando presente) é tratado de forma flexível:
+  // Se ausente, ou se vier "cancelamento", "cancelar", "estorno", etc., o fluxo de cancelamento segue normalmente
+  const acaoRecebida = body.acao ? String(body.acao).toLowerCase().trim() : 'cancelamento'
 
   if (!notaId) {
     return c.json(400, { sucesso: false, message: 'nota_id é obrigatório.' })
@@ -465,54 +472,55 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
           estornoMovRec.set('estornado', false)
           estornoMovRec.set('ativo', true)
           estornoMovRec.set('created_by', userId)
-          estornoMovRec.set('updated_by', userId)
           txApp.save(estornoMovRec)
         }
 
-        // 5. Desfazer quantidade_recebida nos itens do pedido de compra vinculado
-        const pedidoCompraId = nota.getString('pedido_compra_id')
-        if (pedidoCompraId) {
+        // 5. Integração com Pedido de Compra (se a nota estiver vinculada a um pedido)
+        const pedidoId = nota.getString('pedido_compra_id')
+        if (pedidoId) {
           try {
-            const pedido = txApp.findRecordById('pedidos_compra', pedidoCompraId)
+            const pedido = txApp.findRecordById('pedidos_compra', pedidoId)
             if (pedido) {
+              // Buscar itens da nota que têm pedido_compra_item_id
               const itensNota = txApp.findRecordsByFilter(
                 'notas_entrada_itens',
-                `nota_id = '${notaId}' && ativo = true`,
+                `nota_entrada_id = '${notaId}' && pedido_compra_item_id != ''`,
               )
+
+              for (let j = 0; j < itensNota.length; j++) {
+                const itemNota = itensNota[j]
+                const pedItemId = itemNota.getString('pedido_compra_item_id')
+                const qtdRecebidaNota = itemNota.getFloat('quantidade') || 0
+
+                try {
+                  const itemPedido = txApp.findRecordById('pedidos_compra_itens', pedItemId)
+                  if (itemPedido) {
+                    const qtdRecAtual = itemPedido.getFloat('quantidade_recebida') || 0
+                    const novaQtdRec = Math.max(0, qtdRecAtual - qtdRecebidaNota)
+                    itemPedido.set('quantidade_recebida', novaQtdRec)
+                    itemPedido.set('updated_by', userId)
+                    txApp.save(itemPedido)
+                  }
+                } catch (_) {}
+              }
+
+              // Recalcular status do pedido com base nos itens atualizados
               const itensPedido = txApp.findRecordsByFilter(
                 'pedidos_compra_itens',
-                `pedido_id = '${pedidoCompraId}' && ativo = true`,
+                `pedido_compra_id = '${pedidoId}'`,
               )
-
               let algumRecebido = false
-              let todosRecebidos = true
+              let todosRecebidos = itensPedido.length > 0
 
-              for (let ip = 0; ip < itensPedido.length; ip++) {
-                const itPed = itensPedido[ip]
-                const prodPedId = itPed.getString('produto_id')
-                const qtdPedTotal = itPed.getFloat('quantidade') || 0
-                let qtdRec =
-                  itPed.getFloat('qtd_recebida') || itPed.getFloat('quantidade_recebida') || 0
-
-                for (let inota = 0; inota < itensNota.length; inota++) {
-                  if (itensNota[inota].getString('produto_id') === prodPedId) {
-                    qtdRec = Math.max(
-                      0,
-                      qtdRec - (itensNota[inota].getFloat('quantidade_estoque') || 0),
-                    )
-                  }
-                }
-
-                itPed.set('qtd_recebida', qtdRec)
-                itPed.set('quantidade_recebida', qtdRec)
-                itPed.set('updated_by', userId)
-                txApp.save(itPed)
-
-                if (qtdRec > 0) {
+              for (let k = 0; k < itensPedido.length; k++) {
+                const ip = itensPedido[k]
+                const qPed = ip.getFloat('quantidade') || 0
+                const qRec = ip.getFloat('quantidade_recebida') || 0
+                if (qRec > 0) {
                   algumRecebido = true
-                  if (qtdRec < qtdPedTotal) {
-                    todosRecebidos = false
-                  }
+                }
+                if (qRec >= qPed && qPed > 0) {
+                  // este item está 100%
                 } else {
                   todosRecebidos = false
                 }
@@ -587,23 +595,32 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
       txApp.save(nota)
 
       // 8. Gravar logs_auditoria
-      const logsCol = txApp.findCollectionByNameOrId('logs_auditoria')
-      const auditRec = new Record(logsCol)
-      auditRec.set('usuario_id', userId)
-      auditRec.set('usuario_nome', authRecord.getString('name') || 'Usuário')
-      auditRec.set('empresa_id', empresaId)
-      auditRec.set('tabela', 'notas_entrada')
-      auditRec.set('registro_id', notaId)
-      auditRec.set('acao', 'cancelamento')
-      auditRec.set('valores_antes', JSON.stringify({ status: statusAnterior }))
-      auditRec.set(
-        'valores_depois',
-        JSON.stringify({
-          status: 'Cancelada',
-          motivo_cancelamento: motivoCancelamento,
-        }),
-      )
-      txApp.save(auditRec)
+      // A coleção logs_auditoria tem schema com acao (select): ['inclusao', 'alteracao', 'inativacao', 'ativacao', 'exclusao']
+      // Gravar 'alteracao' para ser 100% aderente ao enum do banco
+      try {
+        if (txApp.hasTable('logs_auditoria')) {
+          const logsCol = txApp.findCollectionByNameOrId('logs_auditoria')
+          const auditRec = new Record(logsCol)
+          auditRec.set('usuario_id', userId)
+          auditRec.set('usuario_nome', authRecord.getString('name') || 'Usuário')
+          auditRec.set('empresa_id', empresaId)
+          auditRec.set('tabela', 'notas_entrada')
+          auditRec.set('registro_id', notaId)
+          auditRec.set('acao', 'alteracao')
+          auditRec.set('valores_antes', JSON.stringify({ status: statusAnterior }))
+          auditRec.set(
+            'valores_depois',
+            JSON.stringify({
+              status: 'Cancelada',
+              motivo_cancelamento: motivoCancelamento,
+              acao_solicitada: acaoRecebida,
+            }),
+          )
+          txApp.save(auditRec)
+        }
+      } catch (errAudit) {
+        console.warn('Aviso: falha ao gravar log de auditoria no cancelamento:', errAudit)
+      }
     })
 
     return c.json(200, {
@@ -617,4 +634,8 @@ routerAdd('POST', '/notas-entrada/cancelar', (c) => {
       message: msg,
     })
   }
-})
+}
+
+// Registra em ambas as rotas: a rota padrão sob /backend/v1 e o fallback sem prefixo
+routerAdd('POST', '/backend/v1/notas-entrada/cancelar', handlerCancelarNotaEntrada)
+routerAdd('POST', '/notas-entrada/cancelar', handlerCancelarNotaEntrada)
