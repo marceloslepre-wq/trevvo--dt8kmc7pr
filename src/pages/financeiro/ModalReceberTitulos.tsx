@@ -345,6 +345,7 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
         const novoSaldo = Math.max(0, l.saldo - l.valorRecebidoPrincipal)
         const novoStatus = novoSaldo <= 0.009 ? 'Recebido' : 'Parcial'
         const clienteNome =
+          l.titulo.expand?.cliente_id?.nome_razao_social ||
           l.titulo.expand?.cliente_id?.razao_social ||
           l.titulo.expand?.cliente_id?.nome_fantasia ||
           l.titulo.expand?.cliente_id?.nome ||
@@ -838,6 +839,7 @@ export const ModalReceberTitulos: React.FC<ModalReceberTitulosProps> = ({
                   {linhas.map((linha, idx) => {
                     const vencido = linha.diasAtraso > 0
                     const clienteNome =
+                      linha.titulo.expand?.cliente_id?.nome_razao_social ||
                       linha.titulo.expand?.cliente_id?.razao_social ||
                       linha.titulo.expand?.cliente_id?.nome_fantasia ||
                       linha.titulo.expand?.cliente_id?.nome ||

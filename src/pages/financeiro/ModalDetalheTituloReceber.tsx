@@ -165,6 +165,7 @@ export const ModalDetalheTituloReceber: React.FC<ModalDetalheTituloReceberProps>
 
   const temBaixasAtivas = baixas.some((b) => !b.estornado)
   const clienteNome =
+    titulo?.expand?.cliente_id?.nome_razao_social ||
     titulo?.expand?.cliente_id?.razao_social ||
     titulo?.expand?.cliente_id?.nome_fantasia ||
     titulo?.expand?.cliente_id?.nome ||

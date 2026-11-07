@@ -272,6 +272,7 @@ export const ContasReceberPage: React.FC = () => {
     const linhas = dados.items.map((t) => {
       const dtVenc = new Date(t.data_vencimento + 'T00:00:00').toLocaleDateString('pt-BR')
       const clienteNome =
+        t.expand?.cliente_id?.nome_razao_social ||
         t.expand?.cliente_id?.razao_social ||
         t.expand?.cliente_id?.nome_fantasia ||
         t.expand?.cliente_id?.nome ||
@@ -614,6 +615,7 @@ export const ContasReceberPage: React.FC = () => {
 
                   const podeReceberLinha = t.status === 'Aberto' || t.status === 'Parcial'
                   const clienteNome =
+                    t.expand?.cliente_id?.nome_razao_social ||
                     t.expand?.cliente_id?.razao_social ||
                     t.expand?.cliente_id?.nome_fantasia ||
                     t.expand?.cliente_id?.nome ||

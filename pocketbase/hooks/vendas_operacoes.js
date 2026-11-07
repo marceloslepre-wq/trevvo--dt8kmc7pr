@@ -832,6 +832,15 @@ routerAdd(
             const condId = pgInput.condicao_pagamento_id || venda.getString('condicao_pagamento_id')
             let parcelasCronograma = []
 
+            function somarDiasIsoVenda(dataIsoStr, numDias) {
+              const dt = new Date(dataIsoStr + 'T12:00:00Z')
+              dt.setUTCDate(dt.getUTCDate() + (Number(numDias) || 0))
+              const y = dt.getUTCFullYear()
+              const m = String(dt.getUTCMonth() + 1).padStart(2, '0')
+              const d = String(dt.getUTCDate()).padStart(2, '0')
+              return y + '-' + m + '-' + d
+            }
+
             if (condId) {
               const condRec = txApp.findRecordById('condicoes_pagamento', condId)
               if (condRec) {
@@ -839,17 +848,25 @@ routerAdd(
                 let diasP = [30]
                 try {
                   const dpJson = condRec.get('dias_parcelas')
-                  if (Array.isArray(dpJson)) diasP = dpJson
-                  else if (typeof dpJson === 'string') diasP = JSON.parse(dpJson)
+                  if (Array.isArray(dpJson)) {
+                    diasP = dpJson
+                  } else if (typeof dpJson === 'string') {
+                    diasP = JSON.parse(dpJson)
+                  }
                 } catch (_) {}
+
+                // Garantir array numérico plano com fallback
+                if (!Array.isArray(diasP) || diasP.length === 0) {
+                  diasP = []
+                  for (let i = 0; i < qtdP; i++) diasP.push((i + 1) * 30)
+                }
 
                 const valParcBase = Math.round((valorBrutoPg / qtdP) * 100) / 100
                 let somaParc = 0
                 for (let k = 0; k < qtdP; k++) {
-                  const diasAdic = diasP[k] !== undefined ? diasP[k] : (k + 1) * 30
-                  const dtBase = new Date(dataVenda)
-                  dtBase.setDate(dtBase.getDate() + diasAdic)
-                  const vctoIso = dtBase.toISOString().slice(0, 10)
+                  const diasAdic =
+                    diasP[k] !== undefined && diasP[k] !== null ? Number(diasP[k]) : (k + 1) * 30
+                  const vctoIso = somarDiasIsoVenda(dataVenda, diasAdic)
                   const vParc =
                     k === qtdP - 1 ? Math.round((valorBrutoPg - somaParc) * 100) / 100 : valParcBase
                   somaParc += vParc
@@ -868,9 +885,8 @@ routerAdd(
               const valParcBase = Math.round((valorBrutoPg / numP) * 100) / 100
               let somaParc = 0
               for (let k = 0; k < numP; k++) {
-                const dtBase = new Date(dataVenda)
-                dtBase.setDate(dtBase.getDate() + (k + 1) * 30)
-                const vctoIso = dtBase.toISOString().slice(0, 10)
+                const diasAdic = (k + 1) * 30
+                const vctoIso = somarDiasIsoVenda(dataVenda, diasAdic)
                 const vParc =
                   k === numP - 1 ? Math.round((valorBrutoPg - somaParc) * 100) / 100 : valParcBase
                 somaParc += vParc
