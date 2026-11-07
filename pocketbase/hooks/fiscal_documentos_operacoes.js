@@ -291,7 +291,7 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         // IGNORANDO o retrato gravado em vendas_itens.
         // O campo cfop da regra é RELAÇÃO para a coleção cfop: resolve o código.
         let cfopRecalc = regraRecalc.getString('cfop') || ''
-        if (cfopRecalc && cfopRecalc.length > 10) {
+        if (cfopRecalc && cfopRecalc.length !== 4) {
           try {
             const cfopRelRec = txApp.findRecordById('cfop', cfopRecalc)
             if (cfopRelRec) {
@@ -801,6 +801,7 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       let totValorProdutos = 0
       let totValorDesconto = 0
       let totValorFrete = 0
+      let totValorOutras = 0
       let totValorSeguro = 0
       let totBaseIcms = 0
       let totValorIcms = 0

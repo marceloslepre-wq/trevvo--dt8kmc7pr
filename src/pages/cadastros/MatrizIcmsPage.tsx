@@ -503,6 +503,9 @@ export function MatrizIcmsPage() {
 
           {/* ABA ALÍQUOTAS INTERNAS DAS 27 UFS */}
           <TabsContent value="ufs" className="space-y-4 pt-4">
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+              <span className="font-semibold">Conferir com o contador</span>
+            </div>
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Tabela de Alíquotas Internas por UF</CardTitle>
