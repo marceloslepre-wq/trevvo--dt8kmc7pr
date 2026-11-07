@@ -446,8 +446,9 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         const recebidoAnterior = Number(titRecord.get('valor_recebido') || 0)
         const novoRecebido = recebidoAnterior + item.valorPago
         const valorOriginal = Number(titRecord.get('valor_original') || 0)
-        const novoSaldo = Math.max(0, valorOriginal - novoRecebido)
-        const novoStatus = novoSaldo <= 0.009 ? 'Recebido' : 'Parcial'
+        const saldoCalc = Math.round((valorOriginal - novoRecebido) * 100) / 100
+        const novoSaldo = saldoCalc <= 0.004 ? 0 : Math.max(0, saldoCalc)
+        const novoStatus = novoSaldo === 0 ? 'Recebido' : 'Parcial'
 
         titRecord.set('valor_recebido', novoRecebido)
         titRecord.set('saldo', novoSaldo)

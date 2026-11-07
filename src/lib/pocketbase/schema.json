@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T10:46:11.757Z",
+  "generatedAt": "2026-11-07T11:10:45.100Z",
   "collections": [
     {
       "name": "users",
@@ -7171,7 +7171,7 @@
         {
           "name": "valor_original",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -7183,7 +7183,7 @@
         {
           "name": "saldo",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -7357,13 +7357,13 @@
         {
           "name": "valor_original",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
           "name": "valor_pago",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -7387,7 +7387,7 @@
         {
           "name": "valor_total_pago",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -7544,7 +7544,7 @@
         {
           "name": "valor",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -7775,7 +7775,7 @@
         {
           "name": "valor_original",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -7787,7 +7787,7 @@
         {
           "name": "saldo",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
