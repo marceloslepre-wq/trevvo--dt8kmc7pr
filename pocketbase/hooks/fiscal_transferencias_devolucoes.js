@@ -804,6 +804,55 @@ routerAdd(
           itemFocus.ipi_valor = valorIpiItem
         }
 
+        // PIS e COFINS na devolução de compra
+        // Padrão: CST 49 com vBC 0, pPIS 0, vPIS 0, pCOFINS 0, vCOFINS 0.
+        // Se o perfil tributário do produto tiver CST de PIS/COFINS para DEVOLUCAO_COMPRA, usa o do perfil.
+        const perfilId = prodRec ? prodRec.getString('perfil_tributario_id') : ''
+        let cstPisDev = '49'
+        let aliqPisDev = 0
+        let cstCofinsDev = '49'
+        let aliqCofinsDev = 0
+
+        if (perfilId) {
+          try {
+            const regrasDev = $app.findRecordsByFilter(
+              'perfis_tributarios_regras',
+              `perfil_id = '${perfilId}' && cenario = 'DEVOLUCAO_COMPRA' && ativo = true`,
+              '',
+              1,
+              0,
+            )
+            if (regrasDev.length > 0) {
+              const regDev = regrasDev[0]
+              const cstPisPerfil = (regDev.getString('cst_pis') || '').trim()
+              if (cstPisPerfil) {
+                cstPisDev = cstPisPerfil
+                aliqPisDev = regDev.getFloat('aliquota_pis') || 0
+              }
+              const cstCofinsPerfil = (regDev.getString('cst_cofins') || '').trim()
+              if (cstCofinsPerfil) {
+                cstCofinsDev = cstCofinsPerfil
+                aliqCofinsDev = regDev.getFloat('aliquota_cofins') || 0
+              }
+            }
+          } catch (_) {}
+        }
+
+        const basePisDev = 0
+        const valorPisDev = 0
+        const baseCofinsDev = 0
+        const valorCofinsDev = 0
+
+        itemFocus.pis_situacao_tributaria = cstPisDev
+        itemFocus.pis_base_calculo = basePisDev
+        itemFocus.pis_aliquota_porcentual = aliqPisDev
+        itemFocus.pis_valor = valorPisDev
+
+        itemFocus.cofins_situacao_tributaria = cstCofinsDev
+        itemFocus.cofins_base_calculo = baseCofinsDev
+        itemFocus.cofins_aliquota_porcentual = aliqCofinsDev
+        itemFocus.cofins_valor = valorCofinsDev
+
         itensFocus.push(itemFocus)
 
         itensDocFiscal.push({
@@ -828,6 +877,14 @@ routerAdd(
           aliquota_icms_st: aliqStItem,
           valor_icms_st: valorStItem,
           valor_ipi: valorIpiItem,
+          cst_pis: cstPisDev,
+          base_pis: basePisDev,
+          aliquota_pis: aliqPisDev,
+          valor_pis: valorPisDev,
+          cst_cofins: cstCofinsDev,
+          base_cofins: baseCofinsDev,
+          aliquota_cofins: aliqCofinsDev,
+          valor_cofins: valorCofinsDev,
           custo_unitario: itEntrada.getFloat('custo_unitario_estoque') || valorUnitario,
           lote: itEntrada.getString('lote_numero') || '',
           validade: itEntrada.getString('lote_validade') || '',
@@ -942,6 +999,14 @@ routerAdd(
         itRec.set('aliquota_icms_st', itD.aliquota_icms_st)
         itRec.set('valor_icms_st', itD.valor_icms_st)
         itRec.set('valor_ipi', itD.valor_ipi)
+        if (itD.cst_pis) itRec.set('cst_pis', itD.cst_pis)
+        if (itD.base_pis !== undefined) itRec.set('base_pis', itD.base_pis)
+        if (itD.aliquota_pis !== undefined) itRec.set('aliquota_pis', itD.aliquota_pis)
+        if (itD.valor_pis !== undefined) itRec.set('valor_pis', itD.valor_pis)
+        if (itD.cst_cofins) itRec.set('cst_cofins', itD.cst_cofins)
+        if (itD.base_cofins !== undefined) itRec.set('base_cofins', itD.base_cofins)
+        if (itD.aliquota_cofins !== undefined) itRec.set('aliquota_cofins', itD.aliquota_cofins)
+        if (itD.valor_cofins !== undefined) itRec.set('valor_cofins', itD.valor_cofins)
         if (itD.gtin) itRec.set('gtin', itD.gtin)
         if (itD.lote) itRec.set('lote', itD.lote)
         if (itD.validade) itRec.set('validade', itD.validade)
