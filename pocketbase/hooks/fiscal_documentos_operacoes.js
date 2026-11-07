@@ -758,21 +758,32 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       const totalDescontoGlobal = venda ? venda.getFloat('valor_desconto_total') || 0 : 0
       const totalSeguro = 0
 
+      // Soma BRUTA: usada apenas para o rateio proporcional de frete/seguro/outras/desconto global
       let somaBrutoItens = 0
+      // Soma LÍQUIDA: bruto - desconto de item + acréscimo de item, comparada com o valor_total da venda
+      let somaLiquidaItens = 0
       for (let i = 0; i < itensOrigem.length; i++) {
         const it = itensOrigem[i]
         const qtd = it.getFloat('quantidade') || 0
         const preco = it.getFloat('preco_unitario') || 0
-        somaBrutoItens += round2(qtd * preco)
+        const valorBrutoItem = round2(qtd * preco)
+        somaBrutoItens += valorBrutoItem
+        somaLiquidaItens += round2(
+          valorBrutoItem -
+            (it.getFloat('desconto_valor') || 0) +
+            (it.getFloat('acrescimo_valor') || 0),
+        )
       }
+      somaLiquidaItens = round2(somaLiquidaItens)
 
-      // Validação: tolerância entre itens e total
+      // Validação: soma LÍQUIDA dos itens (desconto/acréscimo de item já considerados) +
+      // frete + acréscimo global - desconto global, comparada com o valor_total da venda
       if (venda) {
         const totalVendaEsperado = venda.getFloat('valor_total') || 0
         const diferencaTotal = Math.abs(
-          somaBrutoItens - totalDescontoGlobal + totalFrete + totalAcrescimo - totalVendaEsperado,
+          somaLiquidaItens - totalDescontoGlobal + totalFrete + totalAcrescimo - totalVendaEsperado,
         )
-        if (diferencaTotal > 0.05) {
+        if (diferencaTotal > 0.01) {
           avisos.push(
             `Diferença de R$ ${diferencaTotal.toFixed(2)} entre a soma dos itens e o valor total registrado na venda.`,
           )
