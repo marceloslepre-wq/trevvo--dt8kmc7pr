@@ -802,7 +802,6 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       let totValorDesconto = 0
       let totValorFrete = 0
       let totValorSeguro = 0
-      let totValorOutras = 0
       let totBaseIcms = 0
       let totValorIcms = 0
       let totBaseIcmsSt = 0
@@ -1155,7 +1154,10 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
           }
         }
 
-        // DIFAL
+        // DIFAL (EC 87/15): venda interestadual a consumidor final NÃO contribuinte.
+        // Fórmula: DIFAL = base x (alíquota interna do destino - alíquota interestadual),
+        // com FCP à parte. SEM a alíquota interna do destino em icms_aliquotas_uf,
+        // o DIFAL NÃO é calculado (fica 0) — apenas a pendência é registrada.
         let baseIcmsUfDest = 0
         let aliqInternaUfDest = 0
         let aliqInterestadual = 0
@@ -1166,12 +1168,6 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         let valorIcmsUfRemet = 0
 
         if (ehVendaInterestadualConsumidorNaoContribuinte && calcularDifalConfig) {
-          aliqInterestadual = calcularAliquotaInterestadualBackend(
-            ufEmitente,
-            destinatarioUf,
-            origemMercadoria,
-          )
-
           let matIcmsDestino = null
           try {
             const mats = txApp.findRecordsByFilter(
@@ -1188,43 +1184,44 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
             pendencias.push(
               `Não foi encontrada a alíquota de ICMS interna na tabela icms_aliquotas_uf para o destino ${destinatarioUf}.`,
             )
-            aliqInternaUfDest = 18
-            aliqFcpUfDest = 0
+            // Sem alíquota interna do destino: NÃO calcula DIFAL nenhum (fica 0)
+            // nem FCP. Só a pendência permanece — sem valor inventado por fallback.
           } else {
-            aliqInternaUfDest =
-              matIcmsDestino.getFloat('aliquota_interna') ||
-              matIcmsDestino.getFloat('aliquota_interna_destino') ||
-              matIcmsDestino.getFloat('aliquota') ||
-              18
+            aliqInternaUfDest = matIcmsDestino.getFloat('aliquota_interna') || 0
             aliqFcpUfDest = matIcmsDestino.getFloat('aliquota_fcp') || 0
-          }
 
-          // Regra DIFAL: usa a mesma alíquota interestadual do item calculada/vigente
-          if (aliqIcms > 0 && ['00', '10', '20', '70', '90'].includes(cstIcms)) {
-            aliqInterestadual = aliqIcms
-          } else if (!aliqInterestadual) {
-            try {
-              const matsInter = txApp.findRecordsByFilter(
-                'icms_interestadual',
-                `uf_origem = '${ufEmitente}' && uf_destino = '${destinatarioUf}' && ativo = true`,
-                '',
-                1,
-                0,
+            // Regra DIFAL: usa a mesma alíquota interestadual do item calculada/vigente
+            if (aliqIcms > 0 && ['00', '10', '20', '70', '90'].includes(cstIcms)) {
+              aliqInterestadual = aliqIcms
+            } else {
+              aliqInterestadual = calcularAliquotaInterestadualBackend(
+                ufEmitente,
+                destinatarioUf,
+                origemMercadoria,
               )
-              if (matsInter.length > 0) {
-                aliqInterestadual = matsInter[0].getFloat('aliquota') || aliqInterestadual
-              }
-            } catch (_) {}
-          }
+              try {
+                const matsInter = txApp.findRecordsByFilter(
+                  'icms_interestadual',
+                  `uf_origem = '${ufEmitente}' && uf_destino = '${destinatarioUf}' && ativo = true`,
+                  '',
+                  1,
+                  0,
+                )
+                if (matsInter.length > 0) {
+                  aliqInterestadual = matsInter[0].getFloat('aliquota') || aliqInterestadual
+                }
+              } catch (_) {}
+            }
 
-          baseIcmsUfDest = valorBaseInicial
-          const difAliquota = Math.max(0, aliqInternaUfDest - aliqInterestadual)
-          const valorTotalDifal = round2(baseIcmsUfDest * (difAliquota / 100))
-          valorIcmsUfDest = round2(valorTotalDifal * (percentualPartilha / 100))
-          valorIcmsUfRemet = 0
+            baseIcmsUfDest = valorBaseInicial
+            const difAliquota = Math.max(0, aliqInternaUfDest - aliqInterestadual)
+            const valorTotalDifal = round2(baseIcmsUfDest * (difAliquota / 100))
+            valorIcmsUfDest = round2(valorTotalDifal * (percentualPartilha / 100))
+            valorIcmsUfRemet = 0
 
-          if (aliqFcpUfDest > 0) {
-            valorFcpUfDest = round2(baseIcmsUfDest * (aliqFcpUfDest / 100))
+            if (aliqFcpUfDest > 0) {
+              valorFcpUfDest = round2(baseIcmsUfDest * (aliqFcpUfDest / 100))
+            }
           }
         }
 
@@ -1509,7 +1506,6 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         data_emissao: dataHojeIso,
         tipo_documento: tipoDocumentoCalculado,
         finalidade_emissao: finalidadeEmissaoCalculada,
-        local_destino: localDestinoFinal,
         consumidor_final: consumidorFinalFlag,
         presenca_comprador: presencaCompradorFinal,
         modalidade_frete: modalidadeFreteFinal,
