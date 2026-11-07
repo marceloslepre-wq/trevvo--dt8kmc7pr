@@ -1772,3 +1772,281 @@ routerAdd(
   },
   $apis.requireAuth(),
 )
+
+routerAdd(
+  'POST',
+  '/backend/v1/vendas/converter-orcamento',
+  (c) => {
+    try {
+      const authRecord = c.auth || c.get('authRecord')
+      if (!authRecord) {
+        return c.json(401, {
+          sucesso: false,
+          message: 'Acesso negado: autenticação obrigatória.',
+        })
+      }
+
+      // -------------------------------------------------------------
+      // Funções locais de tenancy e governança multi-tenant
+      // (definidas localmente sem require no callback)
+      // -------------------------------------------------------------
+      function eMaster(auth) {
+        if (!auth) return false
+        try {
+          const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+          return !!(userRec && userRec.getString('tipo') === 'master')
+        } catch (_) {
+          return false
+        }
+      }
+
+      function empresasDoUsuario(auth) {
+        if (!auth) return []
+
+        let usuarioRec = null
+        try {
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (uRecs && uRecs.length > 0) {
+            usuarioRec = uRecs[0]
+          }
+        } catch (_) {}
+
+        if (!usuarioRec && auth.getString && auth.getString('email')) {
+          try {
+            const uRecs = $app.findRecordsByFilter(
+              'usuarios',
+              "email = '" + auth.getString('email') + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (uRecs && uRecs.length > 0) {
+              usuarioRec = uRecs[0]
+            }
+          } catch (_) {}
+        }
+
+        if (!usuarioRec) return []
+
+        let assinanteId = usuarioRec.getString('assinante_id')
+        if (!assinanteId) return []
+
+        function obterAssinanteImpersonadoLocal(userId, appInstance) {
+          const app = appInstance || $app
+          if (!userId) return null
+          try {
+            if (!app.hasTable('master_impersonacoes')) return null
+            const recs = app.findRecordsByFilter(
+              'master_impersonacoes',
+              "user_id = '" + userId + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (recs && recs.length > 0) {
+              return recs[0].getString('assinante_id') || null
+            }
+          } catch (_) {}
+          return null
+        }
+
+        const ehMasterUser = eMaster(auth)
+        if (ehMasterUser) {
+          try {
+            const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
+            if (impersonadoId) {
+              assinanteId = impersonadoId
+            }
+          } catch (_) {}
+        }
+
+        let isAdmin = false
+        const perfilId = usuarioRec.getString('perfil_id')
+        if (perfilId) {
+          try {
+            const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+            if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+              isAdmin = true
+            }
+          } catch (_) {}
+        }
+
+        if (isAdmin || ehMasterUser) {
+          try {
+            const empresas = $app.findRecordsByFilter(
+              'empresas',
+              "assinante_id = '" + assinanteId + "' && ativo = true",
+              'codigo',
+              500,
+              0,
+            )
+            return empresas
+          } catch (_) {
+            return []
+          }
+        }
+
+        const permitidosIds = new Set()
+        const padraoId = usuarioRec.getString('empresa_padrao_id')
+        if (padraoId) permitidosIds.add(padraoId)
+
+        try {
+          const vinculos = $app.findRecordsByFilter(
+            'usuarios_empresas',
+            "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+            '',
+            500,
+            0,
+          )
+          for (let i = 0; i < vinculos.length; i++) {
+            const eId = vinculos[i].getString('empresa_id')
+            if (eId) permitidosIds.add(eId)
+          }
+        } catch (_) {}
+
+        const empresas = []
+        permitidosIds.forEach((eId) => {
+          try {
+            const emp = $app.findRecordById('empresas', eId)
+            if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+              empresas.push(emp)
+            }
+          } catch (_) {}
+        })
+
+        empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+        return empresas
+      }
+
+      function exigirEmpresaDoUsuario(auth, empresaId) {
+        if (!empresaId) {
+          throw new BadRequestError('ID da empresa é obrigatório.')
+        }
+        const permitidas = empresasDoUsuario(auth)
+        const encontrada = permitidas.find((e) => e.id === empresaId)
+        if (!encontrada) {
+          throw new ForbiddenError(
+            'Acesso negado à empresa especificada para este usuário/assinante.',
+          )
+        }
+        return encontrada
+      }
+
+      const userId = authRecord.id
+      const data = c.requestInfo().body || {}
+      const vendaId = data.venda_id
+
+      if (!vendaId) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Campo venda_id é obrigatório.',
+        })
+      }
+
+      let vendaRec = null
+      try {
+        vendaRec = $app.findRecordById('vendas', vendaId)
+      } catch (_) {
+        return c.json(404, {
+          sucesso: false,
+          message: 'Orçamento não encontrado.',
+        })
+      }
+
+      if (!vendaRec || !vendaRec.getBool('ativo')) {
+        return c.json(404, {
+          sucesso: false,
+          message: 'Orçamento não encontrado ou inativo.',
+        })
+      }
+
+      const empresaId = vendaRec.getString('empresa_id')
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+
+      const tipoAtual = vendaRec.getString('tipo')
+      const statusAtual = vendaRec.getString('status')
+
+      if (statusAtual === 'Cancelada') {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Orçamentos cancelados não podem ser convertidos em Pedido.',
+        })
+      }
+
+      if (tipoAtual !== 'Orçamento') {
+        return c.json(400, {
+          sucesso: false,
+          message: `Apenas vendas do tipo "Orçamento" podem ser convertidas (tipo atual: "${tipoAtual}", status: "${statusAtual}").`,
+        })
+      }
+
+      if (statusAtual === 'Finalizada') {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Vendas finalizadas não podem ser convertidas em Pedido.',
+        })
+      }
+
+      vendaRec.set('tipo', 'Pedido')
+      vendaRec.set('status', 'Pedido em aberto')
+      vendaRec.set('updated_by', userId)
+      $app.save(vendaRec)
+
+      // Gravar log de auditoria
+      try {
+        const auditCol = $app.findCollectionByNameOrId('logs_auditoria')
+        const auditRec = new Record(auditCol)
+        auditRec.set('empresa_id', empresaId)
+        auditRec.set('usuario_id', userId)
+        auditRec.set('usuario_nome', authRecord.getString('name') || 'Operador')
+        auditRec.set('tabela', 'vendas')
+        auditRec.set('registro_id', vendaId)
+        auditRec.set('acao', 'alteracao')
+        auditRec.set(
+          'valores_depois',
+          JSON.stringify({
+            operacao: 'CONVERTER_ORCAMENTO_EM_PEDIDO',
+            numero: vendaRec.getInt('numero'),
+            tipo_anterior: tipoAtual,
+            status_anterior: statusAtual,
+            tipo_novo: 'Pedido',
+            status_novo: 'Pedido em aberto',
+          }),
+        )
+        $app.save(auditRec)
+      } catch (errAudit) {
+        console.warn(
+          '[vendas/converter-orcamento] Aviso ao gravar auditoria:',
+          errAudit && errAudit.message,
+        )
+      }
+
+      console.log(
+        `[vendas/converter-orcamento] Orçamento #${vendaRec.getInt('numero')} (${vendaId}) convertido em Pedido com sucesso pelo usuário ${userId}.`,
+      )
+
+      return c.json(200, {
+        sucesso: true,
+        message: `Orçamento #${vendaRec.getInt('numero')} convertido em Pedido com sucesso.`,
+        venda_id: vendaId,
+        numero: vendaRec.getInt('numero'),
+        tipo: 'Pedido',
+        status: 'Pedido em aberto',
+      })
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err)
+      console.error('[vendas/converter-orcamento] Erro:', msg)
+      return c.json(400, {
+        sucesso: false,
+        message: msg,
+      })
+    }
+  },
+  $apis.requireAuth(),
+)

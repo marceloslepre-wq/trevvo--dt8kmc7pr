@@ -476,24 +476,53 @@ export async function salvarVenda(input: SalvarVendaInput): Promise<Venda> {
   return vendaSalva
 }
 
+export interface ConverterOrcamentoResponse {
+  sucesso: boolean
+  message: string
+  venda_id?: string
+  numero?: number
+  tipo?: string
+  status?: string
+}
+
 /**
- * Converte um Orçamento existente em Pedido em aberto.
+ * Converte um Orçamento existente em Pedido em aberto via rota transacional do backend.
+ * POST /backend/v1/vendas/converter-orcamento
  */
 export async function converterOrcamentoEmPedido(orcamentoId: string): Promise<Venda> {
-  const venda = await pb.collection('vendas').getOne<Venda>(orcamentoId, { requestKey: null })
-  if (venda.status === 'Finalizada' || venda.status === 'Cancelada') {
-    throw new Error('Vendas finalizadas ou canceladas não podem ser convertidas.')
+  if (!orcamentoId) {
+    throw new Error('ID do orçamento é obrigatório.')
   }
 
-  return await pb.collection('vendas').update<Venda>(
-    orcamentoId,
-    {
-      tipo: 'Pedido',
-      status: 'Pedido em aberto',
-      updated_by: pb.authStore.record?.id || '',
-    },
-    { requestKey: null },
-  )
+  try {
+    const res = await pb.send<ConverterOrcamentoResponse>(
+      '/backend/v1/vendas/converter-orcamento',
+      {
+        method: 'POST',
+        body: {
+          venda_id: orcamentoId,
+        },
+      },
+    )
+
+    if (!res || !res.sucesso) {
+      throw new Error(res?.message || 'Falha ao converter orçamento em pedido.')
+    }
+  } catch (err: unknown) {
+    const pbErr = err as {
+      response?: { message?: string }
+      data?: { message?: string }
+      message?: string
+    }
+    const backendMsg =
+      pbErr.response?.message ||
+      pbErr.data?.message ||
+      pbErr.message ||
+      'Erro ao converter orçamento em pedido.'
+    throw new Error(backendMsg)
+  }
+
+  return await pb.collection('vendas').getOne<Venda>(orcamentoId, { requestKey: null })
 }
 
 /**
