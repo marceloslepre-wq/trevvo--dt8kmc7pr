@@ -1213,7 +1213,11 @@ routerAdd(
                   } catch (_) {}
                 }
 
-                baseIcmsUfDest = valorBaseInicial
+                // DIFAL: base apenas dos itens efetivamente tributados em ICMS
+                // (CSTs 00/10/20/70/90). Itens isentos/não tributados (ex. CST 40/41)
+                // e CSOSN sem débito não compõem a base do ICMS da UF de destino.
+                const cstsTributadosDifal = ['00', '10', '20', '70', '90']
+                baseIcmsUfDest = cstsTributadosDifal.includes(cstIcms) ? valorBaseInicial : 0
                 const difAliquota = Math.max(0, aliqInternaUfDest - aliqInterestadual)
                 const valorTotalDifal = round2(baseIcmsUfDest * (difAliquota / 100))
                 valorIcmsUfDest = round2(valorTotalDifal * (percentualPartilha / 100))

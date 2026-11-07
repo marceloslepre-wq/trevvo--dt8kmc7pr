@@ -49,12 +49,10 @@ export function ModalPrevisualizarNota({
   const pendencias = dados?.pendencias || []
   const avisos = dados?.avisos || []
 
-  // Calcular se tem DIFAL
-  const totalDifal = itens.reduce(
-    (acc, it) =>
-      acc + (Number(it.valor_icms_uf_destino) || 0) + (Number(it.valor_fcp_uf_destino) || 0),
-    0,
-  )
+  // DIFAL: mostra exatamente o que o backend calculou e gravou no documento
+  // (não recalcula no frontend; itens isentos/não tributados não entram na base)
+  const totalDifal =
+    (Number(doc?.valor_icms_uf_destino) || 0) + (Number(doc?.valor_fcp_uf_destino) || 0)
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
@@ -344,7 +342,7 @@ export function ModalPrevisualizarNota({
                       </div>
                     </div>
 
-                    {/* DIFAL quando calculado */}
+                    {/* DIFAL quando calculado (valor vem do backend: doc.valor_icms_uf_destino + doc.valor_fcp_uf_destino) */}
                     {totalDifal > 0 && (
                       <div className="mt-2 pt-2 border-t border-slate-100 p-2 rounded bg-blue-50/50 flex flex-wrap items-center justify-between gap-2 text-xs">
                         <span className="font-semibold text-blue-900">
