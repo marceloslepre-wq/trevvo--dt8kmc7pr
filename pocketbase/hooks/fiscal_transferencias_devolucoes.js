@@ -626,7 +626,6 @@ routerAdd(
 
       const itensFocus = []
       const itensDocFiscal = []
-      const itensParaGravarQtdDevolvida = []
 
       for (let i = 0; i < itensDevolucao.length; i++) {
         const itDev = itensDevolucao[i]
@@ -835,11 +834,6 @@ routerAdd(
           gtin: gtinItem && gtinItem.toUpperCase() !== 'SEM GTIN' ? gtinItem : '',
         })
 
-        itensParaGravarQtdDevolvida.push({
-          id: itEntrada.id,
-          novaQtdDevolvida: qtdJaDevolvida + qtdADevolver,
-        })
-
         totValorProdutos += valorBrutoDev
         totBaseIcms += baseIcmsItem
         totValorIcms += valorIcmsItem
@@ -954,17 +948,6 @@ routerAdd(
         $app.save(itRec)
       }
 
-      // Atualizar quantidade_devolvida nos itens da nota de entrada
-      for (let upd of itensParaGravarQtdDevolvida) {
-        try {
-          const itemE = $app.findRecordById('notas_entrada_itens', upd.id)
-          if (itemE) {
-            itemE.set('quantidade_devolvida', upd.novaQtdDevolvida)
-            $app.save(itemE)
-          }
-        } catch (_) {}
-      }
-
       // Transmitir para Focus NFe
       const urlEnvio = `${baseUrl}/nfe?ref=${encodeURIComponent(refFocus)}`
       const authHeader = 'Basic ' + encodeBase64(token + ':')
@@ -1060,7 +1043,132 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
+    function eMasterLocal(auth) {
+      if (!auth) return false
+      try {
+        const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+        return !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
+
+    function empresasDoUsuarioLocal(auth) {
+      if (!auth) return []
+      let usuarioRec = null
+      try {
+        const uRecs = $app.findRecordsByFilter(
+          'usuarios',
+          "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
+      } catch (_) {}
+
+      if (!usuarioRec && auth.getString && auth.getString('email')) {
+        try {
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "email = '" + auth.getString('email') + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
+        } catch (_) {}
+      }
+
+      if (!usuarioRec) return []
+      let assinanteId = usuarioRec.getString('assinante_id')
+      if (!assinanteId) return []
+
+      const ehMasterUser = eMasterLocal(auth)
+      if (ehMasterUser) {
+        try {
+          if ($app.hasTable('master_impersonacoes')) {
+            const recs = $app.findRecordsByFilter(
+              'master_impersonacoes',
+              "user_id = '" + auth.id + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (recs && recs.length > 0) {
+              const impId = recs[0].getString('assinante_id')
+              if (impId) assinanteId = impId
+            }
+          }
+        } catch (_) {}
+      }
+
+      let isAdmin = false
+      const perfilId = usuarioRec.getString('perfil_id')
+      if (perfilId) {
+        try {
+          const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+          if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+            isAdmin = true
+          }
+        } catch (_) {}
+      }
+
+      if (isAdmin || ehMasterUser) {
+        try {
+          return $app.findRecordsByFilter(
+            'empresas',
+            "assinante_id = '" + assinanteId + "' && ativo = true",
+            'codigo',
+            500,
+            0,
+          )
+        } catch (_) {
+          return []
+        }
+      }
+
+      const permitidosIds = new Set()
+      const padraoId = usuarioRec.getString('empresa_padrao_id')
+      if (padraoId) permitidosIds.add(padraoId)
+      try {
+        const vinculos = $app.findRecordsByFilter(
+          'usuarios_empresas',
+          "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+          '',
+          500,
+          0,
+        )
+        for (let i = 0; i < vinculos.length; i++) {
+          const eId = vinculos[i].getString('empresa_id')
+          if (eId) permitidosIds.add(eId)
+        }
+      } catch (_) {}
+
+      const empresas = []
+      permitidosIds.forEach((eId) => {
+        try {
+          const emp = $app.findRecordById('empresas', eId)
+          if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+            empresas.push(emp)
+          }
+        } catch (_) {}
+      })
+      empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+      return empresas
+    }
+
+    function exigirEmpresaDoUsuarioLocal(auth, empresaId) {
+      if (!empresaId) throw new BadRequestError('ID da empresa é obrigatório.')
+      const permitidas = empresasDoUsuarioLocal(auth)
+      const encontrada = permitidas.find((e) => e.id === empresaId)
+      if (!encontrada) {
+        throw new ForbiddenError(
+          'Acesso negado à empresa especificada para este usuário/assinante.',
+        )
+      }
+      return encontrada
+    }
 
     const userId = authRecord.id
     const data = c.requestInfo().body || {}
@@ -1072,12 +1180,17 @@ routerAdd(
       return c.json(400, { sucesso: false, message: 'documento_id é obrigatório.' })
     }
 
-    const docRec = $app.findRecordById('documentos_fiscais', documentoId)
+    let docRec = null
+    try {
+      docRec = $app.findRecordById('documentos_fiscais', documentoId)
+    } catch (_) {
+      return c.json(400, { sucesso: false, message: 'Documento fiscal não encontrado.' })
+    }
     if (!docRec) {
       return c.json(400, { sucesso: false, message: 'Documento fiscal não encontrado.' })
     }
     try {
-      exigirEmpresaDoUsuario(authRecord, docRec.getString('empresa_id'))
+      exigirEmpresaDoUsuarioLocal(authRecord, docRec.getString('empresa_id'))
     } catch (errEmp) {
       return c.json(403, {
         sucesso: false,
@@ -1091,6 +1204,8 @@ routerAdd(
           'Apenas notas de devolução de compra com status Autorizada podem movimentar estoque e financeiro.',
       })
     }
+
+    const notaEntradaIdFinal = notaEntradaId || docRec.getString('nota_entrada_id')
 
     const docItens = $app.findRecordsByFilter(
       'documentos_fiscais_itens',
@@ -1168,13 +1283,41 @@ routerAdd(
           txApp.save(movRec)
         }
 
-        // 2. Financeiro
+        // 2. Atualizar quantidade_devolvida nos itens da nota de entrada original (apenas na autorização)
+        if (notaEntradaIdFinal) {
+          const itensEntrada = txApp.findRecordsByFilter(
+            'notas_entrada_itens',
+            `nota_id = '${notaEntradaIdFinal}' && ativo = true`,
+          )
+          const mapaEntradaPorProd = new Map()
+          for (let itE of itensEntrada) {
+            const pId = itE.getString('produto_id')
+            if (pId) {
+              mapaEntradaPorProd.set(pId, itE)
+            }
+          }
+
+          for (let itD of docItens) {
+            const pId = itD.getString('produto_id')
+            const qtdDev = itD.getFloat('quantidade') || 0
+            if (!pId || qtdDev <= 0) continue
+
+            const itE = mapaEntradaPorProd.get(pId)
+            if (itE) {
+              const qtdAtualDev = itE.getFloat('quantidade_devolvida') || 0
+              itE.set('quantidade_devolvida', qtdAtualDev + qtdDev)
+              txApp.save(itE)
+            }
+          }
+        }
+
+        // 3. Financeiro
         const valorDevolucao = docRec.getFloat('valor_total') || 0
-        if (destinoFinanceiro === 'abater_titulos' && notaEntradaId) {
+        if (destinoFinanceiro === 'abater_titulos' && notaEntradaIdFinal) {
           // Abater dos títulos em aberto da nota de entrada (desconto)
           const titulosAbertos = txApp.findRecordsByFilter(
             'contas_pagar',
-            `empresa_id = '${empresaId}' && origem_id = '${notaEntradaId}' && status = 'Em aberto' && ativo = true`,
+            `empresa_id = '${empresaId}' && origem_id = '${notaEntradaIdFinal}' && status = 'Em aberto' && ativo = true`,
             'data_vencimento',
           )
 
@@ -1195,7 +1338,7 @@ routerAdd(
             )
             txApp.save(tit)
           }
-        } else if (destinoFinanceiro === 'gerar_receber' || !notaEntradaId) {
+        } else if (destinoFinanceiro === 'gerar_receber' || !notaEntradaIdFinal) {
           // Gerar conta a receber do fornecedor
           let fornCnpjCpf = docRec.getString('destinatario_cpf_cnpj')
           let fornNome = docRec.getString('destinatario_nome')
