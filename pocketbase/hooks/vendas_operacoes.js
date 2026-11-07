@@ -2050,3 +2050,378 @@ routerAdd(
   },
   $apis.requireAuth(),
 )
+
+routerAdd(
+  'POST',
+  '/backend/v1/vendas/salvar-pedido',
+  (c) => {
+    try {
+      const authRecord = c.auth || c.get('authRecord')
+      if (!authRecord) {
+        return c.json(401, {
+          sucesso: false,
+          message: 'Acesso negado: autenticação obrigatória.',
+        })
+      }
+
+      // -------------------------------------------------------------
+      // Funções locais de tenancy e governança multi-tenant
+      // (definidas localmente sem require no callback)
+      // -------------------------------------------------------------
+      function eMaster(auth) {
+        if (!auth) return false
+        try {
+          const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+          return !!(userRec && userRec.getString('tipo') === 'master')
+        } catch (_) {
+          return false
+        }
+      }
+
+      function empresasDoUsuario(auth) {
+        if (!auth) return []
+
+        let usuarioRec = null
+        try {
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (uRecs && uRecs.length > 0) {
+            usuarioRec = uRecs[0]
+          }
+        } catch (_) {}
+
+        if (!usuarioRec && auth.getString && auth.getString('email')) {
+          try {
+            const uRecs = $app.findRecordsByFilter(
+              'usuarios',
+              "email = '" + auth.getString('email') + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (uRecs && uRecs.length > 0) {
+              usuarioRec = uRecs[0]
+            }
+          } catch (_) {}
+        }
+
+        if (!usuarioRec) return []
+
+        let assinanteId = usuarioRec.getString('assinante_id')
+        if (!assinanteId) return []
+
+        function obterAssinanteImpersonadoLocal(userId, appInstance) {
+          const app = appInstance || $app
+          if (!userId) return null
+          try {
+            if (!app.hasTable('master_impersonacoes')) return null
+            const recs = app.findRecordsByFilter(
+              'master_impersonacoes',
+              "user_id = '" + userId + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (recs && recs.length > 0) {
+              return recs[0].getString('assinante_id') || null
+            }
+          } catch (_) {}
+          return null
+        }
+
+        const ehMasterUser = eMaster(auth)
+        if (ehMasterUser) {
+          try {
+            const impersonadoId = obterAssinanteImpersonadoLocal(auth.id, $app)
+            if (impersonadoId) {
+              assinanteId = impersonadoId
+            }
+          } catch (_) {}
+        }
+
+        let isAdmin = false
+        const perfilId = usuarioRec.getString('perfil_id')
+        if (perfilId) {
+          try {
+            const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+            if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+              isAdmin = true
+            }
+          } catch (_) {}
+        }
+
+        if (isAdmin || ehMasterUser) {
+          try {
+            const empresas = $app.findRecordsByFilter(
+              'empresas',
+              "assinante_id = '" + assinanteId + "' && ativo = true",
+              'codigo',
+              500,
+              0,
+            )
+            return empresas
+          } catch (_) {
+            return []
+          }
+        }
+
+        const permitidosIds = new Set()
+        const padraoId = usuarioRec.getString('empresa_padrao_id')
+        if (padraoId) permitidosIds.add(padraoId)
+
+        try {
+          const vinculos = $app.findRecordsByFilter(
+            'usuarios_empresas',
+            "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+            '',
+            500,
+            0,
+          )
+          for (let i = 0; i < vinculos.length; i++) {
+            const eId = vinculos[i].getString('empresa_id')
+            if (eId) permitidosIds.add(eId)
+          }
+        } catch (_) {}
+
+        const empresas = []
+        permitidosIds.forEach((eId) => {
+          try {
+            const emp = $app.findRecordById('empresas', eId)
+            if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+              empresas.push(emp)
+            }
+          } catch (_) {}
+        })
+
+        empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+        return empresas
+      }
+
+      function exigirEmpresaDoUsuario(auth, empresaId) {
+        if (!empresaId) {
+          throw new BadRequestError('ID da empresa é obrigatório.')
+        }
+        const permitidas = empresasDoUsuario(auth)
+        const encontrada = permitidas.find((e) => e.id === empresaId)
+        if (!encontrada) {
+          throw new ForbiddenError(
+            'Acesso negado à empresa especificada para este usuário/assinante.',
+          )
+        }
+        return encontrada
+      }
+
+      const userId = authRecord.id
+      const data = c.requestInfo().body || {}
+      const vendaId = data.venda_id || data.id
+
+      if (!vendaId) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Campo venda_id é obrigatório.',
+        })
+      }
+
+      let vendaRec = null
+      try {
+        vendaRec = $app.findRecordById('vendas', vendaId)
+      } catch (_) {
+        return c.json(404, {
+          sucesso: false,
+          message: 'Pedido não encontrado.',
+        })
+      }
+
+      if (!vendaRec || !vendaRec.getBool('ativo')) {
+        return c.json(404, {
+          sucesso: false,
+          message: 'Pedido não encontrado ou inativo.',
+        })
+      }
+
+      const empresaId = vendaRec.getString('empresa_id')
+      exigirEmpresaDoUsuario(authRecord, empresaId)
+
+      const tipoAtual = vendaRec.getString('tipo')
+      const statusAtual = vendaRec.getString('status')
+
+      if (tipoAtual !== 'Pedido') {
+        return c.json(400, {
+          sucesso: false,
+          message: `Apenas vendas do tipo "Pedido" podem ser salvas por esta rota (tipo atual: "${tipoAtual}").`,
+        })
+      }
+
+      if (statusAtual === 'Finalizada') {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Pedidos finalizados não podem ser alterados.',
+        })
+      }
+
+      if (statusAtual === 'Cancelada') {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Pedidos cancelados não podem ser alterados.',
+        })
+      }
+
+      // Validar cliente obrigatório se enviado
+      if (data.cliente_id !== undefined && !data.cliente_id) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Cliente é obrigatório para salvar o pedido.',
+        })
+      }
+
+      // Validação de assinante do cliente caso cliente_id seja atualizado
+      if (data.cliente_id) {
+        try {
+          const emp = $app.findRecordById('empresas', empresaId)
+          const assinanteEmpresaId = emp ? emp.getString('assinante_id') : ''
+          if (assinanteEmpresaId) {
+            const cli = $app.findRecordById('clientes', data.cliente_id)
+            if (
+              cli &&
+              cli.getString('assinante_id') &&
+              cli.getString('assinante_id') !== assinanteEmpresaId
+            ) {
+              return c.json(400, {
+                sucesso: false,
+                message: 'O cliente selecionado pertence a outro assinante.',
+              })
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Validação de assinante da condição de pagamento caso enviada
+      if (data.condicao_pagamento_id) {
+        try {
+          const emp = $app.findRecordById('empresas', empresaId)
+          const assinanteEmpresaId = emp ? emp.getString('assinante_id') : ''
+          if (assinanteEmpresaId) {
+            const cp = $app.findRecordById('condicoes_pagamento', data.condicao_pagamento_id)
+            if (
+              cp &&
+              cp.getString('assinante_id') &&
+              cp.getString('assinante_id') !== assinanteEmpresaId
+            ) {
+              return c.json(400, {
+                sucesso: false,
+                message: 'A condição de pagamento selecionada pertence a outro assinante.',
+              })
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Atualizar campos editáveis (NÃO permite alterar tipo, empresa nem status)
+      if (data.cliente_id !== undefined) {
+        vendaRec.set('cliente_id', data.cliente_id)
+      }
+      if (data.cpf_cnpj_consumidor !== undefined) {
+        vendaRec.set('cpf_cnpj_consumidor', data.cpf_cnpj_consumidor || '')
+      }
+      if (data.vendedor_id !== undefined) {
+        vendaRec.set('vendedor_id', data.vendedor_id || '')
+      }
+      if (data.operador_id !== undefined) {
+        vendaRec.set('operador_id', data.operador_id || userId)
+      }
+      if (data.data_emissao !== undefined) {
+        vendaRec.set('data_emissao', data.data_emissao || '')
+      }
+      if (data.data_validade !== undefined) {
+        vendaRec.set('data_validade', data.data_validade || '')
+      }
+      if (data.valor_produtos !== undefined) {
+        vendaRec.set('valor_produtos', Number(data.valor_produtos) || 0)
+      }
+      if (data.valor_desconto_itens !== undefined) {
+        vendaRec.set('valor_desconto_itens', Number(data.valor_desconto_itens) || 0)
+      }
+      if (data.valor_desconto_total !== undefined) {
+        vendaRec.set('valor_desconto_total', Number(data.valor_desconto_total) || 0)
+      }
+      if (data.valor_acrescimo !== undefined) {
+        vendaRec.set('valor_acrescimo', Number(data.valor_acrescimo) || 0)
+      }
+      if (data.valor_frete !== undefined) {
+        vendaRec.set('valor_frete', Number(data.valor_frete) || 0)
+      }
+      if (data.valor_total !== undefined) {
+        vendaRec.set('valor_total', Number(data.valor_total) || 0)
+      }
+      if (data.condicao_pagamento_id !== undefined) {
+        vendaRec.set('condicao_pagamento_id', data.condicao_pagamento_id || '')
+      }
+      if (data.observacao !== undefined) {
+        vendaRec.set('observacao', data.observacao || '')
+      }
+      if (data.observacao_cliente !== undefined) {
+        vendaRec.set('observacao_cliente', data.observacao_cliente || '')
+      }
+      if (data.venda_origem_id !== undefined) {
+        vendaRec.set('venda_origem_id', data.venda_origem_id || '')
+      }
+
+      vendaRec.set('updated_by', userId)
+      $app.save(vendaRec)
+
+      // Gravar log de auditoria
+      try {
+        const auditCol = $app.findCollectionByNameOrId('logs_auditoria')
+        const auditRec = new Record(auditCol)
+        auditRec.set('empresa_id', empresaId)
+        auditRec.set('usuario_id', userId)
+        auditRec.set('usuario_nome', authRecord.getString('name') || 'Operador')
+        auditRec.set('tabela', 'vendas')
+        auditRec.set('registro_id', vendaId)
+        auditRec.set('acao', 'alteracao')
+        auditRec.set(
+          'valores_depois',
+          JSON.stringify({
+            operacao: 'SALVAR_PEDIDO',
+            numero: vendaRec.getInt('numero'),
+            tipo: tipoAtual,
+            status: statusAtual,
+            cliente_id: vendaRec.getString('cliente_id'),
+            valor_total: vendaRec.getFloat('valor_total'),
+          }),
+        )
+        $app.save(auditRec)
+      } catch (errAudit) {
+        console.warn(
+          '[vendas/salvar-pedido] Aviso ao gravar auditoria:',
+          errAudit && errAudit.message,
+        )
+      }
+
+      const numVenda = vendaRec.getInt('numero')
+      console.log(
+        `[vendas/salvar-pedido] Pedido #${numVenda} (${vendaId}) atualizado com sucesso pelo usuário ${userId}.`,
+      )
+
+      return c.json(200, {
+        sucesso: true,
+        id: vendaId,
+        numero: numVenda,
+        message: `Pedido #${numVenda} salvo com sucesso.`,
+      })
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err)
+      console.error('[vendas/salvar-pedido] Erro:', msg)
+      return c.json(400, {
+        sucesso: false,
+        message: msg,
+      })
+    }
+  },
+  $apis.requireAuth(),
+)

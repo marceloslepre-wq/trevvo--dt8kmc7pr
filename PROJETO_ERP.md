@@ -3557,6 +3557,22 @@ O arquivo `pocketbase/hooks/tenancy.js` concentra as funções utilitárias e en
 
 ## Versão Atual do Projeto
 
+**Versão 0.0.242** — Correção de Salvamento de Pedido de Venda via Rota Transacional (`POST /backend/v1/vendas/salvar-pedido`):
+
+1. **Eliminação do Erro 404 em Salvar Pedido de Venda (`/vendas/pedidos/:id`):**
+   - A regra de `updateRule` da coleção `vendas` bloqueia updates diretos com `@request.body.status:isset` ou outros campos restritos via navegador, retornando HTTP 404. Essa regra foi mantida intacta e rigorosamente protegida.
+   - Criada rota transacional no backend em `pocketbase/hooks/vendas_operacoes.js`: `POST /backend/v1/vendas/salvar-pedido`.
+   - A rota valida que o usuário autenticado pertence à empresa da venda (governança multi-tenant com funções locais e sem `require` interno), assegura que a venda seja do tipo "Pedido" e que não esteja Finalizada ou Cancelada.
+   - Atualiza os campos permitidos do formulário (`cliente_id`, `cpf_cnpj_consumidor`, `vendedor_id`, `operador_id`, `data_emissao`, `data_validade`, `valor_produtos`, `valor_desconto_itens`, `valor_desconto_total`, `valor_acrescimo`, `valor_frete`, `valor_total`, `condicao_pagamento_id`, `observacao`, `observacao_cliente`, `venda_origem_id`, `updated_by`). Não permite alterar tipo, empresa nem status pela rota.
+   - Grava registro de auditoria em `logs_auditoria` e devolve `{ sucesso: true, id, numero, message }`. Em caso de erro, captura no `try/catch`, registra `console.error` e responde com `{ sucesso: false, message: msg }` com o erro real.
+
+2. **Ajuste em `salvarVenda` (`src/services/vendas.ts`):**
+   - Ao atualizar (`vendaId` presente) uma venda do tipo `"Pedido"`, delega a atualização do cabeçalho para `POST /backend/v1/vendas/salvar-pedido`.
+   - Preserva o fluxo de criação e de orçamentos intactos, assim como o fluxo de exclusão e recriação dos itens em `vendas_itens`.
+   - Exibe a mensagem real retornada pelo backend caso ocorra erro de validação.
+
+---
+
 **Versão 0.0.198** — Correção de Gravação de `documento_fiscal_status` na Venda e Mensagens Reais de Erro no Backend Fiscal:
 
 1. **Eliminação de Gravação de 'Processando' em `vendas.documento_fiscal_status`:**

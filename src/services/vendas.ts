@@ -368,32 +368,85 @@ export async function salvarVenda(input: SalvarVendaInput): Promise<Venda> {
   let vendaSalva: Venda
 
   if (vendaId) {
-    // Atualizar cabeçalho existente
-    const payloadUpdate: Partial<Venda> = {
-      tipo: input.tipo,
-      status: statusDefinido,
-      cliente_id: input.cliente_id,
-      cpf_cnpj_consumidor: input.cpf_cnpj_consumidor || '',
-      vendedor_id: input.vendedor_id || '',
-      operador_id: input.operador_id || pb.authStore.record?.id || '',
-      data_emissao: dataEmissao,
-      data_validade: input.data_validade || '',
-      valor_produtos: totalProdutos,
-      valor_desconto_itens: totalDescontoItens,
-      valor_desconto_total: valorDescontoTotal,
-      valor_acrescimo: valorAcrescimo,
-      valor_frete: valorFrete,
-      valor_total: valorTotal,
-      condicao_pagamento_id: input.condicao_pagamento_id || '',
-      observacao: input.observacao || '',
-      observacao_cliente: input.observacao_cliente || '',
-      venda_origem_id: input.venda_origem_id || '',
-      updated_by: pb.authStore.record?.id || '',
-    }
+    if (input.tipo === 'Pedido') {
+      // Quando for UPDATE de Pedido, a regra de update da coleção vendas bloqueia PATCH direto do front.
+      // O salvamento do cabeçalho é realizado via endpoint backend transacional seguro:
+      // POST /backend/v1/vendas/salvar-pedido
+      try {
+        const res = await pb.send<{
+          sucesso: boolean
+          id: string
+          numero: number
+          message: string
+        }>('/backend/v1/vendas/salvar-pedido', {
+          method: 'POST',
+          body: {
+            venda_id: vendaId,
+            cliente_id: input.cliente_id,
+            cpf_cnpj_consumidor: input.cpf_cnpj_consumidor || '',
+            vendedor_id: input.vendedor_id || '',
+            operador_id: input.operador_id || pb.authStore.record?.id || '',
+            data_emissao: dataEmissao,
+            data_validade: input.data_validade || '',
+            valor_produtos: totalProdutos,
+            valor_desconto_itens: totalDescontoItens,
+            valor_desconto_total: valorDescontoTotal,
+            valor_acrescimo: valorAcrescimo,
+            valor_frete: valorFrete,
+            valor_total: valorTotal,
+            condicao_pagamento_id: input.condicao_pagamento_id || '',
+            observacao: input.observacao || '',
+            observacao_cliente: input.observacao_cliente || '',
+            venda_origem_id: input.venda_origem_id || '',
+          },
+        })
 
-    vendaSalva = await pb
-      .collection('vendas')
-      .update<Venda>(vendaId, payloadUpdate, { requestKey: null })
+        if (!res || !res.sucesso) {
+          throw new Error(res?.message || 'Falha ao salvar pedido no backend.')
+        }
+      } catch (err: unknown) {
+        const pbErr = err as {
+          response?: { message?: string }
+          data?: { message?: string }
+          message?: string
+        }
+        const backendMsg =
+          pbErr.response?.message ||
+          pbErr.data?.message ||
+          pbErr.message ||
+          'Erro ao salvar pedido de venda.'
+        throw new Error(backendMsg)
+      }
+
+      vendaSalva = await pb.collection('vendas').getOne<Venda>(vendaId, { requestKey: null })
+    } else {
+      // Atualizar cabeçalho existente de outros tipos (ex: Orçamento)
+      const payloadUpdate: Partial<Venda> = {
+        tipo: input.tipo,
+        status: statusDefinido,
+        cliente_id: input.cliente_id,
+        cpf_cnpj_consumidor: input.cpf_cnpj_consumidor || '',
+        vendedor_id: input.vendedor_id || '',
+        operador_id: input.operador_id || pb.authStore.record?.id || '',
+        data_emissao: dataEmissao,
+        data_validade: input.data_validade || '',
+        valor_produtos: totalProdutos,
+        valor_desconto_itens: totalDescontoItens,
+        valor_desconto_total: valorDescontoTotal,
+        valor_acrescimo: valorAcrescimo,
+        valor_frete: valorFrete,
+        valor_total: valorTotal,
+        condicao_pagamento_id: input.condicao_pagamento_id || '',
+        observacao: input.observacao || '',
+        observacao_cliente: input.observacao_cliente || '',
+        venda_origem_id: input.venda_origem_id || '',
+        updated_by: pb.authStore.record?.id || '',
+      }
+
+      vendaSalva = await pb
+        .collection('vendas')
+        .update<Venda>(vendaId, payloadUpdate, { requestKey: null })
+    }
 
     // Remover itens antigos
     const itensExistentes = await pb.collection('vendas_itens').getFullList<VendaItem>({
