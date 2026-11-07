@@ -172,6 +172,206 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       return encontrada
     }
 
+    // -------------------------------------------------------------
+    // Recálculo fiscal do retrato em vendas_itens (função local, sem require):
+    // enquanto a venda NÃO tem documento fiscal 'Autorizada', a tributação de
+    // cada item é recalculada a partir do perfil tributário do produto e do
+    // destinatário ATUAL da venda (UF cliente x UF emitente, contribuinte ou
+    // não de ICMS). CFOP/CST/PIS/COFINS vêm da regra do cenário do perfil e a
+    // alíquota interestadual da matriz icms_interestadual. Se a venda já tem
+    // nota autorizada, NÃO mexe em nada (mantém o retrato gravado).
+    // -------------------------------------------------------------
+    function recalcularTributacaoVendaInterno(txApp, vendaRec, auth) {
+      if (vendaRec.getString('documento_fiscal_status') === 'Autorizada') {
+        return false
+      }
+
+      const empresaIdRecalc = vendaRec.getString('empresa_id')
+      if (!empresaIdRecalc) return false
+      exigirEmpresaDoUsuario(auth, empresaIdRecalc)
+
+      const empresaRecalc = txApp.findRecordById('empresas', empresaIdRecalc)
+      if (!empresaRecalc || !empresaRecalc.getBool('ativo')) return false
+
+      const ufEmitenteRecalc = (empresaRecalc.getString('uf') || '').trim().toUpperCase()
+      const regimeApuracaoRecalc = (empresaRecalc.getString('regime_apuracao') || '').trim()
+      const crtRawRecalc = empresaRecalc.get('crt')
+      const crtRecalc =
+        crtRawRecalc !== null && crtRawRecalc !== undefined && crtRawRecalc !== ''
+          ? Number(crtRawRecalc)
+          : null
+      const ehSimplesRecalc = regimeApuracaoRecalc
+        ? regimeApuracaoRecalc === 'Simples Nacional'
+        : crtRecalc === 1 || crtRecalc === 2 || crtRecalc === 4
+
+      // Destinatário ATUAL da venda (endereço/UF podem ter mudado após salvar o pedido)
+      const clienteIdRecalc = vendaRec.getString('cliente_id')
+      let clienteRecalc = null
+      if (clienteIdRecalc) {
+        try {
+          clienteRecalc = txApp.findRecordById('clientes', clienteIdRecalc)
+        } catch (_) {}
+      }
+
+      let destinatarioUfRecalc = ufEmitenteRecalc
+      let indicadorIeRecalc = '9'
+      if (clienteRecalc) {
+        destinatarioUfRecalc =
+          (clienteRecalc.getString('uf') || '').trim().toUpperCase() || ufEmitenteRecalc
+        indicadorIeRecalc = String(clienteRecalc.getInt('indicador_ie') || 9)
+      }
+
+      const ehOperacaoInternaRecalc = destinatarioUfRecalc === ufEmitenteRecalc
+      let cenarioRecalc = 'VENDA_INTERNA_CONSUMIDOR'
+      if (ehOperacaoInternaRecalc) {
+        cenarioRecalc =
+          indicadorIeRecalc === '1' ? 'VENDA_INTERNA_CONTRIBUINTE' : 'VENDA_INTERNA_CONSUMIDOR'
+      } else {
+        cenarioRecalc =
+          indicadorIeRecalc === '1'
+            ? 'VENDA_INTERESTADUAL_CONTRIBUINTE'
+            : 'VENDA_INTERESTADUAL_CONSUMIDOR'
+      }
+
+      let itensVenda = []
+      try {
+        itensVenda = txApp.findRecordsByFilter(
+          'vendas_itens',
+          `venda_id = '${vendaRec.id}' && ativo = true`,
+          'item,created',
+        )
+      } catch (_) {
+        itensVenda = []
+      }
+      if (!itensVenda || itensVenda.length === 0) return false
+
+      for (let i = 0; i < itensVenda.length; i++) {
+        const itRecalc = itensVenda[i]
+        const numItemRecalc = i + 1
+
+        const prodIdRecalc = itRecalc.getString('produto_id')
+        let prodRecalc = null
+        if (prodIdRecalc) {
+          try {
+            prodRecalc = txApp.findRecordById('produtos', prodIdRecalc)
+          } catch (_) {}
+        }
+
+        const descricaoRecalc =
+          itRecalc.getString('descricao') ||
+          (prodRecalc ? prodRecalc.getString('descricao') : `Item ${numItemRecalc}`)
+
+        const perfilIdRecalc =
+          itRecalc.getString('perfil_tributario_id') ||
+          (prodRecalc ? prodRecalc.getString('perfil_tributario_id') : '')
+        if (!perfilIdRecalc) {
+          throw new Error(
+            `Item ${numItemRecalc} (${descricaoRecalc}): Produto sem Perfil Tributário vinculado.`,
+          )
+        }
+
+        let regraRecalc = null
+        try {
+          const regrasRecalc = txApp.findRecordsByFilter(
+            'perfis_tributarios_regras',
+            `perfil_id = '${perfilIdRecalc}' && cenario = '${cenarioRecalc}' && ativo = true`,
+            '',
+            1,
+            0,
+          )
+          if (regrasRecalc.length > 0) regraRecalc = regrasRecalc[0]
+        } catch (_) {}
+        if (!regraRecalc) {
+          throw new Error(
+            `Item ${numItemRecalc} (${descricaoRecalc}): Perfil Tributário não possui regra para o cenário "${cenarioRecalc}".`,
+          )
+        }
+
+        // Cenário recalculado: CFOP/CST/PIS/COFINS vêm da regra do perfil,
+        // IGNORANDO o retrato gravado em vendas_itens.
+        // O campo cfop da regra é RELAÇÃO para a coleção cfop: resolve o código.
+        let cfopRecalc = regraRecalc.getString('cfop') || ''
+        if (cfopRecalc && cfopRecalc.length > 10) {
+          try {
+            const cfopRelRec = txApp.findRecordById('cfop', cfopRecalc)
+            if (cfopRelRec) {
+              cfopRecalc = cfopRelRec.getString('codigo') || cfopRecalc
+            }
+          } catch (_) {}
+        }
+        let cstIcmsRecalc = regraRecalc.getString('cst_icms') || ''
+        let csosnRecalc = regraRecalc.getString('csosn') || ''
+        let cstPisRecalc = regraRecalc.getString('cst_pis') || ''
+        let cstCofinsRecalc = regraRecalc.getString('cst_cofins') || ''
+
+        if (!cfopRecalc) {
+          cfopRecalc = ehOperacaoInternaRecalc
+            ? '5102'
+            : indicadorIeRecalc === '9'
+              ? '6108'
+              : '6102'
+        }
+        if (ehSimplesRecalc) {
+          if (!csosnRecalc && cstIcmsRecalc) {
+            csosnRecalc = converterCstParaCsosn(cstIcmsRecalc)
+          }
+          if (!csosnRecalc) csosnRecalc = '102'
+        } else {
+          if (!cstIcmsRecalc && csosnRecalc) {
+            cstIcmsRecalc = converterCsosnParaCst(csosnRecalc)
+          }
+          if (!cstIcmsRecalc) cstIcmsRecalc = '00'
+        }
+
+        // Alíquota interestadual na matriz (origem emitente x destino atual),
+        // mesma lógica do N1 em fiscal_nfe_operacoes.js
+        let aliqIcmsRecalc = regraRecalc.getFloat('aliquota_icms') || 0
+        const origemMercRecalc =
+          itRecalc.getString('origem') ||
+          (regraRecalc ? regraRecalc.getString('origem') : '0') ||
+          '0'
+        if (!ehOperacaoInternaRecalc && ['00', '10', '20', '70', '90'].includes(cstIcmsRecalc)) {
+          let aliqMatrizRecalc = null
+          const origMercStrRecalc = String(origemMercRecalc || '0').trim()
+          if (['1', '2', '3', '8'].includes(origMercStrRecalc)) {
+            aliqMatrizRecalc = 4
+          } else if (ufEmitenteRecalc && destinatarioUfRecalc) {
+            try {
+              const matsRecalc = txApp.findRecordsByFilter(
+                'icms_interestadual',
+                `uf_origem = '${ufEmitenteRecalc}' && uf_destino = '${destinatarioUfRecalc}' && ativo = true`,
+                '',
+                1,
+                0,
+              )
+              if (
+                matsRecalc.length > 0 &&
+                matsRecalc[0].get('aliquota') !== null &&
+                matsRecalc[0].get('aliquota') !== undefined &&
+                matsRecalc[0].get('aliquota') !== ''
+              ) {
+                aliqMatrizRecalc = matsRecalc[0].getFloat('aliquota')
+              }
+            } catch (_) {}
+          }
+          if (aliqMatrizRecalc !== null && aliqMatrizRecalc !== undefined) {
+            aliqIcmsRecalc = aliqMatrizRecalc
+          }
+        }
+
+        // Grava o retrato recalculado em vendas_itens pelo BACKEND
+        itRecalc.set('cfop', cfopRecalc)
+        itRecalc.set('cst_icms', cstIcmsRecalc)
+        itRecalc.set('csosn', csosnRecalc)
+        itRecalc.set('aliquota_icms', aliqIcmsRecalc)
+        itRecalc.set('cst_pis', cstPisRecalc)
+        itRecalc.set('cst_cofins', cstCofinsRecalc)
+        txApp.save(itRecalc)
+      }
+
+      return true
+    }
+
     const userId = authRecord.id
     const data = c.requestInfo().body || {}
     const origem = data.origem || 'Venda' // 'Venda' | 'Devolução de venda' | 'Devolução de compra'
@@ -252,6 +452,29 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
       let clienteId = ''
       let itensOrigem = []
       let pagamentosOrigem = []
+
+      // 1.a Recalculo fiscal do retrato em vendas_itens quando o destinatário mudou
+      // depois da venda ser salva (enquanto NÃO existe documento com status
+      // 'Autorizada' vinculado à venda). Se já há nota autorizada, NÃO mexe em nada.
+      if (origem === 'Venda' || origem === 'Devolução de venda') {
+        try {
+          const vendaPreCheck = txApp.findRecordById('vendas', idOrigem)
+          if (
+            vendaPreCheck &&
+            vendaPreCheck.getBool('ativo') &&
+            vendaPreCheck.getString('documento_fiscal_status') !== 'Autorizada'
+          ) {
+            recalcularTributacaoVendaInterno(txApp, vendaPreCheck, authRecord)
+          }
+        } catch (errRecalc) {
+          // Recálculo não bloqueia o montar-rascunho; o montar-rascunho segue
+          // com o retrato que estiver gravado em vendas_itens
+          console.log(
+            '[fiscal/montar-rascunho] Recálculo fiscal do retrato falhou (segue com retrato gravado): ' +
+              (errRecalc && errRecalc.message ? errRecalc.message : String(errRecalc)),
+          )
+        }
+      }
 
       if (origem === 'Transferência' || origem === 'Transferencia') {
         try {
