@@ -1047,16 +1047,74 @@ routerAdd(
 
       docRec.set('json_retorno', jsonResp || { raw: rawText })
 
-      if (statusCode >= 400) {
-        let msgErro =
-          jsonResp?.mensagem || jsonResp?.message || `Focus NFe retornou status HTTP ${statusCode}`
-        if (Array.isArray(jsonResp?.erros) && jsonResp.erros.length > 0) {
-          msgErro = jsonResp.erros
-            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
-            .join('; ')
+      // Função local para extrair a mensagem de erro/rejeição no padrão de precedência especificado
+      function extrairMensagemErroLocal(resp) {
+        if (!resp || typeof resp !== 'object') return ''
+
+        // 1) status_sefaz + " - " + mensagem_sefaz
+        const stSefaz = resp.status_sefaz ? String(resp.status_sefaz).trim() : ''
+        const msgSefaz = resp.mensagem_sefaz ? String(resp.mensagem_sefaz).trim() : ''
+        if (stSefaz && msgSefaz) {
+          return `${stSefaz} - ${msgSefaz}`
         }
+        if (msgSefaz) {
+          return msgSefaz
+        }
+
+        // 2) erros[].mensagem (todas, separadas por "; ")
+        if (Array.isArray(resp.erros) && resp.erros.length > 0) {
+          const listaErros = resp.erros
+            .map((e) => {
+              if (!e) return ''
+              if (typeof e === 'string') return e.trim()
+              if (e.mensagem) return String(e.mensagem).trim()
+              if (e.message) return String(e.message).trim()
+              return ''
+            })
+            .filter((m) => m && m.length > 0)
+          if (listaErros.length > 0) {
+            return listaErros.join('; ')
+          }
+        }
+
+        // 3) mensagem
+        if (resp.mensagem && String(resp.mensagem).trim()) {
+          return String(resp.mensagem).trim()
+        }
+        if (resp.message && String(resp.message).trim()) {
+          return String(resp.message).trim()
+        }
+
+        // 4) codigo
+        if (resp.codigo && String(resp.codigo).trim()) {
+          return String(resp.codigo).trim()
+        }
+
+        return ''
+      }
+
+      const statusFocusRetorno = jsonResp?.status
+        ? String(jsonResp.status).trim().toLowerCase()
+        : ''
+      const isRejeitadaOuErro =
+        statusCode >= 400 ||
+        statusFocusRetorno === 'erro_autorizacao' ||
+        statusFocusRetorno === 'rejeitado'
+
+      if (isRejeitadaOuErro) {
+        let msgErro = extrairMensagemErroLocal(jsonResp)
+        if (!msgErro) {
+          msgErro = `Focus NFe retornou status HTTP ${statusCode}`
+        }
+
         docRec.set('status', 'Rejeitada')
+        if (jsonResp?.status_sefaz) {
+          docRec.set('status_sefaz', String(jsonResp.status_sefaz))
+        }
         docRec.set('mensagem_sefaz', msgErro)
+        if (Array.isArray(jsonResp?.erros)) {
+          docRec.set('erros', jsonResp.erros)
+        }
         $app.save(docRec)
 
         return c.json(200, {
@@ -1065,6 +1123,8 @@ routerAdd(
           documento_id: docRec.id,
           ref: refFocus,
           message: msgErro,
+          erro: msgErro,
+          mensagem_sefaz: msgErro,
         })
       }
 

@@ -153,9 +153,10 @@ export function ModalDevolucaoFornecedor({
       })
 
       if (!resp.sucesso) {
+        const msgFalha = resp.message || 'Rejeitada pela SEFAZ sem mensagem detalhada'
         toast({
           title: 'Erro na emissão da NF-e',
-          description: resp.message,
+          description: msgFalha,
           variant: 'destructive',
         })
         setCarregando(false)
@@ -201,10 +202,20 @@ export function ModalDevolucaoFornecedor({
             } else if (sit.status === 'Rejeitada') {
               clearInterval(intervalo)
               setCarregando(false)
-              setStatusSefaz(`Rejeitada pela SEFAZ: ${sit.mensagem_sefaz || sit.status_sefaz}`)
+
+              const msgMotivo =
+                (sit.mensagem_sefaz && String(sit.mensagem_sefaz).trim() !== 'undefined'
+                  ? String(sit.mensagem_sefaz).trim()
+                  : '') ||
+                (sit.status_sefaz && String(sit.status_sefaz).trim() !== 'undefined'
+                  ? String(sit.status_sefaz).trim()
+                  : '') ||
+                'Rejeitada pela SEFAZ sem mensagem detalhada'
+
+              setStatusSefaz(`Rejeitada pela SEFAZ: ${msgMotivo}`)
               toast({
                 title: 'NF-e Rejeitada',
-                description: sit.mensagem_sefaz || 'Erro na autorização da nota fiscal.',
+                description: msgMotivo,
                 variant: 'destructive',
               })
             }
@@ -214,12 +225,12 @@ export function ModalDevolucaoFornecedor({
         }
       }, 3000)
     } catch (err: any) {
+      const rawMsg =
+        err?.response?.message || err?.response?.data?.message || err?.data?.message || err?.message
       const msgErro =
-        err?.response?.message ||
-        err?.response?.data?.message ||
-        err?.data?.message ||
-        err?.message ||
-        'Erro ao processar devolução.'
+        rawMsg && String(rawMsg).trim() !== 'undefined'
+          ? String(rawMsg).trim()
+          : 'Rejeitada pela SEFAZ sem mensagem detalhada'
       toast({
         title: 'Falha na devolução',
         description: msgErro,
