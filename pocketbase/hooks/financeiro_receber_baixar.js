@@ -415,6 +415,7 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
       // 4. Processar cada baixa
       const baixasCol = txApp.findCollectionByNameOrId('pagamentos_baixas')
       const movsCol = txApp.findCollectionByNameOrId('movimentacoes_financeiras')
+      let saldoAcumuladoConta = Number(conta.get('saldo_atual') || 0)
 
       for (const item of titulosMap) {
         const titRecord = item.record
@@ -439,6 +440,9 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
           historico || `Recebimento doc. ${titRecord.get('numero_documento') || titRecord.id}`,
         )
         baixaRec.set('estornado', false)
+        baixaRec.set('ativo', true)
+        baixaRec.set('created_by', authRecord.id)
+        baixaRec.set('updated_by', authRecord.id)
         txApp.save(baixaRec)
         baixasCriadas.push(baixaRec.id)
 
@@ -456,9 +460,14 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         if (novoStatus === 'Recebido') {
           titRecord.set('data_recebimento', data_pagamento)
         }
+        titRecord.set('updated_by', authRecord.id)
         txApp.save(titRecord)
 
-        // Criar movimentação financeira de Entrada
+        // Movimentação financeira de Entrada
+        const saldoFinAntLinha = saldoAcumuladoConta
+        const saldoFinPosLinha = Number((saldoFinAntLinha + item.valorLiquido).toFixed(2))
+        saldoAcumuladoConta = saldoFinPosLinha
+
         const movRec = new Record(movsCol)
         movRec.set('empresa_id', empresa_id)
         movRec.set('conta_financeira_id', conta_financeira_id)
@@ -470,17 +479,23 @@ routerAdd('POST', '/financeiro/receber/baixar', (c) => {
         movRec.set('lote_baixa_id', loteRecord ? loteRecord.id : null)
         movRec.set('data_movimento', data_pagamento)
         movRec.set('valor', item.valorLiquido)
+        movRec.set('saldo_anterior', saldoFinAntLinha)
+        movRec.set('saldo_posterior', saldoFinPosLinha)
         movRec.set(
           'historico',
           `Recebimento doc. ${titRecord.get('numero_documento') || titRecord.id} - Parcela ${titRecord.get('parcela_numero') || 1}/${titRecord.get('total_parcelas') || 1}`,
         )
+        movRec.set('conciliado', false)
+        movRec.set('estornado', false)
+        movRec.set('ativo', true)
+        movRec.set('created_by', authRecord.id)
+        movRec.set('updated_by', authRecord.id)
         txApp.save(movRec)
       }
 
       // 5. Atualizar saldo_atual da conta_financeira (Entrada aumenta saldo)
-      const saldoAnterior = Number(conta.get('saldo_atual') || 0)
-      const novoSaldoConta = saldoAnterior + valorTotalLote
-      conta.set('saldo_atual', novoSaldoConta)
+      conta.set('saldo_atual', saldoAcumuladoConta)
+      conta.set('updated_by', authRecord.id)
       txApp.save(conta)
 
       // 6. Gravar log_auditoria

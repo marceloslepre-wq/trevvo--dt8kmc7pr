@@ -384,6 +384,7 @@ routerAdd('POST', '/financeiro/receber/estornar-recebimento', (c) => {
 
         // Atualizar conta financeira (Subtrai entrada anterior)
         conta.set('saldo_atual', novoSaldoConta)
+        conta.set('updated_by', authRecord.id)
         txApp.save(conta)
 
         // Criar movimentação de estorno (Saída)
@@ -392,12 +393,20 @@ routerAdd('POST', '/financeiro/receber/estornar-recebimento', (c) => {
         movEstorno.set('conta_financeira_id', contaFinId)
         movEstorno.set('tipo', 'Saída')
         movEstorno.set('origem', 'ESTORNO_RECEBIMENTO')
-        movEstorno.set('documento_tipo', 'contas_receber')
-        movEstorno.set('documento_id', titId || '')
+        movEstorno.set('documento_tipo', 'pagamentos_baixas')
+        movEstorno.set('documento_id', baixa.id)
         movEstorno.set('documento_numero', baixa.id)
+        movEstorno.set('lote_baixa_id', baixa.get('lote_baixa_id') || '')
         movEstorno.set('data_movimento', dataEstorno.split('T')[0])
         movEstorno.set('valor', valorTotalBaixa)
+        movEstorno.set('saldo_anterior', saldoConta)
+        movEstorno.set('saldo_posterior', novoSaldoConta)
         movEstorno.set('historico', `Estorno recebimento baixa #${baixa.id}: ${motivo.trim()}`)
+        movEstorno.set('conciliado', false)
+        movEstorno.set('estornado', false)
+        movEstorno.set('ativo', true)
+        movEstorno.set('created_by', authRecord.id)
+        movEstorno.set('updated_by', authRecord.id)
         txApp.save(movEstorno)
 
         // Atualizar contas_receber
