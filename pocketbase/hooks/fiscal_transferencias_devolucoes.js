@@ -415,6 +415,11 @@ routerAdd(
         }
       }
 
+      function truncar60(texto) {
+        if (!texto) return ''
+        return String(texto).trim().slice(0, 60).trim()
+      }
+
       const encodeBase64 = (str) => {
         if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
           try {
@@ -582,6 +587,9 @@ routerAdd(
 
       const cnpjEmitente = (empresaEmitente.getString('cnpj') || '').replace(/\D/g, '')
       const ufEmitente = (empresaEmitente.getString('uf') || '').trim().toUpperCase()
+      const nomeDocEmp = (empresaEmitente.getString('nome_documentos_fiscais') || '').trim()
+      const razaoSocialEmp = (empresaEmitente.getString('razao_social') || '').trim()
+      const nomeEmitenteFinal = truncar60(nomeDocEmp || razaoSocialEmp)
 
       const cnpjCpfForn = (fornecedor.getString('cpf_cnpj') || '').replace(/\D/g, '')
       const nomeForn =
@@ -841,10 +849,11 @@ routerAdd(
       totValorProdutos = Math.round(totValorProdutos * 100) / 100
       totValorTotal = Math.round(totValorTotal * 100) / 100
 
-      const nomeDestFinal =
+      const nomeDestFinal = truncar60(
         ambiente === 'Homologação'
           ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-          : nomeForn
+          : fornecedor.getString('razao_social') || fornecedor.getString('nome_fantasia') || '',
+      )
 
       const payloadFocus = {
         natureza_operacao: naturezaOperacao,
@@ -856,6 +865,7 @@ routerAdd(
         presenca_comprador: '9',
         modalidade_frete: 9,
         cnpj_emitente: cnpjEmitente,
+        nome_emitente: nomeEmitenteFinal,
         notas_referenciadas: [{ chave_nfe: chaveNotaReferenciada }],
         nome_destinatario: nomeDestFinal,
         indicador_inscricao_estadual_destinatario: indicadorIeDest,
@@ -895,7 +905,7 @@ routerAdd(
       docRec.set('status', 'Processando')
       docRec.set('serie', serieNfe)
       docRec.set('natureza_operacao', naturezaOperacao)
-      docRec.set('destinatario_nome', nomeForn)
+      docRec.set('destinatario_nome', nomeDestFinal)
       docRec.set('destinatario_cpf_cnpj', cnpjCpfForn)
       docRec.set('destinatario_uf', ufForn)
       docRec.set('valor_produtos', totValorProdutos)
