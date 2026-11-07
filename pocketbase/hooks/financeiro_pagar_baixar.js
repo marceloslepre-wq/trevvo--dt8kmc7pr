@@ -368,11 +368,42 @@ routerAdd('POST', '/financeiro/pagar/baixar', (c) => {
           )
         }
 
-        const saldoAtualTitulo = tituloRec.getFloat('saldo') || 0
-        const valorPagoPrincipal = Number(it.valor_pago || 0)
-        const valorMulta = Number(it.valor_multa || 0)
-        const valorJuros = Number(it.valor_juros || 0)
-        const valorDesconto = Number(it.valor_desconto || 0)
+        // Normalização defensiva do saldo e valores do título:
+        // se saldo estiver vazio, undefined ou não-número (títulos legados), recalcula: valor_original - valor_pago
+        const valorOriginalTituloRaw = Number(tituloRec.get('valor_original'))
+        const valorOriginalTitulo = Number.isFinite(valorOriginalTituloRaw)
+          ? valorOriginalTituloRaw
+          : 0
+
+        const valorPagoJaRegistradoRaw = Number(tituloRec.get('valor_pago'))
+        const valorPagoJaRegistrado = Number.isFinite(valorPagoJaRegistradoRaw)
+          ? valorPagoJaRegistradoRaw
+          : 0
+
+        const saldoRaw = Number(tituloRec.get('saldo'))
+        let saldoAtualTitulo = Number.isFinite(saldoRaw)
+          ? saldoRaw
+          : Math.round(Math.max(0, valorOriginalTitulo - valorPagoJaRegistrado) * 100) / 100
+
+        const valorPagoPrincipalRaw = Number(it.valor_pago)
+        const valorPagoPrincipal = Number.isFinite(valorPagoPrincipalRaw)
+          ? Math.round(valorPagoPrincipalRaw * 100) / 100
+          : 0
+
+        const valorMultaRaw = Number(it.valor_multa)
+        const valorMulta = Number.isFinite(valorMultaRaw)
+          ? Math.round(valorMultaRaw * 100) / 100
+          : 0
+
+        const valorJurosRaw = Number(it.valor_juros)
+        const valorJuros = Number.isFinite(valorJurosRaw)
+          ? Math.round(valorJurosRaw * 100) / 100
+          : 0
+
+        const valorDescontoRaw = Number(it.valor_desconto)
+        const valorDesconto = Number.isFinite(valorDescontoRaw)
+          ? Math.round(valorDescontoRaw * 100) / 100
+          : 0
 
         if (valorPagoPrincipal <= 0) {
           throw new Error(`Item ${i + 1}: o valor principal pago deve ser maior que zero.`)
@@ -463,15 +494,20 @@ routerAdd('POST', '/financeiro/pagar/baixar', (c) => {
         txApp.save(baixaRec)
 
         // Atualizar título
-        const valorJaPago = tRec.getFloat('valor_pago') || 0
-        const novoValorPago = valorJaPago + info.valorPagoPrincipal
-        const novoSaldo = Math.max(0, info.saldoAnterior - info.valorPagoPrincipal)
-        const novoStatus = novoSaldo <= 0.005 ? 'Pago' : 'Pago parcial'
+        const valorJaPagoRaw = Number(tRec.get('valor_pago'))
+        const valorJaPago = Number.isFinite(valorJaPagoRaw) ? valorJaPagoRaw : 0
+        const novoValorPago = Math.round((valorJaPago + info.valorPagoPrincipal) * 100) / 100
+
+        const saldoCalc = Math.round((info.saldoAnterior - info.valorPagoPrincipal) * 100) / 100
+        const novoSaldo = saldoCalc <= 0.004 ? 0 : Math.max(0, saldoCalc)
+        const novoStatus = novoSaldo === 0 ? 'Pago' : 'Pago parcial'
 
         const valoresAntes = {
           status: tRec.getString('status'),
           valor_pago: valorJaPago,
-          saldo: info.saldoAnterior,
+          saldo: Number.isFinite(Number(tRec.get('saldo')))
+            ? Number(tRec.get('saldo'))
+            : info.saldoAnterior,
           data_pagamento: tRec.getString('data_pagamento'),
         }
 
