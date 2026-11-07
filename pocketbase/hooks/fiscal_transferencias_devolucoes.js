@@ -779,22 +779,25 @@ routerAdd(
           icms_situacao_tributaria: cstIcms,
         }
 
+        if (baseIcmsItem > 0 && valorIcmsItem > 0) {
+          itemFocus.icms_modalidade_base_calculo = '3'
+          itemFocus.icms_base_calculo = baseIcmsItem
+          itemFocus.icms_aliquota = aliqIcmsItem
+          itemFocus.icms_valor = valorIcmsItem
+        }
+        if (baseStItem > 0 && valorStItem > 0) {
+          itemFocus.icms_modalidade_base_calculo_st = '4'
+          itemFocus.icms_base_calculo_st = baseStItem
+          itemFocus.icms_aliquota_st = aliqStItem
+          itemFocus.icms_valor_st = valorStItem
+        }
+
         if (gtinItem && gtinItem.toUpperCase() !== 'SEM GTIN') {
           itemFocus.codigo_gtin = gtinItem
           itemFocus.codigo_gtin_tributavel = gtinItem
         }
 
         if (cest) itemFocus.codigo_cest = cest
-        if (baseIcmsItem > 0 && valorIcmsItem > 0) {
-          itemFocus.icms_base_calculo = baseIcmsItem
-          itemFocus.icms_aliquota = aliqIcmsItem
-          itemFocus.icms_valor = valorIcmsItem
-        }
-        if (baseStItem > 0 && valorStItem > 0) {
-          itemFocus.icms_base_calculo_st = baseStItem
-          itemFocus.icms_aliquota_st = aliqStItem
-          itemFocus.icms_valor_st = valorStItem
-        }
         if (valorIpiItem > 0) {
           itemFocus.ipi_situacao_tributaria = itEntrada.getString('cst_ipi') || '99'
           itemFocus.ipi_base_calculo = baseIpiItem
