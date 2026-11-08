@@ -216,6 +216,8 @@ export interface SalvarVendaInput {
   cpf_cnpj_consumidor?: string
   vendedor_id?: string
   operador_id?: string
+  caixa_sessao_id?: string
+  pdv_terminal_id?: string
   data_emissao?: string
   data_validade?: string
   valor_frete?: number
@@ -478,8 +480,8 @@ export async function salvarVenda(input: SalvarVendaInput): Promise<Venda> {
       cpf_cnpj_consumidor: input.cpf_cnpj_consumidor || '',
       vendedor_id: input.vendedor_id || '',
       operador_id: input.operador_id || pb.authStore.record?.id || '',
-      pdv_terminal_id: '',
-      caixa_sessao_id: '',
+      pdv_terminal_id: input.pdv_terminal_id || '',
+      caixa_sessao_id: input.caixa_sessao_id || '',
       data_emissao: dataEmissao,
       data_validade: input.data_validade || '',
       valor_produtos: totalProdutos,

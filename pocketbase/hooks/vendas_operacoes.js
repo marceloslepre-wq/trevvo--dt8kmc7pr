@@ -363,6 +363,17 @@ routerAdd(
           if (!caixaSessaoId) {
             throw new Error('Vendas do tipo PDV exigem sessão de caixa (caixa_sessao_id).')
           }
+          const sessaoRec = txApp.findRecordById('caixa_sessoes', caixaSessaoId)
+          if (
+            !sessaoRec ||
+            !sessaoRec.getBool('ativo') ||
+            sessaoRec.getString('status') !== 'Aberto' ||
+            sessaoRec.getString('empresa_id') !== empresaId
+          ) {
+            throw new Error(
+              'Sessão de caixa inválida ou não está aberta para esta empresa. Reabra o caixa no PDV.',
+            )
+          }
         }
 
         // Validação: cliente identificado se valor acima de exige_cliente_identificado_acima_de

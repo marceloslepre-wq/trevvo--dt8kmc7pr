@@ -7,6 +7,7 @@ import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useToast } from '@/hooks/use-toast'
 
 import { obterSessaoAbertaOperador, CaixaSessao } from '@/services/caixa'
+import { resolverOperadorErpId } from '@/services/operadorErp'
 import { listarTerminais, PdvTerminal } from '@/services/terminais'
 import { obterOuCriarConfigVendasEmpresa, ConfigVendasEmpresa } from '@/services/configVendas'
 import { listarFormasPagamento, FormaPagamento } from '@/services/formasPagamento'
@@ -187,11 +188,16 @@ export const PdvPage: React.FC = () => {
 
   // Carrega configurações iniciais
   const carregarDadosIniciais = useCallback(async () => {
-    if (!empresaAtiva?.id || !usuario?.id) return
+    if (!empresaAtiva?.id) return
 
     try {
+      // Sessão de caixa é gravada com o id do registro ERP (coleção usuarios),
+      // não com o id do login (coleção users) — mesmo caso das v0.0.249/v0.0.251.
+      const operadorErpId = usuarioERP?.id || (await resolverOperadorErpId()) || ''
+      if (!operadorErpId) return
+
       const [sessao, terms, cfg, formas, contas, conds, cfgFiscal] = await Promise.all([
-        obterSessaoAbertaOperador(empresaAtiva.id, usuario.id),
+        obterSessaoAbertaOperador(empresaAtiva.id, operadorErpId),
         listarTerminais(empresaAtiva.id),
         obterOuCriarConfigVendasEmpresa(empresaAtiva.id),
         listarFormasPagamento(empresaAtiva.id),
@@ -221,7 +227,7 @@ export const PdvPage: React.FC = () => {
     } catch (err) {
       console.error('Erro ao carregar dados iniciais do PDV:', err)
     }
-  }, [empresaAtiva?.id, usuario?.id])
+  }, [empresaAtiva?.id, usuarioERP?.id])
 
   useEffect(() => {
     carregarDadosIniciais()
@@ -317,7 +323,7 @@ export const PdvPage: React.FC = () => {
     return itens[itens.length - 1]
   }, [itens])
 
-  // Adicionar produto ao carrinho
+  // Adicionar produto ao carrinho — exige sessão de caixa aberta antes de lançar itens
   const adicionarProdutoAoCarrinho = useCallback(
     (
       produto: Produto,
@@ -326,6 +332,12 @@ export const PdvPage: React.FC = () => {
       ehBalanca = false,
       pesoBalancaKg?: number,
     ) => {
+      if (!sessaoCaixa) {
+        setMensagemStatus('Abra o caixa antes de lançar itens na venda.')
+        setTipoMensagemStatus('erro')
+        setModalAbrirCaixaAberto(true)
+        return
+      }
       const precoUnit =
         precoUnitarioCustom !== undefined
           ? precoUnitarioCustom
@@ -371,7 +383,7 @@ export const PdvPage: React.FC = () => {
         focarLeitor()
       }, 50)
     },
-    [itens.length, focarLeitor],
+    [itens.length, focarLeitor, sessaoCaixa],
   )
 
   // Leitura do campo principal (Enter)
@@ -730,7 +742,9 @@ export const PdvPage: React.FC = () => {
       cliente_id: clienteIdFinal,
       cpf_cnpj_consumidor: cpfCnpjCupom || undefined,
       vendedor_id: vendedor?.id || undefined,
-      operador_id: usuario?.id || undefined,
+      operador_id: usuarioERP?.id || undefined,
+      pdv_terminal_id: sessaoCaixa?.pdv_terminal_id || terminalAtivo?.id || undefined,
+      caixa_sessao_id: sessaoCaixa?.id,
       valor_desconto_total: descontoTotal,
       itens: itens.map((it) => ({
         produto_id: it.produto_id,
