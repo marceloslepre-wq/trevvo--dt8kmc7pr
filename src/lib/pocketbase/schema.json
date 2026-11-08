@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T14:20:55.558Z",
+  "generatedAt": "2026-11-08T15:02:54.814Z",
   "collections": [
     {
       "name": "users",
@@ -4254,7 +4254,7 @@
         {
           "name": "quantidade",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -4707,7 +4707,7 @@
         {
           "name": "saldo_sistema",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -5586,7 +5586,7 @@
         {
           "name": "valor_unitario_fornecedor",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -6629,7 +6629,7 @@
         {
           "name": "saldo_inicial",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -7952,7 +7952,7 @@
         {
           "name": "valor",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -8056,7 +8056,7 @@
         {
           "name": "taxa_percentual",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -8467,7 +8467,7 @@
         {
           "name": "valor_produtos",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -8497,7 +8497,7 @@
         {
           "name": "valor_total",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -8663,7 +8663,7 @@
         {
           "name": "preco_unitario",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -8693,7 +8693,7 @@
         {
           "name": "valor_total",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -9154,7 +9154,7 @@
         {
           "name": "valor",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -9270,7 +9270,7 @@
         {
           "name": "saldo",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -10037,7 +10037,7 @@
         {
           "name": "valor_unitario",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -10067,7 +10067,7 @@
         {
           "name": "valor_total",
           "type": "number",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
