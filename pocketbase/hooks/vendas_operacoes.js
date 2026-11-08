@@ -1495,6 +1495,21 @@ routerAdd(
         })
       }
 
+      // A relação vendas.usuario_cancelamento_id aponta para a coleção `usuarios`
+      // (não para `users`, onde vive o auth do token). Resolver o registro de
+      // `usuarios` equivalente ao usuário autenticado; sem registro, grava vazio.
+      let usuarioCancelamentoId = ''
+      try {
+        const uCancel = $app.findRecordsByFilter(
+          'usuarios',
+          `auth_user_id = '${userId}' || id = '${userId}'`,
+          '',
+          1,
+          0,
+        )
+        if (uCancel.length > 0) usuarioCancelamentoId = uCancel[0].id
+      } catch (_) {}
+
       let resposta = null
 
       $app.runInTransaction((txApp) => {
@@ -1736,7 +1751,7 @@ routerAdd(
         venda.set('status', 'Cancelada')
         venda.set('motivo_cancelamento', motivo)
         venda.set('data_cancelamento', dataCancelamento)
-        venda.set('usuario_cancelamento_id', userId)
+        venda.set('usuario_cancelamento_id', usuarioCancelamentoId)
         venda.set('updated_by', userId)
         txApp.save(venda)
 
