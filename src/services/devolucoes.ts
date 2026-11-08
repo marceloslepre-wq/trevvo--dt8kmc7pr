@@ -3,27 +3,7 @@ import { movimentarEstoque } from './estoque'
 import { lancarAvulso } from './movimentacoesExtratos'
 import { receberTitulos } from './contasReceber'
 import { obterVendaCompleta } from './vendas'
-import { obterUsuarioPorAuthId, obterUsuarioCacheLocal } from './usuarios'
-
-/**
- * Resolve o id do registro de "usuarios" (ERP) do usuário logado a partir do id
- * do login (coleção users). Campos como vendas.operador_id apontam para a
- * coleção usuarios — gravar o id do login neles causa erro 400 de relação.
- * Não encontrando, devolve undefined para gravar vazio sem quebrar.
- */
-async function resolverOperadorErpId(): Promise<string | undefined> {
-  const authUserId = pb.authStore.record?.id || undefined
-  if (!authUserId) return undefined
-  try {
-    const erp =
-      (await obterUsuarioPorAuthId(authUserId).catch(() => null)) ||
-      obterUsuarioCacheLocal(authUserId)
-    if (erp && (!erp.auth_user_id || erp.auth_user_id === authUserId)) return erp.id
-  } catch {
-    // sem registro ERP: grava vazio
-  }
-  return undefined
-}
+import { resolverOperadorErpId } from './operadorErp'
 
 export interface ValeTroca {
   id: string
@@ -205,6 +185,11 @@ export async function abaterSaldoValeTroca(params: {
  *    - Dinheiro de volta: saída avulsa (/financeiro/bancos/avulso) na conta 2.2.05 Devoluções de vendas
  *    - Abater do crediário: baixa nos títulos em aberto da venda original
  * 5. Registra venda com NOVO tipo "Devolução", venda_origem_id = venda original, status "Finalizada"
+ *
+ * Atomicidade: as etapas pós-criação da venda (itens, quantidade_devolvida,
+ * estoque, destino) rodam dentro de try/catch com compensação — se qualquer
+ * etapa falhar, a venda de devolução criada é excluída e a quantidade_devolvida
+ * dos itens da venda original é revertida antes de relançar o erro real.
  */
 export async function processarDevolucao(
   input: ProcessarDevolucaoInput,
@@ -231,7 +216,11 @@ export async function processarDevolucao(
   const mapaItensOrig = new Map<string, (typeof itensOrig)[0]>()
   itensOrig.forEach((it) => mapaItensOrig.set(it.id, it))
 
-  const itensParaAtualizar: Array<{ id: string; novaQtdDevolvida: number }> = []
+  const itensParaAtualizar: Array<{
+    id: string
+    qtdAnteriorDevolvida: number
+    novaQtdDevolvida: number
+  }> = []
 
   for (const itemInput of itens) {
     const itemOrig = mapaItensOrig.get(itemInput.venda_item_id)
@@ -267,6 +256,7 @@ export async function processarDevolucao(
 
     itensParaAtualizar.push({
       id: itemOrig.id,
+      qtdAnteriorDevolvida: qtdJaDevolvida,
       novaQtdDevolvida: Number((qtdJaDevolvida + itemInput.quantidade).toFixed(4)),
     })
   }
@@ -279,7 +269,8 @@ export async function processarDevolucao(
   // 4. Criar registro de Venda do tipo "Devolução" (número atribuído pelo hook de numeração do backend)
   // Quando com_emissao_nfe for true, o status inicial é "Pendente de nota" e NÃO movimenta
   // estoque nem financeiro agora (espera a autorização da NF-e no backend).
-  const authUserId = pb.authStore.record?.id || undefined
+  // operador_id é relação → usuarios (ERP): resolver o registro ERP do login.
+  const operadorErpId = await resolverOperadorErpId()
   const statusInicial = input.com_emissao_nfe ? 'Pendente de nota' : 'Finalizada'
 
   const novaVendaDevolucao = await pb.collection('vendas').create({
@@ -289,7 +280,7 @@ export async function processarDevolucao(
     cliente_id: vendaOrig.cliente_id,
     cpf_cnpj_consumidor: vendaOrig.cpf_cnpj_consumidor,
     vendedor_id: vendaOrig.vendedor_id,
-    operador_id: authUserId,
+    operador_id: operadorErpId,
     data_emissao: dataHojeIso,
     data_finalizacao: input.com_emissao_nfe ? undefined : new Date().toISOString(),
     valor_produtos: valorTotalDevolucao,
@@ -312,206 +303,239 @@ export async function processarDevolucao(
     ativo: true,
   })
 
-  // 5. Gravar os itens na tabela vendas_itens da venda de devolução
-  for (let idx = 0; idx < itens.length; idx++) {
-    const it = itens[idx]
-    const itOrig = mapaItensOrig.get(it.venda_item_id)
-    await pb.collection('vendas_itens').create({
-      venda_id: novaVendaDevolucao.id,
-      item: idx + 1,
+  try {
+    // 5. Gravar os itens na tabela vendas_itens da venda de devolução
+    for (let idx = 0; idx < itens.length; idx++) {
+      const it = itens[idx]
+      const itOrig = mapaItensOrig.get(it.venda_item_id)
+      await pb.collection('vendas_itens').create({
+        venda_id: novaVendaDevolucao.id,
+        item: idx + 1,
+        produto_id: it.produto_id,
+        descricao: it.descricao,
+        unidade: it.unidade || 'UN',
+        quantidade: it.quantidade,
+        preco_unitario: it.preco_unitario,
+        valor_total: Number((it.quantidade * it.preco_unitario).toFixed(2)),
+        custo_unitario: it.custo_unitario,
+        lote_id: it.lote_id || itOrig?.lote_id || undefined,
+        ativo: true,
+      })
+    }
+
+    // Se a devolução for com NF-e, encerra aqui sem tocar estoque nem financeiro.
+    // O endpoint /backend/v1/fiscal/confirmar-autorizacao-devolucao-venda atualizará
+    // estoque, financeiro e quantidade_devolvida assim que a SEFAZ autorizar.
+    const docNumero = Number(novaVendaDevolucao.numero || 0)
+
+    if (input.com_emissao_nfe) {
+      return {
+        sucesso: true,
+        venda_devolucao_id: novaVendaDevolucao.id,
+        numero_devolucao: docNumero,
+        valor_total: valorTotalDevolucao,
+        status: 'Pendente de nota',
+      }
+    }
+
+    // 6. Atualizar quantidade_devolvida nos itens da venda original (fluxo sem nota)
+    for (const upd of itensParaAtualizar) {
+      await pb.collection('vendas_itens').update(upd.id, {
+        quantidade_devolvida: upd.novaQtdDevolvida,
+      })
+    }
+
+    // 7. Movimentação de estoque: entrada com origem DEVOLUCAO_VENDA pelo custo_unitario da venda original
+    const itensEstoque = itens.map((it) => ({
+      empresa_id,
       produto_id: it.produto_id,
-      descricao: it.descricao,
-      unidade: it.unidade || 'UN',
+      tipo: 'Entrada' as const,
+      origem: 'DEVOLUCAO_VENDA' as const,
       quantidade: it.quantidade,
-      preco_unitario: it.preco_unitario,
-      valor_total: Number((it.quantidade * it.preco_unitario).toFixed(2)),
       custo_unitario: it.custo_unitario,
-      lote_id: it.lote_id || itOrig?.lote_id || undefined,
-      ativo: true,
-    })
-  }
+      data_movimento: dataHojeIso,
+      documento_tipo: 'Devolução de Venda',
+      documento_id: novaVendaDevolucao.id,
+      documento_numero: String(docNumero),
+      motivo: `Devolução de Venda #${docNumero} (Ref. Venda #${vendaOrig.numero})`,
+      lote_id: it.lote_id || undefined,
+    }))
 
-  // Se a devolução for com NF-e, encerra aqui sem tocar estoque nem financeiro.
-  // O endpoint /backend/v1/fiscal/confirmar-autorizacao-devolucao-venda atualizará
-  // estoque, financeiro e quantidade_devolvida assim que a SEFAZ autorizar.
-  const docNumero = Number(novaVendaDevolucao.numero || 0)
+    await movimentarEstoque(itensEstoque)
 
-  if (input.com_emissao_nfe) {
+    // 8. Processar Destino do Valor (fluxo sem nota)
+    let valeCriado: ValeTroca | undefined
+    let movFinanceiroId: string | undefined
+    let titulosAbatidosCount = 0
+
+    if (destino === 'vale_troca') {
+      const validadeDias = input.dias_validade_vale || 30
+      const dtValidade = new Date()
+      dtValidade.setDate(dtValidade.getDate() + validadeDias)
+      const validadeIso = dtValidade.toISOString().slice(0, 10)
+      const codigoVale = gerarCodigoValeTroca()
+
+      valeCriado = await pb.collection('vales_troca').create<ValeTroca>({
+        empresa_id,
+        codigo: codigoVale,
+        cliente_id: vendaOrig.cliente_id || undefined,
+        valor: valorTotalDevolucao,
+        saldo: valorTotalDevolucao,
+        validade: validadeIso,
+        venda_origem_id: vendaOrig.id,
+        status: 'Ativo',
+        observacao: `Gerado por Devolução #${docNumero} (Venda #${vendaOrig.numero})`,
+        ativo: true,
+      })
+    } else if (destino === 'dinheiro_volta') {
+      // Buscar conta analítica 2.2.05 Devoluções de vendas
+      let planoDevolucaoId = ''
+      try {
+        const contaRec = await pb
+          .collection('plano_contas')
+          .getFirstListItem("codigo = '2.2.05' && ativo = true")
+        planoDevolucaoId = contaRec.id
+      } catch {
+        // Fallback para qualquer conta de dedução ou analítica de despesa
+        const contaRec = await pb
+          .collection('plano_contas')
+          .getFirstListItem("grupo_dre = 'Deduções da receita' && ativo = true")
+        planoDevolucaoId = contaRec.id
+      }
+
+      // Conta financeira para saída
+      let contaFinId = input.conta_financeira_id
+      if (!contaFinId) {
+        const cfs = await pb.collection('contas_financeiras').getList(1, 1, {
+          filter: `empresa_id = '${empresa_id}' && ativo = true`,
+          sort: '-saldo_atual',
+        })
+        if (cfs.items.length > 0) contaFinId = cfs.items[0].id
+      }
+
+      if (!contaFinId) {
+        throw new Error('Conta financeira para saída de dinheiro não configurada.')
+      }
+
+      const resAvulso = await lancarAvulso({
+        empresa_id,
+        conta_financeira_id: contaFinId,
+        data: dataHojeIso,
+        tipo: 'Saída',
+        valor: valorTotalDevolucao,
+        plano_conta_id: planoDevolucaoId,
+        historico: `Devolução em dinheiro - Venda #${vendaOrig.numero} (Devolução #${docNumero})`,
+      })
+
+      movFinanceiroId = resAvulso.movimento.id
+    } else if (destino === 'abater_crediario') {
+      // Buscar títulos em aberto da venda original
+      const titulosOriginais = await pb.collection('contas_receber').getFullList({
+        filter: `empresa_id = '${empresa_id}' && origem_id = '${vendaOrig.id}' && (status = 'Aberto' || status = 'Parcial') && ativo = true`,
+        sort: 'data_vencimento',
+      })
+
+      if (titulosOriginais.length === 0) {
+        throw new Error('Não há títulos em aberto da venda original para abater.')
+      }
+
+      // Buscar plano analítico de desconto ou devolução
+      let planoDescontoId = ''
+      try {
+        const cDesc = await pb
+          .collection('plano_contas')
+          .getFirstListItem("codigo = '2.2.05' || codigo = '2.6.03' && ativo = true")
+        planoDescontoId = cDesc.id
+      } catch {
+        //
+      }
+
+      let saldoParaAbater = valorTotalDevolucao
+      const baixasParaProcessar = []
+
+      for (const tit of titulosOriginais) {
+        if (saldoParaAbater <= 0.009) break
+        const saldoTit = Number(tit.saldo) || 0
+        if (saldoTit <= 0) continue
+
+        const valorAbateItem = Math.min(saldoParaAbater, saldoTit)
+        saldoParaAbater = Number((saldoParaAbater - valorAbateItem).toFixed(2))
+
+        baixasParaProcessar.push({
+          conta_receber_id: tit.id,
+          valor_pago: 0,
+          acrescimo: 0,
+          desconto: valorAbateItem,
+          plano_desconto_id: planoDescontoId || undefined,
+        })
+      }
+
+      if (baixasParaProcessar.length > 0) {
+        // Obter conta financeira da empresa (para registrar baixa com desconto)
+        const cfs = await pb.collection('contas_financeiras').getList(1, 1, {
+          filter: `empresa_id = '${empresa_id}' && ativo = true`,
+        })
+        const contaFinId = cfs.items[0]?.id || ''
+
+        const formas = await pb.collection('formas_pagamento').getList(1, 1, {
+          filter: `ativo = true && (codigo_tpag = '99' || tipo = 'Crédito loja' || codigo_tpag = '05')`,
+        })
+        const formaPagId = formas.items[0]?.id || ''
+
+        await receberTitulos({
+          empresa_id,
+          conta_financeira_id: contaFinId,
+          forma_pagamento_id: formaPagId,
+          data_pagamento: dataHojeIso,
+          titulos: baixasParaProcessar,
+          observacao: `Abatimento por Devolução #${docNumero} (Venda #${vendaOrig.numero})`,
+          plano_desconto_id: planoDescontoId,
+        })
+
+        titulosAbatidosCount = baixasParaProcessar.length
+      }
+    }
+
     return {
       sucesso: true,
       venda_devolucao_id: novaVendaDevolucao.id,
       numero_devolucao: docNumero,
       valor_total: valorTotalDevolucao,
-      status: 'Pendente de nota',
+      vale_troca: valeCriado,
+      movimento_financeiro_id: movFinanceiroId,
+      titulos_abatidos_count: titulosAbatidosCount,
     }
-  }
-
-  // 6. Atualizar quantidade_devolvida nos itens da venda original (fluxo sem nota)
-  for (const upd of itensParaAtualizar) {
-    await pb.collection('vendas_itens').update(upd.id, {
-      quantidade_devolvida: upd.novaQtdDevolvida,
-    })
-  }
-
-  // 7. Movimentação de estoque: entrada com origem DEVOLUCAO_VENDA pelo custo_unitario da venda original
-  const itensEstoque = itens.map((it) => ({
-    empresa_id,
-    produto_id: it.produto_id,
-    tipo: 'Entrada' as const,
-    origem: 'DEVOLUCAO_VENDA' as const,
-    quantidade: it.quantidade,
-    custo_unitario: it.custo_unitario,
-    data_movimento: dataHojeIso,
-    documento_tipo: 'Devolução de Venda',
-    documento_id: novaVendaDevolucao.id,
-    documento_numero: String(docNumero),
-    motivo: `Devolução de Venda #${docNumero} (Ref. Venda #${vendaOrig.numero})`,
-    lote_id: it.lote_id || undefined,
-  }))
-
-  await movimentarEstoque(itensEstoque)
-
-  // 8. Processar Destino do Valor (fluxo sem nota)
-  let valeCriado: ValeTroca | undefined
-  let movFinanceiroId: string | undefined
-  let titulosAbatidosCount = 0
-
-  if (destino === 'vale_troca') {
-    const validadeDias = input.dias_validade_vale || 30
-    const dtValidade = new Date()
-    dtValidade.setDate(dtValidade.getDate() + validadeDias)
-    const validadeIso = dtValidade.toISOString().slice(0, 10)
-    const codigoVale = gerarCodigoValeTroca()
-
-    valeCriado = await pb.collection('vales_troca').create<ValeTroca>({
-      empresa_id,
-      codigo: codigoVale,
-      cliente_id: vendaOrig.cliente_id || undefined,
-      valor: valorTotalDevolucao,
-      saldo: valorTotalDevolucao,
-      validade: validadeIso,
-      venda_origem_id: vendaOrig.id,
-      status: 'Ativo',
-      observacao: `Gerado por Devolução #${docNumero} (Venda #${vendaOrig.numero})`,
-      ativo: true,
-    })
-  } else if (destino === 'dinheiro_volta') {
-    // Buscar conta analítica 2.2.05 Devoluções de vendas
-    let planoDevolucaoId = ''
+  } catch (err: unknown) {
+    // Compensação: desfaz o que já foi gravado para não deixar devolução pela metade.
+    // 1. Reverte quantidade_devolvida dos itens da venda original
+    for (const upd of itensParaAtualizar) {
+      try {
+        await pb
+          .collection('vendas_itens')
+          .update(upd.id, { quantidade_devolvida: upd.qtdAnteriorDevolvida }, { requestKey: null })
+      } catch {
+        // tenta compensar os demais mesmo se um falhar
+      }
+    }
+    // 2. Exclui a venda de devolução criada (e seus itens)
     try {
-      const contaRec = await pb
-        .collection('plano_contas')
-        .getFirstListItem("codigo = '2.2.05' && ativo = true")
-      planoDevolucaoId = contaRec.id
-    } catch {
-      // Fallback para qualquer conta de dedução ou analítica de despesa
-      const contaRec = await pb
-        .collection('plano_contas')
-        .getFirstListItem("grupo_dre = 'Deduções da receita' && ativo = true")
-      planoDevolucaoId = contaRec.id
-    }
-
-    // Conta financeira para saída
-    let contaFinId = input.conta_financeira_id
-    if (!contaFinId) {
-      const cfs = await pb.collection('contas_financeiras').getList(1, 1, {
-        filter: `empresa_id = '${empresa_id}' && ativo = true`,
-        sort: '-saldo_atual',
+      const itensDev = await pb.collection('vendas_itens').getFullList({
+        filter: `venda_id = '${novaVendaDevolucao.id}'`,
+        requestKey: null,
       })
-      if (cfs.items.length > 0) contaFinId = cfs.items[0].id
+      for (const itDev of itensDev) {
+        await pb.collection('vendas_itens').delete(itDev.id, { requestKey: null })
+      }
+    } catch {
+      // segue
     }
-
-    if (!contaFinId) {
-      throw new Error('Conta financeira para saída de dinheiro não configurada.')
-    }
-
-    const resAvulso = await lancarAvulso({
-      empresa_id,
-      conta_financeira_id: contaFinId,
-      data: dataHojeIso,
-      tipo: 'Saída',
-      valor: valorTotalDevolucao,
-      plano_conta_id: planoDevolucaoId,
-      historico: `Devolução em dinheiro - Venda #${vendaOrig.numero} (Devolução #${docNumero})`,
-    })
-
-    movFinanceiroId = resAvulso.movimento.id
-  } else if (destino === 'abater_crediario') {
-    // Buscar títulos em aberto da venda original
-    const titulosOriginais = await pb.collection('contas_receber').getFullList({
-      filter: `empresa_id = '${empresa_id}' && origem_id = '${vendaOrig.id}' && (status = 'Aberto' || status = 'Parcial') && ativo = true`,
-      sort: 'data_vencimento',
-    })
-
-    if (titulosOriginais.length === 0) {
-      throw new Error('Não há títulos em aberto da venda original para abater.')
-    }
-
-    // Buscar plano analítico de desconto ou devolução
-    let planoDescontoId = ''
     try {
-      const cDesc = await pb
-        .collection('plano_contas')
-        .getFirstListItem("codigo = '2.2.05' || codigo = '2.6.03' && ativo = true")
-      planoDescontoId = cDesc.id
+      await pb.collection('vendas').delete(novaVendaDevolucao.id, { requestKey: null })
     } catch {
-      //
+      // segue
     }
-
-    let saldoParaAbater = valorTotalDevolucao
-    const baixasParaProcessar = []
-
-    for (const tit of titulosOriginais) {
-      if (saldoParaAbater <= 0.009) break
-      const saldoTit = Number(tit.saldo) || 0
-      if (saldoTit <= 0) continue
-
-      const valorAbateItem = Math.min(saldoParaAbater, saldoTit)
-      saldoParaAbater = Number((saldoParaAbater - valorAbateItem).toFixed(2))
-
-      baixasParaProcessar.push({
-        conta_receber_id: tit.id,
-        valor_pago: 0,
-        acrescimo: 0,
-        desconto: valorAbateItem,
-        plano_desconto_id: planoDescontoId || undefined,
-      })
-    }
-
-    if (baixasParaProcessar.length > 0) {
-      // Obter conta financeira da empresa (para registrar baixa com desconto)
-      const cfs = await pb.collection('contas_financeiras').getList(1, 1, {
-        filter: `empresa_id = '${empresa_id}' && ativo = true`,
-      })
-      const contaFinId = cfs.items[0]?.id || ''
-
-      const formas = await pb.collection('formas_pagamento').getList(1, 1, {
-        filter: `ativo = true && (codigo_tpag = '99' || tipo = 'Crédito loja' || codigo_tpag = '05')`,
-      })
-      const formaPagId = formas.items[0]?.id || ''
-
-      await receberTitulos({
-        empresa_id,
-        conta_financeira_id: contaFinId,
-        forma_pagamento_id: formaPagId,
-        data_pagamento: dataHojeIso,
-        titulos: baixasParaProcessar,
-        observacao: `Abatimento por Devolução #${docNumero} (Venda #${vendaOrig.numero})`,
-        plano_desconto_id: planoDescontoId,
-      })
-
-      titulosAbatidosCount = baixasParaProcessar.length
-    }
-  }
-
-  return {
-    sucesso: true,
-    venda_devolucao_id: novaVendaDevolucao.id,
-    numero_devolucao: docNumero,
-    valor_total: valorTotalDevolucao,
-    vale_troca: valeCriado,
-    movimento_financeiro_id: movFinanceiroId,
-    titulos_abatidos_count: titulosAbatidosCount,
+    // Relança o erro original com a mensagem real
+    throw err
   }
 }
 

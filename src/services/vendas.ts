@@ -1,4 +1,5 @@
 import pb from '@/lib/pocketbase/client'
+import { resolverOperadorErpId } from './operadorErp'
 
 // ============================================================================
 // TIPOS DAS 3 TABELAS CENTRAIS DE VENDAS
@@ -595,7 +596,9 @@ export async function duplicarVenda(
     cliente_id: venda.cliente_id,
     cpf_cnpj_consumidor: venda.cpf_cnpj_consumidor,
     vendedor_id: venda.vendedor_id,
-    operador_id: pb.authStore.record?.id || '',
+    // operador_id é relação → usuarios (ERP): resolver o registro ERP do login
+    // (id do login é da coleção users e causa 400 de relação).
+    operador_id: (await resolverOperadorErpId()) || '',
     data_emissao: hojeIso,
     data_validade: venda.data_validade,
     valor_frete: venda.valor_frete,
