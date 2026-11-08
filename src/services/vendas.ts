@@ -313,6 +313,17 @@ export async function salvarVenda(input: SalvarVendaInput): Promise<Venda> {
     throw new Error('Adicione ao menos um produto à venda.')
   }
 
+  // Validação de itens ANTES de gravar qualquer coisa (evita pedido parcial)
+  for (const it of input.itens) {
+    const rotulo = it.descricao || `Item ${(it.item as number) || ''}`.trim()
+    if (!Number(it.quantidade) || Number(it.quantidade) <= 0) {
+      throw new Error(`Item ${rotulo}: informe a quantidade (maior que zero).`)
+    }
+    if (!Number(it.preco_unitario) || Number(it.preco_unitario) <= 0) {
+      throw new Error(`Item ${rotulo}: informe o preço unitário.`)
+    }
+  }
+
   // 1. Totais dos itens
   let totalProdutos = 0
   let totalDescontoItens = 0
@@ -493,38 +504,74 @@ export async function salvarVenda(input: SalvarVendaInput): Promise<Venda> {
     vendaId = vendaSalva.id
   }
 
-  // Gravar novos itens
-  for (const it of itensCalculados) {
-    const itemData: Partial<VendaItem> = {
-      venda_id: vendaId,
-      item: it.item,
-      produto_id: it.produto_id,
-      descricao: it.descricao,
-      unidade: it.unidade || 'UN',
-      quantidade: it.quantidade,
-      preco_unitario: it.preco_unitario,
-      preco_tabela: it.preco_tabela,
-      desconto_percentual: it.desconto_percentual,
-      desconto_valor: it.desconto_valor,
-      acrescimo_valor: it.acrescimo_valor,
-      valor_total: it.valor_total,
-      custo_unitario: it.custo_unitario || 0,
-      lote_id: it.lote_id || '',
-      ncm: it.ncm || '',
-      cest: it.cest || '',
-      cfop: it.cfop || '',
-      origem: it.origem || '0',
-      cst_icms: it.cst_icms || '',
-      csosn: it.csosn || '',
-      aliquota_icms: Number(it.aliquota_icms) || 0,
-      cst_pis: it.cst_pis || '',
-      cst_cofins: it.cst_cofins || '',
-      perfil_tributario_id: it.perfil_tributario_id || '',
-      ativo: true,
-      created_by: pb.authStore.record?.id || '',
-      updated_by: pb.authStore.record?.id || '',
+  // Gravar novos itens.
+  // Se falhar no meio em pedido NOVO, desfaz o que já foi gravado nesta tentativa
+  // (itens criados + cabeçalho) para não deixar pedido incompleto.
+  const itensGravadosNestaTentativa: string[] = []
+  try {
+    for (const it of itensCalculados) {
+      const itemData: Partial<VendaItem> = {
+        venda_id: vendaId,
+        item: it.item,
+        produto_id: it.produto_id,
+        descricao: it.descricao,
+        unidade: it.unidade || 'UN',
+        quantidade: it.quantidade,
+        preco_unitario: it.preco_unitario,
+        preco_tabela: it.preco_tabela,
+        desconto_percentual: it.desconto_percentual,
+        desconto_valor: it.desconto_valor,
+        acrescimo_valor: it.acrescimo_valor,
+        valor_total: it.valor_total,
+        custo_unitario: it.custo_unitario || 0,
+        lote_id: it.lote_id || '',
+        ncm: it.ncm || '',
+        cest: it.cest || '',
+        cfop: it.cfop || '',
+        origem: it.origem || '0',
+        cst_icms: it.cst_icms || '',
+        csosn: it.csosn || '',
+        aliquota_icms: Number(it.aliquota_icms) || 0,
+        cst_pis: it.cst_pis || '',
+        cst_cofins: it.cst_cofins || '',
+        perfil_tributario_id: it.perfil_tributario_id || '',
+        ativo: true,
+        created_by: pb.authStore.record?.id || '',
+        updated_by: pb.authStore.record?.id || '',
+      }
+      const itemCriado = await pb.collection('vendas_itens').create<VendaItem>(itemData, {
+        requestKey: null,
+      })
+      itensGravadosNestaTentativa.push(itemCriado.id)
     }
-    await pb.collection('vendas_itens').create<VendaItem>(itemData, { requestKey: null })
+  } catch (err: unknown) {
+    if (!vendaSalva.id) {
+      throw err
+    }
+    // Compensação: só para criação nova — em update de venda existente mantemos o comportamento anterior
+    const eraNovaVenda = !input.id
+    if (eraNovaVenda) {
+      // Apaga os itens criados nesta tentativa (e quaisquer itens remanescentes da venda)
+      try {
+        const itensVenda = await pb.collection('vendas_itens').getFullList<VendaItem>({
+          filter: `venda_id = '${vendaSalva.id}'`,
+          requestKey: null,
+        })
+        for (const it of itensVenda) {
+          await pb.collection('vendas_itens').delete(it.id, { requestKey: null })
+        }
+      } catch {
+        /* ignora falha na limpeza de itens */
+      }
+      // Apaga o cabeçalho
+      try {
+        await pb.collection('vendas').delete(vendaSalva.id, { requestKey: null })
+      } catch {
+        /* ignora falha na limpeza do cabeçalho */
+      }
+      throw err
+    }
+    throw err
   }
 
   return vendaSalva
