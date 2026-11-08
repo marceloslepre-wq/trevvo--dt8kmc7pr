@@ -729,10 +729,15 @@ routerAdd(
           const formaRec = itemPg.forma
           const pgInput = itemPg.input
           const valorBrutoPg = itemPg.valor
-          // Se for dinheiro e tiver troco, o valor líquido amortizado pode ser o valor nominal menos o troco
+          // Dinheiro com troco: entra na conta/gaveta o valor da venda (bruto menos troco),
+          // nunca o valor recebido. Se o PDV já informou o troco no pagamento, usa o troco
+          // informado e não subtrai de novo o troco global apurado.
+          const trocoInformadoPg = Number(pgInput.troco || 0)
+          const trocoParaSubtrair =
+            trocoInformadoPg > 0 ? Math.min(trocoInformadoPg, valorBrutoPg) : valorTrocoFinal
           const valorEfetivoPg =
             formaRec.getString('tipo') === 'Dinheiro' || formaRec.getString('codigo_tpag') === '01'
-              ? Math.max(0, valorBrutoPg - valorTrocoFinal)
+              ? Math.max(0, valorBrutoPg - trocoParaSubtrair)
               : valorBrutoPg
 
           const tipoForma = formaRec.getString('tipo') || ''
@@ -1048,12 +1053,12 @@ routerAdd(
             const movRec = new Record(movsFinCol)
             movRec.set('empresa_id', empresaId)
             movRec.set('conta_financeira_id', contaFinId)
-            movRec.set('tipo_movimento', 'Entrada')
+            movRec.set('tipo', 'Entrada')
             movRec.set('data_movimento', dataVenda)
             movRec.set('data_competencia', dataVenda)
             movRec.set('valor', valorEfetivoPg)
             movRec.set('plano_conta_id', planoVendasId)
-            movRec.set('origem', 'RECEBIMENTO_CLIENTE')
+            movRec.set('origem', 'RECEBIMENTO_TITULO')
             movRec.set('origem_id', bRec.id)
             movRec.set('historico', `Recebimento Venda #${docNumero} - ${descForma}`)
             movRec.set('documento_numero', String(docNumero))
@@ -1639,12 +1644,12 @@ routerAdd(
                 const movEst = new Record(movsFinCol)
                 movEst.set('empresa_id', empresaId)
                 movEst.set('conta_financeira_id', contaFinId)
-                movEst.set('tipo_movimento', 'Saída')
+                movEst.set('tipo', 'Saída')
                 movEst.set('data_movimento', new Date().toISOString().slice(0, 10))
                 movEst.set('data_competencia', new Date().toISOString().slice(0, 10))
                 movEst.set('valor', valorPago)
                 movEst.set('plano_conta_id', tit.getString('plano_conta_id') || '')
-                movEst.set('origem', 'ESTORNO')
+                movEst.set('origem', 'ESTORNO_RECEBIMENTO')
                 movEst.set('origem_id', bx.id)
                 movEst.set('historico', `Estorno recebimento Venda #${docNumero} (Cancelamento)`)
                 movEst.set('documento_numero', String(docNumero))
