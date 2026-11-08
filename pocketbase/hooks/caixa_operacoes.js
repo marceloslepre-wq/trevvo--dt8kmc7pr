@@ -303,6 +303,7 @@ routerAdd('POST', '/backend/v1/caixa/abrir', (c) => {
   }
 
   let sessaoCriada = null
+  let liberacaoOperador = 'e_caixa'
 
   try {
     $app.runInTransaction((txApp) => {
@@ -319,10 +320,25 @@ routerAdd('POST', '/backend/v1/caixa/abrir', (c) => {
       }
       const usuarioERP = users[0]
 
+      // Operador de caixa: e_caixa OU perfil administrador OU master.
+      // Usuário comum sem nenhuma das condições continua bloqueado.
       if (!usuarioERP.getBool('e_caixa')) {
-        throw new BadRequestError(
-          'Apenas usuários configurados com permissão de operador de caixa (e_caixa) podem abrir sessão.',
-        )
+        let ehAdminPerfil = false
+        const perfilIdOp = usuarioERP.getString('perfil_id')
+        if (perfilIdOp) {
+          try {
+            const perfilOp = txApp.findRecordById('perfis_acesso', perfilIdOp)
+            if (perfilOp && perfilOp.getBool('ativo') && perfilOp.getBool('administrador')) {
+              ehAdminPerfil = true
+            }
+          } catch (_) {}
+        }
+        if (!ehAdminPerfil && !eMaster(authRecord)) {
+          throw new BadRequestError(
+            'Apenas usuários configurados com permissão de operador de caixa (e_caixa) podem abrir sessão.',
+          )
+        }
+        liberacaoOperador = ehAdminPerfil ? 'perfil_administrador' : 'usuario_master'
       }
 
       // 2. Verificar se o operador já possui sessão aberta
@@ -533,10 +549,15 @@ routerAdd('POST', '/backend/v1/caixa/abrir', (c) => {
         data_abertura: agora,
         valor_abertura: fundoInformado,
         valor_suprimentos: suprimentoTransferenciaId ? diferenca : 0,
+        liberacao_operador: liberacaoOperador,
       }
     })
 
-    return c.json(200, { success: true, sessao: sessaoCriada })
+    return c.json(200, {
+      success: true,
+      sessao: sessaoCriada,
+      liberacao_operador: liberacaoOperador,
+    })
   } catch (err) {
     return c.json(err.status || 400, {
       message: err.message || 'Erro ao abrir caixa.',
