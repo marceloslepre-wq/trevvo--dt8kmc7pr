@@ -7,6 +7,8 @@ import { obterOuCriarConfigFinanceiraEmpresa } from '@/services/configFinanceira
 export interface ConfigVendasEmpresa {
   id: string
   empresa_id: string
+  permitir_estoque_negativo?: boolean
+  empresa_reposicao_id?: string
   cliente_padrao_id?: string
   permite_vender_sem_estoque?: boolean | null
   exige_cliente_identificado_acima_de?: number | null
@@ -30,6 +32,12 @@ export interface ConfigVendasEmpresa {
   created?: string
   updated?: string
   expand?: {
+    empresa_reposicao_id?: {
+      id: string
+      nome_fantasia?: string
+      razao_social?: string
+      codigo?: number
+    }
     cliente_padrao_id?: Cliente
     plano_vendas_id?: PlanoConta
     plano_taxas_cartao_id?: PlanoConta
@@ -114,6 +122,7 @@ export const CAMPOS_EXPAND_CONFIG_VENDAS =
 /**
  * Obtém ou inicializa a configuração de vendas da empresa ativa.
  * Padrões da especificação:
+ * - permitir_estoque_negativo / empresa_reposicao_id: desligado / vazio
  * - cliente_padrao_id: "Consumidor Final" (criado automaticamente se não existir)
  * - permite_vender_sem_estoque: null / false
  * - exige_cliente_identificado_acima_de: null
@@ -172,6 +181,8 @@ export async function obterOuCriarConfigVendasEmpresa(
 
   const payload: Record<string, unknown> = {
     empresa_id: empresaId,
+    permitir_estoque_negativo: false,
+    empresa_reposicao_id: null,
     cliente_padrao_id: clientePadraoId,
     permite_vender_sem_estoque: null,
     exige_cliente_identificado_acima_de: null,
@@ -227,6 +238,11 @@ export async function salvarConfigVendasEmpresa(
 
   const payload: Record<string, unknown> = {
     empresa_id: dados.empresa_id,
+    permitir_estoque_negativo:
+      dados.permitir_estoque_negativo !== undefined
+        ? Boolean(dados.permitir_estoque_negativo)
+        : false,
+    empresa_reposicao_id: dados.empresa_reposicao_id || null,
     cliente_padrao_id: dados.cliente_padrao_id || null,
     permite_vender_sem_estoque:
       dados.permite_vender_sem_estoque !== undefined ? dados.permite_vender_sem_estoque : null,

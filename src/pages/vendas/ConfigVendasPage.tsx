@@ -30,6 +30,7 @@ import {
 } from '@/services/configVendas'
 import { PlanoConta, listarTodasContasPlano } from '@/services/planoContas'
 import { Cliente, listarClientes } from '@/services/clientes'
+import { ReposicaoDiaConfigSection } from '@/components/vendas/ReposicaoDiaConfigSection'
 
 export const ConfigVendasPage: React.FC = () => {
   const { toast } = useToast()
@@ -682,6 +683,9 @@ export const ConfigVendasPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Seção: Reposição do dia */}
+      {podeEditar && <ReposicaoDiaConfigSection empresaId={empresaAtiva.id} />}
     </form>
   )
 }

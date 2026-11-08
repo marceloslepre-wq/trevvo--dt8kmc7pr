@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T13:43:07.616Z",
+  "generatedAt": "2026-11-08T14:20:55.558Z",
   "collections": [
     {
       "name": "users",
@@ -4419,6 +4419,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "tipo_reposicao_data",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -8258,6 +8264,19 @@
           "type": "number",
           "required": false,
           "system": false
+        },
+        {
+          "name": "permitir_estoque_negativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa_reposicao_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "empresas"
         }
       ],
       "indexes": [

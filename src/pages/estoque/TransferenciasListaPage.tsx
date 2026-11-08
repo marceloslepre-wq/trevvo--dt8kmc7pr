@@ -42,6 +42,8 @@ import { RomaneioTransferenciaModal } from '@/components/RomaneioTransferenciaMo
 import { ModalEmitirNFeTransferencia } from '@/components/fiscal/ModalEmitirNFeTransferencia'
 import { listarTodasConfigsEmissao, ConfigEmissaoFiscal } from '@/services/configEmissaoFiscal'
 import { DocumentoFiscalRegistro } from '@/services/documentosFiscais'
+import { gerarReposicaoDoDia } from '@/services/reposicaoDia'
+import { ModalReposicaoDia } from '@/components/estoque/ModalReposicaoDia'
 import pb from '@/lib/pocketbase/client'
 
 export const TransferenciasListaPage: React.FC = () => {
@@ -77,7 +79,36 @@ export const TransferenciasListaPage: React.FC = () => {
   )
   const [docsFiscaisMap, setDocsFiscaisMap] = useState<Record<string, DocumentoFiscalRegistro>>({})
 
+  // Reposição do dia
+  const [modalReposicaoAberto, setModalReposicaoAberto] = useState(false)
+  const [gerandoReposicao, setGerandoReposicao] = useState(false)
+  const [configVendasEmpresaAtual, setConfigVendasEmpresaAtual] = useState<{
+    permitir_estoque_negativo?: boolean
+    empresa_reposicao_id?: string
+  } | null>(null)
+
   // Carrega empresas do grupo para filtros e configs de emissão
+  // Config de vendas da empresa ativa: diz se há reposição configurada
+  useEffect(() => {
+    if (!empresaAtiva?.id) {
+      setConfigVendasEmpresaAtual(null)
+      return
+    }
+    pb.collection('config_vendas_empresa')
+      .getFirstListItem(`empresa_id = '${empresaAtiva.id}'`)
+      .then((cfg) => {
+        const rec = cfg as unknown as {
+          permitir_estoque_negativo?: string | boolean
+          empresa_reposicao_id?: string
+        }
+        setConfigVendasEmpresaAtual({
+          permitir_estoque_negativo: !!rec.permitir_estoque_negativo,
+          empresa_reposicao_id: rec.empresa_reposicao_id || '',
+        })
+      })
+      .catch(() => setConfigVendasEmpresaAtual(null))
+  }, [empresaAtiva?.id])
+
   useEffect(() => {
     listarEmpresasAtivas()
       .then((res) => setEmpresas(res))
@@ -159,6 +190,39 @@ export const TransferenciasListaPage: React.FC = () => {
   useEffect(() => {
     carregarDados()
   }, [carregarDados])
+
+  const handleGerarReposicao = async (data: string) => {
+    if (!empresaAtiva) return
+    setGerandoReposicao(true)
+    try {
+      const res = await gerarReposicaoDoDia(empresaAtiva.id, data)
+      if (res.sucesso && res.criada) {
+        toast({
+          title: 'Reposição do dia gerada',
+          description: `Transferência em rascunho criada com ${res.itens ?? 0} produto(s).`,
+        })
+        setModalReposicaoAberto(false)
+        carregarDados()
+        if (res.transferencia_id) navigate(`/estoque/transferencias/${res.transferencia_id}/editar`)
+      } else if (res.sucesso && !res.criada) {
+        toast({
+          title: 'Nada a repor',
+          description: res.message || 'Nenhuma venda finalizada encontrada nesta data.',
+        })
+        setModalReposicaoAberto(false)
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Reposição do dia',
+        description:
+          err?.message || 'Não foi possível gerar a reposição do dia para esta empresa/data.',
+        variant: 'destructive',
+      })
+      setModalReposicaoAberto(false)
+    } finally {
+      setGerandoReposicao(false)
+    }
+  }
 
   const abrirRomaneio = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -338,6 +402,17 @@ export const TransferenciasListaPage: React.FC = () => {
             <RefreshCw className={`h-4 w-4 mr-2 ${carregando ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
+          {pode('estoque', 'criar') && configVendasEmpresaAtual?.empresa_reposicao_id && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-1.5"
+              onClick={() => setModalReposicaoAberto(true)}
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+              Reposição do dia
+            </Button>
+          )}
           {pode('estoque', 'criar') && (
             <Button
               size="sm"
@@ -705,6 +780,22 @@ export const TransferenciasListaPage: React.FC = () => {
           }}
         />
       )}
+
+      {/* Modal Reposição do dia */}
+      <ModalReposicaoDia
+        aberto={modalReposicaoAberto}
+        onFechar={() => setModalReposicaoAberto(false)}
+        onConfirmar={handleGerarReposicao}
+        gerando={gerandoReposicao}
+        nomeEmpresaDestino={empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || ''}
+        nomeEmpresaOrigem={
+          empresas.find((e) => e.id === configVendasEmpresaAtual?.empresa_reposicao_id)
+            ?.nome_fantasia ||
+          empresas.find((e) => e.id === configVendasEmpresaAtual?.empresa_reposicao_id)
+            ?.razao_social ||
+          ''
+        }
+      />
     </div>
   )
 }

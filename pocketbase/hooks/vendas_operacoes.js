@@ -340,14 +340,22 @@ routerAdd(
           ? empresaRec.getBool('permite_estoque_negativo')
           : false
 
-        let permiteVenderSemEstoque = empresaPermiteNegativo
+        // config_vendas_empresa.permitir_estoque_negativo também autoriza vender
+        // sem saldo (Reposição do dia / config de vendas da empresa)
+        let cfgPermiteNegativo = false
+        try {
+          if (cfgVendas) cfgPermiteNegativo = cfgVendas.getBool('permitir_estoque_negativo')
+        } catch (_) {}
+
+        let permiteVenderSemEstoque = empresaPermiteNegativo || cfgPermiteNegativo
         if (
           cfgVendas &&
           cfgVendas.get('permite_vender_sem_estoque') !== null &&
           cfgVendas.get('permite_vender_sem_estoque') !== undefined &&
           cfgVendas.getString('permite_vender_sem_estoque') !== ''
         ) {
-          permiteVenderSemEstoque = cfgVendas.getBool('permite_vender_sem_estoque')
+          permiteVenderSemEstoque =
+            permiteVenderSemEstoque || cfgVendas.getBool('permite_vender_sem_estoque')
         }
 
         // Validação: caixa aberto quando for PDV (caixa_sessao_id)
