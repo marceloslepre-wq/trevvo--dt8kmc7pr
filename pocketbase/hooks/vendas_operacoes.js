@@ -790,6 +790,11 @@ routerAdd(
           vPagRec.set('venda_id', vendaId)
           vPagRec.set('forma_pagamento_id', formaRec.id)
           vPagRec.set('valor', valorBrutoPg)
+          // Troco gravado na linha do pagamento para o resumo da sessão calcular
+          // o líquido por forma (dinheiro conta valor da venda, não o recebido).
+          if (trocoParaSubtrair > 0) {
+            vPagRec.set('troco', trocoParaSubtrair)
+          }
           vPagRec.set('parcelas', pgInput.parcelas || 1)
           vPagRec.set('bandeira', pgInput.bandeira || '')
           vPagRec.set('nsu', pgInput.nsu || '')

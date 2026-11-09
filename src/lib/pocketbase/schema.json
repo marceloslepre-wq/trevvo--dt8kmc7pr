@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T19:35:46.898Z",
+  "generatedAt": "2026-11-09T19:57:37.382Z",
   "collections": [
     {
       "name": "users",
@@ -8596,6 +8596,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "valor_troco",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -9109,6 +9115,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "sessao_aberta_por",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

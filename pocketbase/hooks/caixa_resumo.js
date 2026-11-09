@@ -250,6 +250,9 @@ routerAdd(
 
       let totalDinheiroVendas = 0
 
+      // Troco da venda: prioriza o campo troco do próprio pagamento; se vier
+      // zerado (gravações antigas, ex. venda #7 da sessão #O4LYX7), usa o
+      // valor_troco do cabeçalho da venda para não somar o bruto recebido.
       for (let i = 0; i < idsFinalizadas.length; i++) {
         const vId = idsFinalizadas[i]
         let pags = []
@@ -263,11 +266,19 @@ routerAdd(
           continue
         }
 
+        let trocoVenda = 0
+        try {
+          const vRec = $app.findRecordById('vendas', vId)
+          trocoVenda = Number(vRec.getFloat('valor_troco') || 0)
+        } catch (_) {}
+
         for (let p = 0; p < pags.length; p++) {
           const pg = pags[p]
           const fId = pg.getString('forma_pagamento_id')
           const vBruto = Number(pg.getFloat('valor') || 0)
-          const vTroco = Number(pg.getFloat('troco') || 0)
+          const vTrocoPg = Number(pg.getFloat('troco') || 0)
+          // pagamento com troco próprio gravado vence; senão cai no troco da venda
+          const vTroco = vTrocoPg > 0 ? vTrocoPg : trocoVenda > 0 ? Math.min(trocoVenda, vBruto) : 0
           const vLiquido = Math.max(0, vBruto - vTroco)
 
           let entry = formasMap.get(fId)

@@ -448,6 +448,24 @@ export async function apurarDadosFechamento(
   let totalDinheiroVendas = 0
 
   if (idsFinalizadas.length > 0) {
+    // Troco por venda: prioriza o campo troco do pagamento; se vier zerado
+    // (gravações antigas, ex. venda #7 da sessão #O4LYX7), usa o valor_troco
+    // do cabeçalho da venda para não somar o bruto recebido.
+    const trocoPorVenda = new Map<string, number>()
+    try {
+      const vendasComTroco = await pb.collection('vendas').getFullList<{
+        id: string
+        valor_troco?: number
+      }>({
+        filter: `(${idsFinalizadas.map((id) => `id = '${id}'`).join(' || ')}) && valor_troco > 0`,
+      })
+      for (const v of vendasComTroco) {
+        trocoPorVenda.set(v.id, Number(v.valor_troco || 0))
+      }
+    } catch {
+      // sem fallback de troco por venda, segue só com o troco do pagamento
+    }
+
     // Buscar em lotes se necessário
     const filterIds = idsFinalizadas.map((id) => `venda_id = '${id}'`).join(' || ')
     const pagamentos = await pb.collection('vendas_pagamentos').getFullList<{
@@ -461,7 +479,14 @@ export async function apurarDadosFechamento(
 
     for (const p of pagamentos) {
       const vBruto = Number(p.valor || 0)
-      const vTroco = Number(p.troco || 0)
+      const vTrocoPg = Number(p.troco || 0)
+      // pagamento com troco próprio gravado vence; senão cai no troco da venda
+      const vTroco =
+        vTrocoPg > 0
+          ? vTrocoPg
+          : (trocoPorVenda.get(p.venda_id) || 0) > 0
+            ? Math.min(trocoPorVenda.get(p.venda_id) || 0, vBruto)
+            : 0
       const vLiquido = Math.max(0, vBruto - vTroco)
       const entry = formasMap.get(p.forma_pagamento_id)
       if (entry) {
