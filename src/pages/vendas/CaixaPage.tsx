@@ -2,7 +2,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useToast } from '@/hooks/use-toast'
-import { listarSessoesCaixa, obterSessaoAbertaOperador, type CaixaSessao } from '@/services/caixa'
+import {
+  listarSessoesCaixa,
+  obterSessaoAbertaOperador,
+  apurarVendasSessoes,
+  type CaixaSessao,
+  type VendasApuradasPorSessao,
+} from '@/services/caixa'
 import { listarTerminais, type Terminal } from '@/services/terminais'
 import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
@@ -54,6 +60,8 @@ export default function CaixaPage() {
   const [sessoes, setSessoes] = useState<CaixaSessao[]>([])
   const [carregando, setCarregando] = useState(false)
   const [sessaoAbertaMinha, setSessaoAbertaMinha] = useState<CaixaSessao | null>(null)
+  // Vendas apuradas por sessão (para sessões abertas, cujos campos gravados ainda são 0)
+  const [vendasApuradas, setVendasApuradas] = useState<Record<string, VendasApuradasPorSessao>>({})
 
   // Modais
   const [modalAbrirOpen, setModalAbrirOpen] = useState(false)
@@ -101,6 +109,16 @@ export default function CaixaPage() {
         dataFim: dataFimFiltro || undefined,
       })
       setSessoes(resp.items)
+
+      // Para sessões abertas, apura as vendas em tempo real (campos gravados
+      // só são preenchidos no fechamento)
+      const idsAbertas = resp.items.filter((s) => s.status === 'Aberto').map((s) => s.id)
+      if (idsAbertas.length > 0) {
+        const apurado = await apurarVendasSessoes(idsAbertas)
+        setVendasApuradas(apurado)
+      } else {
+        setVendasApuradas({})
+      }
 
       if (usuarioERP) {
         const minha = await obterSessaoAbertaOperador(empresaAtiva.id, usuarioERP.id)
@@ -445,6 +463,16 @@ export default function CaixaPage() {
                   const dif = Number(s.diferenca_dinheiro || 0)
                   const temDif = Math.abs(dif) >= 0.01
                   const ehMinha = usuarioERP && s.operador_id === usuarioERP.id
+                  // Sessão aberta: contagem apurada pelas vendas com caixa_sessao_id
+                  const apuracaoSessao = s.status === 'Aberto' ? vendasApuradas[s.id] : undefined
+                  const qtdVendasColuna =
+                    s.status === 'Aberto'
+                      ? (apuracaoSessao?.quantidade ?? s.quantidade_vendas ?? 0)
+                      : (s.quantidade_vendas ?? 0)
+                  const valorVendasColuna =
+                    s.status === 'Aberto'
+                      ? (apuracaoSessao?.valor_total ?? Number(s.valor_vendas || 0))
+                      : Number(s.valor_vendas || 0)
 
                   return (
                     <tr
@@ -509,10 +537,10 @@ export default function CaixaPage() {
 
                       <td className="py-2.5 px-3 text-right">
                         <span className="font-mono font-semibold text-slate-900 block">
-                          R$ {Number(s.valor_vendas || 0).toFixed(2)}
+                          R$ {Number(valorVendasColuna || 0).toFixed(2)}
                         </span>
                         <span className="text-[10px] text-slate-400 block">
-                          {s.quantidade_vendas || 0} venda(s)
+                          {qtdVendasColuna || 0} venda(s)
                         </span>
                       </td>
 

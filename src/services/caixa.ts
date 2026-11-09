@@ -302,6 +302,78 @@ export interface ResumoApuracaoFechamento {
   }>
 }
 
+/**
+ * Apuração em TEMPO REAL da sessão, reutilizando o endpoint backend
+ * (/backend/v1/caixa/resumo, em pocketbase/hooks/caixa_resumo.js) para não
+ * duplicar a regra. Em caso de falha da rota, cai na apuração local.
+ */
+export async function apurarSessaoTempoReal(
+  sessaoId: string,
+  fundoInicialFallback = 0,
+): Promise<ResumoApuracaoFechamento> {
+  try {
+    const json = await pb.send<{
+      success: boolean
+      message?: string
+      resumo?: ResumoApuracaoFechamento
+    }>('/backend/v1/caixa/resumo', {
+      method: 'POST',
+      body: { caixa_sessao_id: sessaoId },
+    })
+    if (json?.success && json.resumo) {
+      return json.resumo
+    }
+    throw new Error(json?.message || 'Falha ao apurar resumo da sessão.')
+  } catch {
+    // Fallback: apuração local (mesma regra do endpoint)
+    return apurarDadosFechamento(sessaoId, fundoInicialFallback)
+  }
+}
+
+/**
+ * Apuração AGRUPADA (uma única consulta) das vendas finalizadas por sessão,
+ * usada na lista de sessões: enquanto a sessão está aberta, os campos
+ * gravados (valor_vendas/quantidade_vendas) ainda são 0 — conta-se então
+ * pelas vendas com caixa_sessao_id.
+ */
+export interface VendasApuradasPorSessao {
+  quantidade: number
+  valor_total: number
+}
+
+export async function apurarVendasSessoes(
+  sessaoIds: string[],
+): Promise<Record<string, VendasApuradasPorSessao>> {
+  const mapa: Record<string, VendasApuradasPorSessao> = {}
+  const validos = sessaoIds.filter(Boolean)
+  if (validos.length === 0) return mapa
+  for (const id of validos) {
+    mapa[id] = { quantidade: 0, valor_total: 0 }
+  }
+  try {
+    const filtro = `(${validos
+      .map((id) => `caixa_sessao_id = '${id}'`)
+      .join(' || ')}) && ativo = true && status = 'Finalizada'`
+    const vendas = await pb.collection('vendas').getFullList<{
+      id: string
+      caixa_sessao_id: string
+      valor_total: number
+    }>({
+      filter: filtro,
+    })
+    for (const v of vendas) {
+      const entry = mapa[v.caixa_sessao_id]
+      if (entry) {
+        entry.quantidade++
+        entry.valor_total += Number(v.valor_total || 0)
+      }
+    }
+  } catch {
+    // silencioso: a lista mostra os valores gravados
+  }
+  return mapa
+}
+
 export async function apurarDadosFechamento(
   sessaoId: string,
   fundoInicial: number,

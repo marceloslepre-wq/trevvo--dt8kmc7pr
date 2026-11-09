@@ -9,11 +9,13 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { FileDown, Info } from 'lucide-react'
+import { FileDown, Info, Loader2 } from 'lucide-react'
 import {
   listarMovimentosSessao,
+  apurarSessaoTempoReal,
   type CaixaSessao,
   type CaixaSessaoMovimento,
+  type ResumoApuracaoFechamento,
   type TotalPorForma,
 } from '@/services/caixa'
 import { imprimirRelatorioFechamentoPdf } from '@/services/caixaImpressao'
@@ -37,31 +39,53 @@ export function ModalDetalhesSessao({
 }: ModalDetalhesSessaoProps) {
   const [movimentos, setMovimentos] = useState<CaixaSessaoMovimento[]>([])
   const [carregando, setCarregando] = useState(false)
+  const [apurado, setApurado] = useState<ResumoApuracaoFechamento | null>(null)
+
+  const aberta = sessao?.status === 'Aberto'
 
   useEffect(() => {
     if (!open || !sessao) {
       setMovimentos([])
+      setApurado(null)
       return
     }
 
-    async function carregarMovs() {
+    async function carregar() {
       if (!sessao) return
       setCarregando(true)
       try {
         const list = await listarMovimentosSessao(sessao.id)
         setMovimentos(list)
+        if (sessao.status === 'Aberto') {
+          const resumo = await apurarSessaoTempoReal(sessao.id, Number(sessao.valor_abertura || 0))
+          setApurado(resumo)
+        } else {
+          setApurado(null)
+        }
       } finally {
         setCarregando(false)
       }
     }
 
-    carregarMovs()
+    carregar()
   }, [open, sessao])
 
   if (!sessao) return null
 
   let formasArr: TotalPorForma[] = []
-  if (Array.isArray(sessao.totais_por_forma)) {
+  if (aberta && apurado) {
+    // Sessão aberta: usa a apuração em tempo real (vendas + pagamentos)
+    formasArr = apurado.formas.map((f) => ({
+      forma_id: f.forma_id,
+      forma_descricao: f.forma_descricao,
+      codigo_tpag: f.codigo_tpag,
+      tipo: f.tipo,
+      quantidade_vendas: f.quantidade_vendas,
+      valor_esperado: f.valor_esperado,
+      valor_informado: 0,
+      diferenca: 0,
+    }))
+  } else if (Array.isArray(sessao.totais_por_forma)) {
     formasArr = sessao.totais_por_forma
   } else if (typeof sessao.totais_por_forma === 'string') {
     try {
@@ -71,8 +95,25 @@ export function ModalDetalhesSessao({
     }
   }
 
-  const difDinheiro = Number(sessao.diferenca_dinheiro || 0)
+  // Diferença em dinheiro: na sessão aberta ainda não há conferência
+  const difDinheiro = aberta ? 0 : Number(sessao.diferenca_dinheiro || 0)
   const temDiferenca = Math.abs(difDinheiro) >= 0.01
+
+  // Números exibidos: na sessão aberta vêm da apuração em tempo real;
+  // na fechada, dos campos gravados no fechamento
+  const valorVendasExibido = aberta
+    ? Number(apurado?.total_vendas ?? 0)
+    : Number(sessao.valor_vendas || 0)
+  const qtdVendasExibido = aberta
+    ? Number(apurado?.quantidade_vendas ?? 0)
+    : Number(sessao.quantidade_vendas || 0)
+  const suprimentosExibido = aberta
+    ? Number(apurado?.total_suprimentos ?? 0)
+    : Number(sessao.valor_suprimentos || 0)
+  const sangriasExibido = aberta
+    ? Number(apurado?.total_sangrias ?? 0)
+    : Number(sessao.valor_sangrias || 0)
+  const esperadoDinheiroExibido = aberta ? Number(apurado?.esperado_dinheiro ?? 0) : null
 
   function handleImprimirPdf() {
     if (!sessao) return
@@ -159,45 +200,73 @@ export function ModalDetalhesSessao({
             <div className="p-2.5 bg-white border rounded-lg">
               <span className="text-[10px] text-slate-500 uppercase block">Vendas Finalizadas</span>
               <span className="text-sm font-mono font-bold text-slate-900 block mt-0.5">
-                R$ {Number(sessao.valor_vendas || 0).toFixed(2)}
+                {aberta && !apurado ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                ) : (
+                  `R$ ${valorVendasExibido.toFixed(2)}`
+                )}
               </span>
-              <span className="text-[10px] text-slate-400">
-                {sessao.quantidade_vendas || 0} venda(s)
-              </span>
+              <span className="text-[10px] text-slate-400">{qtdVendasExibido} venda(s)</span>
             </div>
 
             <div className="p-2.5 bg-white border rounded-lg">
               <span className="text-[10px] text-slate-500 uppercase block">Suprimentos</span>
               <span className="text-sm font-mono font-bold text-emerald-700 block mt-0.5">
-                + R$ {Number(sessao.valor_suprimentos || 0).toFixed(2)}
+                + R$ {suprimentosExibido.toFixed(2)}
               </span>
             </div>
 
             <div className="p-2.5 bg-white border rounded-lg">
               <span className="text-[10px] text-slate-500 uppercase block">Sangrias</span>
               <span className="text-sm font-mono font-bold text-rose-700 block mt-0.5">
-                - R$ {Number(sessao.valor_sangrias || 0).toFixed(2)}
+                - R$ {sangriasExibido.toFixed(2)}
               </span>
             </div>
 
             <div
-              className={`p-2.5 border rounded-lg ${
-                !temDiferenca
-                  ? 'bg-emerald-50/50 border-emerald-200 text-emerald-900'
-                  : difDinheiro < 0
-                    ? 'bg-rose-50/50 border-rose-200 text-rose-900'
-                    : 'bg-blue-50/50 border-blue-200 text-blue-900'
-              }`}
+              className={`p-2.5 border rounded-lg ${aberta ? 'bg-slate-50 border-slate-200 text-slate-700' : !temDiferenca ? 'bg-emerald-50/50 border-emerald-200 text-emerald-900' : difDinheiro < 0 ? 'bg-rose-50/50 border-rose-200 text-rose-900' : 'bg-blue-50/50 border-blue-200 text-blue-900'}`}
             >
-              <span className="text-[10px] uppercase font-semibold block">
-                Diferença em Dinheiro
-              </span>
-              <span className="text-sm font-mono font-bold block mt-0.5">
-                R$ {Math.abs(difDinheiro).toFixed(2)}{' '}
-                {difDinheiro < 0 ? '(- falta)' : difDinheiro > 0 ? '(+ sobra)' : '(exato)'}
-              </span>
+              {aberta ? (
+                <>
+                  <span className="text-[10px] uppercase font-semibold block">
+                    Dinheiro Esperado na Gaveta
+                  </span>
+                  <span className="text-sm font-mono font-bold block mt-0.5">
+                    {esperadoDinheiroExibido === null ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                    ) : (
+                      `R$ ${esperadoDinheiroExibido.toFixed(2)}`
+                    )}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    fundo + dinheiro vendido + suprimentos − sangrias
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-[10px] uppercase font-semibold block">
+                    Diferença em Dinheiro
+                  </span>
+                  <span className="text-sm font-mono font-bold block mt-0.5">
+                    R$ {Math.abs(difDinheiro).toFixed(2)}{' '}
+                    {difDinheiro < 0 ? '(- falta)' : difDinheiro > 0 ? '(+ sobra)' : '(exato)'}
+                  </span>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Diferença em Dinheiro (sessão aberta): aguardando conferência */}
+          {aberta && (
+            <div className="flex items-center justify-between p-2.5 rounded-lg border bg-slate-50 border-slate-200">
+              <span className="text-[10px] uppercase font-semibold text-slate-500">
+                Diferença em Dinheiro
+              </span>
+              <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-300">
+                Aguardando conferência
+              </Badge>
+            </div>
+          )}
 
           {/* Totais por Forma de Pagamento */}
           {formasArr.length > 0 && (
@@ -211,7 +280,7 @@ export function ModalDetalhesSessao({
                     <th className="py-1.5 px-3 text-left">Forma</th>
                     <th className="py-1.5 px-3 text-center">Vendas</th>
                     <th className="py-1.5 px-3 text-right">Valor</th>
-                    {detalheFechada && (
+                    {!aberta && (
                       <>
                         <th className="py-1.5 px-3 text-right">Valor Informado</th>
                         <th className="py-1.5 px-3 text-right">Diferença</th>
@@ -229,7 +298,7 @@ export function ModalDetalhesSessao({
                       <td className="py-1.5 px-3 text-right font-mono">
                         R$ {(f.valor_esperado || 0).toFixed(2)}
                       </td>
-                      {detalheFechada && (
+                      {!aberta && (
                         <>
                           <td className="py-1.5 px-3 text-right font-mono">
                             R$ {(f.valor_informado || 0).toFixed(2)}
