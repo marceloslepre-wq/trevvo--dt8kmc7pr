@@ -221,8 +221,6 @@ routerAdd('POST', '/backend/v1/transferencias/reposicao-do-dia', (c) => {
     // ------------------------------------------------------------------
     // Duplicidade: já existe reposição para empresa destino + data?
     // ------------------------------------------------------------------
-    const dtInicio = data + ' 00:00:00.000Z'
-    const dtFim = data + ' 23:59:59.999Z'
     const obsMarker = '[REPOSICAO_DIA data=' + data + ']'
     try {
       const duplicadas = $app.findRecordsByFilter(
@@ -246,21 +244,28 @@ routerAdd('POST', '/backend/v1/transferencias/reposicao-do-dia', (c) => {
     } catch (_) {}
 
     // ------------------------------------------------------------------
-    // Vendas finalizadas da empresa na data (exclui canceladas e devoluções)
+    // Vendas finalizadas da empresa (exclui canceladas e devoluções).
+    // O filtro NÃO usa data: data_emissao é gravado como data local
+    // ('YYYY-MM-DD') e comparações de data/hora no filtro não casam
+    // (mesma família do caso do valor 0, v0.0.263). A checagem da data
+    // é feita em JavaScript, no laço abaixo.
     // ------------------------------------------------------------------
-    const vendas = $app.findRecordsByFilter(
+    const vendasBrutas = $app.findRecordsByFilter(
       'vendas',
       "empresa_id = '" +
         empresaId +
-        "' && status = 'Finalizada' && tipo != 'Devolução' && data_emissao >= '" +
-        dtInicio +
-        "' && data_emissao <= '" +
-        dtFim +
-        "' && ativo != false",
+        "' && status = 'Finalizada' && tipo != 'Devolução' && ativo != false",
       '',
       5000,
       0,
     )
+    const vendas = []
+    for (let v = 0; v < vendasBrutas.length; v++) {
+      // Descarta em JS: devolução (cobertura extra do filtro) e data != dia pedido
+      if (vendasBrutas[v].getString('tipo') === 'Devolução') continue
+      if (vendasBrutas[v].getString('data_emissao') !== data) continue
+      vendas.push(vendasBrutas[v])
+    }
 
     if (vendas.length === 0) {
       return c.json(200, {
