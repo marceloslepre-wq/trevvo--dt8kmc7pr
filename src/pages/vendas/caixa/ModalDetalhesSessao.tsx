@@ -210,9 +210,13 @@ export function ModalDetalhesSessao({
                   <tr>
                     <th className="py-1.5 px-3 text-left">Forma</th>
                     <th className="py-1.5 px-3 text-center">Vendas</th>
-                    <th className="py-1.5 px-3 text-right">Valor Esperado</th>
-                    <th className="py-1.5 px-3 text-right">Valor Informado</th>
-                    <th className="py-1.5 px-3 text-right">Diferença</th>
+                    <th className="py-1.5 px-3 text-right">Valor</th>
+                    {detalheFechada && (
+                      <>
+                        <th className="py-1.5 px-3 text-right">Valor Informado</th>
+                        <th className="py-1.5 px-3 text-right">Diferença</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -225,20 +229,24 @@ export function ModalDetalhesSessao({
                       <td className="py-1.5 px-3 text-right font-mono">
                         R$ {(f.valor_esperado || 0).toFixed(2)}
                       </td>
-                      <td className="py-1.5 px-3 text-right font-mono">
-                        R$ {(f.valor_informado || 0).toFixed(2)}
-                      </td>
-                      <td
-                        className={`py-1.5 px-3 text-right font-mono font-semibold ${
-                          Math.abs(f.diferenca || 0) < 0.01
-                            ? 'text-emerald-700'
-                            : (f.diferenca || 0) < 0
-                              ? 'text-rose-700'
-                              : 'text-blue-700'
-                        }`}
-                      >
-                        R$ {(f.diferenca || 0).toFixed(2)}
-                      </td>
+                      {detalheFechada && (
+                        <>
+                          <td className="py-1.5 px-3 text-right font-mono">
+                            R$ {(f.valor_informado || 0).toFixed(2)}
+                          </td>
+                          <td
+                            className={`py-1.5 px-3 text-right font-mono font-semibold ${
+                              Math.abs(f.diferenca || 0) < 0.01
+                                ? 'text-emerald-700'
+                                : (f.diferenca || 0) < 0
+                                  ? 'text-rose-700'
+                                  : 'text-blue-700'
+                            }`}
+                          >
+                            R$ {(f.diferenca || 0).toFixed(2)}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>

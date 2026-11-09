@@ -1235,11 +1235,17 @@ routerAdd(
         }
 
         // 6. Atualizar cabeçalho da venda para Finalizada
+        // Garante que o caixa_sessao_id validado acima fica gravado na venda
+        // (o PDV normalmente já envia o campo na criação, mas a gravação aqui
+        // cobre criações por outros caminhos e regrava se faltar).
         const dataFinalizacao = new Date().toISOString()
         venda.set('status', 'Finalizada')
         venda.set('data_finalizacao', dataFinalizacao)
         venda.set('custo_total', custoTotalAcumulado)
         venda.set('valor_troco', valorTrocoFinal)
+        if (caixaSessaoId && venda.getString('caixa_sessao_id') !== caixaSessaoId) {
+          venda.set('caixa_sessao_id', caixaSessaoId)
+        }
         venda.set('updated_by', userId)
         txApp.save(venda)
 

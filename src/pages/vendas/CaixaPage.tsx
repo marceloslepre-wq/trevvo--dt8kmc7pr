@@ -527,8 +527,10 @@ export default function CaixaPage() {
 
                       {/* Destaque para diferenças diferentes de zero */}
                       <td className="py-2.5 px-3 text-right">
-                        {s.status === 'Aberto' ? (
-                          <span className="text-slate-400 italic">Em turno</span>
+                        {s.status === 'Aberto' || !s.data_conferencia ? (
+                          <span className="text-slate-400 italic">
+                            {s.status === 'Aberto' ? 'Em turno' : 'Aguardando conferência'}
+                          </span>
                         ) : (
                           <span
                             className={`font-mono font-bold block ${
