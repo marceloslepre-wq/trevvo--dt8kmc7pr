@@ -50,40 +50,34 @@ export interface ConfigVendasEmpresa {
  * Garante ou cria o "Consumidor Final" no cadastro de clientes.
  * Regra: pessoa Física, sem CPF, indicador_ie '9', consumidor_final true.
  */
-export async function obterOuCriarConsumidorFinal(): Promise<Cliente> {
-  // 1. Tenta achar cliente com consumidor_final = true ou nome "Consumidor Final"
+export async function obterOuCriarConsumidorFinal(assinanteId?: string): Promise<Cliente> {
+  // 1. Tenta achar cliente do assinante com consumidor_final = true ou nome "Consumidor Final"
+  const conds = [
+    'ativo = true',
+    '(consumidor_final = true || nome_razao_social = "Consumidor Final")',
+  ]
+  if (assinanteId) {
+    conds.unshift(`assinante_id = '${assinanteId}'`)
+  }
   try {
     const achado = await pb
       .collection('clientes')
-      .getFirstListItem<Cliente>(
-        '(consumidor_final = true || nome_razao_social = "Consumidor Final") && ativo = true',
-      )
+      .getFirstListItem<Cliente>(conds.join(' && '), { sort: '-created' })
     if (achado) return achado
   } catch {
     // cria novo
   }
 
-  // Busca próximo código numérico
-  let proximoCodigo = 1
-  try {
-    const ultimos = await pb.collection('clientes').getList<Cliente>(1, 1, {
-      sort: '-codigo',
-    })
-    if (ultimos.items.length > 0 && ultimos.items[0].codigo) {
-      proximoCodigo = Number(ultimos.items[0].codigo) + 1
-    }
-  } catch {
-    // ignora
-  }
-
   const payload: Record<string, unknown> = {
-    codigo: proximoCodigo,
+    // código gerado pelo hook backend (numeracao_cadastros, sequência por assinante)
+    codigo: null,
     tipo_pessoa: 'Física',
     nome_razao_social: 'Consumidor Final',
     nome_fantasia: 'Consumidor Final',
     indicador_ie: '9',
     consumidor_final: true,
     ativo: true,
+    assinante_id: assinanteId || null,
     created_by: pb.authStore.record?.id || null,
   }
 
@@ -120,6 +114,19 @@ export const CAMPOS_EXPAND_CONFIG_VENDAS =
   'cliente_padrao_id,plano_vendas_id,plano_taxas_cartao_id,plano_quebra_caixa_id,plano_sobra_caixa_id'
 
 /**
+ * Grava o cliente padrão (Consumidor Final) na config de vendas da empresa.
+ */
+export async function definirClientePadraoConfigVendas(
+  configId: string,
+  clienteId: string,
+): Promise<void> {
+  if (!configId || !clienteId) return
+  await pb
+    .collection('config_vendas_empresa')
+    .update(configId, { cliente_padrao_id: clienteId }, { requestKey: null })
+}
+
+/**
  * Obtém ou inicializa a configuração de vendas da empresa ativa.
  * Padrões da especificação:
  * - permitir_estoque_negativo / empresa_reposicao_id: desligado / vazio
@@ -148,15 +155,29 @@ export async function obterOuCriarConfigVendasEmpresa(
       .getFirstListItem<ConfigVendasEmpresa>(`empresa_id = '${empresaId}'`, {
         expand: CAMPOS_EXPAND_CONFIG_VENDAS,
       })
+    // Garante o cliente padrão "Consumidor Final" do assinante:
+    // config antiga pode ter sido criada sem cliente_padrao_id.
+    if (!existente.cliente_padrao_id) {
+      try {
+        const assinanteId =
+          (pb.authStore.record as { assinante_id?: string } | null)?.assinante_id || null
+        const consumidor = await obterOuCriarConsumidorFinal(assinanteId || undefined)
+        await definirClientePadraoConfigVendas(existente.id, consumidor.id)
+        return { ...existente, cliente_padrao_id: consumidor.id }
+      } catch {
+        return existente
+      }
+    }
     return existente
   } catch {
     // cria novo registro com padrões
   }
 
-  // 1. Cliente padrão
+  // 1. Cliente padrão (Consumidor Final do assinante; criado na primeira venda se faltar)
   let clientePadraoId: string | null = null
   try {
-    const consumidor = await obterOuCriarConsumidorFinal()
+    const assinanteId = pb.authStore.record?.assinante_id || null
+    const consumidor = await obterOuCriarConsumidorFinal(assinanteId || undefined)
     clientePadraoId = consumidor.id
   } catch {
     // ignora

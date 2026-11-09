@@ -61,7 +61,18 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
         filter,
         sort: 'nome_razao_social',
       })
-      setClientes(res.items)
+      // Esconde da lista o cadastro genérico "Consumidor Final" (sem documento):
+      // ele já é representado pela opção "Consumidor Final (Padrão Balcão)" acima,
+      // que resolve para esse mesmo cadastro ao finalizar.
+      setClientes(
+        res.items.filter(
+          (c) =>
+            !(
+              c.consumidor_final ||
+              (c.nome_razao_social?.trim().toLowerCase() === 'consumidor final' && !c.cpf_cnpj)
+            ),
+        ),
+      )
     } catch (err) {
       console.warn('Erro ao carregar clientes:', err)
     } finally {

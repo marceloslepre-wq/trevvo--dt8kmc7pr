@@ -9,7 +9,11 @@ import { useToast } from '@/hooks/use-toast'
 import { obterSessaoAbertaOperador, CaixaSessao } from '@/services/caixa'
 import { resolverOperadorErpId } from '@/services/operadorErp'
 import { listarTerminais, PdvTerminal } from '@/services/terminais'
-import { obterOuCriarConfigVendasEmpresa, ConfigVendasEmpresa } from '@/services/configVendas'
+import {
+  obterOuCriarConfigVendasEmpresa,
+  obterOuCriarConsumidorFinal,
+  ConfigVendasEmpresa,
+} from '@/services/configVendas'
 import { listarFormasPagamento, FormaPagamento } from '@/services/formasPagamento'
 import { listarContasFinanceiras, ContaFinanceira } from '@/services/contasFinanceiras'
 import { listarTodasCondicoesAtivas, CondicaoPagamento } from '@/services/condicoesPagamento'
@@ -731,7 +735,18 @@ export const PdvPage: React.FC = () => {
     }
 
     // 1. Cria a venda pelo serviço central salvarVenda com payload PLANO
-    const clienteIdFinal = cliente?.id || configVendas?.cliente_padrao_id || ''
+    // Cliente: o escolhido, senão o "Consumidor Final" do assinante (config),
+    // senão resolve/cria na hora (evita o erro "Cliente é obrigatório").
+    let clienteIdFinal = cliente?.id || configVendas?.cliente_padrao_id || ''
+    if (!clienteIdFinal) {
+      try {
+        const consumidor = await obterOuCriarConsumidorFinal(usuarioERP?.assinante_id || undefined)
+        clienteIdFinal = consumidor.id
+        setConfigVendas((cfg) => (cfg ? { ...cfg, cliente_padrao_id: consumidor.id } : cfg))
+      } catch (errCons) {
+        console.warn('Não foi possível resolver o Consumidor Final do assinante:', errCons)
+      }
+    }
     if (!clienteIdFinal) {
       throw new Error('Cliente é obrigatório para registrar a venda.')
     }
