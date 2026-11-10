@@ -106,6 +106,7 @@ export const PdvPage: React.FC = () => {
     vendaId: string
     numeroVenda: number
     motivo: string
+    erroInterno?: boolean
   } | null>(null)
   const [reemitindoNfce, setReemitindoNfce] = useState(false)
 
@@ -827,11 +828,12 @@ export const PdvPage: React.FC = () => {
               description: `Nota nº ${respNfce.numero || ''} autorizada com sucesso na SEFAZ.`,
             })
           } else {
-            // Rejeição ou erro na Focus/SEFAZ
+            // Rejeição da SEFAZ ou erro interno do ERP (o hook distingue em erro_interno)
             setDadosRejeicaoNfce({
               vendaId: vendaSalva.id,
               numeroVenda: vendaFinalizada.numero || 0,
               motivo: respNfce.message || 'Rejeição na SEFAZ',
+              erroInterno: respNfce.erro_interno === true,
             })
             setModalRejeicaoNfceAberto(true)
           }
@@ -842,6 +844,7 @@ export const PdvPage: React.FC = () => {
             vendaId: vendaSalva.id,
             numeroVenda: vendaFinalizada.numero || 0,
             motivo: msg,
+            erroInterno: true,
           })
           setModalRejeicaoNfceAberto(true)
         }
@@ -1663,11 +1666,25 @@ export const PdvPage: React.FC = () => {
                 <AlertTriangle size={26} />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold text-amber-300">NFC-e Rejeitada pela SEFAZ</h3>
-                <p className="text-xs text-slate-300 mt-1">
-                  A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com sucesso no caixa, mas a
-                  emissão da nota fiscal foi rejeitada.
-                </p>
+                {dadosRejeicaoNfce.erroInterno ? (
+                  <>
+                    <h3 className="text-base font-bold text-red-300">Erro interno do ERP</h3>
+                    <p className="text-xs text-slate-300 mt-1">
+                      A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com sucesso no caixa,
+                      mas houve uma falha interna na emissão da nota (não chegou à SEFAZ).
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-base font-bold text-amber-300">
+                      NFC-e Rejeitada pela SEFAZ
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1">
+                      A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com sucesso no caixa,
+                      mas a emissão da nota fiscal foi rejeitada pela SEFAZ.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1719,17 +1736,25 @@ export const PdvPage: React.FC = () => {
                       focarLeitor()
                     } else {
                       setDadosRejeicaoNfce((prev) =>
-                        prev ? { ...prev, motivo: resp.message || 'Falha na reemissão' } : null,
+                        prev
+                          ? {
+                              ...prev,
+                              motivo: resp.message || 'Falha na reemissão',
+                              erroInterno: resp.erro_interno === true,
+                            }
+                          : null,
                       )
                       toast({
-                        title: 'Tentativa Rejeitada',
+                        title: resp.erro_interno ? 'Erro interno do ERP' : 'Tentativa Rejeitada',
                         description: resp.message || 'Verifique o cadastro fiscal.',
                         variant: 'destructive',
                       })
                     }
                   } catch (errRetry: any) {
                     const msg = errRetry?.data?.message || errRetry?.message || 'Falha na conexão.'
-                    setDadosRejeicaoNfce((prev) => (prev ? { ...prev, motivo: msg } : null))
+                    setDadosRejeicaoNfce((prev) =>
+                      prev ? { ...prev, motivo: msg, erroInterno: true } : null,
+                    )
                     toast({
                       title: 'Erro ao tentar de novo',
                       description: msg,

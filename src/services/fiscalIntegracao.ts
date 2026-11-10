@@ -46,6 +46,8 @@ export interface BaixarArquivoFiscalResponse {
 export interface EmissaoNFCeVendaResponse {
   sucesso: boolean
   status?: 'Autorizada' | 'Rejeitada'
+  /** true quando a falha é do ERP (antes da SEFAZ); false/ausente = rejeição da SEFAZ */
+  erro_interno?: boolean
   contingencia?: boolean
   documento_id?: string
   numero?: number
