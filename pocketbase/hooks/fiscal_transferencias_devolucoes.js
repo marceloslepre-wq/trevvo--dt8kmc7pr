@@ -1543,434 +1543,722 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
-    const { exigirEmpresaDoUsuario } = require(`${__hooks}/tenancy.js`)
-
-    const encodeBase64 = (str) => {
-      if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+    function processarEmissaoTransferencia() {
+      // Funções de tenancy copiadas localmente dentro do callback (evita require(`${__hooks}/tenancy.js`) que causa Invalid module no JSVM)
+      function eMasterLocal(auth) {
+        if (!auth) return false
         try {
-          return Buffer.from(str, 'utf8').toString('base64')
-        } catch (_) {}
-      }
-      if (typeof btoa === 'function') {
-        try {
-          return btoa(str)
-        } catch (_) {}
-      }
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let out = ''
-      let i = 0
-      const len = str.length
-      while (i < len) {
-        const c1 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt((c1 & 0x3) << 4)
-          out += '=='
-          break
+          const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+          return !!(userRec && userRec.getString('tipo') === 'master')
+        } catch (_) {
+          return false
         }
-        const c2 = str.charCodeAt(i++) & 0xff
-        if (i === len) {
-          out += chars.charAt(c1 >> 2)
-          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-          out += chars.charAt((c2 & 0x0f) << 2)
-          out += '='
-          break
-        }
-        const c3 = str.charCodeAt(i++) & 0xff
-        out += chars.charAt(c1 >> 2)
-        out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
-        out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
-        out += chars.charAt(c3 & 0x3f)
-      }
-      return out
-    }
-
-    const userId = authRecord.id
-    const data = c.requestInfo().body || {}
-    const transferenciaId = data.transferencia_id
-    const modalidadeFrete = data.modalidade_frete !== undefined ? Number(data.modalidade_frete) : 9
-
-    if (!transferenciaId) {
-      return c.json(400, { sucesso: false, message: 'transferencia_id é obrigatório.' })
-    }
-
-    let transf = null
-    try {
-      transf = $app.findRecordById('transferencias', transferenciaId)
-    } catch (_) {}
-
-    if (!transf || !transf.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Transferência não encontrada ou inativa.' })
-    }
-
-    if (transf.getString('status') !== 'Enviada' && transf.getString('status') !== 'Recebida') {
-      return c.json(400, {
-        sucesso: false,
-        message:
-          'A emissão de NF-e só é permitida para transferências com status "Enviada" ou "Recebida".',
-      })
-    }
-
-    // Já possui nota autorizada?
-    if (transf.getString('nota_fiscal_chave')) {
-      return c.json(200, {
-        sucesso: true,
-        ja_autorizada: true,
-        chave: transf.getString('nota_fiscal_chave'),
-        numero: transf.getString('nota_fiscal_numero'),
-        message: 'Esta transferência já possui NF-e vinculada.',
-      })
-    }
-
-    const empresaOrigemId = transf.getString('empresa_origem_id')
-    try {
-      exigirEmpresaDoUsuario(authRecord, empresaOrigemId)
-    } catch (errEmp) {
-      return c.json(403, {
-        sucesso: false,
-        message: errEmp.message || 'Acesso negado à empresa de origem.',
-      })
-    }
-    const empresaDestinoId = transf.getString('empresa_destino_id')
-
-    // Carregar empresas
-    const empOrigem = $app.findRecordById('empresas', empresaOrigemId)
-    const empDestino = $app.findRecordById('empresas', empresaDestinoId)
-
-    if (!empOrigem || !empOrigem.getBool('ativo') || !empDestino || !empDestino.getBool('ativo')) {
-      return c.json(400, { sucesso: false, message: 'Empresa de origem ou de destino inválida.' })
-    }
-
-    const configs = $app.findRecordsByFilter(
-      'config_emissao_fiscal',
-      `empresa_id = '${empresaOrigemId}' && ativo = true`,
-      '-created',
-      1,
-      0,
-    )
-    if (!configs || configs.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'Empresa emitente não possui configuração fiscal ativa.',
-      })
-    }
-    const cfgFiscal = configs[0]
-    if (!cfgFiscal.getBool('emite_documentos_fiscais')) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'Esta empresa não emite NF-e (emite_documentos_fiscais desativado).',
-      })
-    }
-
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
-    const tokenInfo = obterTokenFocus(empresaOrigemId, $app)
-    const ambiente = tokenInfo.ambiente
-    const token = tokenInfo.token
-
-    if (!token) {
-      return c.json(400, {
-        sucesso: false,
-        message: `Token da Focus NFe não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
-      })
-    }
-
-    const baseUrl =
-      ambiente === 'Produção'
-        ? 'https://api.focusnfe.com.br/v2'
-        : 'https://homologacao.focusnfe.com.br/v2'
-
-    const serieNfe = cfgFiscal.getString('serie_nfe') || '1'
-    const naturezaOperacao =
-      cfgFiscal.getString('natureza_operacao_transferencia') || 'Transferência de mercadoria'
-
-    const cnpjEmitente = (empOrigem.getString('cnpj') || '').replace(/\D/g, '')
-    const ufEmitente = (empOrigem.getString('uf') || '').trim().toUpperCase()
-
-    const cnpjDestino = (empDestino.getString('cnpj') || '').replace(/\D/g, '')
-    const nomeDestino =
-      empDestino.getString('razao_social') || empDestino.getString('nome_fantasia') || ''
-    const ufDestino = (empDestino.getString('uf') || '').trim().toUpperCase()
-    const ieDestino = (empDestino.getString('inscricao_estadual') || '').trim()
-    const ibgeDestino = (empDestino.getString('codigo_municipio_ibge') || '').trim()
-    const logrDestino = empDestino.getString('logradouro') || ''
-    const numDestino = empDestino.getString('numero') || 'S/N'
-    const bairroDestino = empDestino.getString('bairro') || ''
-    const munDestino = empDestino.getString('municipio') || ''
-    const cepDestino = (empDestino.getString('cep') || '').replace(/\D/g, '')
-
-    const ehOperacaoInterna = ufDestino === ufEmitente
-
-    // Se a empresa de destino não tiver inscrição estadual (ISENTO), enviar destinatário como não contribuinte (indicador_ie 9)
-    const temIeValida = ieDestino && ieDestino.toUpperCase() !== 'ISENTO'
-    const indicadorIeDestino = temIeValida ? '1' : '9'
-
-    // Carregar itens da transferência
-    const itensTransf = $app.findRecordsByFilter(
-      'transferencias_itens',
-      `transferencia_id = '${transferenciaId}' && ativo = true`,
-    )
-    if (!itensTransf || itensTransf.length === 0) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'A transferência não possui itens cadastrados.',
-      })
-    }
-
-    let totValorProdutos = 0
-    let totValorTotal = 0
-    const itensFocus = []
-    const itensDocFiscal = []
-
-    for (let i = 0; i < itensTransf.length; i++) {
-      const it = itensTransf[i]
-      const numItem = i + 1
-      const prodId = it.getString('produto_id')
-      let prodRec = null
-      if (prodId) {
-        try {
-          prodRec = $app.findRecordById('produtos', prodId)
-        } catch (_) {}
       }
 
-      const qtd = it.getFloat('quantidade') || 0
-      const custoUnitario =
-        it.getFloat('custo_unitario') || (prodRec ? prodRec.getFloat('preco_custo') : 0) || 1
-      const valorItem = Math.round(qtd * custoUnitario * 100) / 100
-
-      const ncm = (prodRec ? prodRec.getString('ncm') : '').replace(/\D/g, '')
-      const cest = (prodRec ? prodRec.getString('cest') : '').replace(/\D/g, '')
-      const origemItem = prodRec ? prodRec.getString('origem') || '0' : '0'
-
-      // Perfil tributário do produto para regra TRANSFERENCIA
-      const perfilId = prodRec ? prodRec.getString('perfil_tributario_id') : ''
-      let cfopTransferencia = ''
-      let cstIcms = '41' // Não tributada padrão em transferência
-
-      if (perfilId) {
+      function empresasDoUsuarioLocal(auth) {
+        if (!auth) return []
+        let usuarioRec = null
         try {
-          const regras = $app.findRecordsByFilter(
-            'perfis_tributarios_regras',
-            `perfil_id = '${perfilId}' && cenario = 'TRANSFERENCIA' && ativo = true`,
-            '',
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+            '-created',
             1,
             0,
           )
-          if (regras.length > 0) {
-            cfopTransferencia = regras[0].getString('cfop') || ''
-            cstIcms = regras[0].getString('cst_icms') || regras[0].getString('csosn') || '41'
+          if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
+        } catch (_) {}
+
+        if (!usuarioRec && auth.getString && auth.getString('email')) {
+          try {
+            const uRecs = $app.findRecordsByFilter(
+              'usuarios',
+              "email = '" + auth.getString('email') + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
+          } catch (_) {}
+        }
+
+        if (!usuarioRec) return []
+        let assinanteId = usuarioRec.getString('assinante_id')
+        if (!assinanteId) return []
+
+        const ehMasterUser = eMasterLocal(auth)
+        if (ehMasterUser) {
+          try {
+            if ($app.hasTable('master_impersonacoes')) {
+              const recs = $app.findRecordsByFilter(
+                'master_impersonacoes',
+                "user_id = '" + auth.id + "'",
+                '-created',
+                1,
+                0,
+              )
+              if (recs && recs.length > 0) {
+                const impId = recs[0].getString('assinante_id')
+                if (impId) assinanteId = impId
+              }
+            }
+          } catch (_) {}
+        }
+
+        let isAdmin = false
+        const perfilId = usuarioRec.getString('perfil_id')
+        if (perfilId) {
+          try {
+            const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+            if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+              isAdmin = true
+            }
+          } catch (_) {}
+        }
+
+        if (isAdmin || ehMasterUser) {
+          try {
+            return $app.findRecordsByFilter(
+              'empresas',
+              "assinante_id = '" + assinanteId + "' && ativo = true",
+              'codigo',
+              500,
+              0,
+            )
+          } catch (_) {
+            return []
+          }
+        }
+
+        const permitidosIds = new Set()
+        const padraoId = usuarioRec.getString('empresa_padrao_id')
+        if (padraoId) permitidosIds.add(padraoId)
+        try {
+          const vinculos = $app.findRecordsByFilter(
+            'usuarios_empresas',
+            "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+            '',
+            500,
+            0,
+          )
+          for (let i = 0; i < vinculos.length; i++) {
+            const eId = vinculos[i].getString('empresa_id')
+            if (eId) permitidosIds.add(eId)
           }
         } catch (_) {}
+
+        const empresas = []
+        permitidosIds.forEach((eId) => {
+          try {
+            const emp = $app.findRecordById('empresas', eId)
+            if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+              empresas.push(emp)
+            }
+          } catch (_) {}
+        })
+        empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+        return empresas
       }
 
-      // CFOP fallback: 5152/6152 para revenda, ou 5409/6409 com ST
-      if (!cfopTransferencia) {
-        const temSt = Boolean(cest)
-        if (temSt) {
-          cfopTransferencia = ehOperacaoInterna ? '5409' : '6409'
-        } else {
-          cfopTransferencia = ehOperacaoInterna ? '5152' : '6152'
+      function exigirEmpresaDoUsuario(auth, empresaId) {
+        if (!empresaId) throw new BadRequestError('ID da empresa é obrigatório.')
+        const permitidas = empresasDoUsuarioLocal(auth)
+        const encontrada = permitidas.find((e) => e.id === empresaId)
+        if (!encontrada) {
+          throw new ForbiddenError(
+            'Acesso negado à empresa especificada para este usuário/assinante.',
+          )
+        }
+        return encontrada
+      }
+
+      const encodeBase64 = (str) => {
+        if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+          try {
+            return Buffer.from(str, 'utf8').toString('base64')
+          } catch (_) {}
+        }
+        if (typeof btoa === 'function') {
+          try {
+            return btoa(str)
+          } catch (_) {}
+        }
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+        let out = ''
+        let i = 0
+        const len = str.length
+        while (i < len) {
+          const c1 = str.charCodeAt(i++) & 0xff
+          if (i === len) {
+            out += chars.charAt(c1 >> 2)
+            out += chars.charAt((c1 & 0x3) << 4)
+            out += '=='
+            break
+          }
+          const c2 = str.charCodeAt(i++) & 0xff
+          if (i === len) {
+            out += chars.charAt(c1 >> 2)
+            out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+            out += chars.charAt((c2 & 0x0f) << 2)
+            out += '='
+            break
+          }
+          const c3 = str.charCodeAt(i++) & 0xff
+          out += chars.charAt(c1 >> 2)
+          out += chars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xf0) >> 4))
+          out += chars.charAt(((c2 & 0x0f) << 2) | ((c3 & 0xc0) >> 6))
+          out += chars.charAt(c3 & 0x3f)
+        }
+        return out
+      }
+
+      const userId = authRecord.id
+      const data = c.requestInfo().body || {}
+      const transferenciaId = data.transferencia_id
+      const modalidadeFrete =
+        data.modalidade_frete !== undefined ? Number(data.modalidade_frete) : 9
+
+      if (!transferenciaId) {
+        return c.json(400, { sucesso: false, message: 'transferencia_id é obrigatório.' })
+      }
+
+      let transf = null
+      try {
+        transf = $app.findRecordById('transferencias', transferenciaId)
+      } catch (_) {}
+
+      if (!transf || !transf.getBool('ativo')) {
+        return c.json(400, { sucesso: false, message: 'Transferência não encontrada ou inativa.' })
+      }
+
+      if (transf.getString('status') !== 'Enviada' && transf.getString('status') !== 'Recebida') {
+        return c.json(400, {
+          sucesso: false,
+          message:
+            'A emissão de NF-e só é permitida para transferências com status "Enviada" ou "Recebida".',
+        })
+      }
+
+      // Já possui nota autorizada?
+      if (transf.getString('nota_fiscal_chave')) {
+        return c.json(200, {
+          sucesso: true,
+          ja_autorizada: true,
+          chave: transf.getString('nota_fiscal_chave'),
+          numero: transf.getString('nota_fiscal_numero'),
+          message: 'Esta transferência já possui NF-e vinculada.',
+        })
+      }
+
+      const empresaOrigemId = transf.getString('empresa_origem_id')
+      try {
+        exigirEmpresaDoUsuario(authRecord, empresaOrigemId)
+      } catch (errEmp) {
+        return c.json(403, {
+          sucesso: false,
+          message: errEmp.message || 'Acesso negado à empresa de origem.',
+        })
+      }
+      const empresaDestinoId = transf.getString('empresa_destino_id')
+
+      // Carregar empresas
+      const empOrigem = $app.findRecordById('empresas', empresaOrigemId)
+      const empDestino = $app.findRecordById('empresas', empresaDestinoId)
+
+      if (
+        !empOrigem ||
+        !empOrigem.getBool('ativo') ||
+        !empDestino ||
+        !empDestino.getBool('ativo')
+      ) {
+        return c.json(400, { sucesso: false, message: 'Empresa de origem ou de destino inválida.' })
+      }
+
+      const configs = $app.findRecordsByFilter(
+        'config_emissao_fiscal',
+        `empresa_id = '${empresaOrigemId}' && ativo = true`,
+        '-created',
+        1,
+        0,
+      )
+      if (!configs || configs.length === 0) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Empresa emitente não possui configuração fiscal ativa.',
+        })
+      }
+      const cfgFiscal = configs[0]
+      if (!cfgFiscal.getBool('emite_documentos_fiscais')) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Esta empresa não emite NF-e (emite_documentos_fiscais desativado).',
+        })
+      }
+
+      // Funções de fiscal_token_lib copiadas localmente (evita require no JSVM — 'Invalid module')
+      function obterTokenFocus(empresaId, appInstance) {
+        const app = appInstance || $app
+        if (!empresaId) {
+          return {
+            token: '',
+            origem: 'nenhuma',
+            ambiente: 'Homologação',
+            nomeSegredo: 'FOCUS_NFE_TOKEN_HOMOLOGACAO',
+            codigoToken: '',
+          }
+        }
+
+        let ambiente = 'Homologação'
+        let codigoToken = ''
+        try {
+          const configs = app.findRecordsByFilter(
+            'config_emissao_fiscal',
+            `empresa_id = '${empresaId}' && ativo = true`,
+            '-created',
+            1,
+            0,
+          )
+          if (configs && configs.length > 0) {
+            const cfg = configs[0]
+            ambiente = cfg.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+            codigoToken = (cfg.getString('codigo_token') || '').trim().toUpperCase()
+          }
+        } catch (_) {}
+
+        const ehProducao = ambiente === 'Produção'
+        const sufixoAmbiente = ehProducao ? 'PRODUCAO' : 'HOMOLOGACAO'
+        let nomeSegredo = codigoToken
+          ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+          : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+        try {
+          const creds = app.findRecordsByFilter(
+            'credenciais_fiscais',
+            `empresa_id = '${empresaId}'`,
+            '-created',
+            1,
+            0,
+          )
+          if (creds && creds.length > 0) {
+            const credRec = creds[0]
+            const tokenBanco = (
+              ehProducao
+                ? credRec.getString('token_producao')
+                : credRec.getString('token_homologacao')
+            ).trim()
+
+            if (tokenBanco && tokenBanco.length > 0) {
+              return {
+                token: tokenBanco,
+                origem: 'banco',
+                ambiente: ambiente,
+                nomeSegredo: nomeSegredo,
+                codigoToken: codigoToken,
+              }
+            }
+          }
+        } catch (_) {}
+
+        let tokenSegredo = ''
+        try {
+          if (codigoToken) {
+            tokenSegredo = ($os.getenv(nomeSegredo) || '').trim()
+          }
+        } catch (_) {
+          tokenSegredo = ''
+        }
+
+        if (!tokenSegredo) {
+          try {
+            const empRec = app.findRecordById('empresas', empresaId)
+            const codEmp = empRec.getInt('codigo')
+            if (codEmp === 2) {
+              const segEcommerce = (
+                $os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}_ECOMMERCE`) || ''
+              ).trim()
+              if (segEcommerce) {
+                tokenSegredo = segEcommerce
+                nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}_ECOMMERCE`
+              }
+            } else if (codEmp === 3) {
+              const segFilial05 = (
+                $os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}_FILIAL05`) || ''
+              ).trim()
+              if (segFilial05) {
+                tokenSegredo = segFilial05
+                nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}_FILIAL05`
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (!tokenSegredo) {
+          try {
+            const segPadrao = ($os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}`) || '').trim()
+            if (segPadrao) {
+              tokenSegredo = segPadrao
+              nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+            }
+          } catch (_) {}
+        }
+
+        if (tokenSegredo && tokenSegredo.length > 0) {
+          return {
+            token: tokenSegredo,
+            origem: 'segredo',
+            ambiente: ambiente,
+            nomeSegredo: nomeSegredo,
+            codigoToken: codigoToken,
+          }
+        }
+
+        return {
+          token: '',
+          origem: 'nenhuma',
+          ambiente: ambiente,
+          nomeSegredo: nomeSegredo,
+          codigoToken: codigoToken,
         }
       }
 
-      const itemFocus = {
-        numero_item: numItem,
-        codigo_produto: prodRec ? prodRec.getString('codigo') || prodId : String(numItem),
-        descricao: prodRec ? prodRec.getString('descricao') : `Item ${numItem}`,
-        cfop: cfopTransferencia,
-        codigo_ncm: ncm,
-        unidade_comercial: (prodRec ? prodRec.getString('unidade_medida') : 'UN') || 'UN',
-        quantidade_comercial: qtd,
-        valor_unitario_comercial: custoUnitario,
-        unidade_tributavel: (prodRec ? prodRec.getString('unidade_medida') : 'UN') || 'UN',
-        quantidade_tributavel: qtd,
-        valor_unitario_tributavel: custoUnitario,
-        valor_bruto: valorItem,
-        icms_origem: origemItem,
-        icms_situacao_tributaria: cstIcms,
+      const tokenInfo = obterTokenFocus(empresaOrigemId, $app)
+      const ambiente = tokenInfo.ambiente
+      const token = tokenInfo.token
+
+      if (!token) {
+        return c.json(400, {
+          sucesso: false,
+          message: `Token da Focus NFe não encontrado: cadastre na tela de credenciais fiscais ou crie o segredo ${tokenInfo.nomeSegredo} no Skip Cloud.`,
+        })
       }
 
-      if (cest) itemFocus.codigo_cest = cest
+      const baseUrl =
+        ambiente === 'Produção'
+          ? 'https://api.focusnfe.com.br/v2'
+          : 'https://homologacao.focusnfe.com.br/v2'
 
-      itensFocus.push(itemFocus)
+      const serieNfe = cfgFiscal.getString('serie_nfe') || '1'
+      const naturezaOperacao =
+        cfgFiscal.getString('natureza_operacao_transferencia') || 'Transferência de mercadoria'
 
-      itensDocFiscal.push({
-        item: numItem,
-        produto_id: prodId,
-        codigo: itemFocus.codigo_produto,
-        descricao: itemFocus.descricao,
-        ncm: ncm,
-        cest: cest,
-        cfop: cfopTransferencia,
-        unidade: itemFocus.unidade_comercial,
-        quantidade: qtd,
-        valor_unitario: custoUnitario,
-        valor_bruto: valorItem,
-        valor_total: valorItem,
-        origem: origemItem,
-        cst_icms: cstIcms,
-        custo_unitario: custoUnitario,
-        lote_id: it.getString('lote_id') || '',
-      })
+      const cnpjEmitente = (empOrigem.getString('cnpj') || '').replace(/\D/g, '')
+      const ufEmitente = (empOrigem.getString('uf') || '').trim().toUpperCase()
 
-      totValorProdutos += valorItem
-      totValorTotal += valorItem
-    }
+      const cnpjDestino = (empDestino.getString('cnpj') || '').replace(/\D/g, '')
+      const nomeDestino =
+        empDestino.getString('razao_social') || empDestino.getString('nome_fantasia') || ''
+      const ufDestino = (empDestino.getString('uf') || '').trim().toUpperCase()
+      const ieDestino = (empDestino.getString('inscricao_estadual') || '').trim()
+      const ibgeDestino = (empDestino.getString('codigo_municipio_ibge') || '').trim()
+      const logrDestino = empDestino.getString('logradouro') || ''
+      const numDestino = empDestino.getString('numero') || 'S/N'
+      const bairroDestino = empDestino.getString('bairro') || ''
+      const munDestino = empDestino.getString('municipio') || ''
+      const cepDestino = (empDestino.getString('cep') || '').replace(/\D/g, '')
 
-    totValorProdutos = Math.round(totValorProdutos * 100) / 100
-    totValorTotal = Math.round(totValorTotal * 100) / 100
+      const ehOperacaoInterna = ufDestino === ufEmitente
 
-    const nomeDestFinal =
-      ambiente === 'Homologação'
-        ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-        : nomeDestino
+      // Se a empresa de destino não tiver inscrição estadual (ISENTO), enviar destinatário como não contribuinte (indicador_ie 9)
+      const temIeValida = ieDestino && ieDestino.toUpperCase() !== 'ISENTO'
+      const indicadorIeDestino = temIeValida ? '1' : '9'
 
-    const payloadFocus = {
-      natureza_operacao: naturezaOperacao,
-      data_emissao: new Date().toISOString(),
-      tipo_documento: 1, // Saída
-      finalidade_emissao: 1, // Normal
-      local_destino: ehOperacaoInterna ? 1 : 2,
-      consumidor_final: temIeValida ? 0 : 1,
-      presenca_comprador: '9',
-      modalidade_frete: modalidadeFrete,
-      cnpj_emitente: cnpjEmitente,
-      nome_destinatario: nomeDestFinal,
-      indicador_inscricao_estadual_destinatario: indicadorIeDestino,
-      logradouro_destinatario: logrDestino,
-      numero_destinatario: numDestino,
-      bairro_destinatario: bairroDestino,
-      municipio_destinatario: munDestino,
-      uf_destinatario: ufDestino,
-      cep_destinatario: cepDestino,
-      codigo_municipio_destinatario: ibgeDestino,
-      items: itensFocus,
-      informacoes_adicionais_contribuinte: `Transferência de mercadoria TR-${transf.getInt('numero')} de ${empOrigem.getString('nome_fantasia')} para ${empDestino.getString('nome_fantasia')}.`,
-    }
-
-    if (cnpjDestino.length === 14) {
-      payloadFocus.cnpj_destinatario = cnpjDestino
-    } else {
-      payloadFocus.cpf_destinatario = cnpjDestino
-    }
-    if (temIeValida) {
-      payloadFocus.inscricao_estadual_destinatario = ieDestino.replace(/\D/g, '')
-    }
-
-    // Criar documento fiscal no banco
-    const refFocus = `TRF_${empresaOrigemId.slice(0, 5)}_${transferenciaId.slice(0, 8)}_${Date.now()}`
-    const docFiscaisCol = $app.findCollectionByNameOrId('documentos_fiscais')
-    const docRec = new Record(docFiscaisCol)
-    docRec.set('empresa_id', empresaOrigemId)
-    docRec.set('modelo', '55')
-    docRec.set('tipo_documento', 1)
-    docRec.set('finalidade', 1)
-    docRec.set('ambiente', ambiente)
-    docRec.set('origem', 'Transferência')
-    docRec.set('transferencia_id', transferenciaId)
-    docRec.set('referencia', refFocus)
-    docRec.set('status', 'Processando')
-    docRec.set('serie', serieNfe)
-    docRec.set('natureza_operacao', naturezaOperacao)
-    docRec.set('destinatario_nome', nomeDestino)
-    docRec.set('destinatario_cpf_cnpj', cnpjDestino)
-    docRec.set('destinatario_uf', ufDestino)
-    docRec.set('valor_produtos', totValorProdutos)
-    docRec.set('valor_total', totValorTotal)
-    docRec.set('json_enviado', payloadFocus)
-    docRec.set('usuario_emissao_id', userId)
-    $app.save(docRec)
-
-    // Gravar itens do documento fiscal
-    const docItensCol = $app.findCollectionByNameOrId('documentos_fiscais_itens')
-    for (let itD of itensDocFiscal) {
-      const itRec = new Record(docItensCol)
-      itRec.set('documento_id', docRec.id)
-      itRec.set('item', itD.item)
-      if (itD.produto_id) itRec.set('produto_id', itD.produto_id)
-      itRec.set('codigo', itD.codigo)
-      itRec.set('descricao', itD.descricao)
-      itRec.set('ncm', itD.ncm)
-      itRec.set('cest', itD.cest)
-      itRec.set('cfop', itD.cfop)
-      itRec.set('unidade', itD.unidade)
-      itRec.set('quantidade', itD.quantidade)
-      itRec.set('valor_unitario', itD.valor_unitario)
-      itRec.set('valor_bruto', itD.valor_bruto)
-      itRec.set('valor_total', itD.valor_total)
-      itRec.set('origem', itD.origem)
-      itRec.set('cst_icms', itD.cst_icms)
-      $app.save(itRec)
-    }
-
-    // Transmitir para a Focus NFe
-    const urlEnvio = `${baseUrl}/nfe?ref=${encodeURIComponent(refFocus)}`
-    const authHeader = 'Basic ' + encodeBase64(token + ':')
-
-    let resFocus = null
-    try {
-      resFocus = $http.send({
-        method: 'POST',
-        url: urlEnvio,
-        headers: {
-          Authorization: authHeader,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payloadFocus),
-        timeout: 60,
-      })
-    } catch (errHttp) {
-      return c.json(500, {
-        sucesso: false,
-        message: 'Sem comunicação com o servidor da Focus NFe.',
-      })
-    }
-
-    const statusCode = resFocus.statusCode || 200
-    const rawText = resFocus.raw || ''
-    let jsonResp = null
-    try {
-      jsonResp = JSON.parse(rawText)
-    } catch (_) {}
-
-    docRec.set('json_retorno', jsonResp || { raw: rawText })
-
-    if (statusCode >= 400) {
-      let msgErro =
-        jsonResp?.mensagem || jsonResp?.message || `Focus NFe retornou status HTTP ${statusCode}`
-      if (Array.isArray(jsonResp?.erros) && jsonResp.erros.length > 0) {
-        msgErro = jsonResp.erros
-          .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
-          .join('; ')
+      // Carregar itens da transferência
+      const itensTransf = $app.findRecordsByFilter(
+        'transferencias_itens',
+        `transferencia_id = '${transferenciaId}' && ativo = true`,
+      )
+      if (!itensTransf || itensTransf.length === 0) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'A transferência não possui itens cadastrados.',
+        })
       }
-      docRec.set('status', 'Rejeitada')
-      docRec.set('mensagem_sefaz', msgErro)
+
+      let totValorProdutos = 0
+      let totValorTotal = 0
+      const itensFocus = []
+      const itensDocFiscal = []
+
+      for (let i = 0; i < itensTransf.length; i++) {
+        const it = itensTransf[i]
+        const numItem = i + 1
+        const prodId = it.getString('produto_id')
+        let prodRec = null
+        if (prodId) {
+          try {
+            prodRec = $app.findRecordById('produtos', prodId)
+          } catch (_) {}
+        }
+
+        const qtd = it.getFloat('quantidade') || 0
+        const custoUnitario =
+          it.getFloat('custo_unitario') || (prodRec ? prodRec.getFloat('preco_custo') : 0) || 1
+        const valorItem = Math.round(qtd * custoUnitario * 100) / 100
+
+        const ncm = (prodRec ? prodRec.getString('ncm') : '').replace(/\D/g, '')
+        const cest = (prodRec ? prodRec.getString('cest') : '').replace(/\D/g, '')
+        const origemItem = prodRec ? prodRec.getString('origem') || '0' : '0'
+
+        // Perfil tributário do produto para regra TRANSFERENCIA
+        const perfilId = prodRec ? prodRec.getString('perfil_tributario_id') : ''
+        let cfopTransferencia = ''
+        let cstIcms = '41' // Não tributada padrão em transferência
+
+        if (perfilId) {
+          try {
+            const regras = $app.findRecordsByFilter(
+              'perfis_tributarios_regras',
+              `perfil_id = '${perfilId}' && cenario = 'TRANSFERENCIA' && ativo = true`,
+              '',
+              1,
+              0,
+            )
+            if (regras.length > 0) {
+              // cfop em perfis_tributarios_regras é RELAÇÃO para a coleção cfop: resolver o código
+              const cfopRel = regras[0].getString('cfop') || ''
+              if (cfopRel) {
+                try {
+                  const cfopRec = $app.findRecordById('cfop', cfopRel)
+                  cfopTransferencia = cfopRec.getString('codigo') || ''
+                } catch (_) {
+                  cfopTransferencia = /^\d{4}$/.test(cfopRel) ? cfopRel : ''
+                }
+              }
+              cstIcms = regras[0].getString('cst_icms') || regras[0].getString('csosn') || '41'
+            }
+          } catch (_) {}
+        }
+
+        // CFOP fallback: 5152/6152 para revenda, ou 5409/6409 com ST
+        if (!cfopTransferencia) {
+          const temSt = Boolean(cest)
+          if (temSt) {
+            cfopTransferencia = ehOperacaoInterna ? '5409' : '6409'
+          } else {
+            cfopTransferencia = ehOperacaoInterna ? '5152' : '6152'
+          }
+        }
+        // Operação interestadual: virar 5xxx para 6xxx quando o perfil trouxe CFOP interno
+        if (!ehOperacaoInterna && cfopTransferencia.charAt(0) === '5') {
+          cfopTransferencia = '6' + cfopTransferencia.slice(1)
+        }
+
+        const itemFocus = {
+          numero_item: numItem,
+          codigo_produto: prodRec ? prodRec.getString('codigo') || prodId : String(numItem),
+          descricao: prodRec ? prodRec.getString('descricao') : `Item ${numItem}`,
+          cfop: cfopTransferencia,
+          codigo_ncm: ncm,
+          unidade_comercial: (prodRec ? prodRec.getString('unidade_medida') : 'UN') || 'UN',
+          quantidade_comercial: qtd,
+          valor_unitario_comercial: custoUnitario,
+          unidade_tributavel: (prodRec ? prodRec.getString('unidade_medida') : 'UN') || 'UN',
+          quantidade_tributavel: qtd,
+          valor_unitario_tributavel: custoUnitario,
+          valor_bruto: valorItem,
+          icms_origem: origemItem,
+          icms_situacao_tributaria: cstIcms,
+        }
+
+        if (cest) itemFocus.codigo_cest = cest
+
+        itensFocus.push(itemFocus)
+
+        itensDocFiscal.push({
+          item: numItem,
+          produto_id: prodId,
+          codigo: itemFocus.codigo_produto,
+          descricao: itemFocus.descricao,
+          ncm: ncm,
+          cest: cest,
+          cfop: cfopTransferencia,
+          unidade: itemFocus.unidade_comercial,
+          quantidade: qtd,
+          valor_unitario: custoUnitario,
+          valor_bruto: valorItem,
+          valor_total: valorItem,
+          origem: origemItem,
+          cst_icms: cstIcms,
+          custo_unitario: custoUnitario,
+          lote_id: it.getString('lote_id') || '',
+        })
+
+        totValorProdutos += valorItem
+        totValorTotal += valorItem
+      }
+
+      totValorProdutos = Math.round(totValorProdutos * 100) / 100
+      totValorTotal = Math.round(totValorTotal * 100) / 100
+
+      const nomeDestFinal =
+        ambiente === 'Homologação'
+          ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+          : nomeDestino
+
+      const payloadFocus = {
+        natureza_operacao: naturezaOperacao,
+        data_emissao: new Date().toISOString(),
+        tipo_documento: 1, // Saída
+        finalidade_emissao: 1, // Normal
+        local_destino: ehOperacaoInterna ? 1 : 2,
+        consumidor_final: temIeValida ? 0 : 1,
+        presenca_comprador: '9',
+        modalidade_frete: modalidadeFrete,
+        cnpj_emitente: cnpjEmitente,
+        nome_destinatario: nomeDestFinal,
+        indicador_inscricao_estadual_destinatario: indicadorIeDestino,
+        logradouro_destinatario: logrDestino,
+        numero_destinatario: numDestino,
+        bairro_destinatario: bairroDestino,
+        municipio_destinatario: munDestino,
+        uf_destinatario: ufDestino,
+        cep_destinatario: cepDestino,
+        codigo_municipio_destinatario: ibgeDestino,
+        items: itensFocus,
+        informacoes_adicionais_contribuinte: `Transferência de mercadoria TR-${transf.getInt('numero')} de ${empOrigem.getString('nome_fantasia')} para ${empDestino.getString('nome_fantasia')}.`,
+      }
+
+      if (cnpjDestino.length === 14) {
+        payloadFocus.cnpj_destinatario = cnpjDestino
+      } else {
+        payloadFocus.cpf_destinatario = cnpjDestino
+      }
+      if (temIeValida) {
+        payloadFocus.inscricao_estadual_destinatario = ieDestino.replace(/\D/g, '')
+      }
+
+      // Criar documento fiscal no banco
+      const refFocus = `TRF_${empresaOrigemId.slice(0, 5)}_${transferenciaId.slice(0, 8)}_${Date.now()}`
+      const docFiscaisCol = $app.findCollectionByNameOrId('documentos_fiscais')
+      const docRec = new Record(docFiscaisCol)
+      docRec.set('empresa_id', empresaOrigemId)
+      docRec.set('modelo', '55')
+      docRec.set('tipo_documento', 1)
+      docRec.set('finalidade', 1)
+      docRec.set('ambiente', ambiente)
+      docRec.set('origem', 'Transferência')
+      docRec.set('transferencia_id', transferenciaId)
+      docRec.set('referencia', refFocus)
+      docRec.set('status', 'Processando')
+      docRec.set('serie', serieNfe)
+      docRec.set('natureza_operacao', naturezaOperacao)
+      docRec.set('destinatario_nome', nomeDestino)
+      docRec.set('destinatario_cpf_cnpj', cnpjDestino)
+      docRec.set('destinatario_uf', ufDestino)
+      docRec.set('valor_produtos', totValorProdutos)
+      docRec.set('valor_total', totValorTotal)
+      docRec.set('json_enviado', payloadFocus)
+      docRec.set('usuario_emissao_id', userId)
+      $app.save(docRec)
+
+      // Gravar itens do documento fiscal
+      const docItensCol = $app.findCollectionByNameOrId('documentos_fiscais_itens')
+      for (let itD of itensDocFiscal) {
+        const itRec = new Record(docItensCol)
+        itRec.set('documento_id', docRec.id)
+        itRec.set('item', itD.item)
+        if (itD.produto_id) itRec.set('produto_id', itD.produto_id)
+        itRec.set('codigo', itD.codigo)
+        itRec.set('descricao', itD.descricao)
+        itRec.set('ncm', itD.ncm)
+        itRec.set('cest', itD.cest)
+        itRec.set('cfop', itD.cfop)
+        itRec.set('unidade', itD.unidade)
+        itRec.set('quantidade', itD.quantidade)
+        itRec.set('valor_unitario', itD.valor_unitario)
+        itRec.set('valor_bruto', itD.valor_bruto)
+        itRec.set('valor_total', itD.valor_total)
+        itRec.set('origem', itD.origem)
+        itRec.set('cst_icms', itD.cst_icms)
+        $app.save(itRec)
+      }
+
+      // Transmitir para a Focus NFe
+      const urlEnvio = `${baseUrl}/nfe?ref=${encodeURIComponent(refFocus)}`
+      const authHeader = 'Basic ' + encodeBase64(token + ':')
+
+      let resFocus = null
+      try {
+        resFocus = $http.send({
+          method: 'POST',
+          url: urlEnvio,
+          headers: {
+            Authorization: authHeader,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payloadFocus),
+          timeout: 60,
+        })
+      } catch (errHttp) {
+        console.error('[emitir-nfe-transferencia] Erro HTTP ao conectar com Focus NFe:', errHttp)
+        return c.json(500, {
+          sucesso: false,
+          message:
+            'Erro ao emitir NF-e de transferência: sem comunicação com o servidor da Focus NFe (' +
+            ((errHttp && errHttp.message) || 'falha de rede') +
+            ').',
+        })
+      }
+
+      const statusCode = resFocus.statusCode || 200
+      const rawText = resFocus.raw || ''
+      let jsonResp = null
+      try {
+        jsonResp = JSON.parse(rawText)
+      } catch (_) {}
+
+      docRec.set('json_retorno', jsonResp || { raw: rawText })
+
+      if (statusCode >= 400) {
+        let msgErro =
+          jsonResp?.mensagem || jsonResp?.message || `Focus NFe retornou status HTTP ${statusCode}`
+        if (Array.isArray(jsonResp?.erros) && jsonResp.erros.length > 0) {
+          msgErro = jsonResp.erros
+            .map((e) => (e.campo ? `${e.campo}: ${e.mensagem}` : e.mensagem))
+            .join('; ')
+        }
+        docRec.set('status', 'Rejeitada')
+        docRec.set('mensagem_sefaz', msgErro)
+        $app.save(docRec)
+
+        return c.json(200, {
+          sucesso: false,
+          status: 'Rejeitada',
+          documento_id: docRec.id,
+          ref: refFocus,
+          message: msgErro,
+        })
+      }
+
+      docRec.set('status', 'Processando')
+      docRec.set('status_sefaz', jsonResp?.status || 'processando_autorizacao')
+      docRec.set(
+        'mensagem_sefaz',
+        jsonResp?.mensagem_sefaz || 'Nota fiscal de transferência transmitida para a SEFAZ',
+      )
       $app.save(docRec)
 
       return c.json(200, {
-        sucesso: false,
-        status: 'Rejeitada',
+        sucesso: true,
+        status: 'Processando',
         documento_id: docRec.id,
-        ref: refFocus,
-        message: msgErro,
+        referencia: refFocus,
+        message: 'NF-e de transferência transmitida com sucesso para a SEFAZ.',
+      })
+    } // fim de processarEmissaoTransferencia
+
+    try {
+      return processarEmissaoTransferencia()
+    } catch (errGeral) {
+      console.error('[emitir-nfe-transferencia] Exceção capturada no handler:', errGeral)
+      return c.json(500, {
+        sucesso: false,
+        message:
+          'Erro ao emitir NF-e de transferência: ' +
+          ((errGeral && errGeral.message) || 'erro inesperado.'),
       })
     }
-
-    docRec.set('status', 'Processando')
-    docRec.set('status_sefaz', jsonResp?.status || 'processando_autorizacao')
-    docRec.set(
-      'mensagem_sefaz',
-      jsonResp?.mensagem_sefaz || 'Nota fiscal de transferência transmitida para a SEFAZ',
-    )
-    $app.save(docRec)
-
-    return c.json(200, {
-      sucesso: true,
-      status: 'Processando',
-      documento_id: docRec.id,
-      referencia: refFocus,
-      message: 'NF-e de transferência transmitida com sucesso para a SEFAZ.',
-    })
   },
   $apis.requireAuth(),
 )
