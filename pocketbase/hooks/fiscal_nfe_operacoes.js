@@ -1,4 +1,8 @@
-// reenvio 9.8r2
+// reenvio 9.8r3 — IBS/CBS no payload da NF-e (modelo 55) quando "Destacar IBS e CBS"
+// ligado (mesma checagem da NFC-e em fiscal_nfce_emitir.js v0.0.270): grupo gIBSCBS
+// em cada item e valor_total_ibs/valor_total_cbs na nota, com CST/cClassTrib do
+// perfil tributário (default 000/000001) e alíquotas de teste 2026 (CBS 0,9%,
+// IBS UF 0,1%, IBS municipal 0% quando o perfil não trouxer alíquota).
 // @ts-check
 /// <reference path="../types.d.ts" />
 
@@ -800,6 +804,11 @@ routerAdd(
             let totValorCofins = 0
             let totValorIbs = 0
             let totValorCbs = 0
+            // Acumuladores IBS/CBS do payload (Reforma Tributária): somam os valores
+            // efetivamente enviados no grupo gIBSCBS dos itens (com alíquotas de
+            // teste 2026 quando o perfil não trouxer alíquota), igual à NFC-e
+            let totValorIbsFocus = 0
+            let totValorCbsFocus = 0
             let totValorTotal = 0
 
             let cfopPrimeiroItem = ''
@@ -1238,6 +1247,35 @@ routerAdd(
                 valorCbs = round2(baseIbsCbs * (aliqCbs / 100))
               }
 
+              // IBS/CBS (Reforma Tributária) — grupo gIBSCBS do item para o payload da
+              // Focus (mesmos nomes de campo da NFC-e; guia Focus "IBS e CBS"):
+              // CST/cClassTrib do perfil tributário do produto, cenário da operação
+              // (default CST 000 / cClassTrib 000001); base = valor do item;
+              // alíquotas de teste 2026: CBS 0,9%, IBS UF 0,1%, IBS municipal 0%
+              // (usa a alíquota da regra do perfil quando ela vier preenchida).
+              let ibsCbsSituacaoTrib = ''
+              let ibsCbsClassTrib = ''
+              let ibsUfAliquotaFocus = 0
+              let ibsUfValorFocus = 0
+              let ibsMunAliquotaFocus = 0
+              let ibsMunValorFocus = 0
+              let ibsValorTotalFocus = 0
+              let cbsAliquotaFocus = 0
+              let cbsValorFocus = 0
+              if (informarIbsCbs) {
+                ibsCbsSituacaoTrib = (regraRec ? regraRec.getString('cst_ibs_cbs') : '') || '000'
+                ibsCbsClassTrib = (regraRec ? regraRec.getString('c_class_trib') : '') || '000001'
+                ibsUfAliquotaFocus = aliqIbsUf > 0 ? aliqIbsUf : 0.1
+                ibsMunAliquotaFocus = aliqIbsMun
+                cbsAliquotaFocus = aliqCbs > 0 ? aliqCbs : 0.9
+                ibsUfValorFocus = round2(baseIbsCbs * (ibsUfAliquotaFocus / 100))
+                ibsMunValorFocus = round2(baseIbsCbs * (ibsMunAliquotaFocus / 100))
+                ibsValorTotalFocus = round2(ibsUfValorFocus + ibsMunValorFocus)
+                cbsValorFocus = round2(baseIbsCbs * (cbsAliquotaFocus / 100))
+                totValorIbsFocus = round2(totValorIbsFocus + ibsValorTotalFocus)
+                totValorCbsFocus = round2(totValorCbsFocus + cbsValorFocus)
+              }
+
               totValorProdutos += valorBruto
               totValorDesconto += valorDescontoTotalItem
               totValorFrete += freteRateado
@@ -1417,6 +1455,21 @@ routerAdd(
                 itemFocus.icms_valor_uf_remetente = valorIcmsUfRemet
               }
 
+              // IBS/CBS (Reforma Tributária): mesmos nomes de campo da NFC-e
+              // (nomes oficiais da Focus, guia "IBS e CBS"), quando "Destacar IBS e CBS" ligado
+              if (informarIbsCbs) {
+                itemFocus.ibs_cbs_situacao_tributaria = ibsCbsSituacaoTrib
+                itemFocus.ibs_cbs_classificacao_tributaria = ibsCbsClassTrib
+                itemFocus.ibs_cbs_base_calculo = round2(baseIbsCbs)
+                itemFocus.ibs_uf_aliquota = ibsUfAliquotaFocus
+                itemFocus.ibs_uf_valor = ibsUfValorFocus
+                itemFocus.ibs_mun_aliquota = ibsMunAliquotaFocus
+                itemFocus.ibs_mun_valor = ibsMunValorFocus
+                itemFocus.ibs_valor_total = ibsValorTotalFocus
+                itemFocus.cbs_aliquota = cbsAliquotaFocus
+                itemFocus.cbs_valor = cbsValorFocus
+              }
+
               itensFocus.push(itemFocus)
             }
 
@@ -1507,6 +1560,13 @@ routerAdd(
               items: itensFocus,
               formas_pagamento: formasPagamentoFocus,
               informacoes_adicionais_contribuinte: infoComplInput || undefined,
+            }
+
+            // Totais IBS/CBS da nota (soma dos itens) quando "Destacar IBS e CBS" ligado
+            // (mesmos nomes de campo da NFC-e; nomes oficiais da Focus)
+            if (informarIbsCbs) {
+              jsonFocus.valor_total_ibs = round2(totValorIbsFocus)
+              jsonFocus.valor_total_cbs = round2(totValorCbsFocus)
             }
 
             const presencaExigeIntermediador = ['2', '3', '9'].includes(presencaCompradorFinal)
@@ -1702,8 +1762,10 @@ routerAdd(
             novoDocRec.set('valor_ipi', round2(totValorIpi))
             novoDocRec.set('valor_pis', round2(totValorPis))
             novoDocRec.set('valor_cofins', round2(totValorCofins))
-            novoDocRec.set('valor_ibs', round2(totValorIbs))
-            novoDocRec.set('valor_cbs', round2(totValorCbs))
+            // IBS/CBS gravados no documento refletem os valores efetivamente
+            // enviados no payload (grupo gIBSCBS), igual à NFC-e
+            novoDocRec.set('valor_ibs', round2(totValorIbsFocus))
+            novoDocRec.set('valor_cbs', round2(totValorCbsFocus))
             novoDocRec.set('valor_total', round2(totValorTotal))
 
             novoDocRec.set('json_enviado', jsonFocus)
@@ -1820,6 +1882,52 @@ routerAdd(
           sucesso: false,
           message: 'Dados fiscais da NF-e não puderam ser carregados.',
         })
+      }
+
+      // IBS/CBS (Reforma Tributária): quando o rascunho foi reaproveitado de um
+      // json_enviado gravado ANTES desta versão (ou pelo montar-rascunho, que não
+      // monta o grupo gIBSCBS), complementa o payload com o mesmo tratamento do
+      // caminho de montagem local — apenas com "Destacar IBS e CBS" ligado.
+      try {
+        if (config.getBool('informar_ibs_cbs')) {
+          const round2Reuso = (val) => Math.round((Number(val) || 0) * 100) / 100
+          const jaTemIbsCbs = (payloadFocus.items || []).some(
+            (it) => it && it.ibs_cbs_situacao_tributaria,
+          )
+          if (!jaTemIbsCbs && Array.isArray(payloadFocus.items)) {
+            for (let ir = 0; ir < payloadFocus.items.length; ir++) {
+              const itemReuso = payloadFocus.items[ir]
+              if (!itemReuso || itemReuso.ibs_cbs_situacao_tributaria) continue
+              const valorItemReuso = round2Reuso(Number(itemReuso.valor_bruto) || 0)
+              itemReuso.ibs_cbs_situacao_tributaria = '000'
+              itemReuso.ibs_cbs_classificacao_tributaria = '000001'
+              itemReuso.ibs_cbs_base_calculo = valorItemReuso
+              itemReuso.ibs_uf_aliquota = 0.1
+              itemReuso.ibs_uf_valor = round2Reuso(valorItemReuso * (0.1 / 100))
+              itemReuso.ibs_mun_aliquota = 0
+              itemReuso.ibs_mun_valor = 0
+              itemReuso.ibs_valor_total = round2Reuso(
+                itemReuso.ibs_uf_valor + itemReuso.ibs_mun_valor,
+              )
+              itemReuso.cbs_aliquota = 0.9
+              itemReuso.cbs_valor = round2Reuso(valorItemReuso * (0.9 / 100))
+            }
+            payloadFocus.valor_total_ibs = round2Reuso(
+              payloadFocus.items.reduce(
+                (somaIbs, it) => somaIbs + (Number(it.ibs_valor_total) || 0),
+                0,
+              ),
+            )
+            payloadFocus.valor_total_cbs = round2Reuso(
+              payloadFocus.items.reduce((somaCbs, it) => somaCbs + (Number(it.cbs_valor) || 0), 0),
+            )
+          }
+        }
+      } catch (eIbsReuso) {
+        console.log(
+          '[emitir-nfe-venda] Aviso: falha ao complementar IBS/CBS no rascunho reaproveitado: ' +
+            (eIbsReuso && eIbsReuso.message ? eIbsReuso.message : String(eIbsReuso)),
+        )
       }
 
       // 4. Enviar NF-e para Focus NFe: POST /nfe?ref={ref}
