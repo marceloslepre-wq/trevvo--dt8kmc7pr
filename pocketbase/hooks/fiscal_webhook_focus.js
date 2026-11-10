@@ -1094,15 +1094,44 @@ routerAdd(
       return c.json(401, { sucesso: false, message: 'Autenticação obrigatória.' })
     }
 
-    // Verificar se é administrador via perfis_acesso
-    const perfilId = authRecord.getString('perfil_acesso_id') || authRecord.getString('perfil_id')
+    // Verificar se é administrador: mesmo critério do resto do ERP (fiscal_credenciais_rotas.js)
+    // — registro em usuarios do ERP (relação auth_user_id), perfil de acesso com administrador=true,
+    // ou login tipo master. O id do login (users) NÃO tem perfil_acesso_id.
     let isAdmin = false
-    if (perfilId) {
+    try {
+      const userRec = $app.findRecordById('_pb_users_auth_', authRecord.id)
+      if (userRec && userRec.getString('tipo') === 'master') {
+        isAdmin = true
+      }
+    } catch (_) {}
+
+    if (!isAdmin) {
       try {
-        const perfil = $app.findRecordById('perfis_acesso', perfilId)
-        isAdmin = perfil ? perfil.getBool('administrador') : false
+        const uRecs = $app.findRecordsByFilter(
+          'usuarios',
+          "auth_user_id = '" + authRecord.id + "' || id = '" + authRecord.id + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (uRecs && uRecs.length > 0) {
+          const assinanteId = uRecs[0].getString('assinante_id')
+          const pId = uRecs[0].getString('perfil_id')
+          if (pId) {
+            const perfil = $app.findRecordById('perfis_acesso', pId)
+            if (
+              perfil &&
+              perfil.getBool('ativo') &&
+              perfil.getBool('administrador') &&
+              (!assinanteId || perfil.getString('assinante_id') === assinanteId)
+            ) {
+              isAdmin = true
+            }
+          }
+        }
       } catch (_) {}
     }
+
     if (!isAdmin) {
       return c.json(403, {
         sucesso: false,

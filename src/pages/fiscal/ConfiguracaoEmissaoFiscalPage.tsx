@@ -414,6 +414,11 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
     }
   }
 
+  // Fonte única do status do webhook: a MESMA consulta à Focus (via backend) que alimenta
+  // a tabela "Webhooks Cadastrados na Focus NFe". O selo do card de credenciais não usa mais
+  // a flag gravada no banco (credenciaisInfo.webhook_registrado), que podia ficar defasada.
+  const webhookRegistradoNaFocus = webhooksFocus.length > 0
+
   // Validação: empresa tem IE vazia ou ISENTO (usa empresaCompleta com fallback para empresaAtiva)
   const empAlvo = empresaCompleta || empresaAtiva
   const ieEmpresa = (empAlvo?.inscricao_estadual || '').trim().toUpperCase()
@@ -1035,7 +1040,7 @@ export const ConfiguracaoEmissaoFiscalPage: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <Webhook className="h-4 w-4 text-purple-600 flex-shrink-0" />
                       <span className="text-slate-700">Webhook nesta empresa:</span>
-                      {credenciaisInfo?.webhook_registrado ? (
+                      {webhookRegistradoNaFocus ? (
                         <Badge className="bg-emerald-600 text-white text-[11px]">
                           Registrado na Focus
                         </Badge>
