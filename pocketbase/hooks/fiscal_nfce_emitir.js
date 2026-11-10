@@ -1,5 +1,12 @@
-// reenvio 9.8r3 — correção NFC-e: sem require (Invalid module), sem loopback para montar-rascunho,
+// reenvio 9.8r4 — correção NFC-e: sem require (Invalid module), sem loopback para montar-rascunho,
 // documento fiscal gravado ANTES da chamada à Focus, try/catch com mensagem real em pt-BR.
+// Envio ÚNICO por venda: (1) guarda de idempotência — documento 65 em Processando ou Autorizada
+// nunca reenvia à Focus; (2) o retry de contingência só ocorre em falha real de comunicação
+// (HTTP 5xx / indisponível / fora do ar / timeout) — texto contendo "sefaz" na resposta não
+// dispara 2º POST (era a causa do envio duplicado com a mesma referência); (3) resposta
+// "nota já foi emitida/autorizada" da Focus: consulta GET pela referência (mesmo fluxo do
+// botão Consultar do monitor) e grava o status real (Autorizada) com nº, série, chave,
+// protocolo e links XML/DANFE — nunca "Rejeitada".
 // IBS/CBS (Reforma Tributária): com "Destacar IBS e CBS" ligado na config de emissão, cada item
 // leva o grupo gIBSCBS (CST 000 / cClassTrib 000001, base = valor do item, CBS 0,9% / IBS UF 0,1% /
 // IBS mun 0% de teste 2026) e a nota leva valor_total_ibs / valor_total_cbs (nomes oficiais Focus).
@@ -164,6 +171,7 @@ routerAdd(
           return []
         }
       }
+
       const permitidosIds = new Set()
       const padraoId = usuarioRec.getString('empresa_padrao_id')
       if (padraoId) permitidosIds.add(padraoId)
@@ -444,7 +452,9 @@ routerAdd(
         })
       }
 
-      // 4. Documento existente?
+      // 4. Documento existente? GUARDA DE IDEMPOTÊNCIA (envio único por venda):
+      // documento 65 já Autorizada OU em Processando NUNCA é reenviado à Focus —
+      // devolve o status atual do documento.
       let docRec = null
       try {
         const docsExistentes = $app.findRecordsByFilter(
@@ -456,20 +466,39 @@ routerAdd(
         )
         if (docsExistentes && docsExistentes.length > 0) docRec = docsExistentes[0]
       } catch (_) {}
-      if (
-        docRec &&
-        docRec.getString('status') === 'Autorizada' &&
-        docRec.getString('status_sefaz') !== 'ERRO_INTERNO'
-      ) {
-        return c.json(200, {
-          sucesso: true,
-          ja_autorizada: true,
-          status: 'Autorizada',
-          message: 'A NFC-e desta venda já está Autorizada.',
-          documento_id: docRec.id,
-          chave: docRec.getString('chave_acesso'),
-          danfe_url: docRec.getString('danfe_url'),
-        })
+      if (docRec) {
+        const statusDocAtual = docRec.getString('status')
+        const statusSefazDocAtual = docRec.getString('status_sefaz')
+        const jaAutorizadaDoc =
+          statusDocAtual === 'Autorizada' && statusSefazDocAtual !== 'ERRO_INTERNO'
+        if (jaAutorizadaDoc || statusDocAtual === 'Processando') {
+          let numeroDocAtual
+          try {
+            numeroDocAtual = docRec.getInt('numero') || undefined
+          } catch (_) {
+            numeroDocAtual = undefined
+          }
+          console.log(
+            '[emitir-nfce-venda] Envio bloqueado pela guarda de idempotência — documento 65 da venda já está ' +
+              statusDocAtual +
+              '.',
+          )
+          return c.json(200, {
+            sucesso: true,
+            ja_autorizada: jaAutorizadaDoc,
+            status: statusDocAtual,
+            message:
+              statusDocAtual === 'Processando'
+                ? 'A NFC-e desta venda já está em transmissão (Processando) — não reenviada à Focus. Use "Consultar" no monitor fiscal para buscar o status real.'
+                : 'A NFC-e desta venda já está Autorizada — não reenviada à Focus.',
+            documento_id: docRec.id,
+            numero: numeroDocAtual,
+            serie: docRec.getString('serie'),
+            chave: docRec.getString('chave_acesso'),
+            protocolo: docRec.getString('protocolo'),
+            danfe_url: docRec.getString('danfe_url'),
+          })
+        }
       }
 
       // 5. Montar JSON Focus LOCALMENTE (sem loopback)
@@ -936,6 +965,38 @@ routerAdd(
         return { statusCode: res.statusCode || 200, json, rawText }
       }
 
+      const ehRespostaAutorizada = (resp) => {
+        if (!resp) return false
+        const st = (resp.json && resp.json.status) || ''
+        return (
+          st === 'autorizado' ||
+          st === 'emitido' ||
+          st === 'contingencia' ||
+          ((resp.statusCode || 200) === 200 &&
+            resp.json &&
+            (resp.json.chave_nfe || resp.json.caminho_xml_nota_fiscal))
+        )
+      }
+
+      const textoIndicaRefJaUsada = (texto) => {
+        const t = (texto || '').toLowerCase()
+        if (!t) return false
+        return (
+          t.includes('já foi emitida') ||
+          t.includes('ja foi emitida') ||
+          t.includes('já foi autorizada') ||
+          t.includes('ja foi autorizada') ||
+          t.includes('nota já emitida') ||
+          t.includes('nota ja emitida') ||
+          t.includes('nota já autorizada') ||
+          t.includes('nota ja autorizada') ||
+          t.includes('referencia ja utilizada') ||
+          t.includes('referência já utilizada') ||
+          t.includes('referencia já utilizada') ||
+          t.includes('duplicated reference')
+        )
+      }
+
       let resultadoEnvio = null
       try {
         resultadoEnvio = executarChamadaFocus(forcarContingencia ? 'offline' : undefined)
@@ -946,21 +1007,123 @@ routerAdd(
         )
       }
 
+      // ENVIO ÚNICO: o retry de contingência só ocorre quando a 1ª chamada FALHOU de
+      // verdade (HTTP 5xx ou indisponibilidade explícita da SEFAZ). Qualquer outro caso —
+      // inclusive resposta cujo texto mencione "sefaz" (ex.: "A nota fiscal já foi
+      // emitida pela SEFAZ") — NÃO dispara 2º POST com a mesma referência: era a causa
+      // do envio duplicado que gravava a 2ª resposta ("já foi emitida") como Rejeitada.
       const rawLower = (resultadoEnvio.rawText || '').toLowerCase()
       const sefazFora =
         !forcarContingencia &&
+        !ehRespostaAutorizada(resultadoEnvio) &&
+        !textoIndicaRefJaUsada(resultadoEnvio.rawText) &&
         (resultadoEnvio.statusCode === 500 ||
           resultadoEnvio.statusCode === 503 ||
           resultadoEnvio.statusCode === 504 ||
-          rawLower.includes('sefaz') ||
           rawLower.includes('indisponivel') ||
+          rawLower.includes('indisponível') ||
           rawLower.includes('fora do ar') ||
           rawLower.includes('timeout'))
       if (sefazFora) {
         try {
-          resultadoEnvio = executarChamadaFocus('offline')
+          const resultadoContingencia = executarChamadaFocus('offline')
+          // Nunca sobrescreve uma resposta boa com a resposta do retry
+          if (
+            ehRespostaAutorizada(resultadoContingencia) ||
+            !ehRespostaAutorizada(resultadoEnvio)
+          ) {
+            resultadoEnvio = resultadoContingencia
+          }
         } catch (errCont) {
           console.warn('[emitir-nfce-venda] Falha na contingência:', errCont)
+        }
+      }
+
+      // Referência já usada na Focus ("A nota fiscal já foi emitida/autorizada") —
+      // típico de um 2º envio da mesma NFC-e (ex.: timeout da 1ª chamada que chegou à
+      // SEFAZ). NÃO grava "Rejeitada": consulta a nota pela referência (mesmo fluxo do
+      // botão Consultar do monitor fiscal) e adota o status real (Autorizada) com
+      // número, série, chave, protocolo e links. Se a consulta não confirmar a
+      // autorização, o documento fica em "Processando" (status_sefaz
+      // AGUARDANDO_CONSULTA) para o botão Consultar buscar o status real — nunca
+      // Rejeitada.
+      const rawPrimeiraResp = resultadoEnvio.rawText || ''
+      const refJaUsada = textoIndicaRefJaUsada(rawPrimeiraResp)
+      if (refJaUsada && refFocus) {
+        let consultaConfirmouAutorizacao = false
+        try {
+          const urlConsultaRef = `${ambiente === 'Produção' ? 'https://api.focusnfe.com.br/v2' : 'https://homologacao.focusnfe.com.br/v2'}/nfce/${encodeURIComponent(refFocus)}`
+          const resConsultaRef = $http.send({
+            method: 'GET',
+            url: urlConsultaRef,
+            headers: {
+              Authorization: 'Basic ' + encodeBase64Nfce(token + ':'),
+              Accept: 'application/json',
+            },
+            timeout: 60,
+          })
+          let jsonConsultaRef = null
+          try {
+            jsonConsultaRef = JSON.parse(resConsultaRef.raw || '')
+          } catch (_) {
+            jsonConsultaRef = null
+          }
+          const statusConsultaRef = (jsonConsultaRef && jsonConsultaRef.status) || ''
+          const autorizadaNaConsulta =
+            statusConsultaRef === 'autorizado' ||
+            statusConsultaRef === 'emitido' ||
+            ((resConsultaRef.statusCode || 200) === 200 &&
+              jsonConsultaRef &&
+              jsonConsultaRef.chave_nfe)
+          if (autorizadaNaConsulta) {
+            consultaConfirmouAutorizacao = true
+            console.log(
+              '[emitir-nfce-venda] Referência já enviada antes — status real (Autorizada) obtido na consulta à Focus.',
+            )
+            resultadoEnvio = {
+              statusCode: resConsultaRef.statusCode || 200,
+              json: jsonConsultaRef,
+              rawText: resConsultaRef.raw || '',
+            }
+          }
+        } catch (errConsultaRef) {
+          console.warn(
+            '[emitir-nfce-venda] Falha ao consultar a nota já enviada na Focus:',
+            errConsultaRef,
+          )
+        }
+        if (!consultaConfirmouAutorizacao) {
+          // Consulta não confirmou (ainda processando / falha na consulta):
+          // documento em "Processando" para o botão Consultar buscar o status real.
+          try {
+            docRec.set('json_retorno', {
+              aviso: 'A Focus informou que a nota já foi enviada para esta referência.',
+              resposta: resultadoEnvio.json || rawPrimeiraResp,
+            })
+            docRec.set('status', 'Processando')
+            docRec.set('status_sefaz', 'AGUARDANDO_CONSULTA')
+            docRec.set(
+              'mensagem_sefaz',
+              'A Focus informou que a nota já foi enviada para esta referência. Use "Consultar" no monitor fiscal para buscar o status real na SEFAZ.',
+            )
+            $app.save(docRec)
+          } catch (errDocProc) {
+            console.warn(
+              '[emitir-nfce-venda] Falha ao gravar Processando após referência já usada:',
+              errDocProc,
+            )
+          }
+          // Venda mantém o status anterior (nunca "Processando" em vendas.documento_fiscal_status)
+          return c.json(200, {
+            sucesso: false,
+            erro_interno: false,
+            status: 'Processando',
+            documento_id: docRec.id,
+            ref: refFocus,
+            message:
+              'A Focus informou que a nota já foi enviada para esta referência. Use "Consultar" no monitor fiscal para buscar o status real na SEFAZ.',
+            detalhes: resultadoEnvio.json || rawPrimeiraResp,
+          })
         }
       }
 
@@ -1056,7 +1219,8 @@ routerAdd(
         })
       }
 
-      // Rejeitada pela SEFAZ/Focus (com código e motivo)
+      // Rejeitada pela SEFAZ/Focus (com código e motivo) — só chega aqui quando a
+      // resposta NÃO é "já foi emitida/autorizada" (esse caso foi tratado acima).
       let motivoRejeicao =
         (respJson && (respJson.mensagem_sefaz || respJson.mensagem || respJson.message)) ||
         `Focus NFe HTTP ${statusCode}`
