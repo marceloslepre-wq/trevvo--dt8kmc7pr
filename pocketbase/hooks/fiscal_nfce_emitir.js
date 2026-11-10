@@ -1,5 +1,8 @@
 // reenvio 9.8r3 — correção NFC-e: sem require (Invalid module), sem loopback para montar-rascunho,
 // documento fiscal gravado ANTES da chamada à Focus, try/catch com mensagem real em pt-BR.
+// IBS/CBS (Reforma Tributária): com "Destacar IBS e CBS" ligado na config de emissão, cada item
+// leva o grupo gIBSCBS (CST 000 / cClassTrib 000001, base = valor do item, CBS 0,9% / IBS UF 0,1% /
+// IBS mun 0% de teste 2026) e a nota leva valor_total_ibs / valor_total_cbs (nomes oficiais Focus).
 // @ts-check
 /// <reference path="../types.d.ts" />
 
@@ -510,6 +513,8 @@ routerAdd(
       const seriePadrao = config.getString('serie_nfce') || '1'
       const naturezaPadrao = config.getString('natureza_operacao_venda') || 'Venda de mercadoria'
       const infoComplPadrao = config.getString('informacoes_complementares_padrao') || ''
+      // "Destacar IBS e CBS (Reforma Tributária)" — opção da config de emissão da loja
+      const informarIbsCbs = config.getBool('informar_ibs_cbs')
 
       // Destinatário: consumidor do PDV (cpf_cnpj_consumidor) ou cliente da venda
       const cpfCnpjConsumidor = (venda.getString('cpf_cnpj_consumidor') || '').replace(/\D/g, '')
@@ -553,6 +558,8 @@ routerAdd(
       let totValorIcms = 0
       let totValorPis = 0
       let totValorCofins = 0
+      let totValorIbs = 0
+      let totValorCbs = 0
       let totValorTotal = 0
       let cfopPrimeiroItem = ''
 
@@ -690,6 +697,38 @@ routerAdd(
           valorCofins = round2(baseCofins * (aliqCofins / 100))
         }
 
+        // IBS/CBS (Reforma Tributária) — grupo gIBSCBS do item (nomes oficiais da Focus):
+        // CST/cClassTrib do perfil tributário (default CST 000 / cClassTrib 000001);
+        // base = valor do item; alíquotas de teste 2026: CBS 0,9%, IBS UF 0,1%, IBS municipal 0%
+        // (usa a alíquota da regra do perfil quando ela vier preenchida).
+        let cstIbsCbs = ''
+        let cClassTribIbsCbs = ''
+        let baseIbsCbs = 0
+        let ibsUfAliquota = 0
+        let ibsUfValor = 0
+        let ibsMunAliquota = 0
+        let ibsMunValor = 0
+        let ibsValorTotal = 0
+        let cbsAliquota = 0
+        let cbsValor = 0
+        if (informarIbsCbs) {
+          cstIbsCbs = (regraRec ? regraRec.getString('cst_ibs_cbs') : '') || '000'
+          cClassTribIbsCbs = (regraRec ? regraRec.getString('c_class_trib') : '') || '000001'
+          baseIbsCbs = valorBaseInicial
+          const aliqUfRegra = regraRec ? regraRec.getFloat('aliquota_ibs_uf') || 0 : 0
+          const aliqMunRegra = regraRec ? regraRec.getFloat('aliquota_ibs_municipio') || 0 : 0
+          const aliqCbsRegra = regraRec ? regraRec.getFloat('aliquota_cbs') || 0 : 0
+          ibsUfAliquota = aliqUfRegra > 0 ? aliqUfRegra : 0.1
+          ibsMunAliquota = aliqMunRegra
+          cbsAliquota = aliqCbsRegra > 0 ? aliqCbsRegra : 0.9
+          ibsUfValor = round2(baseIbsCbs * (ibsUfAliquota / 100))
+          ibsMunValor = round2(baseIbsCbs * (ibsMunAliquota / 100))
+          ibsValorTotal = round2(ibsUfValor + ibsMunValor)
+          cbsValor = round2(baseIbsCbs * (cbsAliquota / 100))
+          totValorIbs = round2(totValorIbs + ibsValorTotal)
+          totValorCbs = round2(totValorCbs + cbsValor)
+        }
+
         totValorProdutos += valorBruto
         totValorDesconto += descontoItem
         totBaseIcms += baseIcms
@@ -741,6 +780,18 @@ routerAdd(
           itemFocus.cofins_base_calculo = baseCofins
           itemFocus.cofins_aliquota_porcentual = aliqCofins
           itemFocus.cofins_valor = valorCofins
+        }
+        if (informarIbsCbs) {
+          itemFocus.ibs_cbs_situacao_tributaria = cstIbsCbs
+          itemFocus.ibs_cbs_classificacao_tributaria = cClassTribIbsCbs
+          itemFocus.ibs_cbs_base_calculo = baseIbsCbs
+          itemFocus.ibs_uf_aliquota = ibsUfAliquota
+          itemFocus.ibs_uf_valor = ibsUfValor
+          itemFocus.ibs_mun_aliquota = ibsMunAliquota
+          itemFocus.ibs_mun_valor = ibsMunValor
+          itemFocus.ibs_valor_total = ibsValorTotal
+          itemFocus.cbs_aliquota = cbsAliquota
+          itemFocus.cbs_valor = cbsValor
         }
         itensFocus.push(itemFocus)
       }
@@ -811,6 +862,11 @@ routerAdd(
       }
       const valorTrocoVenda = venda.getFloat('valor_troco') || 0
       if (valorTrocoVenda > 0) jsonFocus.valor_troco = round2(valorTrocoVenda)
+      // Totais IBS/CBS da nota (soma dos itens) quando "Destacar IBS e CBS" ligado
+      if (informarIbsCbs) {
+        jsonFocus.valor_total_ibs = round2(totValorIbs)
+        jsonFocus.valor_total_cbs = round2(totValorCbs)
+      }
 
       // 6. Gravar documento fiscal ANTES de chamar a Focus
       const colDoc = $app.findCollectionByNameOrId('documentos_fiscais')
@@ -848,6 +904,8 @@ routerAdd(
       docRec.set('valor_ipi', 0)
       docRec.set('valor_pis', round2(totValorPis))
       docRec.set('valor_cofins', round2(totValorCofins))
+      docRec.set('valor_ibs', round2(totValorIbs))
+      docRec.set('valor_cbs', round2(totValorCbs))
       docRec.set('valor_total', round2(totValorTotal))
       docRec.set('json_enviado', jsonFocus)
       docRec.set('usuario_emissao_id', userId)

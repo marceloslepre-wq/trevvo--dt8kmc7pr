@@ -1728,7 +1728,7 @@ routerAdd(
     }
 
     const statusAtual = docRec.getString('status')
-    if (statusAtual !== 'Rejeitada') {
+    if (statusAtual !== 'Rejeitada' && statusAtual !== 'Processando') {
       return c.json(400, {
         sucesso: false,
         message: `Apenas documentos com status "Rejeitada" podem ser reenviados (status atual: ${statusAtual}).`,
@@ -1896,15 +1896,217 @@ routerAdd(
         ? 'https://api.focusnfe.com.br/v2'
         : 'https://homologacao.focusnfe.com.br/v2'
 
-    const jsonEnviado = docRec.get('json_enviado')
-    if (!jsonEnviado) {
-      return c.json(400, {
-        sucesso: false,
-        message: 'Payload fiscal (json_enviado) não encontrado no registro para reenvio.',
-      })
-    }
-
     const endpoint = modelo === '65' ? 'nfce' : 'nfe'
+
+    // NFC-e: REMONTA o JSON com a configuração e o perfil tributário ATUAIS
+    // (não reaproveita o json_enviado antigo — a rejeição por IBS/CBS saía desatualizada).
+    // IBS/CBS (Reforma Tributária): CST 000 / cClassTrib 000001, base = valor do item,
+    // alíquotas de teste 2026: CBS 0,9%, IBS UF 0,1%, IBS municipal 0% (nomes oficiais da Focus).
+    let jsonEnviado = null
+    if (modelo === '65') {
+      const round2Re = (v) => Math.round((Number(v) || 0) * 100) / 100
+      let vendaIdDoc = docRec.getString('venda_id')
+      if (!vendaIdDoc) {
+        return c.json(400, {
+          sucesso: false,
+          message:
+            'Documento fiscal sem venda vinculada — não é possível remontar o JSON da NFC-e.',
+        })
+      }
+      let vendaDoc = null
+      try {
+        vendaDoc = $app.findRecordById('vendas', vendaIdDoc)
+      } catch (_) {
+        vendaDoc = null
+      }
+      if (!vendaDoc || !vendaDoc.getBool('ativo')) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Venda vinculada ao documento não encontrada ou inativa.',
+        })
+      }
+      let configDoc = null
+      try {
+        const cfgsDoc = $app.findRecordsByFilter(
+          'config_emissao_fiscal',
+          `empresa_id = '${empresaId}' && ativo = true`,
+          '-created',
+          1,
+          0,
+        )
+        if (cfgsDoc && cfgsDoc.length > 0) configDoc = cfgsDoc[0]
+      } catch (_) {}
+      if (!configDoc) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Configuração fiscal da empresa não encontrada para remontar a NFC-e.',
+        })
+      }
+      const informarIbsCbsDoc = configDoc.getBool('informar_ibs_cbs')
+
+      let itensVenda = []
+      try {
+        itensVenda = $app.findRecordsByFilter(
+          'vendas_itens',
+          `venda_id = '${vendaIdDoc}' && ativo = true`,
+          'item,created',
+        )
+      } catch (_) {
+        itensVenda = []
+      }
+      if (!itensVenda || itensVenda.length === 0) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'A venda não possui itens lançados — não é possível remontar a NFC-e.',
+        })
+      }
+
+      let totIbsDoc = 0
+      let totCbsDoc = 0
+      const itensRemontados = []
+      for (let i = 0; i < itensVenda.length; i++) {
+        const it = itensVenda[i]
+        const prodIdIt = it.getString('produto_id')
+        let prodIt = null
+        if (prodIdIt) {
+          try {
+            prodIt = $app.findRecordById('produtos', prodIdIt)
+          } catch (_) {}
+        }
+        const perfilIdIt =
+          it.getString('perfil_tributario_id') ||
+          (prodIt ? prodIt.getString('perfil_tributario_id') : '')
+        let regraIt = null
+        if (perfilIdIt) {
+          try {
+            const regrasIt = $app.findRecordsByFilter(
+              'perfis_tributarios_regras',
+              `perfil_id = '${perfilIdIt}' && cenario = 'VENDA_INTERNA_CONSUMIDOR' && ativo = true`,
+              '',
+              1,
+              0,
+            )
+            if (regrasIt && regrasIt.length > 0) regraIt = regrasIt[0]
+          } catch (_) {}
+        }
+        const valorUnitIt = it.getFloat('preco_unitario') || 0
+        const qtdIt = it.getFloat('quantidade') || 0
+        const brutoIt = round2Re(qtdIt * valorUnitIt)
+        const liquidoIt = round2Re(
+          brutoIt - (it.getFloat('desconto_valor') || 0) + (it.getFloat('acrescimo_valor') || 0),
+        )
+
+        const itemNovo = {
+          numero_item: i + 1,
+          codigo_produto:
+            (prodIt ? prodIt.getString('codigo') || prodIt.getString('codigo_interno') : '') ||
+            prodIdIt ||
+            String(i + 1),
+          descricao: it.getString('descricao') || (prodIt ? prodIt.getString('descricao') : ''),
+          cfop: it.getString('cfop') || (regraIt ? regraIt.getString('cfop') : '') || '5102',
+          codigo_ncm: (
+            it.getString('ncm') ||
+            (prodIt ? prodIt.getString('ncm') : '') ||
+            ''
+          ).replace(/\D/g, ''),
+          unidade_comercial: (
+            it.getString('unidade') ||
+            (prodIt ? prodIt.getString('unidade_medida') : '') ||
+            'UN'
+          )
+            .trim()
+            .toUpperCase(),
+          quantidade_comercial: qtdIt,
+          valor_unitario_comercial: valorUnitIt,
+          unidade_tributavel: (
+            it.getString('unidade') ||
+            (prodIt ? prodIt.getString('unidade_medida') : '') ||
+            'UN'
+          )
+            .trim()
+            .toUpperCase(),
+          quantidade_tributavel: qtdIt,
+          valor_unitario_tributavel: valorUnitIt,
+          valor_bruto: brutoIt,
+          valor_desconto: round2Re(
+            (it.getFloat('desconto_valor') || 0) - (it.getFloat('acrescimo_valor') || 0),
+          ),
+          icms_origem:
+            it.getString('origem') || (regraIt ? regraIt.getString('origem') : '0') || '0',
+          icms_situacao_tributaria:
+            it.getString('cst_icms') || (regraIt ? regraIt.getString('cst_icms') : '') || '00',
+        }
+        const cstPisIt =
+          it.getString('cst_pis') || (regraIt ? regraIt.getString('cst_pis') : '') || '07'
+        const cstCofinsIt =
+          it.getString('cst_cofins') || (regraIt ? regraIt.getString('cst_cofins') : '') || '07'
+        if (cstPisIt) itemNovo.pis_situacao_tributaria = cstPisIt
+        if (cstCofinsIt) itemNovo.cofins_situacao_tributaria = cstCofinsIt
+
+        if (informarIbsCbsDoc) {
+          const cstIbsIt = (regraIt ? regraIt.getString('cst_ibs_cbs') : '') || '000'
+          const cClassTribIt = (regraIt ? regraIt.getString('c_class_trib') : '') || '000001'
+          const aliqUfIt = regraIt ? regraIt.getFloat('aliquota_ibs_uf') || 0 : 0
+          const aliqMunIt = regraIt ? regraIt.getFloat('aliquota_ibs_municipio') || 0 : 0
+          const aliqCbsIt = regraIt ? regraIt.getFloat('aliquota_cbs') || 0 : 0
+          const ufAlq = aliqUfIt > 0 ? aliqUfIt : 0.1
+          const cbsAlq = aliqCbsIt > 0 ? aliqCbsIt : 0.9
+          const ufVlr = round2Re(liquidoIt * (ufAlq / 100))
+          const munVlr = round2Re(liquidoIt * (aliqMunIt / 100))
+          const ibsTotIt = round2Re(ufVlr + munVlr)
+          const cbsVlrIt = round2Re(liquidoIt * (cbsAlq / 100))
+          itemNovo.ibs_cbs_situacao_tributaria = cstIbsIt
+          itemNovo.ibs_cbs_classificacao_tributaria = cClassTribIt
+          itemNovo.ibs_cbs_base_calculo = liquidoIt
+          itemNovo.ibs_uf_aliquota = ufAlq
+          itemNovo.ibs_uf_valor = ufVlr
+          itemNovo.ibs_mun_aliquota = aliqMunIt
+          itemNovo.ibs_mun_valor = munVlr
+          itemNovo.ibs_valor_total = ibsTotIt
+          itemNovo.cbs_aliquota = cbsAlq
+          itemNovo.cbs_valor = cbsVlrIt
+          totIbsDoc = round2Re(totIbsDoc + ibsTotIt)
+          totCbsDoc = round2Re(totCbsDoc + cbsVlrIt)
+        }
+        itensRemontados.push(itemNovo)
+      }
+
+      const jsonBaseRaw = docRec.get('json_enviado')
+      let jsonBase = null
+      try {
+        if (typeof jsonBaseRaw === 'object' && jsonBaseRaw !== null) jsonBase = jsonBaseRaw
+        else if (typeof jsonBaseRaw === 'string' && jsonBaseRaw.trim()) {
+          jsonBase = JSON.parse(jsonBaseRaw)
+        }
+      } catch (_) {
+        jsonBase = null
+      }
+      if (!jsonBase || !jsonBase.cnpj_emitente) {
+        return c.json(400, {
+          sucesso: false,
+          message:
+            'Payload fiscal (json_enviado) não encontrado ou inválido no registro para remontar o reenvio.',
+        })
+      }
+
+      jsonBase.items = itensRemontados
+      if (informarIbsCbsDoc) {
+        jsonBase.valor_total_ibs = totIbsDoc
+        jsonBase.valor_total_cbs = totCbsDoc
+      } else {
+        delete jsonBase.valor_total_ibs
+        delete jsonBase.valor_total_cbs
+      }
+      jsonEnviado = jsonBase
+    } else {
+      jsonEnviado = docRec.get('json_enviado')
+      if (!jsonEnviado) {
+        return c.json(400, {
+          sucesso: false,
+          message: 'Payload fiscal (json_enviado) não encontrado no registro para reenvio.',
+        })
+      }
+    }
     const url = `${baseUrl}/${endpoint}?ref=${encodeURIComponent(ref)}`
     const basicAuth = 'Basic ' + encodeBase64(token + ':')
 
@@ -1932,6 +2134,7 @@ routerAdd(
       docRec.set('status_sefaz', 'processando_autorizacao')
       docRec.set('mensagem_sefaz', 'Reenviado para autorização na SEFAZ.')
       docRec.set('json_retorno', respJson)
+      if (modelo === '65' && jsonEnviado) docRec.set('json_enviado', jsonEnviado)
       $app.save(docRec)
 
       return c.json(200, {
