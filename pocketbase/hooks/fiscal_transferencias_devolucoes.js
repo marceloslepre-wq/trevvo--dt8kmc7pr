@@ -587,6 +587,7 @@ routerAdd(
 
       const cnpjEmitente = (empresaEmitente.getString('cnpj') || '').replace(/\D/g, '')
       const ufEmitente = (empresaEmitente.getString('uf') || '').trim().toUpperCase()
+      const ieEmitenteDev = (empresaEmitente.getString('inscricao_estadual') || '').trim()
       const nomeDocEmp = (empresaEmitente.getString('nome_documentos_fiscais') || '').trim()
       const razaoSocialEmp = (empresaEmitente.getString('razao_social') || '').trim()
       const nomeEmitenteFinal = truncar60(nomeDocEmp || razaoSocialEmp)
@@ -934,6 +935,9 @@ routerAdd(
         informacoes_adicionais_contribuinte: `Devolução ref. NF-e chave ${chaveNotaReferenciada}. Motivo: ${motivoDevolucao}`,
       }
 
+      if (ieEmitenteDev && ieEmitenteDev.toUpperCase() !== 'ISENTO') {
+        payloadFocus.inscricao_estadual_emitente = ieEmitenteDev.replace(/\D/g, '')
+      }
       if (cnpjCpfForn.length === 14) {
         payloadFocus.cnpj_destinatario = cnpjCpfForn
       } else {
@@ -1941,12 +1945,28 @@ routerAdd(
       const naturezaOperacao =
         cfgFiscal.getString('natureza_operacao_transferencia') || 'Transferência de mercadoria'
 
+      function truncarNomeFiscal60(valor) {
+        const nome = String(valor || '').trim()
+        return nome.length > 60 ? nome.substring(0, 60) : nome
+      }
+
       const cnpjEmitente = (empOrigem.getString('cnpj') || '').replace(/\D/g, '')
       const ufEmitente = (empOrigem.getString('uf') || '').trim().toUpperCase()
 
+      // xNome do emitente: nome_documentos_fiscais quando preenchido, senão razão social
+      // cortada em 60 caracteres (mesma regra da venda — rejeição 28 da SEFAZ, facet maxLength 60)
+      const ieEmitenteTrf = (empOrigem.getString('inscricao_estadual') || '').trim()
+      const nomeDocEmitenteTrf = (empOrigem.getString('nome_documentos_fiscais') || '').trim()
+      const razaoSocialEmitenteTrf = (empOrigem.getString('razao_social') || '').trim()
+      const nomeEmitenteFinal = truncarNomeFiscal60(nomeDocEmitenteTrf || razaoSocialEmitenteTrf)
+
       const cnpjDestino = (empDestino.getString('cnpj') || '').replace(/\D/g, '')
-      const nomeDestino =
-        empDestino.getString('razao_social') || empDestino.getString('nome_fantasia') || ''
+      const nomeDestino = truncarNomeFiscal60(
+        (empDestino.getString('nome_documentos_fiscais') || '').trim() ||
+          empDestino.getString('razao_social') ||
+          empDestino.getString('nome_fantasia') ||
+          '',
+      )
       const ufDestino = (empDestino.getString('uf') || '').trim().toUpperCase()
       const ieDestino = (empDestino.getString('inscricao_estadual') || '').trim()
       const ibgeDestino = (empDestino.getString('codigo_municipio_ibge') || '').trim()
@@ -2090,10 +2110,11 @@ routerAdd(
       totValorProdutos = Math.round(totValorProdutos * 100) / 100
       totValorTotal = Math.round(totValorTotal * 100) / 100
 
-      const nomeDestFinal =
+      const nomeDestFinal = truncarNomeFiscal60(
         ambiente === 'Homologação'
           ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-          : nomeDestino
+          : nomeDestino,
+      )
 
       const payloadFocus = {
         natureza_operacao: naturezaOperacao,
@@ -2105,6 +2126,7 @@ routerAdd(
         presenca_comprador: '9',
         modalidade_frete: modalidadeFrete,
         cnpj_emitente: cnpjEmitente,
+        nome_emitente: nomeEmitenteFinal,
         nome_destinatario: nomeDestFinal,
         indicador_inscricao_estadual_destinatario: indicadorIeDestino,
         logradouro_destinatario: logrDestino,
@@ -2118,6 +2140,9 @@ routerAdd(
         informacoes_adicionais_contribuinte: `Transferência de mercadoria TR-${transf.getInt('numero')} de ${empOrigem.getString('nome_fantasia')} para ${empDestino.getString('nome_fantasia')}.`,
       }
 
+      if (ieEmitenteTrf && ieEmitenteTrf.toUpperCase() !== 'ISENTO') {
+        payloadFocus.inscricao_estadual_emitente = ieEmitenteTrf.replace(/\D/g, '')
+      }
       if (cnpjDestino.length === 14) {
         payloadFocus.cnpj_destinatario = cnpjDestino
       } else {
@@ -2142,7 +2167,7 @@ routerAdd(
       docRec.set('status', 'Processando')
       docRec.set('serie', serieNfe)
       docRec.set('natureza_operacao', naturezaOperacao)
-      docRec.set('destinatario_nome', nomeDestino)
+      docRec.set('destinatario_nome', truncarNomeFiscal60(nomeDestino))
       docRec.set('destinatario_cpf_cnpj', cnpjDestino)
       docRec.set('destinatario_uf', ufDestino)
       docRec.set('valor_produtos', totValorProdutos)
