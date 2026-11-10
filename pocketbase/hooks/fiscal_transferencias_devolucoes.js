@@ -2023,6 +2023,12 @@ routerAdd(
         const perfilId = prodRec ? prodRec.getString('perfil_tributario_id') : ''
         let cfopTransferencia = ''
         let cstIcms = '41' // Não tributada padrão em transferência
+        // PIS/COFINS: padrão CST 49 (outras operações de saída) zerado; o perfil
+        // tributário (cenário TRANSFERENCIA) sobrepõe quando tiver CST gravado.
+        let cstPisTrf = '49'
+        let aliqPisTrf = 0
+        let cstCofinsTrf = '49'
+        let aliqCofinsTrf = 0
 
         if (perfilId) {
           try {
@@ -2045,6 +2051,16 @@ routerAdd(
                 }
               }
               cstIcms = regras[0].getString('cst_icms') || regras[0].getString('csosn') || '41'
+              const cstPisPerfilTrf = (regras[0].getString('cst_pis') || '').trim()
+              if (cstPisPerfilTrf) {
+                cstPisTrf = cstPisPerfilTrf
+                aliqPisTrf = regras[0].getFloat('aliquota_pis') || 0
+              }
+              const cstCofinsPerfilTrf = (regras[0].getString('cst_cofins') || '').trim()
+              if (cstCofinsPerfilTrf) {
+                cstCofinsTrf = cstCofinsPerfilTrf
+                aliqCofinsTrf = regras[0].getFloat('aliquota_cofins') || 0
+              }
             }
           } catch (_) {}
         }
@@ -2082,6 +2098,33 @@ routerAdd(
 
         if (cest) itemFocus.codigo_cest = cest
 
+        // PIS e COFINS sempre presentes (SEFAZ rejeita com 745 "NF-e sem grupo
+        // do PIS"). CST 49 zerado por padrão; CST 01/02 do perfil calcula sobre
+        // o valor do item. Nomes de campo idênticos aos da devolução de compra
+        // (e do motor de vendas em fiscal_nfe_operacoes.js).
+        let basePisTrf = 0
+        let valorPisTrf = 0
+        if (['01', '02'].includes(cstPisTrf) && aliqPisTrf > 0) {
+          basePisTrf = valorItem
+          valorPisTrf = Math.round(basePisTrf * (aliqPisTrf / 100) * 100) / 100
+        }
+        let baseCofinsTrf = 0
+        let valorCofinsTrf = 0
+        if (['01', '02'].includes(cstCofinsTrf) && aliqCofinsTrf > 0) {
+          baseCofinsTrf = valorItem
+          valorCofinsTrf = Math.round(baseCofinsTrf * (aliqCofinsTrf / 100) * 100) / 100
+        }
+
+        itemFocus.pis_situacao_tributaria = cstPisTrf
+        itemFocus.pis_base_calculo = basePisTrf
+        itemFocus.pis_aliquota_porcentual = aliqPisTrf
+        itemFocus.pis_valor = valorPisTrf
+
+        itemFocus.cofins_situacao_tributaria = cstCofinsTrf
+        itemFocus.cofins_base_calculo = baseCofinsTrf
+        itemFocus.cofins_aliquota_porcentual = aliqCofinsTrf
+        itemFocus.cofins_valor = valorCofinsTrf
+
         itensFocus.push(itemFocus)
 
         itensDocFiscal.push({
@@ -2099,6 +2142,14 @@ routerAdd(
           valor_total: valorItem,
           origem: origemItem,
           cst_icms: cstIcms,
+          cst_pis: cstPisTrf,
+          base_pis: basePisTrf,
+          aliquota_pis: aliqPisTrf,
+          valor_pis: valorPisTrf,
+          cst_cofins: cstCofinsTrf,
+          base_cofins: baseCofinsTrf,
+          aliquota_cofins: aliqCofinsTrf,
+          valor_cofins: valorCofinsTrf,
           custo_unitario: custoUnitario,
           lote_id: it.getString('lote_id') || '',
         })
@@ -2195,6 +2246,14 @@ routerAdd(
         itRec.set('valor_total', itD.valor_total)
         itRec.set('origem', itD.origem)
         itRec.set('cst_icms', itD.cst_icms)
+        if (itD.cst_pis) itRec.set('cst_pis', itD.cst_pis)
+        if (itD.base_pis !== undefined) itRec.set('base_pis', itD.base_pis)
+        if (itD.aliquota_pis !== undefined) itRec.set('aliquota_pis', itD.aliquota_pis)
+        if (itD.valor_pis !== undefined) itRec.set('valor_pis', itD.valor_pis)
+        if (itD.cst_cofins) itRec.set('cst_cofins', itD.cst_cofins)
+        if (itD.base_cofins !== undefined) itRec.set('base_cofins', itD.base_cofins)
+        if (itD.aliquota_cofins !== undefined) itRec.set('aliquota_cofins', itD.aliquota_cofins)
+        if (itD.valor_cofins !== undefined) itRec.set('valor_cofins', itD.valor_cofins)
         $app.save(itRec)
       }
 

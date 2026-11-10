@@ -411,30 +411,52 @@ export const ModalEmitirNFeTransferencia: React.FC<ModalEmitirNFeTransferenciaPr
     }
   }
 
-  // O montar-rascunho devolve { documento, itens, json_focus }; quando o bloco
-  // "documento" chega sem valores (ou vazio), derivamos os totais dos itens
-  // calculados pelo backend para o quadro "Transporte & Impostos" não exibir R$ 0,00.
-  const docBruto: any = rascunho?.documento || {}
+  // Arredondamento a 2 casas (dinheiro) usado nos totais do quadro
+  const round2Trf = (v: number) => Math.round((Number(v) || 0) * 100) / 100
+
+  // O montar-rascunho devolve { documento, itens, json_focus }. Os totais do quadro
+  // "Transporte & Impostos" vêm SEMPRE da soma dos itens da transferência
+  // (quantidade × custo unitário) — é exatamente o vProd/vNF que a NF-e leva.
+  // Quando o rascunho chegou do backend, usamos os itens calculados (valor_bruto/
+  // valor_total de cada item); senão, caímos para os itens da própria transferência.
   const itensRasc: any[] = Array.isArray(rascunho?.itens) ? (rascunho?.itens as any[]) : []
+  const temRascunhoValido =
+    itensRasc.length > 0 && itensRasc.some((it) => (Number(it?.valor_bruto) || 0) > 0)
+
+  const itensTrf = transferencia?.itens || []
+  const totalItensTrf = round2Trf(
+    itensTrf.reduce(
+      (acc, it) => acc + (Number(it?.quantidade) || 0) * (Number(it?.custo_unitario) || 0),
+      0,
+    ),
+  )
+
+  const docBruto: any = temRascunhoValido ? rascunho?.documento || {} : {}
   const somarCampoItens = (campo: string) =>
-    itensRasc.reduce((acc, it) => acc + (Number(it?.[campo]) || 0), 0)
+    round2Trf(itensRasc.reduce((acc, it) => acc + (Number(it?.[campo]) || 0), 0))
 
   const doc = {
-    valor_produtos: Number(docBruto?.valor_produtos) || somarCampoItens('valor_bruto'),
-    valor_frete: Number(docBruto?.valor_frete) || 0,
-    valor_outras_despesas: Number(docBruto?.valor_outras_despesas) || 0,
-    valor_total:
-      Number(docBruto?.valor_total) ||
-      somarCampoItens('valor_total') ||
-      somarCampoItens('valor_bruto'),
-    valor_icms: Number(docBruto?.valor_icms) || somarCampoItens('valor_icms'),
-    valor_icms_st: Number(docBruto?.valor_icms_st) || somarCampoItens('valor_icms_st'),
-    valor_ipi: Number(docBruto?.valor_ipi) || somarCampoItens('valor_ipi'),
-    valor_pis: Number(docBruto?.valor_pis) || somarCampoItens('valor_pis'),
-    valor_cofins: Number(docBruto?.valor_cofins) || somarCampoItens('valor_cofins'),
-    valor_fcp: Number(docBruto?.valor_fcp) || somarCampoItens('valor_fcp'),
+    valor_produtos: temRascunhoValido
+      ? Number(docBruto?.valor_produtos) || somarCampoItens('valor_bruto') || totalItensTrf
+      : totalItensTrf,
+    valor_frete: temRascunhoValido ? Number(docBruto?.valor_frete) || 0 : 0,
+    valor_outras_despesas: temRascunhoValido ? Number(docBruto?.valor_outras_despesas) || 0 : 0,
+    valor_total: temRascunhoValido
+      ? Number(docBruto?.valor_total) || somarCampoItens('valor_total') || totalItensTrf
+      : totalItensTrf,
+    valor_icms: temRascunhoValido
+      ? Number(docBruto?.valor_icms) || somarCampoItens('valor_icms')
+      : 0,
+    valor_icms_st: temRascunhoValido
+      ? Number(docBruto?.valor_icms_st) || somarCampoItens('valor_icms_st')
+      : 0,
+    valor_ipi: temRascunhoValido ? Number(docBruto?.valor_ipi) || somarCampoItens('valor_ipi') : 0,
+    valor_pis: temRascunhoValido ? Number(docBruto?.valor_pis) || somarCampoItens('valor_pis') : 0,
+    valor_cofins: temRascunhoValido
+      ? Number(docBruto?.valor_cofins) || somarCampoItens('valor_cofins')
+      : 0,
+    valor_fcp: temRascunhoValido ? Number(docBruto?.valor_fcp) || somarCampoItens('valor_fcp') : 0,
   }
-  const itensTrf = transferencia?.itens || []
   const razaoOrigem =
     empresaOrigem?.razao_social ||
     transferencia.expand?.empresa_origem_id?.razao_social ||
