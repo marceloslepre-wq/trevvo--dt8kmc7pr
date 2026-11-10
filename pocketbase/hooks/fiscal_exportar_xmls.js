@@ -368,6 +368,100 @@ routerAdd(
         fsysCache = null
       }
 
+      // ---- Datas (helpers declarados AQUI DENTRO do callback: o JSVM não
+      // enxerga símbolos de nível de arquivo dentro de callbacks) ----
+      // PocketBase grava timestamps em UTC; o CSV da exportação é lido por
+      // contadores no Brasil, então convertemos para America/Sao_Paulo (UTC-3),
+      // sem depender do fuso do servidor.
+      const converterUtcParaBrasilia = (dataUtc) => {
+        if (!dataUtc) return ''
+        const m = String(dataUtc).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/)
+        if (!m) return String(dataUtc)
+        const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6])
+        if (isNaN(ms)) return String(dataUtc)
+        const d = new Date(ms - 3 * 60 * 60 * 1000) // UTC-3 (Brasília)
+        const p = (n) => (n < 10 ? '0' + n : String(n))
+        return (
+          d.getUTCFullYear() +
+          '-' +
+          p(d.getUTCMonth() + 1) +
+          '-' +
+          p(d.getUTCDate()) +
+          ' ' +
+          p(d.getUTCHours()) +
+          ':' +
+          p(d.getUTCMinutes()) +
+          ':' +
+          p(d.getUTCSeconds())
+        )
+      }
+
+      const formatarDataCsv = (valorBruto) => {
+        if (!valorBruto) return ''
+        return converterUtcParaBrasilia(String(valorBruto).substring(0, 19).replace('T', ' '))
+      }
+
+      // Extrai razão social e CPF/CNPJ do destinatário direto do XML (NFe/NFCe),
+      // onde o nome vem sempre completo; usado quando o campo cliente_nome do
+      // documento traz só apelido (ex.: "MATRIZ").
+      const extrairDestinatarioDoXml = (conteudoXml) => {
+        if (!conteudoXml) return { nome: '', doc: '' }
+        const textoXml = String(conteudoXml)
+        const tag = (padrao) => {
+          const r = textoXml.match(padrao)
+          return r && r[1] ? r[1].trim() : ''
+        }
+        const nome =
+          tag(/<xName>\s*([\s\S]*?)\s*<\/xName>/) || tag(/<xNome>\s*([\s\S]*?)\s*<\/xNome>/)
+        const docNum = tag(/<CPF>([\s\S]*?)<\/CPF>/) || tag(/<CNPJ>([\s\S]*?)<\/CNPJ>/)
+        return { nome: nome, doc: docNum }
+      }
+
+      const formatarCpfCnpj = (valor) => {
+        const n = String(valor || '').replace(/\D/g, '')
+        if (n.length === 11) return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+        if (n.length === 14)
+          return n.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+        return String(valor || '')
+      }
+
+      // Dados do destinatário da SAÍDA, no documento gravado:
+      // CPF/CNPJ e nome têm precedência; só cai em "Consumidor Final" quando o
+      // documento não tem NENHUMA identificação do destinatário.
+      const resolverDestinatarioSaida = (docRec) => {
+        // Campos reais de documentos_fiscais (schema): destinatario_nome e
+        // destinatario_cpf_cnpj.
+        const docMascara = formatarCpfCnpj(docRec.getString('destinatario_cpf_cnpj'))
+        let nome = (docRec.getString('destinatario_nome') || '').trim()
+        if (!nome || nome.toUpperCase() === 'CONSUMIDOR FINAL') {
+          // Sem nome, mas com CPF/CNPJ informado (ex.: venda avulsa com CPF):
+          // mostra a máscara em vez de "Consumidor Final".
+          nome = docMascara || 'Consumidor Final'
+        } else {
+          nome = docMascara ? `${nome} (${docMascara})` : nome
+        }
+        return nome
+      }
+
+      // Razão social + CNPJ do EMITENTE do XML de uma nota de ENTRADA (o
+      // fornecedor gravado no XML), nunca o nome da filial da própria empresa.
+      const extrairEmitenteDoXmlEntrada = (conteudoXml, fornRec) => {
+        const extraido = extrairDestinatarioDoXml(conteudoXml) // mesma dupla <xNome>/<CNPJ>
+        let nome = extraido.nome
+        if (!nome && fornRec) {
+          try {
+            nome = fornRec.getString('razao_social') || fornRec.getString('nome_fantasia') || ''
+          } catch (_) {}
+        }
+        if (!nome && fornRec) {
+          try {
+            nome = fornRec.getString('nome_fantasia') || fornRec.getString('razao_social') || ''
+          } catch (_) {}
+        }
+        const docMascara = formatarCpfCnpj(extraido.doc)
+        return nome ? (docMascara ? `${nome} (${docMascara})` : nome) : 'Fornecedor'
+      }
+
       // ATENÇÃO JSVM: o objeto Buffer existe mas NEM TODOS os membros existem
       // (Buffer.isBuffer lança "Object has no member 'isBuffer'"). Todo acesso
       // precisa ser guardado por typeof antes de usar.
@@ -574,12 +668,13 @@ routerAdd(
         const chave = doc.getString('chave_acesso') || ''
         const status = doc.getString('status') || 'Rascunho'
         const dataEmissao = doc.getString('data_emissao') || doc.getString('created') || ''
-        const destinatario = doc.getString('cliente_nome') || 'Consumidor Final'
         const valorTotal = doc.getFloat('valor_total') || 0
         const xmlArquivo = doc.getString('xml_arquivo')
         const xmlCancelamento = doc.getString('xml_cancelamento')
 
-        // Adiciona linha no CSV
+        // CSV: Data Emissão convertida para o fuso de Brasília (UTC-3) e
+        // Destinatário lido do documento gravado (nome + CPF/CNPJ); só fica
+        // "Consumidor Final" quando o documento não tem destinatário nenhum.
         linhasCsv.push(
           [
             'Saída',
@@ -587,8 +682,8 @@ routerAdd(
             serie,
             numero,
             chave || '-',
-            dataEmissao.substring(0, 19).replace('T', ' '),
-            `"${destinatario.replace(/"/g, '""')}"`,
+            formatarDataCsv(dataEmissao),
+            `"${resolverDestinatarioSaida(doc).replace(/"/g, '""')}"`,
             valorTotal.toFixed(2).replace('.', ','),
             status,
           ].join(';'),
@@ -762,6 +857,14 @@ routerAdd(
       }
 
       // 4. NOTAS DE ENTRADA (notas_entrada)
+      // Regras da pasta entradas/ e do CSV:
+      // - Só entra XML na pasta de nota com status 'Lançada' (uma por chave).
+      // - Notas canceladas NÃO entram na pasta, mas continuam no CSV com status
+      //   'Cancelada', UMA LINHA POR CHAVE.
+      // - Nota 'Lançada' sem XML armazenado aparece no CSV com observação
+      //   "(sem XML)".
+      // - Emitente mostrado é a RAZÃO SOCIAL do fornecedor do XML (nunca o nome
+      //   da filial da própria empresa, ex.: 'MATRIZ').
       let totalEntradas = 0
       try {
         const notasEntrada = $app.findRecordsByFilter(
@@ -772,25 +875,69 @@ routerAdd(
           0,
         )
 
+        // Uma linha por CHAVE (dedup); XML só para status 'Lançada'.
+        const entradasPorChave = {}
+        const ordemEntradas = []
         for (let m = 0; m < notasEntrada.length; m++) {
           const ne = notasEntrada[m]
+          const chaveNe = ne.getString('chave_acesso') || ''
+          const chaveDedup = chaveNe || `sem_chave_${ne.id}`
+          if (entradasPorChave[chaveDedup]) {
+            // Mesma nota lançada mais de uma vez: mantém a mais recente.
+            const anterior = entradasPorChave[chaveDedup]
+            if (String(anterior.ne.getString('status') || '') === 'Lançada') continue
+            if (
+              String(ne.getString('status') || '') === 'Lançada' ||
+              anterior.ne.created < ne.created
+            ) {
+              entradasPorChave[chaveDedup] = { ne: ne, fornRec: anterior.fornRec }
+            }
+            continue
+          }
+          ordemEntradas.push(chaveDedup)
+          let fornRec = null
+          const fornId = ne.getString('fornecedor_id')
+          if (fornId) {
+            try {
+              fornRec = $app.findRecordById('fornecedores', fornId)
+            } catch (_) {}
+          }
+          entradasPorChave[chaveDedup] = { ne: ne, fornRec: fornRec }
+        }
+
+        for (let n = 0; n < ordemEntradas.length; n++) {
+          const item = entradasPorChave[ordemEntradas[n]]
+          const ne = item.ne
           const modelo = ne.getString('modelo') || '55'
           const serie = ne.getString('serie') || '1'
           const numero = ne.getInt('numero') || 0
           const chave = ne.getString('chave_acesso') || ''
-          const status = ne.getString('status') || 'Importada'
+          const statusNe = ne.getString('status') || 'Importada'
           const dataEmissao = ne.getString('data_emissao') || ne.getString('created') || ''
           const valorTotal = ne.getFloat('valor_total_nota') || ne.getFloat('valor_total') || 0
           const xmlArquivo = ne.getString('xml_arquivo')
 
-          let fornNome = 'Fornecedor'
-          const fornId = ne.getString('fornecedor_id')
-          if (fornId) {
-            try {
-              const fRec = $app.findRecordById('fornecedores', fornId)
-              fornNome =
-                fRec.getString('nome_fantasia') || fRec.getString('razao_social') || fornNome
-            } catch (_) {}
+          // Observação no CSV: nota lançada SEM XML armazenado (ex.: lançamento
+          // manual de teste) é sinalizada; canceladas têm a própria status.
+          let observacao = ''
+          if (statusNe === 'Lançada' && !xmlArquivo) observacao = ' (sem XML)'
+
+          let conteudoXmlNe = null
+          if (statusNe === 'Lançada' && xmlArquivo) {
+            conteudoXmlNe = lerArquivoLocal(ne, xmlArquivo)
+          }
+
+          // Emitente = razão social do fornecedor gravada no XML; cai para o
+          // cadastro de fornecedores (ou 'Fornecedor') só sem XML.
+          let emitenteCsv = conteudoXmlNe
+            ? extrairEmitenteDoXmlEntrada(conteudoXmlNe, item.fornRec)
+            : item.fornRec
+              ? item.fornRec.getString('razao_social') ||
+                item.fornRec.getString('nome_fantasia') ||
+                'Fornecedor'
+              : 'Fornecedor'
+          if (observacao) {
+            emitenteCsv = emitenteCsv + observacao
           }
 
           linhasCsv.push(
@@ -800,17 +947,12 @@ routerAdd(
               serie,
               numero,
               chave || '-',
-              dataEmissao.substring(0, 19).replace('T', ' '),
-              `"${fornNome.replace(/"/g, '""')}"`,
+              formatarDataCsv(dataEmissao),
+              `"${emitenteCsv.replace(/"/g, '""')}"`,
               valorTotal.toFixed(2).replace('.', ','),
-              status,
+              statusNe,
             ].join(';'),
           )
-
-          let conteudoXmlNe = null
-          if (xmlArquivo) {
-            conteudoXmlNe = lerArquivoLocal(ne, xmlArquivo)
-          }
 
           if (conteudoXmlNe) {
             const nomeArqNe = chave
@@ -929,7 +1071,9 @@ routerAdd(
         return []
       }
 
-      const nowDos = dosDateTime(new Date(ano, mes - 1, 15, 12, 0, 0))
+      // Data/hora interna dos arquivos do ZIP = momento da geração (a versão
+      // anterior fixava 15/12 às 12:00, confundindo a auditoria dos XMLs).
+      const nowDos = dosDateTime(new Date())
       const localHeadersAndData = []
       const centralDirectory = []
       let offset = 0
