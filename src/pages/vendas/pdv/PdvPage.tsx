@@ -736,14 +736,18 @@ export const PdvPage: React.FC = () => {
     }
 
     // 1. Cria a venda pelo serviço central salvarVenda com payload PLANO
-    // Cliente: o escolhido, senão o "Consumidor Final" do assinante (config),
-    // senão resolve/cria na hora (evita o erro "Cliente é obrigatório").
-    let clienteIdFinal = cliente?.id || configVendas?.cliente_padrao_id || ''
+    // Cliente: o escolhido no PDV; quando NÃO há cliente identificado, a venda usa o
+    // registro genérico "Consumidor Final" (sem CPF) — NUNCA o cliente_padrao_id da
+    // config de vendas, que pode ser qualquer cadastro (ex. TESTE PF SP) e acabava
+    // saindo como destinatário da NFC-e.
+    let clienteIdFinal = cliente?.id || ''
     if (!clienteIdFinal) {
       try {
         const consumidor = await obterOuCriarConsumidorFinal(usuarioERP?.assinante_id || undefined)
         clienteIdFinal = consumidor.id
-        setConfigVendas((cfg) => (cfg ? { ...cfg, cliente_padrao_id: consumidor.id } : cfg))
+        setConfigVendas((cfg) =>
+          cfg && !cfg.cliente_padrao_id ? { ...cfg, cliente_padrao_id: consumidor.id } : cfg,
+        )
       } catch (errCons) {
         console.warn('Não foi possível resolver o Consumidor Final do assinante:', errCons)
       }

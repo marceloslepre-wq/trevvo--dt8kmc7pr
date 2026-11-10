@@ -1944,6 +1944,43 @@ routerAdd(
       }
       const informarIbsCbsDoc = configDoc.getBool('informar_ibs_cbs')
 
+      // Empresa emitente (dados fiscais para a remontagem completa do JSON)
+      let empresaDoc = null
+      try {
+        empresaDoc = $app.findRecordById('empresas', empresaId)
+      } catch (_) {
+        empresaDoc = null
+      }
+      if (!empresaDoc || !empresaDoc.getBool('ativo')) {
+        return c.json(400, {
+          sucesso: false,
+          message:
+            'Empresa emitente da venda não encontrada ou inativa — não é possível remontar a NFC-e.',
+        })
+      }
+      const cnpjEmitenteDoc = (empresaDoc.getString('cnpj') || '').replace(/\D/g, '')
+      if (!cnpjEmitenteDoc || cnpjEmitenteDoc.length !== 14) {
+        return c.json(400, {
+          sucesso: false,
+          message:
+            'Empresa emitente com CNPJ inválido ou incompleto — corrija o cadastro da loja antes de reenviar.',
+        })
+      }
+      const ufEmitenteDoc = (empresaDoc.getString('uf') || '').trim().toUpperCase()
+      const ibgeEmitenteDoc = (empresaDoc.getString('codigo_municipio_ibge') || '').trim()
+      const regimeApuracaoDoc = (empresaDoc.getString('regime_apuracao') || '').trim()
+      const crtRawDoc = empresaDoc.get('crt')
+      const crtDoc =
+        crtRawDoc !== null && crtRawDoc !== undefined && crtRawDoc !== '' ? Number(crtRawDoc) : null
+      const ehSimplesDoc = regimeApuracaoDoc
+        ? regimeApuracaoDoc === 'Simples Nacional'
+        : crtDoc === 1 || crtDoc === 2 || crtDoc === 4
+      const aliqCreditoSimplesDoc = empresaDoc.getFloat('aliquota_credito_simples') || 0
+      const nomeEmitenteDoc =
+        empresaDoc.getString('nome_documentos_fiscais') ||
+        empresaDoc.getString('razao_social') ||
+        ''
+
       let itensVenda = []
       try {
         itensVenda = $app.findRecordsByFilter(
@@ -1963,6 +2000,10 @@ routerAdd(
 
       let totIbsDoc = 0
       let totCbsDoc = 0
+      let totProdutosDoc = 0
+      let totDescontoDoc = 0
+      let totValorTotalDoc = 0
+      let cfopPrimeiroDoc = ''
       const itensRemontados = []
       for (let i = 0; i < itensVenda.length; i++) {
         const it = itensVenda[i]
@@ -1992,9 +2033,95 @@ routerAdd(
         const valorUnitIt = it.getFloat('preco_unitario') || 0
         const qtdIt = it.getFloat('quantidade') || 0
         const brutoIt = round2Re(qtdIt * valorUnitIt)
-        const liquidoIt = round2Re(
-          brutoIt - (it.getFloat('desconto_valor') || 0) + (it.getFloat('acrescimo_valor') || 0),
+        const descontoIt = round2Re(
+          (it.getFloat('desconto_valor') || 0) - (it.getFloat('acrescimo_valor') || 0),
         )
+        const liquidoIt = round2Re(brutoIt - descontoIt)
+        const valorBaseIt = liquidoIt
+
+        const ncmIt = (
+          it.getString('ncm') ||
+          (prodIt ? prodIt.getString('ncm') : '') ||
+          ''
+        ).replace(/\D/g, '')
+        if (!ncmIt || ncmIt.length !== 8) {
+          return c.json(400, {
+            sucesso: false,
+            message: `Item ${i + 1} da venda com NCM inválido (${ncmIt || 'vazio'}) — corrija o cadastro do produto antes de reenviar.`,
+          })
+        }
+        const cestIt = (
+          it.getString('cest') ||
+          (prodIt ? prodIt.getString('cest') : '') ||
+          ''
+        ).replace(/\D/g, '')
+        const gtinIt = prodIt
+          ? prodIt.getString('gtin') || prodIt.getString('codigo_barras') || ''
+          : ''
+
+        let cfopIt = it.getString('cfop') || (regraIt ? regraIt.getString('cfop') : '')
+        if (cfopIt) {
+          try {
+            const cfopRecIt = $app.findRecordById('cfop', cfopIt)
+            cfopIt = cfopRecIt.getString('codigo') || cfopIt
+          } catch (_) {}
+        }
+        if (!cfopIt) cfopIt = '5102'
+        if (!cfopPrimeiroDoc) cfopPrimeiroDoc = cfopIt
+
+        let cstIcmsIt =
+          it.getString('cst_icms') || (regraIt ? regraIt.getString('cst_icms') : '') || ''
+        let csosnIt = it.getString('csosn') || (regraIt ? regraIt.getString('csosn') : '') || ''
+        if (ehSimplesDoc) {
+          if (!csosnIt) csosnIt = '102'
+        } else {
+          if (!cstIcmsIt) cstIcmsIt = '00'
+        }
+        const situacaoIcmsIt = ehSimplesDoc ? csosnIt : cstIcmsIt
+
+        const modBcIt = regraIt ? regraIt.getString('mod_bc_icms') || '3' : '3'
+        const aliqIcmsIt =
+          it.getFloat('aliquota_icms') || (regraIt ? regraIt.getFloat('aliquota_icms') || 0 : 0)
+
+        let baseIcmsIt = 0
+        let valorIcmsIt = 0
+        const tributaIcmsIntegralIt =
+          (!ehSimplesDoc &&
+            (cstIcmsIt === '00' ||
+              cstIcmsIt === '10' ||
+              cstIcmsIt === '20' ||
+              cstIcmsIt === '70')) ||
+          (ehSimplesDoc && csosnIt === '900')
+        if (tributaIcmsIntegralIt && aliqIcmsIt > 0) {
+          baseIcmsIt = valorBaseIt
+          valorIcmsIt = round2Re(baseIcmsIt * (aliqIcmsIt / 100))
+        }
+
+        let aliqCredSimplesIt = 0
+        let vlrCredSimplesIt = 0
+        if (ehSimplesDoc && csosnIt === '101' && aliqCreditoSimplesDoc > 0) {
+          aliqCredSimplesIt = aliqCreditoSimplesDoc
+          vlrCredSimplesIt = round2Re(valorBaseIt * (aliqCredSimplesIt / 100))
+        }
+
+        const cstPisIt =
+          it.getString('cst_pis') || (regraIt ? regraIt.getString('cst_pis') : '07') || '07'
+        const aliqPisIt = regraIt ? regraIt.getFloat('aliquota_pis') || 0 : 0
+        const cstCofinsIt =
+          it.getString('cst_cofins') || (regraIt ? regraIt.getString('cst_cofins') : '07') || '07'
+        const aliqCofinsIt = regraIt ? regraIt.getFloat('aliquota_cofins') || 0 : 0
+        let basePisIt = 0
+        let valorPisIt = 0
+        let baseCofinsIt = 0
+        let valorCofinsIt = 0
+        if (!ehSimplesDoc && ['01', '02'].includes(cstPisIt) && aliqPisIt > 0) {
+          basePisIt = valorBaseIt
+          valorPisIt = round2Re(basePisIt * (aliqPisIt / 100))
+        }
+        if (!ehSimplesDoc && ['01', '02'].includes(cstCofinsIt) && aliqCofinsIt > 0) {
+          baseCofinsIt = valorBaseIt
+          valorCofinsIt = round2Re(baseCofinsIt * (aliqCofinsIt / 100))
+        }
 
         const itemNovo = {
           numero_item: i + 1,
@@ -2003,12 +2130,8 @@ routerAdd(
             prodIdIt ||
             String(i + 1),
           descricao: it.getString('descricao') || (prodIt ? prodIt.getString('descricao') : ''),
-          cfop: it.getString('cfop') || (regraIt ? regraIt.getString('cfop') : '') || '5102',
-          codigo_ncm: (
-            it.getString('ncm') ||
-            (prodIt ? prodIt.getString('ncm') : '') ||
-            ''
-          ).replace(/\D/g, ''),
+          cfop: cfopIt,
+          codigo_ncm: ncmIt,
           unidade_comercial: (
             it.getString('unidade') ||
             (prodIt ? prodIt.getString('unidade_medida') : '') ||
@@ -2028,20 +2151,38 @@ routerAdd(
           quantidade_tributavel: qtdIt,
           valor_unitario_tributavel: valorUnitIt,
           valor_bruto: brutoIt,
-          valor_desconto: round2Re(
-            (it.getFloat('desconto_valor') || 0) - (it.getFloat('acrescimo_valor') || 0),
-          ),
+          valor_desconto: descontoIt,
           icms_origem:
             it.getString('origem') || (regraIt ? regraIt.getString('origem') : '0') || '0',
-          icms_situacao_tributaria:
-            it.getString('cst_icms') || (regraIt ? regraIt.getString('cst_icms') : '') || '00',
+          icms_situacao_tributaria: situacaoIcmsIt,
         }
-        const cstPisIt =
-          it.getString('cst_pis') || (regraIt ? regraIt.getString('cst_pis') : '') || '07'
-        const cstCofinsIt =
-          it.getString('cst_cofins') || (regraIt ? regraIt.getString('cst_cofins') : '') || '07'
+        if (cestIt) itemNovo.codigo_cest = cestIt
+        if (gtinIt) {
+          itemNovo.codigo_barra_comercial = gtinIt
+          itemNovo.codigo_barra_tributavel = gtinIt
+        }
+        if (baseIcmsIt > 0) {
+          itemNovo.icms_modalidade_base_calculo = modBcIt
+          itemNovo.icms_base_calculo = baseIcmsIt
+          itemNovo.icms_aliquota = aliqIcmsIt
+          itemNovo.icms_valor = valorIcmsIt
+        }
+        if (aliqCredSimplesIt > 0) {
+          itemNovo.icms_aliquota_credito = aliqCredSimplesIt
+          itemNovo.icms_valor_credito = vlrCredSimplesIt
+        }
         if (cstPisIt) itemNovo.pis_situacao_tributaria = cstPisIt
+        if (valorPisIt > 0) {
+          itemNovo.pis_base_calculo = basePisIt
+          itemNovo.pis_aliquota_porcentual = aliqPisIt
+          itemNovo.pis_valor = valorPisIt
+        }
         if (cstCofinsIt) itemNovo.cofins_situacao_tributaria = cstCofinsIt
+        if (valorCofinsIt > 0) {
+          itemNovo.cofins_base_calculo = baseCofinsIt
+          itemNovo.cofins_aliquota_porcentual = aliqCofinsIt
+          itemNovo.cofins_valor = valorCofinsIt
+        }
 
         if (informarIbsCbsDoc) {
           const cstIbsIt = (regraIt ? regraIt.getString('cst_ibs_cbs') : '') || '000'
@@ -2051,13 +2192,13 @@ routerAdd(
           const aliqCbsIt = regraIt ? regraIt.getFloat('aliquota_cbs') || 0 : 0
           const ufAlq = aliqUfIt > 0 ? aliqUfIt : 0.1
           const cbsAlq = aliqCbsIt > 0 ? aliqCbsIt : 0.9
-          const ufVlr = round2Re(liquidoIt * (ufAlq / 100))
-          const munVlr = round2Re(liquidoIt * (aliqMunIt / 100))
+          const ufVlr = round2Re(valorBaseIt * (ufAlq / 100))
+          const munVlr = round2Re(valorBaseIt * (aliqMunIt / 100))
           const ibsTotIt = round2Re(ufVlr + munVlr)
-          const cbsVlrIt = round2Re(liquidoIt * (cbsAlq / 100))
+          const cbsVlrIt = round2Re(valorBaseIt * (cbsAlq / 100))
           itemNovo.ibs_cbs_situacao_tributaria = cstIbsIt
           itemNovo.ibs_cbs_classificacao_tributaria = cClassTribIt
-          itemNovo.ibs_cbs_base_calculo = liquidoIt
+          itemNovo.ibs_cbs_base_calculo = valorBaseIt
           itemNovo.ibs_uf_aliquota = ufAlq
           itemNovo.ibs_uf_valor = ufVlr
           itemNovo.ibs_mun_aliquota = aliqMunIt
@@ -2068,9 +2209,91 @@ routerAdd(
           totIbsDoc = round2Re(totIbsDoc + ibsTotIt)
           totCbsDoc = round2Re(totCbsDoc + cbsVlrIt)
         }
+        totProdutosDoc = round2Re(totProdutosDoc + brutoIt)
+        totDescontoDoc = round2Re(totDescontoDoc + descontoIt)
+        totValorTotalDoc = round2Re(totValorTotalDoc + liquidoIt)
         itensRemontados.push(itemNovo)
       }
 
+      // ===== Pagamentos da venda (formas_pagamento) =====
+      let pagamentosVenda = []
+      try {
+        pagamentosVenda = $app.findRecordsByFilter(
+          'vendas_pagamentos',
+          `venda_id = '${vendaIdDoc}' && ativo = true`,
+          'parcela,created',
+        )
+      } catch (_) {
+        pagamentosVenda = []
+      }
+      const formasPagamentoDoc = []
+      if (pagamentosVenda && pagamentosVenda.length > 0) {
+        for (let p = 0; p < pagamentosVenda.length; p++) {
+          const pg = pagamentosVenda[p]
+          const formaId = pg.getString('forma_pagamento_id')
+          let tpag = '01'
+          if (formaId) {
+            try {
+              tpag =
+                $app.findRecordById('formas_pagamento', formaId).getString('codigo_tpag') || '01'
+            } catch (_) {}
+          }
+          const itemPg = {
+            forma_pagamento: tpag,
+            valor_pagamento: round2Re(pg.getFloat('valor') || 0),
+          }
+          const bandeiraPg = (pg.getString('bandeira') || '').trim()
+          const codAutPg = (pg.getString('codigo_autorizacao') || pg.getString('nsu') || '').trim()
+          if (bandeiraPg) itemPg.bandeira_operadora = bandeiraPg
+          if (codAutPg) itemPg.numero_autorizacao = codAutPg
+          formasPagamentoDoc.push(itemPg)
+        }
+      } else {
+        formasPagamentoDoc.push({
+          forma_pagamento: '01',
+          valor_pagamento: round2Re(totValorTotalDoc),
+        })
+      }
+
+      // ===== Destinatário: mesma regra da emissão (fiscal_nfce_emitir.js) —
+      // sem cliente identificado (ou genérico "Consumidor Final") sai SEM destinatário;
+      // CPF/CNPJ avulso do cupom usa só os dados informados. =====
+      const cpfCnpjConsumidorDoc = (vendaDoc.getString('cpf_cnpj_consumidor') || '').replace(
+        /\D/g,
+        '',
+      )
+      let clienteDoc = null
+      const clienteIdDoc = vendaDoc.getString('cliente_id')
+      let clienteEhConsumidorFinalDoc = false
+      if (clienteIdDoc) {
+        try {
+          clienteDoc = $app.findRecordById('clientes', clienteIdDoc)
+          if (clienteDoc) {
+            clienteEhConsumidorFinalDoc =
+              clienteDoc.getBool('consumidor_final') ||
+              (clienteDoc.getString('nome_razao_social') || '').trim().toLowerCase() ===
+                'consumidor final'
+          }
+        } catch (_) {}
+      }
+      let temDestinatarioDoc = false
+      let destinatarioNomeDoc = 'Consumidor'
+      let destinatarioCpfCnpjDoc = ''
+      if (cpfCnpjConsumidorDoc) {
+        temDestinatarioDoc = true
+        destinatarioCpfCnpjDoc = cpfCnpjConsumidorDoc
+        destinatarioNomeDoc = 'Consumidor'
+      } else if (clienteDoc && !clienteEhConsumidorFinalDoc) {
+        temDestinatarioDoc = true
+        destinatarioCpfCnpjDoc = (clienteDoc.getString('cpf_cnpj') || '').replace(/\D/g, '')
+        destinatarioNomeDoc =
+          clienteDoc.getString('nome_razao_social') || clienteDoc.getString('nome') || 'Consumidor'
+      }
+
+      const truncar60Doc = (t) => (t ? String(t).trim().slice(0, 60).trim() : '')
+
+      // ===== Remonta o JSON completo a partir da venda (igual à emissão) —
+      // não depende de json_enviado prévio; usa o antigo apenas como base parcial. =====
       const jsonBaseRaw = docRec.get('json_enviado')
       let jsonBase = null
       try {
@@ -2081,15 +2304,77 @@ routerAdd(
       } catch (_) {
         jsonBase = null
       }
-      if (!jsonBase || !jsonBase.cnpj_emitente) {
-        return c.json(400, {
-          sucesso: false,
-          message:
-            'Payload fiscal (json_enviado) não encontrado ou inválido no registro para remontar o reenvio.',
-        })
-      }
+      if (!jsonBase || typeof jsonBase !== 'object') jsonBase = {}
 
+      jsonBase.cnpj_emitente = cnpjEmitenteDoc
+      jsonBase.nome_emitente = truncar60Doc(
+        empresaDoc.getString('nome_documentos_fiscais') ||
+          empresaDoc.getString('razao_social') ||
+          '',
+      )
+      if (empresaDoc.getString('nome_fantasia')) {
+        jsonBase.nome_fantasia_emitente = truncar60Doc(empresaDoc.getString('nome_fantasia'))
+      }
+      if (typeof jsonBase.natureza_operacao !== 'string' || !jsonBase.natureza_operacao) {
+        jsonBase.natureza_operacao =
+          configDoc.getString('natureza_operacao_venda') || 'Venda de mercadoria'
+      }
+      if (
+        jsonBase.data_emissao === undefined ||
+        jsonBase.data_emissao === null ||
+        jsonBase.data_emissao === ''
+      ) {
+        jsonBase.data_emissao = new Date().toISOString()
+      }
+      if (jsonBase.tipo_documento === undefined) jsonBase.tipo_documento = 1
+      if (jsonBase.finalidade_emissao === undefined) jsonBase.finalidade_emissao = 1
+      jsonBase.consumidor_final = 1
+      jsonBase.presenca_comprador = '1'
+      jsonBase.modalidade_frete = 9
+      jsonBase.local_destino = 1
+      if (temDestinatarioDoc) {
+        jsonBase.indicador_inscricao_estadual_destinatario = '9'
+        jsonBase.nome_destinatario = truncar60Doc(
+          ambiente === 'Produção'
+            ? destinatarioNomeDoc
+            : 'NF-C-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL',
+        )
+        jsonBase.uf_destinatario = ufEmitenteDoc
+        jsonBase.codigo_municipio_destinatario = ibgeEmitenteDoc
+        jsonBase.logradouro_destinatario = empresaDoc.getString('logradouro') || 'S/N'
+        jsonBase.numero_destinatario = empresaDoc.getString('numero') || 'S/N'
+        jsonBase.bairro_destinatario = empresaDoc.getString('bairro') || 'Centro'
+        jsonBase.municipio_destinatario = empresaDoc.getString('municipio') || ''
+        jsonBase.cep_destinatario = (empresaDoc.getString('cep') || '').replace(/\D/g, '')
+        if (destinatarioCpfCnpjDoc.length === 11) {
+          jsonBase.cpf_destinatario = destinatarioCpfCnpjDoc
+          delete jsonBase.cnpj_destinatario
+        } else if (destinatarioCpfCnpjDoc.length === 14) {
+          jsonBase.cnpj_destinatario = destinatarioCpfCnpjDoc
+          delete jsonBase.cpf_destinatario
+        } else {
+          delete jsonBase.cpf_destinatario
+          delete jsonBase.cnpj_destinatario
+        }
+      } else {
+        // Consumidor não identificado: remove TODO o grupo de destinatário
+        delete jsonBase.nome_destinatario
+        delete jsonBase.uf_destinatario
+        delete jsonBase.codigo_municipio_destinatario
+        delete jsonBase.logradouro_destinatario
+        delete jsonBase.numero_destinatario
+        delete jsonBase.bairro_destinatario
+        delete jsonBase.municipio_destinatario
+        delete jsonBase.cep_destinatario
+        delete jsonBase.cpf_destinatario
+        delete jsonBase.cnpj_destinatario
+        delete jsonBase.ie_destinatario
+      }
       jsonBase.items = itensRemontados
+      jsonBase.formas_pagamento = formasPagamentoDoc
+      const valorTrocoDoc = vendaDoc.getFloat('valor_troco') || 0
+      if (valorTrocoDoc > 0) jsonBase.valor_troco = round2Re(valorTrocoDoc)
+      else delete jsonBase.valor_troco
       if (informarIbsCbsDoc) {
         jsonBase.valor_total_ibs = totIbsDoc
         jsonBase.valor_total_cbs = totCbsDoc
@@ -2098,6 +2383,18 @@ routerAdd(
         delete jsonBase.valor_total_cbs
       }
       jsonEnviado = jsonBase
+
+      // Reflete a remontagem no registro (destinatário e payload)
+      docRec.set('destinatario_nome', temDestinatarioDoc ? truncar60Doc(destinatarioNomeDoc) : '')
+      docRec.set('destinatario_cpf_cnpj', temDestinatarioDoc ? destinatarioCpfCnpjDoc : '')
+      docRec.set('destinatario_uf', temDestinatarioDoc ? ufEmitenteDoc : '')
+      docRec.set('cfop_principal', cfopPrimeiroDoc || '5102')
+      docRec.set('valor_produtos', round2Re(totProdutosDoc))
+      docRec.set('valor_desconto', round2Re(totDescontoDoc))
+      docRec.set('valor_total', round2Re(totValorTotalDoc))
+      docRec.set('valor_ibs', round2Re(totIbsDoc))
+      docRec.set('valor_cbs', round2Re(totCbsDoc))
+      docRec.set('json_enviado', jsonEnviado)
     } else {
       jsonEnviado = docRec.get('json_enviado')
       if (!jsonEnviado) {

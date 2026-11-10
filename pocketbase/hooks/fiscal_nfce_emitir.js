@@ -545,20 +545,39 @@ routerAdd(
       // "Destacar IBS e CBS (Reforma Tributária)" — opção da config de emissão da loja
       const informarIbsCbs = config.getBool('informar_ibs_cbs')
 
-      // Destinatário: consumidor do PDV (cpf_cnpj_consumidor) ou cliente da venda
+      // Destinatário: apenas quando IDENTIFICADO — CPF/CNPJ informado avulso no PDV
+      // (cpf_cnpj_consumidor) ou cliente da venda que NÃO seja o genérico "Consumidor
+      // Final" (consumidor_final = true). Venda de consumidor não identificado sai SEM
+      // grupo de destinatário (não herda o cliente padrão da config de vendas, que pode
+      // ser qualquer cadastro — ex. TESTE PF SP — nem o CPF dele).
       const cpfCnpjConsumidor = (venda.getString('cpf_cnpj_consumidor') || '').replace(/\D/g, '')
       let clienteRec = null
       const clienteId = venda.getString('cliente_id')
+      let clienteEhConsumidorFinal = false
       if (clienteId) {
         try {
           clienteRec = $app.findRecordById('clientes', clienteId)
+          if (clienteRec) {
+            clienteEhConsumidorFinal =
+              clienteRec.getBool('consumidor_final') ||
+              (clienteRec.getString('nome_razao_social') || '').trim().toLowerCase() ===
+                'consumidor final'
+          }
         } catch (_) {}
       }
+      let temDestinatario = false
       let destinatarioNome = 'Consumidor'
-      let destinatarioCpfCnpj = cpfCnpjConsumidor
+      let destinatarioCpfCnpj = ''
       const destinatarioUf = ufEmitente
-      if (!destinatarioCpfCnpj && clienteRec) {
-        destinatarioCpfCnpj = (clienteRec.getString('cpf_cnpj') || '').replace(/\D/g, '')
+      if (cpfCnpjConsumidor) {
+        // CPF/CNPJ informado avulso no cupom: usa SOMENTE os dados informados
+        temDestinatario = true
+        destinatarioCpfCnpj = cpfCnpjConsumidor
+        destinatarioNome = 'Consumidor'
+      } else if (clienteRec && !clienteEhConsumidorFinal) {
+        const cpfCnpjCliente = (clienteRec.getString('cpf_cnpj') || '').replace(/\D/g, '')
+        temDestinatario = true
+        destinatarioCpfCnpj = cpfCnpjCliente
         destinatarioNome =
           clienteRec.getString('nome_razao_social') || clienteRec.getString('nome') || 'Consumidor'
       }
@@ -862,33 +881,39 @@ routerAdd(
         presenca_comprador: '1',
         modalidade_frete: 9,
         local_destino: 1,
-        indicador_inscricao_estadual_destinatario: '9',
         cnpj_emitente: cnpjEmitenteLimpo,
         nome_emitente: truncar60(
           empresa.getString('nome_documentos_fiscais') || empresa.getString('razao_social') || '',
         ),
         nome_fantasia_emitente: truncar60(empresa.getString('nome_fantasia') || '') || undefined,
-        nome_destinatario: truncar60(
-          ambiente === 'Produção'
-            ? destinatarioNome
-            : 'NF-C-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL',
-        ),
-        uf_destinatario: destinatarioUf,
-        codigo_municipio_destinatario: ibgeEmitente,
-        logradouro_destinatario: empresa.getString('logradouro') || 'S/N',
-        numero_destinatario: empresa.getString('numero') || 'S/N',
-        bairro_destinatario: empresa.getString('bairro') || 'Centro',
-        municipio_destinatario: empresa.getString('municipio') || '',
-        cep_destinatario: (empresa.getString('cep') || '').replace(/\D/g, ''),
+        nome_destinatario: temDestinatario
+          ? truncar60(
+              ambiente === 'Produção'
+                ? destinatarioNome
+                : 'NF-C-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL',
+            )
+          : undefined,
+        uf_destinatario: temDestinatario ? destinatarioUf : undefined,
+        codigo_municipio_destinatario: temDestinatario ? ibgeEmitente : undefined,
+        logradouro_destinatario: temDestinatario
+          ? empresa.getString('logradouro') || 'S/N'
+          : undefined,
+        numero_destinatario: temDestinatario ? empresa.getString('numero') || 'S/N' : undefined,
+        bairro_destinatario: temDestinatario ? empresa.getString('bairro') || 'Centro' : undefined,
+        municipio_destinatario: temDestinatario ? empresa.getString('municipio') || '' : undefined,
+        cep_destinatario: temDestinatario
+          ? (empresa.getString('cep') || '').replace(/\D/g, '')
+          : undefined,
         items: itensFocus,
         formas_pagamento: formasPagamentoFocus,
         informacoes_adicionais_contribuinte: infoComplPadrao || undefined,
       }
-      if (destinatarioCpfCnpj.length === 11) {
+      if (temDestinatario && destinatarioCpfCnpj.length === 11) {
         jsonFocus.cpf_destinatario = destinatarioCpfCnpj
-      } else if (destinatarioCpfCnpj.length === 14) {
+      } else if (temDestinatario && destinatarioCpfCnpj.length === 14) {
         jsonFocus.cnpj_destinatario = destinatarioCpfCnpj
       }
+      if (temDestinatario) jsonFocus.indicador_inscricao_estadual_destinatario = '9'
       const valorTrocoVenda = venda.getFloat('valor_troco') || 0
       if (valorTrocoVenda > 0) jsonFocus.valor_troco = round2(valorTrocoVenda)
       // Totais IBS/CBS da nota (soma dos itens) quando "Destacar IBS e CBS" ligado
@@ -919,9 +944,9 @@ routerAdd(
       docRec.set('data_emissao', dataHojeIso)
       docRec.set('natureza_operacao', naturezaPadrao)
       docRec.set('cfop_principal', cfopPrimeiroItem || '5102')
-      docRec.set('destinatario_nome', truncar60(destinatarioNome))
-      docRec.set('destinatario_cpf_cnpj', destinatarioCpfCnpj)
-      docRec.set('destinatario_uf', destinatarioUf)
+      docRec.set('destinatario_nome', temDestinatario ? truncar60(destinatarioNome) : '')
+      docRec.set('destinatario_cpf_cnpj', temDestinatario ? destinatarioCpfCnpj : '')
+      docRec.set('destinatario_uf', temDestinatario ? destinatarioUf : '')
       docRec.set('presenca_comprador', '1')
       docRec.set('valor_produtos', round2(totValorProdutos))
       docRec.set('valor_desconto', round2(totValorDesconto))
