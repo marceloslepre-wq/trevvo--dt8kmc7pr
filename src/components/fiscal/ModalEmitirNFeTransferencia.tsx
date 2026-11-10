@@ -411,7 +411,29 @@ export const ModalEmitirNFeTransferencia: React.FC<ModalEmitirNFeTransferenciaPr
     }
   }
 
-  const doc = rascunho?.documento
+  // O montar-rascunho devolve { documento, itens, json_focus }; quando o bloco
+  // "documento" chega sem valores (ou vazio), derivamos os totais dos itens
+  // calculados pelo backend para o quadro "Transporte & Impostos" não exibir R$ 0,00.
+  const docBruto: any = rascunho?.documento || {}
+  const itensRasc: any[] = Array.isArray(rascunho?.itens) ? (rascunho?.itens as any[]) : []
+  const somarCampoItens = (campo: string) =>
+    itensRasc.reduce((acc, it) => acc + (Number(it?.[campo]) || 0), 0)
+
+  const doc = {
+    valor_produtos: Number(docBruto?.valor_produtos) || somarCampoItens('valor_bruto'),
+    valor_frete: Number(docBruto?.valor_frete) || 0,
+    valor_outras_despesas: Number(docBruto?.valor_outras_despesas) || 0,
+    valor_total:
+      Number(docBruto?.valor_total) ||
+      somarCampoItens('valor_total') ||
+      somarCampoItens('valor_bruto'),
+    valor_icms: Number(docBruto?.valor_icms) || somarCampoItens('valor_icms'),
+    valor_icms_st: Number(docBruto?.valor_icms_st) || somarCampoItens('valor_icms_st'),
+    valor_ipi: Number(docBruto?.valor_ipi) || somarCampoItens('valor_ipi'),
+    valor_pis: Number(docBruto?.valor_pis) || somarCampoItens('valor_pis'),
+    valor_cofins: Number(docBruto?.valor_cofins) || somarCampoItens('valor_cofins'),
+    valor_fcp: Number(docBruto?.valor_fcp) || somarCampoItens('valor_fcp'),
+  }
   const itensTrf = transferencia?.itens || []
   const razaoOrigem =
     empresaOrigem?.razao_social ||
