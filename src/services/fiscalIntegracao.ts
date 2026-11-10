@@ -615,6 +615,8 @@ export interface ExportarXmlsResponse {
   message?: string
   nome_arquivo?: string
   zip_base64?: string
+  documentos_pulados?: number
+  avisos?: string[]
   totais?: {
     nfe_autorizadas: number
     nfce_autorizadas: number

@@ -164,6 +164,17 @@ export default function ExportarXmlsPage() {
         title: 'Download iniciado',
         description: `Arquivo ${nomeFinal} gerado com sucesso.`,
       })
+
+      // Documentos que ficaram de fora do ZIP (ex.: XML indisponível na Focus)
+      const pulados = Number(res.documentos_pulados || 0)
+      if (pulados > 0) {
+        const detalhes = (res.avisos || []).slice(0, 3).join(' ')
+        toast({
+          title: `${pulados} documento(s) não incluído(s) no ZIP`,
+          description: detalhes || 'XML não disponível para alguns documentos do período.',
+          variant: 'destructive',
+        })
+      }
     } catch (err: any) {
       console.error('Falha ao exportar XMLs:', err)
       toast({

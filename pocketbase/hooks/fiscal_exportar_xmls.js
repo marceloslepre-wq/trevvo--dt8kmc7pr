@@ -327,30 +327,220 @@ routerAdd(
       const dataInicioIso = `${ano}-${mesStr}-01T00:00:00.000Z`
       const dataFimIso = `${ano}-${mesStr}-${ultimoDiaStr}T23:59:59.999Z`
 
-      const tokenAuth = c.requestInfo().headers['authorization'] || ''
+      // PERFORMANCE: leitura de arquivo DIRETO pela abstração de filesystem do
+      // PocketBase (funciona com storage local e S3). A versão anterior fazia
+      // um $http.send de loopback para http://127.0.0.1:8090 por arquivo, em
+      // série: no JSVM a chamada interna não é atendida (lock de runtime) e
+      // cada arquivo pendurava até o timeout de 20s, estourando o gateway (504).
+      const inicioProcessamento = Date.now()
+      const TEMPO_LIMITE_GLOBAL_FOCUSA_MS = 75000
+      const TIMEOUT_HTTP_FOCUSA_SEG = 10
 
-      // Helper interno para carregar arquivo do PocketBase
-      const carregarArquivoLocal = (colName, recId, fileName) => {
+      let fsysCache = null
+      const lerArquivoLocal = (rec, fileName) => {
         if (!fileName) return null
         try {
-          const url = `http://127.0.0.1:8090/api/files/${colName}/${recId}/${fileName}`
-          const res = $http.send({
-            method: 'GET',
-            url: url,
-            headers: tokenAuth ? { Authorization: tokenAuth } : {},
-            timeout: 20,
-          })
-          if ((res.statusCode || 200) < 300 && res.raw) {
-            return res.raw
+          if (!fsysCache) fsysCache = $app.newFilesystem()
+          const chaveArquivo = `${rec.baseFilesPath()}/${fileName}`
+          let reader = null
+          try {
+            reader = fsysCache.getReader(chaveArquivo)
+            const conteudo = toString(reader)
+            return conteudo && conteudo.length > 0 ? conteudo : null
+          } finally {
+            try {
+              if (reader) reader.close()
+            } catch (_) {}
           }
         } catch (err) {
-          console.warn(`Erro ao ler arquivo ${fileName}:`, err)
+          console.warn(
+            `[exportar-xmls] Erro ao ler arquivo ${fileName} do registro ${rec.id}:`,
+            err,
+          )
         }
         return null
       }
 
+      const fecharFilesystem = () => {
+        try {
+          if (fsysCache) fsysCache.close()
+        } catch (_) {}
+        fsysCache = null
+      }
+
+      // ATENÇÃO JSVM: o objeto Buffer existe mas NEM TODOS os membros existem
+      // (Buffer.isBuffer lança "Object has no member 'isBuffer'"). Todo acesso
+      // precisa ser guardado por typeof antes de usar.
+      const encodeBase64Local = (str) => {
+        if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+          return Buffer.from(str, 'utf8').toString('base64')
+        }
+        return btoa(str)
+      }
+
+      // ---- Fallback Focus NFe (só para documentos SEM XML armazenado localmente) ----
+      // Helpers copiados para dentro do callback: o JSVM não enxerga helpers de
+      // escopo de arquivo nem resolve require() de libs próprias ('Invalid module').
+      let cfgFocusCache = null
+      const carregarConfigFocus = (empresaIdLocal) => {
+        if (cfgFocusCache) return cfgFocusCache
+        let ambiente = 'Homologação'
+        let codigoToken = ''
+        try {
+          const cfgs = $app.findRecordsByFilter(
+            'config_emissao_fiscal',
+            `empresa_id = '${empresaIdLocal}' && ativo = true`,
+            '-created',
+            1,
+            0,
+          )
+          if (cfgs && cfgs.length > 0) {
+            ambiente = cfgs[0].getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+            codigoToken = (cfgs[0].getString('codigo_token') || '').trim().toUpperCase()
+          }
+        } catch (_) {}
+
+        const sufixoAmbiente = ambiente === 'Produção' ? 'PRODUCAO' : 'HOMOLOGACAO'
+        let token = ''
+        let origem = 'nenhuma'
+        try {
+          const creds = $app.findRecordsByFilter(
+            'credenciais_fiscais',
+            `empresa_id = '${empresaIdLocal}'`,
+            '-created',
+            1,
+            0,
+          )
+          if (creds && creds.length > 0) {
+            const tokenBanco = (
+              ambiente === 'Produção'
+                ? creds[0].getString('token_producao')
+                : creds[0].getString('token_homologacao')
+            )
+              .toString()
+              .trim()
+            if (tokenBanco) {
+              token = tokenBanco
+              origem = 'banco'
+            }
+          }
+        } catch (_) {}
+
+        if (!token) {
+          const nomesSegredo = []
+          if (codigoToken) nomesSegredo.push(`FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`)
+          nomesSegredo.push(`FOCUS_NFE_TOKEN_${sufixoAmbiente}`)
+          for (let s = 0; s < nomesSegredo.length; s++) {
+            const t = ($os.getenv(nomesSegredo[s]) || '').trim()
+            if (t) {
+              token = t
+              origem = 'segredo'
+              break
+            }
+          }
+        }
+
+        cfgFocusCache = {
+          token: token,
+          origem: origem,
+          ambiente: ambiente,
+          baseUrl:
+            ambiente === 'Produção'
+              ? 'https://api.focusnfe.com.br/v2'
+              : 'https://homologacao.focusnfe.com.br/v2',
+          baseUrlOrigin:
+            ambiente === 'Produção'
+              ? 'https://api.focusnfe.com.br'
+              : 'https://homologacao.focusnfe.com.br',
+        }
+        return cfgFocusCache
+      }
+
+      // Consulta o XML de um documento na Focus NFe. Retorna { ok, xml?, erro? }.
+      // Timeout de 10s por chamada + orçamento global de 75s: o endpoint sempre
+      // responde dentro do limite do gateway, pulando o documento com aviso.
+      const consultarXmlFocusLocal = (docRec, modeloLocal, refLocal) => {
+        try {
+          if (Date.now() - inicioProcessamento > TEMPO_LIMITE_GLOBAL_FOCUSA_MS) {
+            return {
+              ok: false,
+              erro: 'tempo limite global da exportação atingido; consulta à Focus NFe abortada para este documento',
+            }
+          }
+          const cfg = carregarConfigFocus(docRec.getString('empresa_id'))
+          if (!cfg.token) {
+            return {
+              ok: false,
+              erro: 'token da Focus NFe não configurado para a empresa (cadastre nas credenciais fiscais)',
+            }
+          }
+          const endpointFocus = modeloLocal === '65' ? 'nfce' : 'nfe'
+          const authHeader = 'Basic ' + encodeBase64Local(cfg.token + ':')
+          const res = $http.send({
+            method: 'GET',
+            url: `${cfg.baseUrl}/${endpointFocus}/${encodeURIComponent(refLocal)}?completa=1`,
+            headers: { Authorization: authHeader, Accept: 'application/json' },
+            timeout: TIMEOUT_HTTP_FOCUSA_SEG,
+          })
+          if ((res.statusCode || 200) >= 300) {
+            return {
+              ok: false,
+              erro: `Focus NFe respondeu HTTP ${res.statusCode} na consulta da referência`,
+            }
+          }
+          let respJson = null
+          try {
+            respJson = JSON.parse(res.raw || '')
+          } catch (_) {}
+          const caminhoXml = respJson?.caminho_xml_nota_fiscal || respJson?.xml_url || ''
+          if (!caminhoXml) {
+            return {
+              ok: false,
+              erro: 'Focus NFe não retornou XML para esta referência (nota pode não estar autorizada)',
+            }
+          }
+          let urlFinalXml = caminhoXml
+          if (caminhoXml.startsWith('/')) urlFinalXml = `${cfg.baseUrlOrigin}${caminhoXml}`
+          const resXml = $http.send({
+            method: 'GET',
+            url: urlFinalXml,
+            headers: { Authorization: authHeader },
+            timeout: TIMEOUT_HTTP_FOCUSA_SEG,
+          })
+          if ((resXml.statusCode || 200) >= 300 || !resXml.raw) {
+            return {
+              ok: false,
+              erro: `Focus NFe respondeu HTTP ${resXml.statusCode} ao baixar o XML`,
+            }
+          }
+          // Persiste o XML obtido no registro para as próximas exportações serem 100% locais
+          try {
+            const nomeSeguro = `xml_${(refLocal || docRec.id).replace(/[^a-zA-Z0-9_-]/g, '_')}.xml`
+            docRec.set(
+              'xml_arquivo',
+              $filesystem.fileFromBytes(Buffer.from(resXml.raw, 'utf-8'), nomeSeguro),
+            )
+            $app.save(docRec)
+          } catch (errPersist) {
+            console.warn(
+              '[exportar-xmls] XML obtido da Focus não pôde ser persistido no registro:',
+              errPersist,
+            )
+          }
+          return { ok: true, xml: resXml.raw }
+        } catch (errFocus) {
+          return {
+            ok: false,
+            erro: `falha na consulta à Focus NFe: ${(errFocus && (errFocus.message || String(errFocus))) || 'erro desconhecido'}`,
+          }
+        }
+      }
+
       const arquivosParaZip = []
       const linhasCsv = []
+      // Documentos que ficaram de fora do ZIP, com motivo (pt-BR)
+      const avisosExport = []
+      let totalPulados = 0
       // Cabeçalho CSV com UTF-8 BOM
       linhasCsv.push(
         'Tipo;Modelo;Série;Número;Chave de Acesso;Data Emissão;Destinatário/Emitente;Valor Total;Status',
@@ -404,11 +594,32 @@ routerAdd(
           ].join(';'),
         )
 
-        // a) XML Autorizado
+        // a) XML Autorizado — usa o XML armazenado no registro; só consulta a
+        // Focus NFe quando não há arquivo local, com timeout/budget e aviso em
+        // caso de falha (não trava a exportação).
         if (status === 'Autorizada' || status === 'Cancelada') {
           let conteudoXml = null
           if (xmlArquivo) {
-            conteudoXml = carregarArquivoLocal('documentos_fiscais', doc.id, xmlArquivo)
+            conteudoXml = lerArquivoLocal(doc, xmlArquivo)
+          }
+          if (!conteudoXml) {
+            const refFocus = doc.getString('referencia') || ''
+            if (refFocus) {
+              const resFocus = consultarXmlFocusLocal(doc, modelo, refFocus)
+              if (resFocus.ok && resFocus.xml) {
+                conteudoXml = resFocus.xml
+              } else {
+                totalPulados++
+                avisosExport.push(
+                  `Documento ${modelo === '65' ? 'NFC-e' : 'NF-e'} nº ${numero} (série ${serie}): ${resFocus.erro}.`,
+                )
+              }
+            } else {
+              totalPulados++
+              avisosExport.push(
+                `Documento ${modelo === '65' ? 'NFC-e' : 'NF-e'} nº ${numero} (série ${serie}): sem XML armazenado e sem referência para consultar na Focus NFe.`,
+              )
+            }
           }
 
           if (conteudoXml) {
@@ -433,7 +644,7 @@ routerAdd(
 
         // b) XML de Cancelamento
         if (status === 'Cancelada' && xmlCancelamento) {
-          const conteudoCanc = carregarArquivoLocal('documentos_fiscais', doc.id, xmlCancelamento)
+          const conteudoCanc = lerArquivoLocal(doc, xmlCancelamento)
           if (conteudoCanc) {
             const nomeArqCanc = chave
               ? `canc_${chave}.xml`
@@ -481,11 +692,7 @@ routerAdd(
             const xmlCarta = carta.getString('xml_arquivo')
             let conteudoXmlCarta = null
             if (xmlCarta) {
-              conteudoXmlCarta = carregarArquivoLocal(
-                'documentos_fiscais_cartas',
-                carta.id,
-                xmlCarta,
-              )
+              conteudoXmlCarta = lerArquivoLocal(carta, xmlCarta)
             }
 
             if (conteudoXmlCarta) {
@@ -539,7 +746,7 @@ routerAdd(
 
           let conteudoXmlInut = null
           if (xmlInut) {
-            conteudoXmlInut = carregarArquivoLocal('inutilizacoes', inut.id, xmlInut)
+            conteudoXmlInut = lerArquivoLocal(inut, xmlInut)
           }
 
           if (conteudoXmlInut) {
@@ -602,7 +809,7 @@ routerAdd(
 
           let conteudoXmlNe = null
           if (xmlArquivo) {
-            conteudoXmlNe = carregarArquivoLocal('notas_entrada', ne.id, xmlArquivo)
+            conteudoXmlNe = lerArquivoLocal(ne, xmlArquivo)
           }
 
           if (conteudoXmlNe) {
@@ -669,7 +876,14 @@ routerAdd(
       }
 
       const toBytes = (input) => {
-        if (typeof Buffer !== 'undefined' && Buffer.isBuffer(input)) {
+        // ATENÇÃO JSVM: Buffer.isBuffer lança "Object has no member 'isBuffer'".
+        // NUNCA acesse Buffer.isBuffer; os XMLs chegam sempre como string.
+        if (
+          typeof input !== 'string' &&
+          input &&
+          input.length !== undefined &&
+          !Array.isArray(input)
+        ) {
           const res = []
           for (let i = 0; i < input.length; i++) res.push(input[i])
           return res
@@ -825,10 +1039,14 @@ routerAdd(
       const zipBase64 = encodeBase64Bytes(fullZipBytes)
       const nomeArquivo = `XMLs_${cnpjEmpresa || 'empresa'}_${ano}_${mesStr}.zip`
 
+      fecharFilesystem()
+
       return c.json(200, {
         sucesso: true,
         nome_arquivo: nomeArquivo,
         zip_base64: zipBase64,
+        documentos_pulados: totalPulados,
+        avisos: avisosExport,
         totais: {
           nfe_autorizadas: totalNfeAutorizadas,
           nfce_autorizadas: totalNfceAutorizadas,
