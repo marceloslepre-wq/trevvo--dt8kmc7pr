@@ -849,9 +849,9 @@ routerAdd(
         itensFocus.push(itemFocus)
 
         // Dados do item para documentos_fiscais_itens (mesmos campos que a NF-e grava
-        // em fiscal_nfe_operacoes.js). O CST/CSOSN gravado já traz a origem na frente
-        // (formato canônico do SPED, ex.: "0" + "102" = "0102"; "0" + "00" = "0000");
-        // CST_PIS/COFINS gravados sem o zero da origem (padrão da NF-e).
+        // em fiscal_nfe_operacoes.js): cst_icms gravado SÓ com a situação (2 dígitos,
+        // ex. "00"/"40" — a ORIGEM fica no campo próprio "origem"; Livro de saídas e
+        // SPED montam o CST final como origem + situação na leitura).
         itensParaGravar.push({
           item: numItem,
           produto_id: prodId,
@@ -869,7 +869,7 @@ routerAdd(
           valor_outras: 0,
           valor_total: valorTotalItem,
           origem: origemMercadoria,
-          cst_icms: (origemMercadoria || '0') + situacaoIcms,
+          cst_icms: situacaoIcms,
           csosn: '',
           mod_bc_icms: baseIcms > 0 ? modBcIcms : '',
           reducao_bc_icms: 0,
