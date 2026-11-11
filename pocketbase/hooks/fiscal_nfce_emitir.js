@@ -600,6 +600,11 @@ routerAdd(
       }
 
       const itensFocus = []
+      // Itens que também serão gravados em documentos_fiscais_itens (mesma etapa do
+      // documento, ANTES do envio à Focus), com os MESMOS dados fiscais que vão no
+      // JSON à Focus — Livro de saídas e SPED (C190) precisam de uma linha por
+      // combinação CST/CFOP/alíquota (tributado + isento + ST na mesma venda).
+      const itensParaGravar = []
       let totValorProdutos = 0
       let totValorDesconto = 0
       let totBaseIcms = 0
@@ -842,6 +847,58 @@ routerAdd(
           itemFocus.cbs_valor = cbsValor
         }
         itensFocus.push(itemFocus)
+
+        // Dados do item para documentos_fiscais_itens (mesmos campos que a NF-e grava
+        // em fiscal_nfe_operacoes.js). O CST/CSOSN gravado já traz a origem na frente
+        // (formato canônico do SPED, ex.: "0" + "102" = "0102"; "0" + "00" = "0000");
+        // CST_PIS/COFINS gravados sem o zero da origem (padrão da NF-e).
+        itensParaGravar.push({
+          item: numItem,
+          produto_id: prodId,
+          codigo: codigo || String(numItem),
+          descricao,
+          ncm,
+          cest,
+          cfop,
+          unidade,
+          quantidade,
+          valor_unitario: valorUnitario,
+          valor_bruto: valorBruto,
+          valor_desconto: descontoItem,
+          valor_frete: 0,
+          valor_outras: 0,
+          valor_total: valorTotalItem,
+          origem: origemMercadoria,
+          cst_icms: (origemMercadoria || '0') + situacaoIcms,
+          csosn: '',
+          mod_bc_icms: baseIcms > 0 ? modBcIcms : '',
+          reducao_bc_icms: 0,
+          base_icms: baseIcms,
+          aliquota_icms: aliqIcms,
+          valor_icms: valorIcms,
+          aliquota_fcp: 0,
+          valor_fcp: 0,
+          base_icms_st: 0,
+          aliquota_icms_st: 0,
+          valor_icms_st: 0,
+          cst_pis: cstPis,
+          base_pis: basePis,
+          aliquota_pis: aliqPis,
+          valor_pis: valorPis,
+          cst_cofins: cstCofins,
+          base_cofins: baseCofins,
+          aliquota_cofins: aliqCofins,
+          valor_cofins: valorCofins,
+          cst_ibs_cbs: cstIbsCbs,
+          c_class_trib: cClassTribIbsCbs,
+          base_ibs_cbs: baseIbsCbs,
+          aliquota_ibs_uf: ibsUfAliquota,
+          aliquota_ibs_municipio: ibsMunAliquota,
+          aliquota_cbs: cbsAliquota,
+          valor_ibs: ibsValorTotal,
+          valor_cbs: cbsValor,
+          gtin,
+        })
       }
 
       // Formas de pagamento
@@ -964,6 +1021,88 @@ routerAdd(
       docRec.set('json_enviado', jsonFocus)
       docRec.set('usuario_emissao_id', userId)
       $app.save(docRec)
+
+      // 6b. Gravar os itens do documento na MESMA etapa (antes do envio à Focus):
+      // uma linha em documentos_fiscais_itens por item da venda, com os MESMOS dados
+      // fiscais do JSON enviado (Livro de saídas e SPED C190 precisam de uma linha por
+      // combinação CST/CFOP/alíquota — tributado + isento + ST na mesma venda).
+      try {
+        const colDocItens = $app.findCollectionByNameOrId('documentos_fiscais_itens')
+        // Itens anteriores da tentativa anterior (reenvio): recria do zero
+        try {
+          const itensAnterioresNfce = $app.findRecordsByFilter(
+            'documentos_fiscais_itens',
+            `documento_id = '${docRec.id}'`,
+            'item,created',
+          )
+          for (let a = 0; a < itensAnterioresNfce.length; a++) {
+            $app.delete(itensAnterioresNfce[a])
+          }
+        } catch (_) {}
+        for (let gi = 0; gi < itensParaGravar.length; gi++) {
+          const d = itensParaGravar[gi]
+          const itemRecNfce = new Record(colDocItens)
+          itemRecNfce.set('documento_id', docRec.id)
+          itemRecNfce.set('item', d.item)
+          if (d.produto_id) itemRecNfce.set('produto_id', d.produto_id)
+          itemRecNfce.set('codigo', d.codigo)
+          itemRecNfce.set('descricao', d.descricao)
+          itemRecNfce.set('ncm', d.ncm)
+          itemRecNfce.set('cest', d.cest)
+          itemRecNfce.set('cfop', d.cfop)
+          itemRecNfce.set('unidade', d.unidade)
+          itemRecNfce.set('quantidade', d.quantidade)
+          itemRecNfce.set('valor_unitario', d.valor_unitario)
+          itemRecNfce.set('valor_bruto', d.valor_bruto)
+          itemRecNfce.set('valor_desconto', d.valor_desconto)
+          itemRecNfce.set('valor_frete', d.valor_frete)
+          itemRecNfce.set('valor_outras', d.valor_outras)
+          itemRecNfce.set('valor_total', d.valor_total)
+          itemRecNfce.set('origem', d.origem)
+          itemRecNfce.set('cst_icms', d.cst_icms)
+          itemRecNfce.set('csosn', d.csosn)
+          itemRecNfce.set('mod_bc_icms', d.mod_bc_icms)
+          itemRecNfce.set('reducao_bc_icms', d.reducao_bc_icms)
+          itemRecNfce.set('base_icms', d.base_icms)
+          itemRecNfce.set('aliquota_icms', d.aliquota_icms)
+          itemRecNfce.set('valor_icms', d.valor_icms)
+          itemRecNfce.set('aliquota_fcp', d.aliquota_fcp)
+          itemRecNfce.set('valor_fcp', d.valor_fcp)
+          itemRecNfce.set('base_icms_st', d.base_icms_st)
+          itemRecNfce.set('aliquota_icms_st', d.aliquota_icms_st)
+          itemRecNfce.set('valor_icms_st', d.valor_icms_st)
+          itemRecNfce.set('cst_pis', d.cst_pis)
+          itemRecNfce.set('base_pis', d.base_pis)
+          itemRecNfce.set('aliquota_pis', d.aliquota_pis)
+          itemRecNfce.set('valor_pis', d.valor_pis)
+          itemRecNfce.set('cst_cofins', d.cst_cofins)
+          itemRecNfce.set('base_cofins', d.base_cofins)
+          itemRecNfce.set('aliquota_cofins', d.aliquota_cofins)
+          itemRecNfce.set('valor_cofins', d.valor_cofins)
+          itemRecNfce.set('cst_ibs_cbs', d.cst_ibs_cbs)
+          itemRecNfce.set('c_class_trib', d.c_class_trib)
+          itemRecNfce.set('base_ibs_cbs', d.base_ibs_cbs)
+          itemRecNfce.set('aliquota_ibs_uf', d.aliquota_ibs_uf)
+          itemRecNfce.set('aliquota_ibs_municipio', d.aliquota_ibs_municipio)
+          itemRecNfce.set('aliquota_cbs', d.aliquota_cbs)
+          itemRecNfce.set('valor_ibs', d.valor_ibs)
+          itemRecNfce.set('valor_cbs', d.valor_cbs)
+          itemRecNfce.set('gtin', d.gtin)
+          $app.save(itemRecNfce)
+        }
+        console.log(
+          '[emitir-nfce-venda] ' +
+            itensParaGravar.length +
+            ' item(ns) gravado(s) em documentos_fiscais_itens do documento ' +
+            docRec.id +
+            '.',
+        )
+      } catch (errItens) {
+        console.warn(
+          '[emitir-nfce-venda] Falha ao gravar itens em documentos_fiscais_itens:',
+          errItens && errItens.message ? errItens.message : String(errItens),
+        )
+      }
 
       // 7. Chamar Focus NFe
       const executarChamadaFocus = (formaEmissao) => {
