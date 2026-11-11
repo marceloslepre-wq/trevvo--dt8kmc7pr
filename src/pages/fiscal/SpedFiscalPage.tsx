@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FileSpreadsheet,
@@ -36,7 +36,7 @@ import {
   listarArquivosSped,
   gerarArquivoSped,
   marcarSpedEntregue,
-  obterUrlDownloadSped,
+  baixarArquivoSped,
   listarAjustesApuracao,
   salvarAjusteApuracao,
   excluirAjusteApuracao,
@@ -186,6 +186,10 @@ export const SpedFiscalPage: React.FC = () => {
   const [formDescricaoCompl, setFormDescricaoCompl] = useState('')
   const [formValor, setFormValor] = useState('')
 
+  // Id do arquivo recém-gerado: garante que, após gerar, o painel "Detalhes do
+  // Arquivo" mostre o arquivo novo (e não um antigo que estava selecionado).
+  const idArquivoGeradoRef = useRef<string | null>(null)
+
   const carregarArquivos = useCallback(async () => {
     if (!empresaAtiva?.id) return
     setCarregandoLista(true)
@@ -193,12 +197,29 @@ export const SpedFiscalPage: React.FC = () => {
       const lista = await listarArquivosSped(empresaAtiva.id)
       setArquivos(lista)
 
-      // Atualiza o arquivo selecionado se ele estiver na lista
+      // Prioridade 1: o arquivo recém-gerado nesta sessão
+      if (idArquivoGeradoRef.current) {
+        const gerado = lista.find((a) => a.id === idArquivoGeradoRef.current)
+        if (gerado) {
+          setArquivoSelecionado(gerado)
+          return
+        }
+        idArquivoGeradoRef.current = null
+      }
+
+      // Atualiza o arquivo selecionado se ele ainda existir na lista
       if (arquivoSelecionado) {
         const atualizado = lista.find((a) => a.id === arquivoSelecionado.id)
-        if (atualizado) setArquivoSelecionado(atualizado)
-      } else if (lista.length > 0) {
+        if (atualizado) {
+          setArquivoSelecionado(atualizado)
+          return
+        }
+        // Registro sumiu da lista (ex: substituído/excluído): cai para o primeiro
+      }
+      if (lista.length > 0) {
         setArquivoSelecionado(lista[0])
+      } else {
+        setArquivoSelecionado(null)
       }
     } catch (err: any) {
       console.error('Erro ao listar arquivos SPED:', err)
@@ -409,6 +430,8 @@ export const SpedFiscalPage: React.FC = () => {
         })
       }
 
+      // Seleciona o arquivo recém-gerado no painel "Detalhes do Arquivo"
+      if (resp.id) idArquivoGeradoRef.current = resp.id
       await carregarArquivos()
     } catch (err: any) {
       console.error('Falha ao gerar SPED Fiscal:', err)
@@ -522,23 +545,19 @@ export const SpedFiscalPage: React.FC = () => {
     }
   }
 
-  const handleBaixarArquivo = (arq: SpedArquivoRegistro) => {
-    const url = obterUrlDownloadSped(arq)
-    if (!url) {
+  // Baixa o arquivo .txt do PRÓPRIO registro da linha/painel (id explícito),
+  // com o nome_arquivo daquele registro — sem depender de seleção ou cache.
+  const handleBaixarArquivo = async (arq: SpedArquivoRegistro) => {
+    try {
+      await baixarArquivoSped(arq)
+    } catch (err: any) {
+      console.error('Falha ao baixar arquivo SPED:', err)
       toast({
-        title: 'Arquivo não disponível',
-        description: 'Este registro não possui arquivo .txt anexado.',
+        title: 'Erro ao baixar arquivo',
+        description: err.message || 'Não foi possível baixar o arquivo .txt deste registro.',
         variant: 'destructive',
       })
-      return
     }
-
-    const a = document.createElement('a')
-    a.href = url
-    a.download = arq.nome_arquivo || `SPED_${arq.periodo}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
   }
 
   const abrirModalValidacoes = (arq: SpedArquivoRegistro) => {

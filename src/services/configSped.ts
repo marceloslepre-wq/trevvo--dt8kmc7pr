@@ -375,13 +375,44 @@ export async function gerarArquivoSped(params: GerarSpedParams): Promise<GerarSp
 }
 
 /**
- * Retorna a URL pública de download do arquivo .txt do SPED através do PocketBase SDK.
+ * Monta a URL de download do arquivo .txt de UM registro específico de sped_arquivos.
+ * Construída explicitamente com o id do registro (sem depender de estado/closure do React),
+ * garantindo que cada linha baixe o SEU próprio arquivo.
  */
-export function obterUrlDownloadSped(
-  record: { id: string; arquivo?: string } | SpedArquivoRegistro,
-): string {
+export function obterUrlDownloadSped(record: { id: string; arquivo?: string }): string {
   if (!record.arquivo) return ''
-  return pb.files.getURL(record as any, record.arquivo)
+  const baseUrl = import.meta.env.VITE_POCKETBASE_URL || ''
+  return `${baseUrl}/api/files/sped_arquivos/${record.id}/${encodeURIComponent(record.arquivo)}`
+}
+
+/**
+ * Baixa o arquivo .txt do registro informado, com o nome do próprio registro
+ * (nome_arquivo). Busca o conteúdo como blob (com autenticação) para garantir
+ * que o arquivo salvo é o da linha clicada, e não outro cacheado pelo navegador.
+ */
+export async function baixarArquivoSped(arq: SpedArquivoRegistro): Promise<void> {
+  if (!arq.arquivo) {
+    throw new Error('Este registro não possui arquivo .txt anexado.')
+  }
+
+  const url = obterUrlDownloadSped(arq)
+  const token = pb.authStore.token
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+  if (!res.ok) {
+    throw new Error(`Falha ao baixar o arquivo (HTTP ${res.status}).`)
+  }
+
+  const blob = await res.blob()
+  const blobUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = blobUrl
+  a.download = arq.nome_arquivo || arq.arquivo
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(blobUrl)
 }
 
 /**
