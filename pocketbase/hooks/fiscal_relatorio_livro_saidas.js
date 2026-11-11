@@ -585,6 +585,10 @@ routerAdd('POST', '/backend/v1/relatorios/livro-saidas', (c) => {
 
     // 5. RESUMO POR CFOP, CST E ALÍQUOTA (somando documentos_fiscais_itens dos autorizados)
     // Colunas: valor contábil, base, ICMS, ICMS ST, isentas ou não tributadas, outras
+    // NFC-e (modelo 65) não gravam itens em documentos_fiscais_itens: quando o
+    // documento não tem itens, deriva UM item sintético do cabeçalho do documento
+    // (mesma base que o SPED usa quando não há itens), para o resumo bater com a
+    // relação de documentos da seção 1.
     const mapaResumoCst = new Map()
 
     for (let d2 = 0; d2 < docsFiltrados.length; d2++) {
@@ -592,19 +596,66 @@ routerAdd('POST', '/backend/v1/relatorios/livro-saidas', (c) => {
       const doc = itemDoc.rec
       if (doc.getString('status') !== 'Autorizada') continue
 
-      const itensDoc = itensPorDocumento.get(doc.id) || []
+      const modeloResumo = doc.getString('modelo') || '55'
+      const itensBrutosDoc = itensPorDocumento.get(doc.id) || []
+      const itensDoc = []
+
+      for (let b = 0; b < itensBrutosDoc.length; b++) {
+        const itRec = itensBrutosDoc[b]
+        itensDoc.push({
+          cfop: (itRec.getString('cfop') || '').trim(),
+          cst: (itRec.getString('cst_icms') || itRec.getString('csosn') || '').trim(),
+          aliquota: round2(itRec.getFloat('aliquota_icms') || 0),
+          valor_total: round2(itRec.getFloat('valor_total') || 0),
+          valor_icms_st: round2(itRec.getFloat('valor_icms_st') || 0),
+          valor_fcp_st: round2(itRec.getFloat('valor_fcp_st') || 0),
+          valor_ipi: round2(itRec.getFloat('valor_ipi') || 0),
+          base_icms: round2(itRec.getFloat('base_icms') || 0),
+          valor_icms: round2(itRec.getFloat('valor_icms') || 0),
+          base_icms_st: round2(itRec.getFloat('base_icms_st') || 0),
+          reducao_bc_icms: round2(itRec.getFloat('reducao_bc_icms') || 0),
+        })
+      }
+
+      if (itensDoc.length === 0 && modeloResumo === '65') {
+        const totDoc = round2(doc.getFloat('valor_total') || 0)
+        const bcDoc = round2(doc.getFloat('base_icms') || 0)
+        const vIcmsDoc = round2(doc.getFloat('valor_icms') || 0)
+
+        let cstFallback = '00'
+        let aliqFallback = 0
+        if (bcDoc <= 0 && vIcmsDoc <= 0) {
+          cstFallback = '40' // Isenta / Não tributada
+        } else if (bcDoc > 0) {
+          aliqFallback = round2((vIcmsDoc / bcDoc) * 100)
+        }
+
+        itensDoc.push({
+          cfop: (doc.getString('cfop_principal') || '5102').trim(),
+          cst: cstFallback,
+          aliquota: aliqFallback,
+          valor_total: totDoc,
+          valor_icms_st: 0,
+          valor_fcp_st: 0,
+          valor_ipi: 0,
+          base_icms: bcDoc,
+          valor_icms: vIcmsDoc,
+          base_icms_st: 0,
+          reducao_bc_icms: 0,
+        })
+      }
 
       for (let it = 0; it < itensDoc.length; it++) {
         const itRec = itensDoc[it]
-        const cfop = (itRec.getString('cfop') || doc.getString('cfop_principal') || '5102').trim()
-        let cst = (itRec.getString('cst_icms') || itRec.getString('csosn') || '00').trim()
+        const cfop = (itRec.cfop || doc.getString('cfop_principal') || '5102').trim()
+        let cst = (itRec.cst || '00').trim()
         if (
           cst.length === 4 &&
           (cst.startsWith('0') || cst.startsWith('1') || cst.startsWith('2'))
         ) {
           cst = cst.slice(1) // CSOSN 3 dígitos
         }
-        const aliquota = round2(itRec.getFloat('aliquota_icms') || 0)
+        const aliquota = round2(itRec.aliquota || 0)
 
         // Filtros adicionais de CFOP / CST no resumo
         if (filtrosAdicionais.cfop && !cfop.startsWith(filtrosAdicionais.cfop)) continue
@@ -612,16 +663,16 @@ routerAdd('POST', '/backend/v1/relatorios/livro-saidas', (c) => {
 
         const chave = cfop + '_' + cst + '_' + aliquota.toFixed(2)
 
-        const vTotItem = round2(itRec.getFloat('valor_total') || 0)
-        const vStItem = round2(itRec.getFloat('valor_icms_st') || 0)
-        const vIpiItem = round2(itRec.getFloat('valor_ipi') || 0)
-        const vFcpSt = round2(itRec.getFloat('valor_fcp_st') || 0)
+        const vTotItem = round2(itRec.valor_total || 0)
+        const vStItem = round2(itRec.valor_icms_st || 0)
+        const vIpiItem = round2(itRec.valor_ipi || 0)
+        const vFcpSt = round2(itRec.valor_fcp_st || 0)
 
         // Valor contábil do item na saída: total do item + ST + FCP ST + IPI
         const valorContabilItem = round2(vTotItem + vStItem + vFcpSt + vIpiItem)
-        const baseIcmsItem = round2(itRec.getFloat('base_icms') || 0)
-        const valorIcmsItem = round2(itRec.getFloat('valor_icms') || 0)
-        const baseIcmsStItem = round2(itRec.getFloat('base_icms_st') || 0)
+        const baseIcmsItem = round2(itRec.base_icms || 0)
+        const valorIcmsItem = round2(itRec.valor_icms || 0)
+        const baseIcmsStItem = round2(itRec.base_icms_st || 0)
         const valorIcmsStItem = round2(vStItem + vFcpSt)
 
         // Isentas ou Não Tributadas: CST 40, 41 ou parcela não tributada quando houver isenção expressa
@@ -639,7 +690,7 @@ routerAdd('POST', '/backend/v1/relatorios/livro-saidas', (c) => {
             round2(valorContabilItem - baseIcmsItem - valorIcmsStItem - vIpiItem),
           )
           // Parcela reduzida / isenta
-          const redBc = round2(itRec.getFloat('reducao_bc_icms') || 0)
+          const redBc = round2(itRec.reducao_bc_icms || 0)
           if (redBc > 0) {
             isentas = sobra
           } else {

@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import SelectCliente from '@/components/SelectCliente'
+import { obterConfigFiscalEmpresa } from '@/services/configEmissaoFiscal'
 
 const UFS_BRASIL = [
   'AC',
@@ -91,6 +92,25 @@ export const LivroSaidasPage: React.FC = () => {
   const [ufDestinoFiltro, setUfDestinoFiltro] = useState<string>('todos')
   const [clienteIdFiltro, setClienteIdFiltro] = useState<string>('')
   const [incluirNotasTeste, setIncluirNotasTeste] = useState<boolean>(false)
+
+  // Em ambiente de homologação as notas de teste já devem vir incluídas por padrão
+  useEffect(() => {
+    let cancelado = false
+    setIncluirNotasTeste(false)
+    if (!empresaAtiva?.id) return
+    obterConfigFiscalEmpresa(empresaAtiva.id)
+      .then((cfg) => {
+        if (!cancelado && cfg?.ambiente === 'Homologação') {
+          setIncluirNotasTeste(true)
+        }
+      })
+      .catch(() => {
+        /* sem config de emissão: mantém o padrão false */
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [empresaAtiva?.id])
 
   const [painelFiltrosAberto, setPainelFiltrosAberto] = useState<boolean>(false)
   const [carregando, setCarregando] = useState<boolean>(true)
