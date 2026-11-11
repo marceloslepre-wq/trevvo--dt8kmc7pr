@@ -108,11 +108,95 @@ routerAdd('POST', '/backend/v1/relatorios/vendas-canais', (c) => {
     }
   } catch (_) {}
 
+  // Helpers locais de tenancy (definidos DENTRO do callback — no JSVM do PocketBase
+  // declarações no escopo do arquivo/require() não são visíveis dentro dos callbacks)
+  function obterEmpresasUsuarioLocal(authRec) {
+    if (!authRec) return []
+    let uRec = null
+    try {
+      const uRecs = $app.findRecordsByFilter(
+        'usuarios',
+        "auth_user_id = '" + authRec.id + "' || id = '" + authRec.id + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (uRecs && uRecs.length > 0) uRec = uRecs[0]
+    } catch (_) {}
+    if (!uRec) return []
+    const assId = uRec.getString('assinante_id')
+    if (!assId) return []
+
+    let userIsAdmin = false
+    const pId = uRec.getString('perfil_id')
+    if (pId) {
+      try {
+        const pRec = $app.findRecordById('perfis_acesso', pId)
+        if (pRec && pRec.getBool('ativo') && pRec.getBool('administrador')) {
+          userIsAdmin = true
+        }
+      } catch (_) {}
+    }
+
+    if (userIsAdmin) {
+      try {
+        return $app.findRecordsByFilter(
+          'empresas',
+          "assinante_id = '" + assId + "' && ativo = true",
+          'codigo',
+          500,
+          0,
+        )
+      } catch (_) {
+        return []
+      }
+    }
+
+    const permIds = new Set()
+    const pdrId = uRec.getString('empresa_padrao_id')
+    if (pdrId) permIds.add(pdrId)
+    try {
+      const vincs = $app.findRecordsByFilter(
+        'usuarios_empresas',
+        "usuario_id = '" + uRec.id + "' && ativo = true",
+        '',
+        500,
+        0,
+      )
+      for (let v = 0; v < vincs.length; v++) {
+        const empIdVinc = vincs[v].getString('empresa_id')
+        if (empIdVinc) permIds.add(empIdVinc)
+      }
+    } catch (_) {}
+
+    const res = []
+    permIds.forEach((eId) => {
+      try {
+        const em = $app.findRecordById('empresas', eId)
+        if (em && em.getBool('ativo') && em.getString('assinante_id') === assId) {
+          res.push(em)
+        }
+      } catch (_) {}
+    })
+    res.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+    return res
+  }
+
+  function exigirEmpresaDoUsuarioLocal(authRec, empId) {
+    if (!empId) throw new BadRequestError('ID da empresa é obrigatório.')
+    const permitidas = obterEmpresasUsuarioLocal(authRec)
+    const achou = permitidas.find((e) => e.id === empId)
+    if (!achou)
+      throw new ForbiddenError('Acesso negado à empresa especificada para este usuário/assinante.')
+    return achou
+  }
+
   try {
     for (let j = 0; j < empresasIds.length; j++) {
-      exigirEmpresaDoUsuario(authRecord, empresasIds[j])
+      exigirEmpresaDoUsuarioLocal(authRecord, empresasIds[j])
     }
   } catch (errEmp) {
+    console.error('vendas-canais: erro ao validar empresas do usuário:', errEmp)
     return c.json(403, {
       sucesso: false,
       message:

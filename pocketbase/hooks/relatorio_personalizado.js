@@ -374,12 +374,156 @@ routerAdd('POST', '/backend/v1/relatorios/personalizado', (c) => {
     })
   }
 
-  // Validação de acesso às empresas via tenancy.js
+  // Validação de acesso às empresas (helpers de tenancy locais ao callback)
+  function eMasterLocal(auth) {
+    if (!auth) return false
+    try {
+      const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+      return !!(userRec && userRec.getString('tipo') === 'master')
+    } catch (_) {
+      return false
+    }
+  }
+
+  function obterAssinanteImpersonadoLocal(userId, appInstance) {
+    const app = appInstance || $app
+    if (!userId) return null
+    try {
+      if (!app.hasTable('master_impersonacoes')) return null
+      const recs = app.findRecordsByFilter(
+        'master_impersonacoes',
+        "user_id = '" + userId + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (recs && recs.length > 0) {
+        return recs[0].getString('assinante_id') || null
+      }
+    } catch (_) {}
+    return null
+  }
+
+  function obterEmpresasUsuarioLocal(authRec) {
+    if (!authRec) return []
+    let usuarioRec = null
+    try {
+      const uRecs = $app.findRecordsByFilter(
+        'usuarios',
+        "auth_user_id = '" + authRec.id + "' || id = '" + authRec.id + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (uRecs && uRecs.length > 0) {
+        usuarioRec = uRecs[0]
+      }
+    } catch (_) {}
+
+    if (!usuarioRec && authRec.getString && authRec.getString('email')) {
+      try {
+        const uRecs = $app.findRecordsByFilter(
+          'usuarios',
+          "email = '" + authRec.getString('email') + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (uRecs && uRecs.length > 0) {
+          usuarioRec = uRecs[0]
+        }
+      } catch (_) {}
+    }
+
+    if (!usuarioRec) return []
+
+    let assinanteId = usuarioRec.getString('assinante_id')
+    if (!assinanteId) return []
+
+    // Master em modo de suporte usa o assinante impersonado
+    const ehMasterUser = eMasterLocal(authRec)
+    if (ehMasterUser) {
+      try {
+        const impersonadoId = obterAssinanteImpersonadoLocal(authRec.id, $app)
+        if (impersonadoId) {
+          assinanteId = impersonadoId
+        }
+      } catch (_) {}
+    }
+
+    let isAdmin = false
+    const perfilId = usuarioRec.getString('perfil_id')
+    if (perfilId) {
+      try {
+        const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+        if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+          isAdmin = true
+        }
+      } catch (_) {}
+    }
+
+    // Se for admin do assinante OU for Master, vê todas as empresas ativas do assinante
+    if (isAdmin || ehMasterUser) {
+      try {
+        return $app.findRecordsByFilter(
+          'empresas',
+          "assinante_id = '" + assinanteId + "' && ativo = true",
+          'codigo',
+          500,
+          0,
+        )
+      } catch (_) {
+        return []
+      }
+    }
+
+    const permitidosIds = new Set()
+    const padraoId = usuarioRec.getString('empresa_padrao_id')
+    if (padraoId) permitidosIds.add(padraoId)
+
+    try {
+      const vinculos = $app.findRecordsByFilter(
+        'usuarios_empresas',
+        "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+        '',
+        500,
+        0,
+      )
+      for (let i = 0; i < vinculos.length; i++) {
+        const eId = vinculos[i].getString('empresa_id')
+        if (eId) permitidosIds.add(eId)
+      }
+    } catch (_) {}
+
+    const empresas = []
+    permitidosIds.forEach((eId) => {
+      try {
+        const emp = $app.findRecordById('empresas', eId)
+        if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+          empresas.push(emp)
+        }
+      } catch (_) {}
+    })
+
+    empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+    return empresas
+  }
+
+  function exigirEmpresaDoUsuarioLocal(authRec, empId) {
+    if (!empId) throw new BadRequestError('ID da empresa é obrigatório.')
+    const permitidas = obterEmpresasUsuarioLocal(authRec)
+    const achou = permitidas.find((e) => e.id === empId)
+    if (!achou)
+      throw new ForbiddenError('Acesso negado à empresa especificada para este usuário/assinante.')
+    return achou
+  }
+
   try {
     for (let j = 0; j < empresasIds.length; j++) {
-      exigirEmpresaDoUsuario(authRecord, empresasIds[j])
+      exigirEmpresaDoUsuarioLocal(authRecord, empresasIds[j])
     }
   } catch (errEmp) {
+    console.error('personalizado: erro ao validar empresas do usuário:', errEmp)
     return c.json(403, {
       sucesso: false,
       message:

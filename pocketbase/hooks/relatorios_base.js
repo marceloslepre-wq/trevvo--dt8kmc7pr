@@ -185,8 +185,114 @@ routerAdd('POST', '/backend/v1/relatorios/validar-filtros', (c) => {
     })
   }
 
-  // Conferência de permissões multiempresa e governança multi-tenant via tenancy.js (Etapa 9)
-  const empresasPermitidas = new Set(empresasDoUsuario(authRecord).map((e) => e.id))
+  // Conferência de permissões multiempresa e governança multi-tenant (helpers locais —
+  // no JSVM do PocketBase declarações no escopo do arquivo não são visíveis nos callbacks)
+  function obterEmpresasUsuarioLocal(authRec) {
+    if (!authRec) return []
+    let usuarioRec = null
+    try {
+      const uRecs = $app.findRecordsByFilter(
+        'usuarios',
+        "auth_user_id = '" + authRec.id + "' || id = '" + authRec.id + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (uRecs && uRecs.length > 0) {
+        usuarioRec = uRecs[0]
+      }
+    } catch (_) {}
+
+    if (!usuarioRec && authRec.getString && authRec.getString('email')) {
+      try {
+        const uRecs = $app.findRecordsByFilter(
+          'usuarios',
+          "email = '" + authRec.getString('email') + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (uRecs && uRecs.length > 0) {
+          usuarioRec = uRecs[0]
+        }
+      } catch (_) {}
+    }
+
+    if (!usuarioRec) return []
+
+    let assinanteId = usuarioRec.getString('assinante_id')
+    if (!assinanteId) return []
+
+    let isAdmin = false
+    const perfilId = usuarioRec.getString('perfil_id')
+    if (perfilId) {
+      try {
+        const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
+        if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+          isAdmin = true
+        }
+      } catch (_) {}
+    }
+
+    if (isAdmin) {
+      try {
+        return $app.findRecordsByFilter(
+          'empresas',
+          "assinante_id = '" + assinanteId + "' && ativo = true",
+          'codigo',
+          500,
+          0,
+        )
+      } catch (_) {
+        return []
+      }
+    }
+
+    const permitidosIds = new Set()
+    const padraoId = usuarioRec.getString('empresa_padrao_id')
+    if (padraoId) permitidosIds.add(padraoId)
+
+    try {
+      const vinculos = $app.findRecordsByFilter(
+        'usuarios_empresas',
+        "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+        '',
+        500,
+        0,
+      )
+      for (let i = 0; i < vinculos.length; i++) {
+        const eId = vinculos[i].getString('empresa_id')
+        if (eId) permitidosIds.add(eId)
+      }
+    } catch (_) {}
+
+    const empresas = []
+    permitidosIds.forEach((eId) => {
+      try {
+        const emp = $app.findRecordById('empresas', eId)
+        if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+          empresas.push(emp)
+        }
+      } catch (_) {}
+    })
+
+    empresas.sort((a, b) => (a.getInt('codigo') || 0) - (b.getInt('codigo') || 0))
+    return empresas
+  }
+
+  let empresasPermitidas
+  try {
+    empresasPermitidas = new Set(obterEmpresasUsuarioLocal(authRecord).map((e) => e.id))
+  } catch (errEmp) {
+    console.error('validar-filtros: erro ao obter empresas do usuário:', errEmp)
+    return c.json(403, {
+      sucesso: false,
+      message:
+        errEmp && errEmp.message
+          ? errEmp.message
+          : 'Erro ao validar as empresas autorizadas para este usuário.',
+    })
+  }
 
   for (let j = 0; j < filtrosNorm.empresas_ids.length; j++) {
     const id = filtrosNorm.empresas_ids[j]
