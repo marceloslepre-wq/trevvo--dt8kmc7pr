@@ -569,6 +569,14 @@ routerAdd(
       const informarIbsCbsDevComp = cfgFiscal.getBool('informar_ibs_cbs')
       let totValorIbsDevComp = 0
       let totValorCbsDevComp = 0
+      // v0.0.279 (adição segura): SEFAZ rejeita a NF-e 55 com o status 1115
+      // "Rejeicao: IBS/CBS não informado" quando o grupo gIBSCBS não vem no item —
+      // mesmo com a NFC-e funcionando com a mesma config. O grupo passa a ser
+      // montado SEMPRE (não só quando "Destacar IBS e CBS" está ligado), pois a
+      // obrigação é da regra do perfil TRANSFERENCIA/DEVOLUCAO_COMPRA com
+      // cst_ibs_cbs gravado, não de um flag de destaque de totais. Os totais
+      // valor_total_ibs/valor_total_cbs continuam saindo apenas com a flag ligada.
+      const informarIbsCbsDevCompObrig = true
 
       const tokenInfo = obterTokenFocus(empresaId, $app)
       const ambiente = tokenInfo.ambiente
@@ -859,8 +867,12 @@ routerAdd(
         itemFocus.cofins_aliquota_porcentual = aliqCofinsDev
         itemFocus.cofins_valor = valorCofinsDev
 
-        // IBS/CBS (Reforma Tributária) — mesmo padrão da NF-e de venda e da NFC-e
-        if (informarIbsCbsDevComp) {
+        // IBS/CBS (Reforma Tributária) — mesmo padrão da NF-e de venda e da NFC-e.
+        // v0.0.279: montar sempre (grupo gIBSCBS obrigatório na NF-e 55); quando não
+        // há regra de perfil, sai o padrão CST 000 / cClassTrib 000001, base = valor
+        // do item, IBS 0,1% e CBS 0,9% — igual ao caminho de venda em
+        // fiscal_nfe_operacoes.js. Antes ficava preso ao flag informar_ibs_cbs.
+        if (informarIbsCbsDevComp || informarIbsCbsDevCompObrig) {
           let cstIbsCbsDev = '000'
           let cClassTribDev = '000001'
           let aliqIbsUfDev = 0.1
@@ -991,7 +1003,9 @@ routerAdd(
       }
 
       // Totais IBS/CBS da nota quando "Destacar IBS e CBS" ligado (mesmos nomes da NFC-e/NF-e de venda)
-      if (informarIbsCbsDevComp) {
+      // v0.0.279: quando o grupo veio pela obrigatoriedade (flag desligada), os
+      // totais no payload são somados item a item para casar com o gIBSCBS enviado.
+      if (informarIbsCbsDevComp || informarIbsCbsDevCompObrig) {
         payloadFocus.valor_total_ibs = Math.round(totValorIbsDevComp * 100) / 100
         payloadFocus.valor_total_cbs = Math.round(totValorCbsDevComp * 100) / 100
       }
@@ -1039,6 +1053,7 @@ routerAdd(
       $app.save(docRec)
 
       // Totais IBS/CBS no cabeçalho do documento (colunas da v0.0.270; adição segura)
+      // v0.0.279: agora também gravados quando o grupo veio pela obrigatoriedade.
       try {
         docRec.set('valor_total_ibs', Math.round(totValorIbsDevComp * 100) / 100)
         docRec.set('valor_total_cbs', Math.round(totValorCbsDevComp * 100) / 100)
@@ -1871,6 +1886,14 @@ routerAdd(
       const informarIbsCbsTrf = cfgFiscal.getBool('informar_ibs_cbs')
       let totValorIbsTrf = 0
       let totValorCbsTrf = 0
+      // v0.0.279 (adição segura): SEFAZ rejeita a NF-e 55 com o status 1115
+      // "Rejeicao: IBS/CBS não informado" quando o grupo gIBSCBS não vem no item —
+      // mesmo com a NFC-e funcionando com a mesma config. O grupo passa a ser
+      // montado SEMPRE (não só quando "Destacar IBS e CBS" está ligado), pois a
+      // obrigação é da regra do perfil TRANSFERENCIA com cst_ibs_cbs gravado, não
+      // de um flag de destaque de totais. Os totais valor_total_ibs/cbs no payload
+      // e no cabeçalho do documento continuam saindo apenas com a flag ligada.
+      const informarIbsCbsTrfObrig = true
 
       // Funções de fiscal_token_lib copiadas localmente (evita require no JSVM — 'Invalid module')
       function obterTokenFocus(empresaId, appInstance) {
@@ -2198,8 +2221,12 @@ routerAdd(
         itemFocus.cofins_aliquota_porcentual = aliqCofinsTrf
         itemFocus.cofins_valor = valorCofinsTrf
 
-        // IBS/CBS (Reforma Tributária) — mesmo padrão da NF-e de venda e da NFC-e
-        if (informarIbsCbsTrf) {
+        // IBS/CBS (Reforma Tributária) — mesmo padrão da NF-e de venda e da NFC-e.
+        // v0.0.279: montar sempre (grupo gIBSCBS obrigatório na NF-e 55); quando não
+        // há regra de perfil, sai o padrão CST 000 / cClassTrib 000001, base = valor
+        // do item, IBS 0,1% e CBS 0,9% — igual ao caminho de venda em
+        // fiscal_nfe_operacoes.js. Antes ficava preso ao flag informar_ibs_cbs.
+        if (informarIbsCbsTrf || informarIbsCbsTrfObrig) {
           let cstIbsCbsTrf = '000'
           let cClassTribTrf = '000001'
           let aliqIbsUfTrf = 0.1
@@ -2315,7 +2342,9 @@ routerAdd(
       }
 
       // Totais IBS/CBS da nota quando "Destacar IBS e CBS" ligado (mesmos nomes da NFC-e/NF-e de venda)
-      if (informarIbsCbsTrf) {
+      // v0.0.279: quando o grupo veio pela obrigatoriedade (flag desligada), os
+      // totais no payload são somados item a item para casar com o gIBSCBS enviado.
+      if (informarIbsCbsTrf || informarIbsCbsTrfObrig) {
         payloadFocus.valor_total_ibs = Math.round(totValorIbsTrf * 100) / 100
         payloadFocus.valor_total_cbs = Math.round(totValorCbsTrf * 100) / 100
       }
@@ -2357,6 +2386,7 @@ routerAdd(
       $app.save(docRec)
 
       // Totais IBS/CBS no cabeçalho do documento (colunas da v0.0.270; adição segura)
+      // v0.0.279: agora também gravados quando o grupo veio pela obrigatoriedade.
       try {
         docRec.set('valor_total_ibs', Math.round(totValorIbsTrf * 100) / 100)
         docRec.set('valor_total_cbs', Math.round(totValorCbsTrf * 100) / 100)
