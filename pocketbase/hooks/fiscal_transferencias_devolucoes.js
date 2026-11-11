@@ -565,6 +565,11 @@ routerAdd(
         })
       }
 
+      // IBS/CBS (Reforma Tributária): mesmo padrão da NF-e de venda e da NFC-e
+      const informarIbsCbsDevComp = cfgFiscal.getBool('informar_ibs_cbs')
+      let totValorIbsDevComp = 0
+      let totValorCbsDevComp = 0
+
       const tokenInfo = obterTokenFocus(empresaId, $app)
       const ambiente = tokenInfo.ambiente
       const token = tokenInfo.token
@@ -854,6 +859,56 @@ routerAdd(
         itemFocus.cofins_aliquota_porcentual = aliqCofinsDev
         itemFocus.cofins_valor = valorCofinsDev
 
+        // IBS/CBS (Reforma Tributária) — mesmo padrão da NF-e de venda e da NFC-e
+        if (informarIbsCbsDevComp) {
+          let cstIbsCbsDev = '000'
+          let cClassTribDev = '000001'
+          let aliqIbsUfDev = 0.1
+          let aliqIbsMunDev = 0
+          let aliqCbsDev = 0.9
+          if (perfilId) {
+            try {
+              const regrasIbsDev = $app.findRecordsByFilter(
+                'perfis_tributarios_regras',
+                `perfil_id = '${perfilId}' && cenario = 'DEVOLUCAO_COMPRA' && ativo = true`,
+                '',
+                1,
+                0,
+              )
+              if (regrasIbsDev.length > 0) {
+                const regIbsDev = regrasIbsDev[0]
+                if ((regIbsDev.getString('cst_ibs_cbs') || '').trim()) {
+                  cstIbsCbsDev = regIbsDev.getString('cst_ibs_cbs').trim()
+                }
+                if ((regIbsDev.getString('c_class_trib') || '').trim()) {
+                  cClassTribDev = regIbsDev.getString('c_class_trib').trim()
+                }
+                aliqIbsUfDev = regIbsDev.getFloat('aliquota_ibs_uf') || 0.1
+                aliqIbsMunDev = regIbsDev.getFloat('aliquota_ibs_municipio') || 0
+                aliqCbsDev = regIbsDev.getFloat('aliquota_cbs') || 0.9
+              }
+            } catch (_) {}
+          }
+          const baseIbsCbsDev = Math.round(valorBrutoDev * 100) / 100
+          const valorIbsUfDev = Math.round(baseIbsCbsDev * (aliqIbsUfDev / 100) * 100) / 100
+          const valorIbsMunDev = Math.round(baseIbsCbsDev * (aliqIbsMunDev / 100) * 100) / 100
+          const valorIbsTotDev =
+            Math.round(baseIbsCbsDev * ((aliqIbsUfDev + aliqIbsMunDev) / 100) * 100) / 100
+          const valorCbsDev = Math.round(baseIbsCbsDev * (aliqCbsDev / 100) * 100) / 100
+          itemFocus.ibs_cbs_situacao_tributaria = cstIbsCbsDev
+          itemFocus.ibs_cbs_classificacao_tributaria = cClassTribDev
+          itemFocus.ibs_cbs_base_calculo = baseIbsCbsDev
+          itemFocus.ibs_uf_aliquota = aliqIbsUfDev
+          itemFocus.ibs_uf_valor = valorIbsUfDev
+          itemFocus.ibs_mun_aliquota = aliqIbsMunDev
+          itemFocus.ibs_mun_valor = valorIbsMunDev
+          itemFocus.ibs_valor_total = valorIbsTotDev
+          itemFocus.cbs_aliquota = aliqCbsDev
+          itemFocus.cbs_valor = valorCbsDev
+          totValorIbsDevComp += valorIbsTotDev
+          totValorCbsDevComp += valorCbsDev
+        }
+
         itensFocus.push(itemFocus)
 
         itensDocFiscal.push({
@@ -935,6 +990,12 @@ routerAdd(
         informacoes_adicionais_contribuinte: `Devolução ref. NF-e chave ${chaveNotaReferenciada}. Motivo: ${motivoDevolucao}`,
       }
 
+      // Totais IBS/CBS da nota quando "Destacar IBS e CBS" ligado (mesmos nomes da NFC-e/NF-e de venda)
+      if (informarIbsCbsDevComp) {
+        payloadFocus.valor_total_ibs = Math.round(totValorIbsDevComp * 100) / 100
+        payloadFocus.valor_total_cbs = Math.round(totValorCbsDevComp * 100) / 100
+      }
+
       if (ieEmitenteDev && ieEmitenteDev.toUpperCase() !== 'ISENTO') {
         payloadFocus.inscricao_estadual_emitente = ieEmitenteDev.replace(/\D/g, '')
       }
@@ -976,6 +1037,13 @@ routerAdd(
       docRec.set('json_enviado', payloadFocus)
       docRec.set('usuario_emissao_id', userId)
       $app.save(docRec)
+
+      // Totais IBS/CBS no cabeçalho do documento (colunas da v0.0.270; adição segura)
+      try {
+        docRec.set('valor_total_ibs', Math.round(totValorIbsDevComp * 100) / 100)
+        docRec.set('valor_total_cbs', Math.round(totValorCbsDevComp * 100) / 100)
+        $app.save(docRec)
+      } catch (_) {}
 
       // Gravar itens
       const docItensCol = $app.findCollectionByNameOrId('documentos_fiscais_itens')
@@ -1799,6 +1867,11 @@ routerAdd(
         })
       }
 
+      // IBS/CBS (Reforma Tributária): mesmo padrão da NF-e de venda e da NFC-e
+      const informarIbsCbsTrf = cfgFiscal.getBool('informar_ibs_cbs')
+      let totValorIbsTrf = 0
+      let totValorCbsTrf = 0
+
       // Funções de fiscal_token_lib copiadas localmente (evita require no JSVM — 'Invalid module')
       function obterTokenFocus(empresaId, appInstance) {
         const app = appInstance || $app
@@ -2125,6 +2198,56 @@ routerAdd(
         itemFocus.cofins_aliquota_porcentual = aliqCofinsTrf
         itemFocus.cofins_valor = valorCofinsTrf
 
+        // IBS/CBS (Reforma Tributária) — mesmo padrão da NF-e de venda e da NFC-e
+        if (informarIbsCbsTrf) {
+          let cstIbsCbsTrf = '000'
+          let cClassTribTrf = '000001'
+          let aliqIbsUfTrf = 0.1
+          let aliqIbsMunTrf = 0
+          let aliqCbsTrf = 0.9
+          if (perfilId) {
+            try {
+              const regrasIbsTrf = $app.findRecordsByFilter(
+                'perfis_tributarios_regras',
+                `perfil_id = '${perfilId}' && cenario = 'TRANSFERENCIA' && ativo = true`,
+                '',
+                1,
+                0,
+              )
+              if (regrasIbsTrf.length > 0) {
+                const regIbsTrf = regrasIbsTrf[0]
+                if ((regIbsTrf.getString('cst_ibs_cbs') || '').trim()) {
+                  cstIbsCbsTrf = regIbsTrf.getString('cst_ibs_cbs').trim()
+                }
+                if ((regIbsTrf.getString('c_class_trib') || '').trim()) {
+                  cClassTribTrf = regIbsTrf.getString('c_class_trib').trim()
+                }
+                aliqIbsUfTrf = regIbsTrf.getFloat('aliquota_ibs_uf') || 0.1
+                aliqIbsMunTrf = regIbsTrf.getFloat('aliquota_ibs_municipio') || 0
+                aliqCbsTrf = regIbsTrf.getFloat('aliquota_cbs') || 0.9
+              }
+            } catch (_) {}
+          }
+          const baseIbsCbsTrf = Math.round(valorItem * 100) / 100
+          const valorIbsUfTrf = Math.round(baseIbsCbsTrf * (aliqIbsUfTrf / 100) * 100) / 100
+          const valorIbsMunTrf = Math.round(baseIbsCbsTrf * (aliqIbsMunTrf / 100) * 100) / 100
+          const valorIbsTotTrf =
+            Math.round(baseIbsCbsTrf * ((aliqIbsUfTrf + aliqIbsMunTrf) / 100) * 100) / 100
+          const valorCbsTrf = Math.round(baseIbsCbsTrf * (aliqCbsTrf / 100) * 100) / 100
+          itemFocus.ibs_cbs_situacao_tributaria = cstIbsCbsTrf
+          itemFocus.ibs_cbs_classificacao_tributaria = cClassTribTrf
+          itemFocus.ibs_cbs_base_calculo = baseIbsCbsTrf
+          itemFocus.ibs_uf_aliquota = aliqIbsUfTrf
+          itemFocus.ibs_uf_valor = valorIbsUfTrf
+          itemFocus.ibs_mun_aliquota = aliqIbsMunTrf
+          itemFocus.ibs_mun_valor = valorIbsMunTrf
+          itemFocus.ibs_valor_total = valorIbsTotTrf
+          itemFocus.cbs_aliquota = aliqCbsTrf
+          itemFocus.cbs_valor = valorCbsTrf
+          totValorIbsTrf += valorIbsTotTrf
+          totValorCbsTrf += valorCbsTrf
+        }
+
         itensFocus.push(itemFocus)
 
         itensDocFiscal.push({
@@ -2191,6 +2314,12 @@ routerAdd(
         informacoes_adicionais_contribuinte: `Transferência de mercadoria TR-${transf.getInt('numero')} de ${empOrigem.getString('nome_fantasia')} para ${empDestino.getString('nome_fantasia')}.`,
       }
 
+      // Totais IBS/CBS da nota quando "Destacar IBS e CBS" ligado (mesmos nomes da NFC-e/NF-e de venda)
+      if (informarIbsCbsTrf) {
+        payloadFocus.valor_total_ibs = Math.round(totValorIbsTrf * 100) / 100
+        payloadFocus.valor_total_cbs = Math.round(totValorCbsTrf * 100) / 100
+      }
+
       if (ieEmitenteTrf && ieEmitenteTrf.toUpperCase() !== 'ISENTO') {
         payloadFocus.inscricao_estadual_emitente = ieEmitenteTrf.replace(/\D/g, '')
       }
@@ -2226,6 +2355,13 @@ routerAdd(
       docRec.set('json_enviado', payloadFocus)
       docRec.set('usuario_emissao_id', userId)
       $app.save(docRec)
+
+      // Totais IBS/CBS no cabeçalho do documento (colunas da v0.0.270; adição segura)
+      try {
+        docRec.set('valor_total_ibs', Math.round(totValorIbsTrf * 100) / 100)
+        docRec.set('valor_total_cbs', Math.round(totValorCbsTrf * 100) / 100)
+        $app.save(docRec)
+      } catch (_) {}
 
       // Gravar itens do documento fiscal
       const docItensCol = $app.findCollectionByNameOrId('documentos_fiscais_itens')

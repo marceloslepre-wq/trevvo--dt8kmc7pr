@@ -466,6 +466,9 @@ routerAdd(
       })
     }
 
+    // IBS/CBS (Reforma Tributária): mesmo padrão da NF-e de venda e da NFC-e
+    const informarIbsCbsDevVenda = cfgFiscal.getBool('informar_ibs_cbs')
+
     const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
     const tokenInfo = obterTokenFocus(empresaId, $app)
     const ambiente = tokenInfo.ambiente
@@ -652,6 +655,8 @@ routerAdd(
     let totValorIpi = 0
     let totValorPis = 0
     let totValorCofins = 0
+    let totValorIbsDev = 0
+    let totValorCbsDev = 0
 
     const itensFocus = []
     const itensDocFiscal = []
@@ -789,6 +794,67 @@ routerAdd(
         itemFocus.cofins_valor = valorCofinsItem
       }
 
+      // IBS/CBS (Reforma Tributária) — grupo gIBSCBS do item (mesmos nomes da NF-e de venda e da NFC-e):
+      // se a nota ORIGINAL tiver IBS/CBS gravado, usa os mesmos valores proporcionais à fração devolvida;
+      // sem valores na original, usa CST 000 / cClassTrib 000001 e alíquotas de teste 2026
+      // (CBS 0,9%, IBS UF 0,1%, IBS municipal 0%) sobre a base = valor do item.
+      let cstIbsCbsDevV = ''
+      let cClassTribDevV = ''
+      let baseIbsCbsDevV = 0
+      let aliqIbsUfDevV = 0
+      let aliqIbsMunDevV = 0
+      let aliqCbsDevV = 0
+      let valorIbsUfDevV = 0
+      let valorIbsMunDevV = 0
+      let valorIbsTotDevV = 0
+      let valorCbsDevV = 0
+      if (informarIbsCbsDevVenda) {
+        const ibsOrigItem = itDocOrig ? itDocOrig.getFloat('valor_ibs') || 0 : 0
+        const cbsOrigItem = itDocOrig ? itDocOrig.getFloat('valor_cbs') || 0 : 0
+        const baseIbsCbsOrigItem = itDocOrig ? itDocOrig.getFloat('base_ibs_cbs') || 0 : 0
+        cstIbsCbsDevV = (itDocOrig ? itDocOrig.getString('cst_ibs_cbs') || '' : '') || '000'
+        cClassTribDevV = (itDocOrig ? itDocOrig.getString('c_class_trib') || '' : '') || '000001'
+        baseIbsCbsDevV = round2(vBrutoDev)
+        aliqIbsUfDevV = 0.1
+        aliqIbsMunDevV = 0
+        aliqCbsDevV = 0.9
+        if (ibsOrigItem > 0 || cbsOrigItem > 0) {
+          // Nota original com IBS/CBS: mesmos valores proporcionais à fração devolvida
+          if (baseIbsCbsOrigItem > 0) {
+            baseIbsCbsDevV = round2(baseIbsCbsOrigItem * fracao)
+          }
+          valorIbsTotDevV = round2(ibsOrigItem * fracao)
+          valorCbsDevV = round2(cbsOrigItem * fracao)
+          if (baseIbsCbsDevV > 0 && valorIbsTotDevV > 0) {
+            aliqIbsUfDevV = round2((valorIbsTotDevV * 100) / baseIbsCbsDevV)
+            aliqIbsMunDevV = 0
+          }
+          if (baseIbsCbsDevV > 0 && valorCbsDevV > 0) {
+            aliqCbsDevV = round2((valorCbsDevV * 100) / baseIbsCbsDevV)
+          }
+          valorIbsUfDevV = valorIbsTotDevV
+          valorIbsMunDevV = 0
+        } else {
+          // Original sem IBS/CBS gravado: alíquotas de teste 2026 (padrão da NFC-e/NF-e de venda)
+          valorIbsUfDevV = round2(baseIbsCbsDevV * (aliqIbsUfDevV / 100))
+          valorIbsMunDevV = round2(baseIbsCbsDevV * (aliqIbsMunDevV / 100))
+          valorIbsTotDevV = round2(valorIbsUfDevV + valorIbsMunDevV)
+          valorCbsDevV = round2(baseIbsCbsDevV * (aliqCbsDevV / 100))
+        }
+        itemFocus.ibs_cbs_situacao_tributaria = cstIbsCbsDevV
+        itemFocus.ibs_cbs_classificacao_tributaria = cClassTribDevV
+        itemFocus.ibs_cbs_base_calculo = baseIbsCbsDevV
+        itemFocus.ibs_uf_aliquota = aliqIbsUfDevV
+        itemFocus.ibs_uf_valor = valorIbsUfDevV
+        itemFocus.ibs_mun_aliquota = aliqIbsMunDevV
+        itemFocus.ibs_mun_valor = valorIbsMunDevV
+        itemFocus.ibs_valor_total = valorIbsTotDevV
+        itemFocus.cbs_aliquota = aliqCbsDevV
+        itemFocus.cbs_valor = valorCbsDevV
+        totValorIbsDev += valorIbsTotDevV
+        totValorCbsDev += valorCbsDevV
+      }
+
       itensFocus.push(itemFocus)
 
       const vTotItem = round2(vBrutoDev + valorStItem + valorIpiItem)
@@ -816,6 +882,14 @@ routerAdd(
         valor_icms_st: valorStItem,
         valor_ipi: valorIpiItem,
         custo_unitario: itDev.getFloat('custo_unitario') || vUnitDev,
+        cst_ibs_cbs: cstIbsCbsDevV,
+        c_class_trib: cClassTribDevV,
+        base_ibs_cbs: baseIbsCbsDevV,
+        aliquota_ibs_uf: aliqIbsUfDevV,
+        aliquota_ibs_municipio: aliqIbsMunDevV,
+        aliquota_cbs: aliqCbsDevV,
+        valor_ibs: valorIbsTotDevV,
+        valor_cbs: valorCbsDevV,
       })
 
       totValorProdutos += vBrutoDev
@@ -870,6 +944,12 @@ routerAdd(
       payloadFocus.inscricao_estadual_destinatario = ieCliente.replace(/\D/g, '')
     }
 
+    // Totais IBS/CBS da nota quando "Destacar IBS e CBS" ligado (mesmos nomes da NFC-e/NF-e de venda)
+    if (informarIbsCbsDevVenda) {
+      payloadFocus.valor_total_ibs = round2(totValorIbsDev)
+      payloadFocus.valor_total_cbs = round2(totValorCbsDev)
+    }
+
     // Atualizar cabeçalho do documento fiscal
     docRec.set('valor_produtos', totValorProdutos)
     docRec.set('base_icms', round2(totBaseIcms))
@@ -880,6 +960,10 @@ routerAdd(
     docRec.set('valor_pis', round2(totValorPis))
     docRec.set('valor_cofins', round2(totValorCofins))
     docRec.set('valor_total', totValorTotal)
+    if (informarIbsCbsDevVenda) {
+      docRec.set('valor_ibs', round2(totValorIbsDev))
+      docRec.set('valor_cbs', round2(totValorCbsDev))
+    }
     docRec.set('json_enviado', payloadFocus)
     $app.save(docRec)
 
@@ -922,6 +1006,16 @@ routerAdd(
       itRec.set('valor_icms_st', itD.valor_icms_st)
       itRec.set('valor_ipi', itD.valor_ipi)
       itRec.set('custo_unitario', itD.custo_unitario)
+      if (typeof itD.valor_ibs === 'number' && typeof itD.valor_cbs === 'number') {
+        itRec.set('cst_ibs_cbs', itD.cst_ibs_cbs)
+        itRec.set('c_class_trib', itD.c_class_trib)
+        itRec.set('base_ibs_cbs', itD.base_ibs_cbs)
+        itRec.set('aliquota_ibs_uf', itD.aliquota_ibs_uf)
+        itRec.set('aliquota_ibs_municipio', itD.aliquota_ibs_municipio)
+        itRec.set('aliquota_cbs', itD.aliquota_cbs)
+        itRec.set('valor_ibs', itD.valor_ibs)
+        itRec.set('valor_cbs', itD.valor_cbs)
+      }
       $app.save(itRec)
     }
 
