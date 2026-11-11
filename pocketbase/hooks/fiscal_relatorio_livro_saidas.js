@@ -585,10 +585,11 @@ routerAdd('POST', '/backend/v1/relatorios/livro-saidas', (c) => {
 
     // 5. RESUMO POR CFOP, CST E ALÍQUOTA (somando documentos_fiscais_itens dos autorizados)
     // Colunas: valor contábil, base, ICMS, ICMS ST, isentas ou não tributadas, outras
-    // NFC-e (modelo 65) não gravam itens em documentos_fiscais_itens: quando o
-    // documento não tem itens, deriva UM item sintético do cabeçalho do documento
-    // (mesma base que o SPED usa quando não há itens), para o resumo bater com a
-    // relação de documentos da seção 1.
+    // Só documentos com status 'Autorizada' entram no resumo (Cancelados/Denegados/Inutilizados
+    // não somam; Rejeitados/Pendentes/Processando ficam fora).
+    // NFC-e (modelo 65) quando não possuem itens gravados em documentos_fiscais_itens
+    // derivam UM item sintético do cabeçalho do documento autorizado (mesma base que o SPED),
+    // garantindo total convergência entre a seção 1 e a seção 2.
     const mapaResumoCst = new Map()
 
     for (let d2 = 0; d2 < docsFiltrados.length; d2++) {
