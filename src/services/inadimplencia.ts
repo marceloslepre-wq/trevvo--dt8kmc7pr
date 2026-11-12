@@ -17,7 +17,6 @@
  */
 
 import pb from '@/lib/pocketbase/client'
-import { ContaReceber } from '@/services/contasReceber'
 import { montarFiltroEmpresas } from '@/services/filtroMultiempresa'
 
 export interface TituloVencidoCliente {
@@ -61,7 +60,6 @@ export interface InadimplenciaEmpresaLinha {
   qtdClientes: number
   totalFaixa1a30: number
   totalFaixa31a60: number
-  totalFaixa31a60_?: never
   totalFaixa61a90: number
   totalFaixaMais90: number
 }
@@ -75,7 +73,7 @@ export interface ResumoInadimplencia {
   totalFaixa61a90: number
   totalFaixaMais90: number
   clientes: InadimplenciaClienteItem[]
-  /** Quebra por empresa (painel "Totais por Empresa"); vazia com 1 empresa no filtro */
+  /** Quebra por empresa (painel "Totais por Empresa") */
   porEmpresa: InadimplenciaEmpresaLinha[]
 }
 
@@ -117,6 +115,8 @@ export async function apurarInadimplencia(empresaIds: string[]): Promise<ResumoI
   const mapClientes = new Map<string, InadimplenciaClienteItem>()
   const mapEmpresas = new Map<string, InadimplenciaEmpresaLinha>()
   const ordemEmpresas: string[] = []
+  // clientes já contados por empresa (qtdClientes distintos por empresa)
+  const clientesPorEmpresa = new Map<string, Set<string>>()
 
   for (const t of titulos) {
     const saldo = Number(t.saldo) || 0
@@ -214,15 +214,14 @@ export async function apurarInadimplencia(empresaIds: string[]): Promise<ResumoI
       ordemEmpresas.push(empresaId)
     }
 
-    if (!itemEmpresa.qtdClientes) {
-      itemEmpresa.qtdClientes = 0
+    let clientesDaEmpresa = clientesPorEmpresa.get(empresaId)
+    if (!clientesDaEmpresa) {
+      clientesDaEmpresa = new Set()
+      clientesPorEmpresa.set(empresaId, clientesDaEmpresa)
     }
-    // contagem de clientes distintos por empresa: marca no item do cliente
-    const chaveClienteEmpresa = `${empresaId}::${clienteId}`
-    if (
-      !mapClientes.get(clienteId)!.titulos.some((x) => x.empresaId === empresaId && !x.empresaNome)
-    ) {
-      // nunca deve entrar aqui: placeholder abaixo
+    if (!clientesDaEmpresa.has(clienteId)) {
+      clientesDaEmpresa.add(clienteId)
+      itemEmpresa.qtdClientes++
     }
 
     itemEmpresa.totalVencido = Number((itemEmpresa.totalVencido + saldo).toFixed(2))
@@ -234,14 +233,6 @@ export async function apurarInadimplencia(empresaIds: string[]): Promise<ResumoI
     else if (faixa === '61-90')
       itemEmpresa.totalFaixa61a90 = Number((itemEmpresa.totalFaixa61a90 + saldo).toFixed(2))
     else itemEmpresa.totalFaixaMais90 = Number((itemEmpresa.totalFaixaMais90 + saldo).toFixed(2))
-
-    // marca o cliente como já contado nesta empresa
-    if (!(itemCliente as any)._empresasContadas) (itemCliente as any)._empresasContadas = new Set()
-    const contadas = (itemCliente as any)._empresasContadas as Set<string>
-    if (!contadas.has(chaveClienteEmpresa)) {
-      contadas.add(chaveClienteEmpresa)
-      itemEmpresa.qtdClientes++
-    }
   }
 
   // Ordena clientes por maior total vencido decrescente
@@ -249,9 +240,17 @@ export async function apurarInadimplencia(empresaIds: string[]): Promise<ResumoI
     (a, b) => b.totalVencido - a.totalVencido,
   )
 
-  // Quebra por empresa na ordem do filtro
+  // Quebra por empresa na ordem do filtro (mantém "(sem empresa)" ao final, se existir)
   const porEmpresa = ordemEmpresas
-    .filter((id) => ids.includes(id) || id === '(sem empresa)')
+    .slice()
+    .sort((a, b) => {
+      const ia = ids.indexOf(a)
+      const ib = ids.indexOf(b)
+      if (ia === -1 && ib === -1) return 0
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    })
     .map((id) => mapEmpresas.get(id)!)
     .filter(Boolean)
 

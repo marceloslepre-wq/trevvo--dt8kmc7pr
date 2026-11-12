@@ -5,7 +5,9 @@ import {
   apurarInadimplencia,
   ResumoInadimplencia,
   InadimplenciaClienteItem,
+  InadimplenciaEmpresaLinha,
 } from '@/services/inadimplencia'
+import { buscarNomesEmpresas } from '@/services/filtroMultiempresa'
 import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
 import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import { toast } from '@/hooks/use-toast'
@@ -27,7 +29,15 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { AlertTriangle, ExternalLink, Phone, Mail, ShieldAlert, Clock } from 'lucide-react'
+import {
+  AlertTriangle,
+  ExternalLink,
+  Phone,
+  Mail,
+  ShieldAlert,
+  Clock,
+  Building2,
+} from 'lucide-react'
 
 export const InadimplenciaPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
@@ -46,13 +56,26 @@ export const InadimplenciaPage: React.FC = () => {
   const [busca, setBusca] = useState<string>('')
   const [clienteDetalhe, setClienteDetalhe] = useState<InadimplenciaClienteItem | null>(null)
 
-  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+  // Multiempresa: usar TODAS as empresas marcadas, não só a primeira (padrão Fluxo de Caixa)
+  const empresasEfetivas: string[] = (filtros.empresas_ids || []).filter(Boolean).length
+    ? (filtros.empresas_ids || []).filter(Boolean)
+    : empresaAtiva?.id
+      ? [empresaAtiva.id]
+      : []
+  // "Ver só o total consolidado" (FiltrosRelatorio): oculta a quebra por empresa
+  const verSoTotal = filtros.ver_so_total === true
+
+  // Nomes das empresas para o painel "Totais por Empresa" (padrão Fluxo de Caixa)
+  const [nomesEmpresas, setNomesEmpresas] = useState<Record<string, string>>({})
+  useEffect(() => {
+    buscarNomesEmpresas(empresasEfetivas).then(setNomesEmpresas)
+  }, [empresasEfetivas.join(',')])
 
   const carregarDados = useCallback(async () => {
-    if (!empresaIdEfetiva) return
+    if (empresasEfetivas.length === 0) return
     setCarregando(true)
     try {
-      const res = await apurarInadimplencia(empresaIdEfetiva)
+      const res = await apurarInadimplencia(empresasEfetivas)
       setResumo(res)
     } catch (err: any) {
       toast({
@@ -63,7 +86,7 @@ export const InadimplenciaPage: React.FC = () => {
     } finally {
       setCarregando(false)
     }
-  }, [empresaIdEfetiva])
+  }, [empresasEfetivas.join(',')])
 
   useEffect(() => {
     carregarDados()
@@ -244,6 +267,92 @@ export const InadimplenciaPage: React.FC = () => {
         </div>
       )}
 
+      {/* Totais por Empresa (oculto quando "Ver só o total consolidado" está marcado ou 1 empresa) */}
+      {!verSoTotal && empresasEfetivas.length > 1 && (resumo?.porEmpresa.length || 0) > 0 && (
+        <Card className="border-slate-200 shadow-xs">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <h3 className="text-sm font-semibold text-slate-800">Totais por Empresa</h3>
+              <Badge variant="outline" className="text-[10px]">
+                {empresasEfetivas.length} empresas no filtro
+              </Badge>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
+                    <th className="py-2 px-3">Empresa</th>
+                    <th className="py-2 px-3 text-right">Qtd Clientes</th>
+                    <th className="py-2 px-3 text-right">Qtd Títulos</th>
+                    <th className="py-2 px-3 text-right">1 a 30 d</th>
+                    <th className="py-2 px-3 text-right">31 a 60 d</th>
+                    <th className="py-2 px-3 text-right">61 a 90 d</th>
+                    <th className="py-2 px-3 text-right">&gt; 90 d</th>
+                    <th className="py-2 px-3 text-right">Total Vencido</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(resumo?.porEmpresa || []).map((e: InadimplenciaEmpresaLinha) => (
+                    <tr key={e.empresaId} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2 px-3 font-medium text-slate-800">
+                        {nomesEmpresas[e.empresaId] ||
+                          (e.empresaId === '(sem empresa)' ? 'Sem empresa' : e.empresaId)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        {e.qtdClientes}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        {e.qtdTitulosVencidos}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-amber-800">
+                        R$ {e.totalFaixa1a30.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-orange-800">
+                        R$ {e.totalFaixa31a60.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-rose-800">
+                        R$ {e.totalFaixa61a90.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-red-800">
+                        R$ {e.totalFaixaMais90.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold text-rose-700">
+                        R$ {e.totalVencido.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+                    <td className="py-2 px-3 text-slate-900">Total Geral</td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      {resumo?.totalClientesInadimplentes || 0}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      {resumo?.totalTitulosVencidos || 0}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-amber-900">
+                      R$ {resumo?.totalFaixa1a30.toFixed(2) || '0.00'}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-orange-900">
+                      R$ {resumo?.totalFaixa31a60.toFixed(2) || '0.00'}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-rose-900">
+                      R$ {resumo?.totalFaixa61a90.toFixed(2) || '0.00'}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-red-900">
+                      R$ {resumo?.totalFaixaMais90.toFixed(2) || '0.00'}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono font-bold text-rose-800">
+                      R$ {resumo?.totalGeralVencido.toFixed(2) || '0.00'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Contador de Clientes */}
       <div className="flex items-center justify-between text-xs text-slate-500">
         <span>
@@ -405,11 +514,41 @@ export const InadimplenciaPage: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
 
+          {/* Quebra por empresa do cliente (o mesmo cliente pode ter títulos em
+              mais de uma empresa — painel somente com 2+ empresas no detalhe) */}
+          {empresasEfetivas.length > 1 && clienteDetalhe && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {Array.from(new Set(clienteDetalhe.titulos.map((t) => t.empresaId))).map((eid) => {
+                const titulosEmpresa = clienteDetalhe.titulos.filter((t) => t.empresaId === eid)
+                const totalEmpresa = titulosEmpresa.reduce((acc, t) => acc + t.saldoDevedor, 0)
+                return (
+                  <div
+                    key={eid}
+                    className="flex items-center gap-2 text-[11px] border border-slate-200 bg-slate-50 rounded-md px-2 py-1"
+                  >
+                    <Building2 className="w-3 h-3 text-blue-600 shrink-0" />
+                    <span className="font-medium text-slate-700">
+                      {nomesEmpresas[eid || ''] ||
+                        (eid === '(sem empresa)' ? 'Sem empresa' : eid) ||
+                        'Empresa'}
+                    </span>
+                    <span className="font-mono text-rose-700 font-semibold">
+                      {titulosEmpresa.length} tít. • R$ {totalEmpresa.toFixed(2)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto pt-2">
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow className="text-xs">
                   <TableHead className="w-[100px]">Documento</TableHead>
+                  {empresasEfetivas.length > 1 && (
+                    <TableHead className="w-[140px]">Empresa</TableHead>
+                  )}
                   <TableHead className="w-[90px]">Vencimento</TableHead>
                   <TableHead className="w-[80px] text-center">Atraso</TableHead>
                   <TableHead>Descrição</TableHead>
@@ -422,6 +561,12 @@ export const InadimplenciaPage: React.FC = () => {
                     <TableCell className="font-mono font-medium">
                       {t.numeroDocumento} ({t.parcela})
                     </TableCell>
+                    {empresasEfetivas.length > 1 && (
+                      <TableCell className="text-slate-600 text-[11px]">
+                        {nomesEmpresas[t.empresaId || ''] ||
+                          (t.empresaId === '(sem empresa)' ? 'Sem empresa' : t.empresaId)}
+                      </TableCell>
+                    )}
                     <TableCell className="font-mono text-slate-600">{t.dataVencimento}</TableCell>
                     <TableCell className="text-center font-mono">
                       <Badge
