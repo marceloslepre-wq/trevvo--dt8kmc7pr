@@ -126,7 +126,10 @@ export const AuditoriaAnuncios: React.FC<Props> = ({ empresaId }) => {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => carregarPaginas(1)} disabled={carregando || proximoOffset === null}>
+          <Button
+            onClick={() => carregarPaginas(1)}
+            disabled={carregando || proximoOffset === null}
+          >
             {carregando ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (

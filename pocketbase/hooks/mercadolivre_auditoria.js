@@ -240,7 +240,9 @@ routerAdd(
       const comb = (v && v.attribute_combinations) || []
       const partes = []
       for (let i = 0; i < comb.length; i++) {
-        partes.push(String(comb[i].name || comb[i].id || '') + ': ' + String(comb[i].value_name || ''))
+        partes.push(
+          String(comb[i].name || comb[i].id || '') + ': ' + String(comb[i].value_name || ''),
+        )
       }
       return partes.join(' / ')
     }
@@ -286,11 +288,21 @@ routerAdd(
 
       const seg = segredosML()
       if (!seg.ok) {
-        return c.json(400, { sucesso: false, mensagem: 'Segredos ML_APP_ID e ML_CLIENT_SECRET não configurados.' })
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Segredos ML_APP_ID e ML_CLIENT_SECRET não configurados.',
+        })
       }
       const conta = contaDaEmpresa(empresa.id)
-      if (!conta || conta.getString('status') !== 'Conectada' || !conta.getString('refresh_token')) {
-        return c.json(400, { sucesso: false, mensagem: 'Nenhuma conta do Mercado Livre conectada nesta empresa.' })
+      if (
+        !conta ||
+        conta.getString('status') !== 'Conectada' ||
+        !conta.getString('refresh_token')
+      ) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Nenhuma conta do Mercado Livre conectada nesta empresa.',
+        })
       }
 
       // Renova o token se faltar menos de 5 minutos.
@@ -306,15 +318,24 @@ routerAdd(
           gravarTokens(conta, r.dados)
           $app.save(conta)
         } else {
-          return c.json(400, { sucesso: false, mensagem: 'Falha ao renovar o token. ' + mensagemErroML(r) })
+          return c.json(400, {
+            sucesso: false,
+            mensagem: 'Falha ao renovar o token. ' + mensagemErroML(r),
+          })
         }
       }
       const token = conta.getString('access_token')
       const mlUserId = conta.getString('ml_user_id').replace(/[^0-9]/g, '')
 
-      const busca = chamarML('/users/' + mlUserId + '/items/search?offset=' + offset + '&limit=' + limite, token)
+      const busca = chamarML(
+        '/users/' + mlUserId + '/items/search?offset=' + offset + '&limit=' + limite,
+        token,
+      )
       if (busca.status !== 200) {
-        return c.json(400, { sucesso: false, mensagem: 'Falha ao listar anúncios. ' + mensagemErroML(busca) })
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Falha ao listar anúncios. ' + mensagemErroML(busca),
+        })
       }
       const ids = (busca.dados && busca.dados.results) || []
       const total = (busca.dados && busca.dados.paging && busca.dados.paging.total) || 0
@@ -343,7 +364,8 @@ routerAdd(
 
         const doItem = []
         if (variacoes.length === 0) {
-          const sku = skuDosAtributos(item.attributes) || String(item.seller_custom_field || '').trim()
+          const sku =
+            skuDosAtributos(item.attributes) || String(item.seller_custom_field || '').trim()
           doItem.push({
             variacao_id: '',
             variacao: '',
@@ -354,7 +376,8 @@ routerAdd(
         } else {
           for (let v = 0; v < variacoes.length; v++) {
             const va = variacoes[v] || {}
-            const sku = skuDosAtributos(va.attributes) || String(va.seller_custom_field || '').trim()
+            const sku =
+              skuDosAtributos(va.attributes) || String(va.seller_custom_field || '').trim()
             doItem.push({
               variacao_id: String(va.id || ''),
               variacao: descreverVariacao(va),
