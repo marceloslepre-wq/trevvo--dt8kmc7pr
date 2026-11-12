@@ -13,6 +13,7 @@ export interface ItemCompradoLinha {
   id: string
   item_id: string
   nota_id: string
+  empresa_id: string
   data_entrada: string
   data_emissao: string
   modelo: string
@@ -39,7 +40,7 @@ export interface ItemCompradoLinha {
 }
 
 export interface ListarItensCompradosParams {
-  empresaId: string
+  empresaIds: string[]
   dataInicio?: string // YYYY-MM-DD
   dataFim?: string // YYYY-MM-DD
   fornecedorId?: string
@@ -70,7 +71,7 @@ export async function listarItensComprados(
   params: ListarItensCompradosParams,
 ): Promise<ResultadoPaginadoItensComprados> {
   const {
-    empresaId,
+    empresaIds,
     dataInicio,
     dataFim,
     fornecedorId,
@@ -82,12 +83,25 @@ export async function listarItensComprados(
     perPage = 25,
   } = params
 
-  // 1. Filtrar notas de entrada Lançadas da empresa
-  const condicoesNotas: string[] = [
-    `empresa_id = '${empresaId}'`,
-    `status = 'Lançada'`,
-    `ativo = true`,
-  ]
+  // 1. Filtrar notas de entrada Lançadas das empresas selecionadas (uma ou várias)
+  const idsValidos = (empresaIds || []).filter(Boolean)
+  if (idsValidos.length === 0) {
+    return {
+      items: [],
+      totalItems: 0,
+      totalPages: 0,
+      page,
+      perPage,
+      totais: { quantidadeTotal: 0, valorTotal: 0 },
+    }
+  }
+
+  const filtroEmpresas =
+    idsValidos.length === 1
+      ? `empresa_id = '${idsValidos[0]}'`
+      : `(${idsValidos.map((id) => `empresa_id = '${id}'`).join(' || ')})`
+
+  const condicoesNotas: string[] = [filtroEmpresas, `status = 'Lançada'`, `ativo = true`]
 
   if (fornecedorId && fornecedorId !== 'todos') {
     condicoesNotas.push(`fornecedor_id = '${fornecedorId}'`)
@@ -200,6 +214,7 @@ export async function listarItensComprados(
       id: it.id,
       item_id: it.id,
       nota_id: nota.id,
+      empresa_id: nota.empresa_id,
       data_entrada: nota.data_entrada,
       data_emissao: nota.data_emissao,
       modelo: nota.modelo || '55',

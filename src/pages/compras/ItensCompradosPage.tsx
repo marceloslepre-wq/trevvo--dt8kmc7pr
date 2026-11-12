@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { useEmpresaAtiva, useEmpresasAcessiveis } from '@/contexts/EmpresaContext'
 import { listarItensComprados, ItemCompradoLinha } from '@/services/consultasCompras'
 import { listarCfop, Cfop } from '@/services/cfop'
 import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast'
 export const ItensCompradosPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
   const { toast } = useToast()
+  const { empresasAcessiveis } = useEmpresasAcessiveis()
 
   const hoje = new Date()
   const trintaDiasAtras = new Date()
@@ -45,7 +46,14 @@ export const ItensCompradosPage: React.FC = () => {
 
   const dataInicio = filtros.periodo?.dataInicio || dataInicioPadrao
   const dataFim = filtros.periodo?.dataFim || dataFimPadrao
-  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+  // Multiempresa: usar TODAS as empresas marcadas, não só a primeira
+  const empresasEfetivas =
+    filtros.empresas_ids && filtros.empresas_ids.length > 0
+      ? filtros.empresas_ids
+      : empresaAtiva?.id
+        ? [empresaAtiva.id]
+        : []
+  const empresaIdEfetiva = empresasEfetivas[0] || ''
   const fornecedorId = filtros.fornecedores_ids?.[0] || 'todos'
   const produtoId = filtros.produtos_ids?.[0] || 'todos'
   const grupoId = filtros.grupos_ids?.[0] || 'todos'
@@ -78,7 +86,7 @@ export const ItensCompradosPage: React.FC = () => {
       setCarregando(true)
       try {
         const res = await listarItensComprados({
-          empresaId: empresaIdEfetiva,
+          empresaIds: empresasEfetivas,
           dataInicio,
           dataFim,
           fornecedorId,
@@ -118,6 +126,28 @@ export const ItensCompradosPage: React.FC = () => {
       toast,
     ],
   )
+
+  // Quebra dos totais por empresa (mostrada quando "Ver só o total consolidado" está desmarcada)
+  const totaisPorEmpresa = useMemo(() => {
+    const mapa = new Map<string, { quantidadeTotal: number; valorTotal: number; itens: number }>()
+    for (const it of itens) {
+      const chave = it.empresa_id || '(sem empresa)'
+      const atual = mapa.get(chave) || { quantidadeTotal: 0, valorTotal: 0, itens: 0 }
+      atual.quantidadeTotal += it.quantidade_estoque
+      atual.valorTotal += it.valor_total_item
+      atual.itens += 1
+      mapa.set(chave, atual)
+    }
+    return mapa
+  }, [itens])
+
+  const nomesEmpresas = useMemo(() => {
+    const mapa: Record<string, string> = {}
+    for (const e of empresasAcessiveis || []) {
+      mapa[e.id] = e.nome_fantasia || e.razao_social || e.id
+    }
+    return mapa
+  }, [empresasAcessiveis])
 
   useEffect(() => {
     carregarDados(1)

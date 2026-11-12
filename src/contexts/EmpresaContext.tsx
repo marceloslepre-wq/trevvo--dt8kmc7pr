@@ -32,6 +32,18 @@ const EmpresaContext = createContext<EmpresaContextType | undefined>(undefined)
 
 const CHAVE_STORAGE = 'erp_empresa_ativa_id'
 
+/**
+ * Lista de empresas acessíveis ao usuário logado (multiempresa).
+ * Complementa useEmpresaAtiva (que traz só a empresa ativa do seletor do topo).
+ */
+export const useEmpresasAcessiveis = () => {
+  const ctx = useContext(EmpresaContext)
+  if (!ctx) {
+    throw new Error('useEmpresasAcessiveis deve ser usado dentro de um EmpresaProvider')
+  }
+  return { empresasAcessiveis: ctx.empresas }
+}
+
 export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth()
   const [empresas, setEmpresas] = useState<Empresa[]>([])
