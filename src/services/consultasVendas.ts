@@ -1,9 +1,19 @@
 import pb from '@/lib/pocketbase/client'
 
 export interface FiltrosConsultasVendas {
-  empresa_id: string
+  /** Uma ou várias empresas (multiempresa). Precedência sobre empresa_id. */
+  empresa_ids?: string[]
+  empresa_id?: string
   data_inicio: string
   data_fim: string
+}
+
+/** Monta o filtro de empresas: (empresa_id = "id1" || empresa_id = "id2" || ...) */
+function filtroEmpresas(empresaIds: string[], campo = 'empresa_id'): string {
+  const ids = (empresaIds || []).filter(Boolean)
+  if (ids.length === 0) return `1 != 1`
+  if (ids.length === 1) return `${campo} = '${ids[0]}'`
+  return `(${ids.map((id) => `${campo} = '${id}'`).join(' || ')})`
 }
 
 export interface TotaisPeriodoVendas {
@@ -12,6 +22,14 @@ export interface TotaisPeriodoVendas {
   ticket_medio: number
   valor_devolucoes: number
   quantidade_devolucoes: number
+  valor_liquido: number
+}
+
+export interface TotaisPorEmpresaVendas {
+  empresa_id: string
+  valor_total: number
+  quantidade_vendas: number
+  valor_devolucoes: number
   valor_liquido: number
 }
 
@@ -49,6 +67,7 @@ export interface VendaPorTerminal {
 
 export interface ConsultaPeriodoResultado {
   totais: TotaisPeriodoVendas
+  totais_por_empresa: TotaisPorEmpresaVendas[]
   por_dia: VendaPorDia[]
   por_forma_pagamento: VendaPorFormaPagamento[]
   por_vendedor: VendaPorVendedor[]
@@ -76,6 +95,7 @@ export interface CurvaAbcResultado {
   total_geral_valor: number
   total_geral_quantidade: number
   itens: ItemCurvaAbcProduto[]
+  totais_por_empresa: TotaisPorEmpresaVendas[]
 }
 
 export interface MargemVendaItem {
@@ -83,6 +103,7 @@ export interface MargemVendaItem {
   numero: number
   data_emissao: string
   tipo: string
+  empresa_id: string
   cliente_nome: string
   vendedor_nome: string
   valor_venda: number
@@ -91,27 +112,36 @@ export interface MargemVendaItem {
   margem_lucro_percentual: number
 }
 
+/** Normaliza a lista de empresas de um filtro (aceita empresa_ids plural ou empresa_id simples) */
+export function normalizarEmpresasIds(filtros: FiltrosConsultasVendas): string[] {
+  const plural = (filtros.empresa_ids || []).filter(Boolean)
+  if (plural.length > 0) return plural
+  return filtros.empresa_id ? [filtros.empresa_id] : []
+}
+
 /**
  * Consulta vendas por período agrupadas por totais, dia, forma, vendedor e terminal
  */
 export async function consultarVendasPorPeriodo(
   filtros: FiltrosConsultasVendas,
 ): Promise<ConsultaPeriodoResultado> {
-  const { empresa_id, data_inicio, data_fim } = filtros
+  const { data_inicio, data_fim } = filtros
+  const empresas = normalizarEmpresasIds(filtros)
+  const filtroEmpresa = filtroEmpresas(empresas)
 
   // Buscar vendas do período
   const vendas = await pb.collection('vendas').getFullList({
-    filter: `empresa_id = '${empresa_id}' && ativo = true && status = 'Finalizada' && data_emissao >= '${data_inicio}' && data_emissao <= '${data_fim}'`,
+    filter: `${filtroEmpresa} && ativo = true && status = 'Finalizada' && data_emissao >= '${data_inicio}' && data_emissao <= '${data_fim}'`,
     sort: 'data_emissao,numero',
     expand: 'vendedor_id,cliente_id,pdv_terminal_id',
   })
 
   // Buscar todos os pagamentos das vendas finalizadas no período
-  const vendaIds = vendas.map((v) => v.id)
   let pagamentos: any[] = []
-  if (vendaIds.length > 0) {
+  if (vendas.length > 0) {
+    const filtroVendaEmpresas = filtroEmpresas(empresas, 'venda_id.empresa_id')
     pagamentos = await pb.collection('vendas_pagamentos').getFullList({
-      filter: `ativo = true && venda_id.data_emissao >= '${data_inicio}' && venda_id.data_emissao <= '${data_fim}' && venda_id.status = 'Finalizada' && venda_id.empresa_id = '${empresa_id}'`,
+      filter: `ativo = true && ${filtroVendaEmpresas} && venda_id.status = 'Finalizada' && venda_id.data_emissao >= '${data_inicio}' && venda_id.data_emissao <= '${data_fim}'`,
       expand: 'forma_pagamento_id',
     })
   }
@@ -125,20 +155,33 @@ export async function consultarVendasPorPeriodo(
   const mapDia = new Map<string, { valor: number; qtd: number }>()
   const mapVendedor = new Map<string, { nome: string; valor: number; qtd: number }>()
   const mapTerminal = new Map<string, { nome: string; valor: number; qtd: number }>()
+  const mapEmpresa = new Map<
+    string,
+    { valor: number; qtd: number; devolucoes: number; qtdDev: number }
+  >()
 
   for (const v of vendas) {
     const val = Number((v as any).valor_total) || 0
     const tipo = (v as any).tipo || 'Pedido'
     const dataIso = (v as any).data_emissao || (v.created ? v.created.slice(0, 10) : '')
+    const empId = (v as any).empresa_id || '(sem empresa)'
 
     if (tipo === 'Devolução') {
       valorDevolucoes += val
       qtdDevolucoes += 1
+      const eInfo = mapEmpresa.get(empId) || { valor: 0, qtd: 0, devolucoes: 0, qtdDev: 0 }
+      eInfo.devolucoes += val
+      eInfo.qtdDev += 1
+      mapEmpresa.set(empId, eInfo)
       continue
     }
 
     valorTotalVendas += val
     qtdVendas += 1
+    const eInfo = mapEmpresa.get(empId) || { valor: 0, qtd: 0, devolucoes: 0, qtdDev: 0 }
+    eInfo.valor += val
+    eInfo.qtd += 1
+    mapEmpresa.set(empId, eInfo)
 
     // Dia
     if (dataIso) {
@@ -233,6 +276,17 @@ export async function consultarVendasPorPeriodo(
     }))
     .sort((a, b) => b.valor - a.valor)
 
+  // 6. Quebra por empresa
+  const totaisPorEmpresa: TotaisPorEmpresaVendas[] = Array.from(mapEmpresa.entries())
+    .map(([empresa_id, e]) => ({
+      empresa_id,
+      valor_total: Number(e.valor.toFixed(2)),
+      quantidade_vendas: e.qtd,
+      valor_devolucoes: Number(e.devolucoes.toFixed(2)),
+      valor_liquido: Number((e.valor - e.devolucoes).toFixed(2)),
+    }))
+    .sort((a, b) => b.valor_total - a.valor_total)
+
   return {
     totais: {
       valor_total: Number(valorTotalVendas.toFixed(2)),
@@ -242,6 +296,7 @@ export async function consultarVendasPorPeriodo(
       quantidade_devolucoes: qtdDevolucoes,
       valor_liquido: valorLiquido,
     },
+    totais_por_empresa: totaisPorEmpresa,
     por_dia: porDia,
     por_forma_pagamento: porFormaPagamento,
     por_vendedor: porVendedor,
@@ -253,16 +308,19 @@ export async function consultarVendasPorPeriodo(
  * Consulta produtos mais vendidos e curva ABC (por valor ou por quantidade)
  */
 export async function consultarCurvaAbcProdutos(params: {
-  empresa_id: string
+  empresa_ids?: string[]
+  empresa_id?: string
   data_inicio: string
   data_fim: string
   criterio: 'valor' | 'quantidade'
 }): Promise<CurvaAbcResultado> {
-  const { empresa_id, data_inicio, data_fim, criterio } = params
+  const { data_inicio, data_fim, criterio } = params
+  const empresas = normalizarEmpresasIds(params)
+  const filtroEmpresa = filtroEmpresas(empresas, 'venda_id.empresa_id')
 
   // Buscar itens de vendas finalizadas (não devoluções) no período
   const itensVenda = await pb.collection('vendas_itens').getFullList({
-    filter: `ativo = true && venda_id.empresa_id = '${empresa_id}' && venda_id.status = 'Finalizada' && venda_id.tipo != 'Devolução' && venda_id.data_emissao >= '${data_inicio}' && venda_id.data_emissao <= '${data_fim}'`,
+    filter: `ativo = true && ${filtroEmpresa} && venda_id.status = 'Finalizada' && venda_id.tipo != 'Devolução' && venda_id.data_emissao >= '${data_inicio}' && venda_id.data_emissao <= '${data_fim}'`,
     expand: 'produto_id',
   })
 
@@ -281,6 +339,7 @@ export async function consultarCurvaAbcProdutos(params: {
 
   let totalGeralValor = 0
   let totalGeralQtd = 0
+  const mapEmpresa = new Map<string, { valor: number; qtd: number }>()
 
   for (const it of itensVenda) {
     const prodId = (it as any).produto_id
@@ -293,6 +352,12 @@ export async function consultarCurvaAbcProdutos(params: {
 
     totalGeralValor += val
     totalGeralQtd += qtd
+
+    const empId = ((it.expand as any)?.venda_id as any)?.empresa_id || '(sem empresa)'
+    const eInfo = mapEmpresa.get(empId) || { valor: 0, qtd: 0 }
+    eInfo.valor += val
+    eInfo.qtd += qtd
+    mapEmpresa.set(empId, eInfo)
 
     const prodExp = (it.expand as any)?.produto_id
     const codigo = prodExp?.codigo || ''
@@ -368,11 +433,22 @@ export async function consultarCurvaAbcProdutos(params: {
     })
   }
 
+  const totaisPorEmpresa: TotaisPorEmpresaVendas[] = Array.from(mapEmpresa.entries())
+    .map(([empresa_id, e]) => ({
+      empresa_id,
+      valor_total: Number(e.valor.toFixed(2)),
+      quantidade_vendas: e.qtd,
+      valor_devolucoes: 0,
+      valor_liquido: Number(e.valor.toFixed(2)),
+    }))
+    .sort((a, b) => b.valor_total - a.valor_total)
+
   return {
     criterio,
     total_geral_valor: Number(totalGeralValor.toFixed(2)),
     total_geral_quantidade: Number(totalGeralQtd.toFixed(4)),
     itens: resultadoItens,
+    totais_por_empresa: totaisPorEmpresa,
   }
 }
 
@@ -380,14 +456,17 @@ export async function consultarCurvaAbcProdutos(params: {
  * Consulta de margem de lucro por venda e por produto
  */
 export async function consultarMargemVendas(params: {
-  empresa_id: string
+  empresa_ids?: string[]
+  empresa_id?: string
   data_inicio: string
   data_fim: string
 }): Promise<MargemVendaItem[]> {
-  const { empresa_id, data_inicio, data_fim } = params
+  const { data_inicio, data_fim } = params
+  const empresas = normalizarEmpresasIds(params)
+  const filtroEmpresa = filtroEmpresas(empresas)
 
   const vendas = await pb.collection('vendas').getFullList({
-    filter: `empresa_id = '${empresa_id}' && ativo = true && status = 'Finalizada' && tipo != 'Devolução' && data_emissao >= '${data_inicio}' && data_emissao <= '${data_fim}'`,
+    filter: `${filtroEmpresa} && ativo = true && status = 'Finalizada' && tipo != 'Devolução' && data_emissao >= '${data_inicio}' && data_emissao <= '${data_fim}'`,
     sort: '-data_emissao,-numero',
     expand: 'cliente_id,vendedor_id',
   })
@@ -409,6 +488,7 @@ export async function consultarMargemVendas(params: {
       numero: Number((v as any).numero) || 0,
       data_emissao: (v as any).data_emissao || (v.created ? v.created.slice(0, 10) : ''),
       tipo: (v as any).tipo || 'Pedido',
+      empresa_id: (v as any).empresa_id || '(sem empresa)',
       cliente_nome: cNome,
       vendedor_nome: vNome,
       valor_venda: Number(valVenda.toFixed(2)),
