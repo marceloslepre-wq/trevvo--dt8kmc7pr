@@ -57,6 +57,16 @@ rotas, coleções e nomes de Segredos descritos aqui.
   - `GET /backend/v1/mercadolivre/notificacoes/diagnostico` (pública): só contagens por tópico.
 - O processamento da fila ainda não existe: os avisos ficam guardados, sem efeito no sistema.
 
+## Parte 10.5a — Auditoria de anúncios (somente leitura)
+
+- `pocketbase/hooks/mercadolivre_auditoria.js`: `GET /backend/v1/mercadolivre/anuncios/auditoria?empresa_id=&offset=&limite=`
+  (autenticada). Lê os anúncios da conta conectada, abre cada variação e compara o SKU gravado
+  (atributo `SELLER_SKU` ou `seller_custom_field`) com `produtos.referencia` do assinante.
+  Situações: OK, SKU vazio, SKU repetido no anúncio, Sem produto no Trevvo,
+  Referência duplicada no Trevvo, Produto inativo no Trevvo. Não grava nada no Mercado Livre.
+- `src/components/mercadolivre/AuditoriaAnuncios.tsx`: quadro na tela Configurações > Mercado Livre,
+  com leitura paginada, filtro de problemas e exportação em planilha.
+
 ## Próximas partes (ainda não implementadas)
 
 - 10.1b Tela Configurações > Mercado Livre
