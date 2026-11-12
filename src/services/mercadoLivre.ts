@@ -72,3 +72,44 @@ export function mensagemErroMercadoLivre(err: unknown, padrao: string): string {
   const e = err as { response?: { mensagem?: string; message?: string }; message?: string }
   return e?.response?.mensagem || e?.response?.message || e?.message || padrao
 }
+
+// ---- Parte 10.5a: auditoria somente leitura dos anúncios ----
+
+export interface LinhaAuditoriaAnuncio {
+  anuncio_id: string
+  titulo: string
+  status_anuncio: string
+  link: string
+  user_product_id: string
+  familia: string
+  tem_variacoes: boolean
+  variacao_id: string
+  variacao: string
+  sku: string
+  estoque_ml: number
+  preco_ml: number
+  situacao: string
+  produto_codigo: string
+  produto_descricao: string
+}
+
+export interface PaginaAuditoriaAnuncios {
+  sucesso: boolean
+  total_anuncios: number
+  offset: number
+  anuncios_nesta_pagina: number
+  proximo_offset: number | null
+  linhas: LinhaAuditoriaAnuncio[]
+  falhas: { anuncio_id: string; erro: string }[]
+}
+
+export async function auditarAnunciosMercadoLivre(
+  empresaId: string,
+  offset: number,
+  limite = 10,
+): Promise<PaginaAuditoriaAnuncios> {
+  return await pb.send<PaginaAuditoriaAnuncios>(
+    `/backend/v1/mercadolivre/anuncios/auditoria?empresa_id=${encodeURIComponent(empresaId)}&offset=${offset}&limite=${limite}`,
+    { method: 'GET' },
+  )
+}
