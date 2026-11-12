@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { toast } from '@/hooks/use-toast'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import AuditoriaAnuncios from '@/components/mercadolivre/AuditoriaAnuncios'
 import {
   StatusMercadoLivre,
   desconectarMercadoLivre,
@@ -310,6 +311,8 @@ export const MercadoLivrePage: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+
+          {situacao === 'Conectada' && <AuditoriaAnuncios key={empresaId} empresaId={empresaId} />}
 
           <Card>
             <CardHeader>
