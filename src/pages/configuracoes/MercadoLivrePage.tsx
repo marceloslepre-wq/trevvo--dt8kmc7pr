@@ -1,6 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, Copy, Link2, Loader2, RefreshCw, Store, Unplug } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  Link2,
+  Loader2,
+  RefreshCw,
+  Store,
+  Unplug,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -144,7 +153,10 @@ export const MercadoLivrePage: React.FC = () => {
       await navigator.clipboard.writeText(status.url_callback)
       toast({ title: 'URL copiada.' })
     } catch (_) {
-      toast({ title: 'Não foi possível copiar. Selecione e copie manualmente.', variant: 'destructive' })
+      toast({
+        title: 'Não foi possível copiar. Selecione e copie manualmente.',
+        variant: 'destructive',
+      })
     }
   }
 
