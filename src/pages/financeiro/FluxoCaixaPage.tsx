@@ -4,7 +4,6 @@ import {
   apurarFluxoCaixa,
   ResumoFluxoCaixa,
   PeriodoFluxoCaixa,
-  PeriodoPorEmpresa,
   ItemComposicaoFluxo,
   AgrupamentoFluxo,
 } from '@/services/fluxoCaixa'
@@ -67,6 +66,16 @@ import {
   Filter,
   Building2,
 } from 'lucide-react'
+
+/** Linha agregada de um empresa para o painel "Totais por Empresa" */
+interface TotalPorEmpresaLinha {
+  empresa_id: string
+  saldoInicial: number
+  totalEntradas: number
+  totalSaidas: number
+  saldoLiquido: number
+  saldoFinal: number
+}
 
 const chartConfig: ChartConfig = {
   entradas: {
@@ -229,6 +238,36 @@ export const FluxoCaixaPage: React.FC = () => {
       saldoFinal: p.saldoFinalProjetado,
       ehNegativo: p.saldoFinalProjetado < 0,
     }))
+  }, [resumo])
+
+  // Totais por Empresa: agrega porEmpresa (matriz por período) por empresa
+  const totaisPorEmpresa = useMemo<TotalPorEmpresaLinha[]>(() => {
+    if (!resumo) return []
+    const ordem: string[] = []
+    const mapa = new Map<string, TotalPorEmpresaLinha>()
+    for (const linha of resumo.porEmpresa) {
+      for (const pe of linha) {
+        let atual = mapa.get(pe.empresa_id)
+        if (!atual) {
+          atual = {
+            empresa_id: pe.empresa_id,
+            saldoInicial: pe.saldoInicial,
+            totalEntradas: 0,
+            totalSaidas: 0,
+            saldoLiquido: 0,
+            saldoFinal: pe.saldoFinalProjetado,
+          }
+          mapa.set(pe.empresa_id, atual)
+          ordem.push(pe.empresa_id)
+        }
+        atual.totalEntradas = Number((atual.totalEntradas + pe.totalEntradas).toFixed(2))
+        atual.totalSaidas = Number((atual.totalSaidas + pe.totalSaidas).toFixed(2))
+        atual.saldoLiquido = Number((atual.saldoLiquido + pe.saldoLiquido).toFixed(2))
+        // o último período da empresa carrega o saldo final projetado acumulado
+        atual.saldoFinal = pe.saldoFinalProjetado
+      }
+    }
+    return ordem.map((id) => mapa.get(id) as TotalPorEmpresaLinha)
   }, [resumo])
 
   // Exportar CSV
@@ -442,7 +481,7 @@ export const FluxoCaixaPage: React.FC = () => {
       )}
 
       {/* Quebra por empresa (oculta quando "Ver só o total consolidado" está marcado) */}
-      {!verSoTotal && (resumo?.periodos_por_empresa?.length || 0) > 0 && (
+      {!verSoTotal && totaisPorEmpresa.length > 0 && (
         <Card className="border-slate-200 shadow-xs">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -467,45 +506,36 @@ export const FluxoCaixaPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {resumo!.periodos_por_empresa.map((pe) => {
-                    const totalEntradas = pe.periodos.reduce((acc, p) => acc + p.totalEntradas, 0)
-                    const totalSaidas = pe.periodos.reduce((acc, p) => acc + p.totalSaidas, 0)
-                    const liquido = totalEntradas - totalSaidas
-                    const saldoFinal =
-                      pe.periodos.length > 0
-                        ? pe.periodos[pe.periodos.length - 1].saldoFinalProjetado
-                        : pe.saldoInicial
-                    return (
-                      <tr key={pe.empresa_id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-2 px-3 font-medium text-slate-800">
-                          {nomesEmpresas[pe.empresa_id] || pe.empresa_id}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono text-slate-700">
-                          R$ {pe.saldoInicial.toFixed(2)}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono text-emerald-700">
-                          R$ {totalEntradas.toFixed(2)}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono text-rose-700">
-                          R$ {totalSaidas.toFixed(2)}
-                        </td>
-                        <td
-                          className={`py-2 px-3 text-right font-mono font-medium ${
-                            liquido >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                          }`}
-                        >
-                          R$ {liquido.toFixed(2)}
-                        </td>
-                        <td
-                          className={`py-2 px-3 text-right font-mono font-semibold ${
-                            saldoFinal >= 0 ? 'text-slate-900' : 'text-rose-700'
-                          }`}
-                        >
-                          R$ {saldoFinal.toFixed(2)}
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {totaisPorEmpresa.map((pe) => (
+                    <tr key={pe.empresa_id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2 px-3 font-medium text-slate-800">
+                        {nomesEmpresas[pe.empresa_id] || pe.empresa_id}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        R$ {pe.saldoInicial.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-emerald-700">
+                        R$ {pe.totalEntradas.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-rose-700">
+                        R$ {pe.totalSaidas.toFixed(2)}
+                      </td>
+                      <td
+                        className={`py-2 px-3 text-right font-mono font-medium ${
+                          pe.saldoLiquido >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                        }`}
+                      >
+                        R$ {pe.saldoLiquido.toFixed(2)}
+                      </td>
+                      <td
+                        className={`py-2 px-3 text-right font-mono font-semibold ${
+                          pe.saldoFinal >= 0 ? 'text-slate-900' : 'text-rose-700'
+                        }`}
+                      >
+                        R$ {pe.saldoFinal.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
                   <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
                     <td className="py-2 px-3 text-slate-900">Total Geral</td>
                     <td className="py-2 px-3 text-right font-mono text-slate-900">
@@ -519,7 +549,7 @@ export const FluxoCaixaPage: React.FC = () => {
                       R$ {(resumo!.totalSaidasRealizadas + resumo!.totalAPagarPrevisto).toFixed(2)}
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-slate-900">
-                      R$ {resumo!.saldoLiquidoGeral.toFixed(2)}
+                      R$ {(resumo!.saldoFinalGeral - resumo!.saldoInicialGeral).toFixed(2)}
                     </td>
                     <td
                       className={`py-2 px-3 text-right font-mono font-bold ${
