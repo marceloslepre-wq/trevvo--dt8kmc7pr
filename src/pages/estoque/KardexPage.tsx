@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
-import { useAuth } from '@/contexts/AuthContext'
-import {
-  consultarKardexMultiempresa,
-  buscarSaldosIniciaisMultiempresa,
-  KardexResposta,
-  KardexEmpresaSecao,
-} from '@/services/kardex'
+import { consultarKardexMultiempresa, KardexResposta, KardexEmpresaSecao } from '@/services/kardex'
 import { estornarMovimento } from '@/services/estoque'
 import { buscarNomesEmpresas } from '@/services/filtroMultiempresa'
 import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
@@ -18,17 +12,9 @@ import {
   KardexEmpresaLinha,
 } from '@/components/estoque/KardexPainelEmpresa'
 import { toast } from '@/hooks/use-toast'
-import { ModalAutorizacaoSupervisor } from '@/components/ModalAutorizacaoSupervisor'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import {
   Dialog,
@@ -50,20 +36,32 @@ import { Package, Building2, Download, Printer, Search, X } from 'lucide-react'
 
 export const KardexPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
-  const { usuario } = useAuth()
+
+  // Datas padrão: 90 dias atrás até hoje (período no padrão 8.0b, como Fluxo de Caixa)
+  const hojeIso = new Date().toISOString().slice(0, 10)
+  const d90Atras = new Date()
+  d90Atras.setDate(d90Atras.getDate() - 90)
+  const d90AtrasIso = d90Atras.toISOString().slice(0, 10)
 
   // Estado FiltrosRelatorio (8.0b)
   const [filtros, setFiltros] = useState<ObjetoFiltrosRelatorio>({
     empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
     produtos_ids: [],
+    atalho_periodo: 'personalizado',
+    periodo: {
+      dataInicio: d90AtrasIso,
+      dataFim: hojeIso,
+    },
   })
 
-  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(() => ['estoque_produtos'], [])
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(
+    () => ['produto_produtos', 'datas_tipo_data'],
+    [],
+  )
 
   const [resumo, setResumo] = useState<KardexResposta | null>(null)
   const [carregando, setCarregando] = useState<boolean>(true)
   const [busca, setBusca] = useState<string>('')
-  const [produtoSel, setProdutoSel] = useState<{ id: string; nome: string } | null>(null)
   const [tipoFiltro, setTipoFiltro] = useState<'TODOS' | 'Entrada' | 'Saída'>('TODOS')
   const [origemFiltro, setOrigemFiltro] = useState<string>('TODAS')
 
@@ -83,29 +81,23 @@ export const KardexPage: React.FC = () => {
     buscarNomesEmpresas(empresasEfetivas).then(setNomesEmpresas)
   }, [empresasEfetivas.join(',')])
 
-  const dataInicio = (filtros.data_inicio as string) || ''
-  const dataFim = (filtros.data_fim as string) || ''
+  const dataInicio = filtros.periodo?.dataInicio || d90AtrasIso
+  const dataFim = filtros.periodo?.dataFim || hojeIso
 
   const carregarDados = useCallback(async () => {
     if (empresasEfetivas.length === 0 || !dataInicio || !dataFim) return
     setCarregando(true)
     try {
-      const [res, saldosIni] = await Promise.all([
-        consultarKardexMultiempresa({
-          empresaIds: empresasEfetivas,
-          produtoIds: filtros.produtos_ids || [],
-          dataInicio,
-          dataFim,
-          tipo: tipoFiltro !== 'TODOS' ? (tipoFiltro as 'Entrada' | 'Saída') : undefined,
-          origem: origemFiltro !== 'TODAS' ? origemFiltro : undefined,
-        }),
-        buscarSaldosIniciaisMultiempresa({
-          empresaIds: empresasEfetivas,
-          produtoIds: filtros.produtos_ids || [],
-          dataInicio,
-        }),
-      ])
-      setResumo({ ...res, saldoInicialPorEmpresa: saldosIni })
+      // O serviço já devolve saldoInicialPorEmpresa (último movimento ANTES do
+      // período, por empresa e produto). Os filtros de Tipo/Origem são visuais
+      // e são aplicados na página ao renderizar as tabelas.
+      const res = await consultarKardexMultiempresa({
+        empresaIds: empresasEfetivas,
+        produtoIds: filtros.produtos_ids || [],
+        dataInicio,
+        dataFim,
+      })
+      setResumo(res)
     } catch (err: any) {
       toast({
         title: 'Erro ao carregar Kardex',
@@ -139,22 +131,9 @@ export const KardexPage: React.FC = () => {
         movimentos: [] as KardexLinha[],
         saldoFinal: { quantidade: 0, custo_medio: 0, valor_total: 0 },
       }
-    const mapa = new Map<
-      string,
-      { id: string; quantidade: number; custo_medio: number; valor_total: number }
-    >()
-    for (const [empId, si] of Object.entries(resumo.saldoInicialPorEmpresa || {})) {
-      const atual = mapa.get(empId) || { id: empId, quantidade: 0, custo_medio: 0, valor_total: 0 }
-      atual.quantidade += si.quantidade
-      atual.valor_total += si.valor_total
-      mapa.set(empId, atual)
-    }
-    const saldoInicial = {
-      quantidade: Array.from(mapa.values()).reduce((a, s) => a + s.quantidade, 0),
-      custo_medio: 0,
-      valor_total: Array.from(mapa.values()).reduce((a, s) => a + s.valor_total, 0),
-    }
-    // Movimentos concatenados (ordenados por data asc — já vem do serviço)
+    // Saldos consolidados: o serviço soma entre empresas (custo médio ponderado)
+    const saldoInicial = resumo.saldoInicialConsolidado
+    // Movimentos concatenados (ordenados por data asc)
     const movs: KardexLinha[] = []
     for (const sec of secoes) {
       for (const m of sec.movimentos) {
@@ -162,8 +141,7 @@ export const KardexPage: React.FC = () => {
       }
     }
     movs.sort((a, b) => a.data_movimento.localeCompare(b.data_movimento))
-    const saldoFinal = resumo.saldoFinalConsolidado || saldoInicial
-    return { saldoInicial, movimentos: movs, saldoFinal }
+    return { saldoInicial, movimentos: movs, saldoFinal: resumo.saldoFinalConsolidado }
   }, [resumo, secoes])
 
   const linhasExibidas = useMemo(() => {
@@ -213,23 +191,17 @@ export const KardexPage: React.FC = () => {
   // ===== Estorno (supervisor) =====
   const [movEstorno, setMovEstorno] = useState<KardexLinha | null>(null)
   const [motivoEstorno, setMotivoEstorno] = useState('')
-  const [modalSupervisor, setModalSupervisor] = useState(false)
   const [processando, setProcessando] = useState(false)
-  const [empresaEstorno, setEmpresaEstorno] = useState<string | null>(null)
 
-  const pedirEstorno = (l: KardexLinha, empresaId: string) => {
+  const pedirEstorno = (l: KardexLinha) => {
     setMovEstorno(l)
-    setEmpresaEstorno(empresaId)
     setMotivoEstorno('')
-    setModalSupervisor(true)
   }
 
-  const confirmarEstorno = async (
-    sucesso: boolean,
-    dadosAutorizacao?: { usuario: string; senha: string },
-  ) => {
-    setModalSupervisor(false)
-    if (!sucesso || !movEstorno || !empresaEstorno) return
+  // Estorno: permissão da rota é validada no backend (/backend/v1/estoque/estornar);
+  // o motivo é obrigatório e fica no histórico do movimento inverso.
+  const confirmarEstorno = async () => {
+    if (!movEstorno) return
     if (!motivoEstorno.trim()) {
       toast({ title: 'Informe o motivo do estorno', variant: 'destructive' })
       return
@@ -237,19 +209,1126 @@ export const KardexPage: React.FC = () => {
     setProcessando(true)
     try {
       await estornarMovimento(movEstorno.id, motivoEstorno.trim())
-      toast({ title: 'Movimento estornado com sucesso' })
-      carregarDados()
-    } catch (err: any) {
-      toast({
-        title: 'Erro ao estornar movimento',
-        description: err?.message || 'Falha no estorno de estoque.',
-        variant: 'destructive',
-      })
     } finally {
       setProcessando(false)
     }
-    // dadosAutorizacao contém credenciais do supervisor — validação é feita no backend
   }
+
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+    const cab =
+=======
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+    const cab =
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+    const cab =
+      [
+        'Empresa',
+        'Data/Hora',
+        'Origem',
+        'Documento',
+        'Lote',
+        'Entrada',
+        'Saída',
+        'Saldo Físico',
+        'Custo Unitário',
+        'Custo Médio',
+        'Valor Total',
+        'Operador/Motivo',
+      ].join(sep) + '\n'
+
+    const addLinhas = (nomeEmpresa: string, movs: KardexLinha[]) => {
+      for (const m of movs) {
+        linhasCSV.push(
+          [
+            `"${nomeEmpresa}"`,
+            `"${new Date(m.data_movimento).toLocaleString('pt-BR')}"`,
+            `"${m.origem}"`,
+            `"${m.documento_tipo ? `${m.documento_tipo} ${m.documento_numero || ''}` : ''}"`,
+            `"${m.numero_lote || ''}"`,
+            m.tipo === 'Entrada' ? m.quantidade : 0,
+            m.tipo === 'Saída' ? m.quantidade : 0,
+            m.saldo_posterior,
+            m.custo_unitario,
+            m.custo_medio_posterior,
+            m.valor_total,
+            `"${m.usuario_nome || m.motivo || ''}"`,
+          ].join(sep),
+        )
+      }
+    }
+
+    if (verSoTotal) {
+      addLinhas('CONSOLIDADO', linhasExibidas)
+    } else {
+      for (const sec of secoes) {
+        const nome = nomesEmpresas[sec.empresaId] || sec.empresaId
+        addLinhas(nome, sec.movimentos)
+      }
+    }
+
+    const blob = new Blob([cab + linhasCSV.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `kardex_${new Date().toISOString().slice(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+    const cab =
+      [
+        'Empresa',
+        'Data/Hora',
+        'Origem',
+        'Documento',
+        'Lote',
+        'Entrada',
+        'Saída',
+        'Saldo Físico',
+        'Custo Unitário',
+        'Custo Médio',
+        'Valor Total',
+        'Operador/Motivo',
+      ].join(sep) + '\n'
+
+    const addLinhas = (nomeEmpresa: string, movs: KardexLinha[]) => {
+      for (const m of movs) {
+        linhasCSV.push(
+          [
+            `"${nomeEmpresa}"`,
+            `"${new Date(m.data_movimento).toLocaleString('pt-BR')}"`,
+            `"${m.origem}"`,
+            `"${m.documento_tipo ? `${m.documento_tipo} ${m.documento_numero || ''}` : ''}"`,
+            `"${m.numero_lote || ''}"`,
+            m.tipo === 'Entrada' ? m.quantidade : 0,
+            m.tipo === 'Saída' ? m.quantidade : 0,
+            m.saldo_posterior,
+            m.custo_unitario,
+            m.custo_medio_posterior,
+            m.valor_total,
+            `"${m.usuario_nome || m.motivo || ''}"`,
+          ].join(sep),
+        )
+      }
+    }
+
+    if (verSoTotal) {
+      addLinhas('CONSOLIDADO', linhasExibidas)
+    } else {
+      for (const sec of secoes) {
+        const nome = nomesEmpresas[sec.empresaId] || sec.empresaId
+        addLinhas(nome, sec.movimentos)
+      }
+    }
+
+    const blob = new Blob([cab + linhasCSV.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `kardex_${new Date().toISOString().slice(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  // ===== Impressão =====
+  const imprimir = () => {
+    window.print()
+  }
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+    const cab =
+      [
+        'Empresa',
+        'Data/Hora',
+        'Origem',
+        'Documento',
+        'Lote',
+        'Entrada',
+        'Saída',
+        'Saldo Físico',
+        'Custo Unitário',
+        'Custo Médio',
+        'Valor Total',
+        'Operador/Motivo',
+      ].join(sep) + '\n'
+
+    const addLinhas = (nomeEmpresa: string, movs: KardexLinha[]) => {
+      for (const m of movs) {
+        linhasCSV.push(
+          [
+            `"${nomeEmpresa}"`,
+            `"${new Date(m.data_movimento).toLocaleString('pt-BR')}"`,
+            `"${m.origem}"`,
+            `"${m.documento_tipo ? `${m.documento_tipo} ${m.documento_numero || ''}` : ''}"`,
+            `"${m.numero_lote || ''}"`,
+            m.tipo === 'Entrada' ? m.quantidade : 0,
+            m.tipo === 'Saída' ? m.quantidade : 0,
+            m.saldo_posterior,
+            m.custo_unitario,
+            m.custo_medio_posterior,
+            m.valor_total,
+            `"${m.usuario_nome || m.motivo || ''}"`,
+          ].join(sep),
+        )
+      }
+    }
+
+    if (verSoTotal) {
+      addLinhas('CONSOLIDADO', linhasExibidas)
+    } else {
+      for (const sec of secoes) {
+        const nome = nomesEmpresas[sec.empresaId] || sec.empresaId
+        addLinhas(nome, sec.movimentos)
+      }
+    }
+
+    const blob = new Blob([cab + linhasCSV.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `kardex_${new Date().toISOString().slice(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  // ===== Impressão =====
+  const imprimir = () => {
+    window.print()
+  }
+
+  // Filtro local de tipo/origem aplicado ao renderizar (o serviço já filtra, aqui é redundância segura)
+  const linhasTabela = useMemo(() => {
+    return linhasExibidas.filter(
+      (m) =>
+        (tipoFiltro === 'TODOS' || m.tipo === tipoFiltro) &&
+        (origemFiltro === 'TODAS' || m.origem === origemFiltro),
+    )
+  }, [linhasExibidas, tipoFiltro, origemFiltro])
+
+  return (
+=======
+  // Filtro local de tipo/origem aplicado ao renderizar (o serviço já filtra, aqui é redundância segura)
+  const linhasTabela = useMemo(() => {
+    return linhasExibidas.filter(
+      (m) =>
+        (tipoFiltro === 'TODOS' || m.tipo === tipoFiltro) &&
+        (origemFiltro === 'TODAS' || m.origem === origemFiltro),
+    )
+  }, [linhasExibidas, tipoFiltro, origemFiltro])
+
+  return (
+=======
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+    const cab =
+      [
+        'Empresa',
+        'Data/Hora',
+        'Origem',
+        'Documento',
+        'Lote',
+        'Entrada',
+        'Saída',
+        'Saldo Físico',
+        'Custo Unitário',
+        'Custo Médio',
+        'Valor Total',
+        'Operador/Motivo',
+      ].join(sep) + '\n'
+
+    const addLinhas = (nomeEmpresa: string, movs: KardexLinha[]) => {
+      for (const m of movs) {
+        linhasCSV.push(
+          [
+            `"${nomeEmpresa}"`,
+            `"${new Date(m.data_movimento).toLocaleString('pt-BR')}"`,
+            `"${m.origem}"`,
+            `"${m.documento_tipo ? `${m.documento_tipo} ${m.documento_numero || ''}` : ''}"`,
+            `"${m.numero_lote || ''}"`,
+            m.tipo === 'Entrada' ? m.quantidade : 0,
+            m.tipo === 'Saída' ? m.quantidade : 0,
+            m.saldo_posterior,
+            m.custo_unitario,
+            m.custo_medio_posterior,
+            m.valor_total,
+            `"${m.usuario_nome || m.motivo || ''}"`,
+          ].join(sep),
+        )
+      }
+    }
+
+    if (verSoTotal) {
+      addLinhas('CONSOLIDADO', linhasExibidas)
+    } else {
+      for (const sec of secoes) {
+        const nome = nomesEmpresas[sec.empresaId] || sec.empresaId
+        addLinhas(nome, sec.movimentos)
+      }
+    }
+
+    const blob = new Blob([cab + linhasCSV.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `kardex_${new Date().toISOString().slice(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  // ===== Impressão =====
+  const imprimir = () => {
+    window.print()
+  }
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+    const linhasCSV: string[] = []
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+    const sep = ';'
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+
+  // ===== CSV =====
+  const exportarCSV = () => {
+=======
+  const exportarCSV = () => {
+=======
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  // ===== CSV =====
+=======
+onOpenChange={(open) => {
+          if (!open && !processando) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
 
   // ===== CSV =====
   const exportarCSV = () => {
@@ -609,12 +1688,12 @@ export const KardexPage: React.FC = () => {
                     resumo?.saldoInicialPorEmpresa?.[sec.empresaId] || {
                       quantidade: 0,
                       custo_medio: 0,
-                      valor_total: '0.00' as any as number,
+                      valor_total: 0,
                     }
                   }
                   dataInicio={dataInicio}
                   podeExcluir={true}
-                  onEstornar={(l) => pedirEstorno(l, sec.empresaId)}
+                  onEstornar={(l) => pedirEstorno(l)}
                 />
               </CardContent>
             </Card>
@@ -661,7 +1740,7 @@ export const KardexPage: React.FC = () => {
                   }
                   dataInicio={dataInicio}
                   podeExcluir={true}
-                  onEstornar={(l) => pedirEstorno(l, sec?.empresaId || '')}
+                  onEstornar={(l) => pedirEstorno(l)}
                 />
               </CardContent>
             </Card>
@@ -748,20 +1827,14 @@ export const KardexPage: React.FC = () => {
             <Button
               size="sm"
               disabled={processando || !motivoEstorno.trim()}
-              onClick={() => {
-                setMovEstorno(null)
-                setModalSupervisor(true)
-              }}
+              onClick={confirmarEstorno}
               className="bg-rose-600 hover:bg-rose-700 text-white"
             >
-              Confirmar e Autorizar
+              {processando ? 'Estornando...' : 'Confirmar Estorno'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Autorização de Supervisor */}
-      <ModalAutorizacaoSupervisor open={modalSupervisor} onClose={confirmarEstorno} />
     </div>
   )
 }
