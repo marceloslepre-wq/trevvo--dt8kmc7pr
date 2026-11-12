@@ -536,6 +536,12 @@ const navItems: NavGroupItem[] = [
         modulo: 'config_fiscal',
       },
       {
+        title: 'Mercado Livre',
+        path: '/configuracoes/mercado-livre',
+        icon: Store,
+        modulo: 'configuracoes',
+      },
+      {
         title: 'Log de Auditoria',
         path: '/configuracoes/auditoria',
         icon: FileText,
