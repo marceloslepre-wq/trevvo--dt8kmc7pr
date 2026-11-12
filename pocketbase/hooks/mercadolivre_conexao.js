@@ -296,7 +296,11 @@ routerAdd(
       }
 
       let retornoUrl = String(body.retorno_url || '').trim()
-      if (retornoUrl && !/^https:\/\/[^\s]+$/.test(retornoUrl) && !/^http:\/\/localhost[:\/]/.test(retornoUrl)) {
+      if (
+        retornoUrl &&
+        !/^https:\/\/[^\s]+$/.test(retornoUrl) &&
+        !/^http:\/\/localhost[:\/]/.test(retornoUrl)
+      ) {
         retornoUrl = ''
       }
 
@@ -336,104 +340,103 @@ routerAdd(
 
 // 3) Callback do OAuth (público): troca o code pelos tokens e grava na conta da empresa.
 routerAdd('GET', '/backend/v1/mercadolivre/oauth/callback', (c) => {
+  // ---- Helpers de chamada ao Mercado Livre (locais ao callback) ----
+  function segredosML() {
+    let appId = ''
+    let secret = ''
+    try {
+      appId = ($os.getenv('ML_APP_ID') || '').trim()
+    } catch (_) {}
+    try {
+      secret = ($os.getenv('ML_CLIENT_SECRET') || '').trim()
+    } catch (_) {}
+    return { appId: appId, secret: secret, ok: !!(appId && secret) }
+  }
 
-    // ---- Helpers de chamada ao Mercado Livre (locais ao callback) ----
-    function segredosML() {
-      let appId = ''
-      let secret = ''
-      try {
-        appId = ($os.getenv('ML_APP_ID') || '').trim()
-      } catch (_) {}
-      try {
-        secret = ($os.getenv('ML_CLIENT_SECRET') || '').trim()
-      } catch (_) {}
-      return { appId: appId, secret: secret, ok: !!(appId && secret) }
+  function lerJson(res) {
+    if (res && res.json) return res.json
+    try {
+      return JSON.parse(res.raw || '{}')
+    } catch (_) {
+      return {}
     }
+  }
 
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
-    }
+  // Nunca registrar em log os parâmetros desta chamada (contêm segredo, code e tokens).
+  function pedirToken(campos) {
+    const partes = []
+    Object.keys(campos).forEach((k) => {
+      partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
+    })
+    const res = $http.send({
+      method: 'POST',
+      url: 'https://api.mercadolibre.com/oauth/token',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: partes.join('&'),
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    // Nunca registrar em log os parâmetros desta chamada (contêm segredo, code e tokens).
-    function pedirToken(campos) {
-      const partes = []
-      Object.keys(campos).forEach((k) => {
-        partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
-      })
-      const res = $http.send({
-        method: 'POST',
-        url: 'https://api.mercadolibre.com/oauth/token',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-        },
-        body: partes.join('&'),
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  function consultarUsuarioML(accessToken) {
+    const res = $http.send({
+      method: 'GET',
+      url: 'https://api.mercadolibre.com/users/me',
+      headers: { Authorization: 'Bearer ' + accessToken, Accept: 'application/json' },
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    function consultarUsuarioML(accessToken) {
-      const res = $http.send({
-        method: 'GET',
-        url: 'https://api.mercadolibre.com/users/me',
-        headers: { Authorization: 'Bearer ' + accessToken, Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  function gravarTokens(conta, dados) {
+    const expiraSeg = parseInt(dados.expires_in, 10) || 21600
+    conta.set('access_token', dados.access_token || '')
+    // O refresh_token do Mercado Livre é de uso único: sempre gravar o novo.
+    if (dados.refresh_token) conta.set('refresh_token', dados.refresh_token)
+    conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
+    conta.set('ultima_renovacao_em', new Date().toISOString())
+    conta.set('status', 'Conectada')
+    conta.set('ultimo_erro', '')
+  }
 
-    function gravarTokens(conta, dados) {
-      const expiraSeg = parseInt(dados.expires_in, 10) || 21600
-      conta.set('access_token', dados.access_token || '')
-      // O refresh_token do Mercado Livre é de uso único: sempre gravar o novo.
-      if (dados.refresh_token) conta.set('refresh_token', dados.refresh_token)
-      conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
-    }
+  function mensagemErroML(r) {
+    const d = (r && r.dados) || {}
+    const txt = d.message || d.error_description || d.error || ''
+    return 'Mercado Livre respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
+  }
 
-    function mensagemErroML(r) {
-      const d = (r && r.dados) || {}
-      const txt = d.message || d.error_description || d.error || ''
-      return 'Mercado Livre respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
+  function responder(ok, motivo, retornoUrl) {
+    if (retornoUrl) {
+      const sep = retornoUrl.indexOf('?') >= 0 ? '&' : '?'
+      const destino =
+        retornoUrl +
+        sep +
+        'resultado=' +
+        (ok ? 'ok' : 'erro') +
+        (ok ? '' : '&motivo=' + encodeURIComponent(motivo || ''))
+      return c.redirect(302, destino)
     }
-
-    function responder(ok, motivo, retornoUrl) {
-      if (retornoUrl) {
-        const sep = retornoUrl.indexOf('?') >= 0 ? '&' : '?'
-        const destino =
-          retornoUrl +
-          sep +
-          'resultado=' +
-          (ok ? 'ok' : 'erro') +
-          (ok ? '' : '&motivo=' + encodeURIComponent(motivo || ''))
-        return c.redirect(302, destino)
-      }
-      const titulo = ok ? 'Conta do Mercado Livre conectada' : 'Não foi possível conectar'
-      const texto = ok
-        ? 'Pode fechar esta aba e voltar ao Trevvo.'
-        : String(motivo || 'Erro desconhecido.')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-      return c.html(
-        ok ? 200 : 400,
-        '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>' +
-          titulo +
-          '</title></head><body style="font-family:sans-serif;padding:40px"><h2>' +
-          titulo +
-          '</h2><p>' +
-          texto +
-          '</p></body></html>',
-      )
-    }
+    const titulo = ok ? 'Conta do Mercado Livre conectada' : 'Não foi possível conectar'
+    const texto = ok
+      ? 'Pode fechar esta aba e voltar ao Trevvo.'
+      : String(motivo || 'Erro desconhecido.')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+    return c.html(
+      ok ? 200 : 400,
+      '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>' +
+        titulo +
+        '</title></head><body style="font-family:sans-serif;padding:40px"><h2>' +
+        titulo +
+        '</h2><p>' +
+        texto +
+        '</p></body></html>',
+    )
+  }
 
   let retornoUrl = ''
   try {
@@ -472,9 +475,14 @@ routerAdd('GET', '/backend/v1/mercadolivre/oauth/callback', (c) => {
       return responder(false, 'A solicitação de conexão expirou. Tente novamente.', retornoUrl)
     }
     if (erroML) {
-      return responder(false, 'Autorização não concedida no Mercado Livre (' + erroML + ').', retornoUrl)
+      return responder(
+        false,
+        'Autorização não concedida no Mercado Livre (' + erroML + ').',
+        retornoUrl,
+      )
     }
-    if (!code) return responder(false, 'O Mercado Livre não devolveu o código de autorização.', retornoUrl)
+    if (!code)
+      return responder(false, 'O Mercado Livre não devolveu o código de autorização.', retornoUrl)
 
     const seg = segredosML()
     if (!seg.ok) {
@@ -495,7 +503,11 @@ routerAdd('GET', '/backend/v1/mercadolivre/oauth/callback', (c) => {
 
     const u = consultarUsuarioML(r.dados.access_token)
     if (u.status !== 200 || !u.dados || !u.dados.id) {
-      return responder(false, 'Não foi possível ler os dados da conta. ' + mensagemErroML(u), retornoUrl)
+      return responder(
+        false,
+        'Não foi possível ler os dados da conta. ' + mensagemErroML(u),
+        retornoUrl,
+      )
     }
     const mlUserId = String(u.dados.id)
     const empresaId = estRec.getString('empresa_id')
@@ -504,7 +516,11 @@ routerAdd('GET', '/backend/v1/mercadolivre/oauth/callback', (c) => {
     try {
       const outras = $app.findRecordsByFilter(
         'mercadolivre_contas',
-        "ml_user_id = '" + mlUserId.replace(/[^0-9A-Za-z]/g, '') + "' && empresa_id != '" + empresaId + "' && status != 'Desconectada'",
+        "ml_user_id = '" +
+          mlUserId.replace(/[^0-9A-Za-z]/g, '') +
+          "' && empresa_id != '" +
+          empresaId +
+          "' && status != 'Desconectada'",
         '-created',
         1,
         0,
@@ -545,7 +561,9 @@ routerAdd('GET', '/backend/v1/mercadolivre/oauth/callback', (c) => {
 
     return responder(true, '', retornoUrl)
   } catch (err) {
-    console.log('[mercadolivre] Erro no callback: ' + (err && err.message ? err.message : String(err)))
+    console.log(
+      '[mercadolivre] Erro no callback: ' + (err && err.message ? err.message : String(err)),
+    )
     return responder(false, 'Erro interno ao concluir a conexão.', retornoUrl)
   }
 })
@@ -1007,8 +1025,15 @@ routerAdd(
         })
       }
       const conta = contaDaEmpresa(empresa.id)
-      if (!conta || conta.getString('status') === 'Desconectada' || !conta.getString('refresh_token')) {
-        return c.json(400, { sucesso: false, mensagem: 'Nenhuma conta do Mercado Livre conectada nesta empresa.' })
+      if (
+        !conta ||
+        conta.getString('status') === 'Desconectada' ||
+        !conta.getString('refresh_token')
+      ) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Nenhuma conta do Mercado Livre conectada nesta empresa.',
+        })
       }
 
       // Renova na hora se faltar menos de 5 minutos (ou se já venceu).
@@ -1029,7 +1054,10 @@ routerAdd(
           }
           conta.set('ultimo_erro', mensagemErroML(r))
           $app.save(conta)
-          return c.json(400, { sucesso: false, mensagem: 'Falha ao renovar o token. ' + mensagemErroML(r) })
+          return c.json(400, {
+            sucesso: false,
+            mensagem: 'Falha ao renovar o token. ' + mensagemErroML(r),
+          })
         }
       }
 
@@ -1207,7 +1235,9 @@ routerAdd(
         conta.set('status', 'Desconectada')
         conta.set('ultimo_erro', '')
         $app.save(conta)
-        console.log('[mercadolivre] Conta desconectada. empresa=' + empresa.id + ' usuario=' + auth.id)
+        console.log(
+          '[mercadolivre] Conta desconectada. empresa=' + empresa.id + ' usuario=' + auth.id,
+        )
       }
       return c.json(200, { sucesso: true, mensagem: 'Conta desconectada.' })
     } catch (err) {
@@ -1223,74 +1253,73 @@ routerAdd(
 
 // 7) Renovação automática dos tokens, a cada 30 minutos.
 cronAdd('mercadolivre_renovar_tokens', '*/30 * * * *', () => {
+  // ---- Helpers de chamada ao Mercado Livre (locais ao callback) ----
+  function segredosML() {
+    let appId = ''
+    let secret = ''
+    try {
+      appId = ($os.getenv('ML_APP_ID') || '').trim()
+    } catch (_) {}
+    try {
+      secret = ($os.getenv('ML_CLIENT_SECRET') || '').trim()
+    } catch (_) {}
+    return { appId: appId, secret: secret, ok: !!(appId && secret) }
+  }
 
-    // ---- Helpers de chamada ao Mercado Livre (locais ao callback) ----
-    function segredosML() {
-      let appId = ''
-      let secret = ''
-      try {
-        appId = ($os.getenv('ML_APP_ID') || '').trim()
-      } catch (_) {}
-      try {
-        secret = ($os.getenv('ML_CLIENT_SECRET') || '').trim()
-      } catch (_) {}
-      return { appId: appId, secret: secret, ok: !!(appId && secret) }
+  function lerJson(res) {
+    if (res && res.json) return res.json
+    try {
+      return JSON.parse(res.raw || '{}')
+    } catch (_) {
+      return {}
     }
+  }
 
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
-    }
+  // Nunca registrar em log os parâmetros desta chamada (contêm segredo, code e tokens).
+  function pedirToken(campos) {
+    const partes = []
+    Object.keys(campos).forEach((k) => {
+      partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
+    })
+    const res = $http.send({
+      method: 'POST',
+      url: 'https://api.mercadolibre.com/oauth/token',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: partes.join('&'),
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    // Nunca registrar em log os parâmetros desta chamada (contêm segredo, code e tokens).
-    function pedirToken(campos) {
-      const partes = []
-      Object.keys(campos).forEach((k) => {
-        partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
-      })
-      const res = $http.send({
-        method: 'POST',
-        url: 'https://api.mercadolibre.com/oauth/token',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-        },
-        body: partes.join('&'),
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  function consultarUsuarioML(accessToken) {
+    const res = $http.send({
+      method: 'GET',
+      url: 'https://api.mercadolibre.com/users/me',
+      headers: { Authorization: 'Bearer ' + accessToken, Accept: 'application/json' },
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    function consultarUsuarioML(accessToken) {
-      const res = $http.send({
-        method: 'GET',
-        url: 'https://api.mercadolibre.com/users/me',
-        headers: { Authorization: 'Bearer ' + accessToken, Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  function gravarTokens(conta, dados) {
+    const expiraSeg = parseInt(dados.expires_in, 10) || 21600
+    conta.set('access_token', dados.access_token || '')
+    // O refresh_token do Mercado Livre é de uso único: sempre gravar o novo.
+    if (dados.refresh_token) conta.set('refresh_token', dados.refresh_token)
+    conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
+    conta.set('ultima_renovacao_em', new Date().toISOString())
+    conta.set('status', 'Conectada')
+    conta.set('ultimo_erro', '')
+  }
 
-    function gravarTokens(conta, dados) {
-      const expiraSeg = parseInt(dados.expires_in, 10) || 21600
-      conta.set('access_token', dados.access_token || '')
-      // O refresh_token do Mercado Livre é de uso único: sempre gravar o novo.
-      if (dados.refresh_token) conta.set('refresh_token', dados.refresh_token)
-      conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
-    }
-
-    function mensagemErroML(r) {
-      const d = (r && r.dados) || {}
-      const txt = d.message || d.error_description || d.error || ''
-      return 'Mercado Livre respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-    }
+  function mensagemErroML(r) {
+    const d = (r && r.dados) || {}
+    const txt = d.message || d.error_description || d.error || ''
+    return 'Mercado Livre respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
+  }
 
   try {
     if (!$app.hasTable('mercadolivre_contas')) return
@@ -1331,10 +1360,17 @@ cronAdd('mercadolivre_renovar_tokens', '*/30 * * * *', () => {
           conta.set('status', 'Reconectar')
           conta.set('ultimo_erro', mensagemErroML(r))
           $app.save(conta)
-          console.log('[mercadolivre] Conta precisa reconectar. empresa=' + conta.getString('empresa_id'))
+          console.log(
+            '[mercadolivre] Conta precisa reconectar. empresa=' + conta.getString('empresa_id'),
+          )
         } else {
           // Falha temporária (rede, 5xx, 429): tenta na próxima execução.
-          console.log('[mercadolivre] Renovação adiada: HTTP ' + r.status + ' empresa=' + conta.getString('empresa_id'))
+          console.log(
+            '[mercadolivre] Renovação adiada: HTTP ' +
+              r.status +
+              ' empresa=' +
+              conta.getString('empresa_id'),
+          )
         }
       } catch (errConta) {
         console.log(
@@ -1344,6 +1380,8 @@ cronAdd('mercadolivre_renovar_tokens', '*/30 * * * *', () => {
       }
     }
   } catch (err) {
-    console.log('[mercadolivre] Erro no agendamento: ' + (err && err.message ? err.message : String(err)))
+    console.log(
+      '[mercadolivre] Erro no agendamento: ' + (err && err.message ? err.message : String(err)),
+    )
   }
 })
