@@ -22,9 +22,13 @@ routerAdd('POST', '/backend/v1/mercadolivre/notificacoes', (c) => {
 
     const topico = String(body.topic || '').slice(0, 80)
     const recurso = String(body.resource || '').slice(0, 500)
-    const mlUserId = String(body.user_id || '').replace(/[^0-9A-Za-z]/g, '').slice(0, 40)
+    const mlUserId = String(body.user_id || '')
+      .replace(/[^0-9A-Za-z]/g, '')
+      .slice(0, 40)
     const appIdAviso = String(body.application_id || '')
-    let notifId = String(body._id || body.id || '').replace(/[^0-9A-Za-z_-]/g, '').slice(0, 80)
+    let notifId = String(body._id || body.id || '')
+      .replace(/[^0-9A-Za-z_-]/g, '')
+      .slice(0, 80)
 
     if (!topico || !recurso || !mlUserId) {
       // Corpo que não é uma notificação do Mercado Livre: recusa sem gravar.
@@ -58,10 +62,9 @@ routerAdd('POST', '/backend/v1/mercadolivre/notificacoes', (c) => {
     }
 
     if (!notifId) {
-      notifId = (topico + '_' + mlUserId + '_' + recurso + '_' + String(body.sent || '')).replace(
-        /[^0-9A-Za-z_-]/g,
-        '_',
-      ).slice(0, 200)
+      notifId = (topico + '_' + mlUserId + '_' + recurso + '_' + String(body.sent || ''))
+        .replace(/[^0-9A-Za-z_-]/g, '_')
+        .slice(0, 200)
     }
 
     // Aviso repetido (o Mercado Livre reenvia): não grava de novo.
@@ -73,7 +76,8 @@ routerAdd('POST', '/backend/v1/mercadolivre/notificacoes', (c) => {
         1,
         0,
       )
-      if (ja && ja.length > 0) return c.json(200, { sucesso: true, gravada: false, motivo: 'repetida' })
+      if (ja && ja.length > 0)
+        return c.json(200, { sucesso: true, gravada: false, motivo: 'repetida' })
     } catch (_) {}
 
     let conteudo = ''
@@ -104,7 +108,10 @@ routerAdd('POST', '/backend/v1/mercadolivre/notificacoes', (c) => {
 
     return c.json(200, { sucesso: true, gravada: true })
   } catch (err) {
-    console.log('[mercadolivre] Erro ao receber notificação: ' + (err && err.message ? err.message : String(err)))
+    console.log(
+      '[mercadolivre] Erro ao receber notificação: ' +
+        (err && err.message ? err.message : String(err)),
+    )
     // 500 faz o Mercado Livre tentar de novo mais tarde.
     return c.json(500, { sucesso: false })
   }
@@ -122,7 +129,13 @@ routerAdd('GET', '/backend/v1/mercadolivre/notificacoes/diagnostico', (c) => {
   let ultima = ''
   if (colecao) {
     try {
-      const recs = $app.findRecordsByFilter('mercadolivre_notificacoes', "id != ''", '-created', 500, 0)
+      const recs = $app.findRecordsByFilter(
+        'mercadolivre_notificacoes',
+        "id != ''",
+        '-created',
+        500,
+        0,
+      )
       total = recs.length
       for (let i = 0; i < recs.length; i++) {
         const t = recs[i].getString('topico') || '(sem tópico)'
