@@ -542,6 +542,12 @@ const navItems: NavGroupItem[] = [
         modulo: 'configuracoes',
       },
       {
+        title: 'Tray',
+        path: '/configuracoes/tray',
+        icon: Store,
+        modulo: 'configuracoes',
+      },
+      {
         title: 'Log de Auditoria',
         path: '/configuracoes/auditoria',
         icon: FileText,
