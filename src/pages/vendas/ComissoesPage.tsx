@@ -9,6 +9,7 @@ import {
   ChevronRight,
   TrendingUp,
   Percent,
+  Building2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,21 +32,23 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { useEmpresaAtiva, useEmpresasAcessiveis } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useToast } from '@/hooks/use-toast'
 import { AcessoNegado } from '@/components/AcessoNegado'
 import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
 import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import {
-  apurarComissoes,
+  apurarComissoesDetalhado,
   gerarContaPagarComissao,
   exportarComissoesCsv,
   ItemComissaoVendedor,
+  TotaisComissaoPorEmpresa,
 } from '@/services/comissoes'
 
 export const ComissoesPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
+  const { empresasAcessiveis } = useEmpresasAcessiveis()
   const { usuarioERP, administrador, perfil, pode } = usePermissoes()
   const { toast } = useToast()
 
@@ -86,7 +89,15 @@ export const ComissoesPage: React.FC = () => {
 
   const dataInicioEfetiva = filtros.periodo?.dataInicio || primeiroDiaMes
   const dataFimEfetiva = filtros.periodo?.dataFim || hojeIso
-  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+  // Multiempresa: usar TODAS as empresas marcadas, não só a primeira (padrão Itens Comprados)
+  const empresasEfetivas: string[] = (filtros.empresas_ids || []).filter(Boolean).length
+    ? (filtros.empresas_ids || []).filter(Boolean)
+    : empresaAtiva?.id
+      ? [empresaAtiva.id]
+      : []
+  const empresaIdEfetiva = empresasEfetivas[0] || ''
+  // "Ver só o total consolidado" (FiltrosRelatorio): oculta a quebra por empresa
+  const verSoTotal = filtros.ver_so_total === true
   const vendedorIdEfetivo =
     filtros.vendedores_ids && filtros.vendedores_ids.length > 0
       ? filtros.vendedores_ids[0]
@@ -94,6 +105,7 @@ export const ComissoesPage: React.FC = () => {
 
   // Dados apurados
   const [comissoes, setComissoes] = useState<ItemComissaoVendedor[]>([])
+  const [totaisPorEmpresa, setTotaisPorEmpresa] = useState<TotaisComissaoPorEmpresa[]>([])
   const [carregando, setCarregando] = useState(false)
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({})
 
@@ -105,17 +117,18 @@ export const ComissoesPage: React.FC = () => {
 
   // Buscar apuração de comissões
   const carregarApuracao = useCallback(async () => {
-    if (!empresaIdEfetiva) return
+    if (empresasEfetivas.length === 0) return
     setCarregando(true)
     try {
-      const res = await apurarComissoes({
-        empresa_id: empresaIdEfetiva,
+      const res = await apurarComissoesDetalhado({
+        empresa_ids: empresasEfetivas,
         data_inicio: dataInicioEfetiva,
         data_fim: dataFimEfetiva,
         vendedor_id: vendedorIdEfetivo,
         base_calculo: baseCalculo,
       })
-      setComissoes(res)
+      setComissoes(res.comissoes)
+      setTotaisPorEmpresa(res.totais_por_empresa)
     } catch {
       toast({
         title: 'Erro na apuração',
@@ -125,13 +138,22 @@ export const ComissoesPage: React.FC = () => {
     } finally {
       setCarregando(false)
     }
-  }, [empresaIdEfetiva, dataInicioEfetiva, dataFimEfetiva, vendedorIdEfetivo, baseCalculo, toast])
+  }, [empresasEfetivas, dataInicioEfetiva, dataFimEfetiva, vendedorIdEfetivo, baseCalculo, toast])
 
   useEffect(() => {
     if (temAcesso) {
       carregarApuracao()
     }
   }, [carregarApuracao, temAcesso])
+
+  // Nomes das empresas acessíveis (padrão Itens Comprados)
+  const nomesEmpresas = useMemo(() => {
+    const mapa: Record<string, string> = {}
+    for (const e of empresasAcessiveis || []) {
+      mapa[e.id] = e.nome_fantasia || e.razao_social || e.id
+    }
+    return mapa
+  }, [empresasAcessiveis])
 
   if (!temAcesso) {
     return (
@@ -152,6 +174,11 @@ export const ComissoesPage: React.FC = () => {
   const totalGeralDevolucoes = comissoes.reduce((acc, c) => acc + c.total_devolucoes, 0)
   const totalGeralBase = comissoes.reduce((acc, c) => acc + c.base_calculo, 0)
   const totalGeralComissao = comissoes.reduce((acc, c) => acc + c.valor_comissao, 0)
+  const totalGeralQuantidadeVendas = comissoes.reduce((acc, c) => acc + c.quantidade_vendas, 0)
+  const totalGeralQuantidadeDevolucoes = comissoes.reduce(
+    (acc, c) => acc + c.quantidade_devolucoes,
+    0,
+  )
 
   // Exportar CSV
   const handleExportarCsv = () => {
@@ -179,7 +206,9 @@ export const ComissoesPage: React.FC = () => {
     setModalGerarAberto(true)
   }
 
-  // Confirmar geração de conta a pagar
+  // Confirmar geração de conta a pagar. Multiempresa: um vendedor pode vender em
+  // mais de uma empresa — gera um título por empresa usando a quebra dele
+  // (com apenas 1 empresa, comportamento anterior preservado)
   const handleConfirmarGerarTitulo = async () => {
     if (!empresaIdEfetiva || !vendedorSelecionado) return
     setGerandoTitulo(true)
@@ -188,19 +217,32 @@ export const ComissoesPage: React.FC = () => {
         .split('-')
         .reverse()
         .join('/')}`
-      await gerarContaPagarComissao({
-        empresa_id: empresaIdEfetiva,
-        vendedor_id: vendedorSelecionado.vendedor_id,
-        valor_comissao: vendedorSelecionado.valor_comissao,
-        data_vencimento: dataVencimentoTitulo,
-        periodo_referencia: periodoTexto,
-      })
+      if (empresasEfetivas.length > 1 && vendedorSelecionado.por_empresa.length > 1) {
+        for (const q of vendedorSelecionado.por_empresa) {
+          if (q.valor_comissao <= 0) continue
+          await gerarContaPagarComissao({
+            empresa_id: q.empresa_id,
+            vendedor_id: vendedorSelecionado.vendedor_id,
+            valor_comissao: q.valor_comissao,
+            data_vencimento: dataVencimentoTitulo,
+            periodo_referencia: periodoTexto,
+          })
+        }
+      } else {
+        await gerarContaPagarComissao({
+          empresa_id: empresaIdEfetiva,
+          vendedor_id: vendedorSelecionado.vendedor_id,
+          valor_comissao: vendedorSelecionado.valor_comissao,
+          data_vencimento: dataVencimentoTitulo,
+          periodo_referencia: periodoTexto,
+        })
+      }
 
       toast({
         title: 'Conta a Pagar Gerada',
-        description: `Título de comissão (R$ ${vendedorSelecionado.valor_comissao.toFixed(
+        description: `Título(s) de comissão (R$ ${vendedorSelecionado.valor_comissao.toFixed(
           2,
-        )}) criado com sucesso no plano 2.5.01.`,
+        )}) criado(s) com sucesso no plano 2.5.01.`,
       })
       setModalGerarAberto(false)
     } catch (err: unknown) {
@@ -303,6 +345,101 @@ export const ComissoesPage: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Totais por Empresa (oculto quando "Ver só o total consolidado" está marcado) */}
+      {!verSoTotal && empresasEfetivas.length > 1 && totaisPorEmpresa.length > 0 && (
+        <Card className="border-slate-200 shadow-xs">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <h3 className="text-sm font-semibold text-slate-800">Totais por Empresa</h3>
+              <Badge variant="outline" className="text-[10px]">
+                {empresasEfetivas.length} empresas no filtro
+              </Badge>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
+                    <th className="py-2 px-3">Empresa</th>
+                    <th className="py-2 px-3 text-right">Qtd Vendas</th>
+                    <th className="py-2 px-3 text-right">Qtd Devoluções</th>
+                    <th className="py-2 px-3 text-right">Vendas Brutas</th>
+                    <th className="py-2 px-3 text-right">Devoluções (R$)</th>
+                    <th className="py-2 px-3 text-right">Base Líquida</th>
+                    <th className="py-2 px-3 text-right">Comissão</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {totaisPorEmpresa.map((t) => (
+                    <tr key={t.empresa_id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2 px-3 font-medium text-slate-800">
+                        {nomesEmpresas[t.empresa_id] ||
+                          (t.empresa_id === '(sem empresa)' ? 'Sem empresa' : t.empresa_id)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        {t.quantidade_vendas}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        {t.quantidade_devolucoes}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        R${' '}
+                        {t.total_vendas_bruto.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-red-600">
+                        R${' '}
+                        {t.total_devolucoes.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        R${' '}
+                        {t.base_calculo.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold text-amber-700">
+                        R${' '}
+                        {t.valor_comissao.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+                    <td className="py-2 px-3 text-slate-900">Total Geral</td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      {totalGeralQuantidadeVendas}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      {totalGeralQuantidadeDevolucoes}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      R$ {totalGeralVendas.toFixed(2)}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-red-600">
+                      R$ {totalGeralDevolucoes.toFixed(2)}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      R$ {totalGeralBase.toFixed(2)}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-amber-700">
+                      R$ {totalGeralComissao.toFixed(2)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabela de Vendedores */}
       <Card className="border-slate-200">
@@ -417,6 +554,82 @@ export const ComissoesPage: React.FC = () => {
                           <TableRow className="bg-slate-50/60">
                             <TableCell colSpan={8} className="p-4">
                               <div className="bg-white rounded-md border border-slate-200 p-3 space-y-2">
+                                {/* Quebra do vendedor por empresa (um vendedor pode vender em mais de uma) */}
+                                {c.por_empresa.length > 1 && (
+                                  <div className="mb-2">
+                                    <p className="text-[11px] font-semibold text-slate-600 uppercase mb-1">
+                                      Por empresa
+                                    </p>
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-left text-[11px] border-collapse">
+                                        <thead>
+                                          <tr className="border-b border-slate-200 text-slate-500">
+                                            <th className="py-1 px-2">Empresa</th>
+                                            <th className="py-1 px-2 text-right">Vendas</th>
+                                            <th className="py-1 px-2 text-right">Devol.</th>
+                                            <th className="py-1 px-2 text-right">Bruto (R$)</th>
+                                            <th className="py-1 px-2 text-right">
+                                              Devoluções (R$)
+                                            </th>
+                                            <th className="py-1 px-2 text-right">Base (R$)</th>
+                                            <th className="py-1 px-2 text-right">Comissão (R$)</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                          {c.por_empresa.map((q) => (
+                                            <tr key={q.empresa_id}>
+                                              <td className="py-1 px-2 text-slate-800">
+                                                {nomesEmpresas[q.empresa_id] ||
+                                                  (q.empresa_id === '(sem empresa)'
+                                                    ? 'Sem empresa'
+                                                    : q.empresa_id)}
+                                              </td>
+                                              <td className="py-1 px-2 text-right font-mono">
+                                                {q.quantidade_vendas}
+                                              </td>
+                                              <td className="py-1 px-2 text-right font-mono">
+                                                {q.quantidade_devolucoes}
+                                              </td>
+                                              <td className="py-1 px-2 text-right font-mono">
+                                                {q.total_vendas_bruto.toFixed(2)}
+                                              </td>
+                                              <td className="py-1 px-2 text-right font-mono text-red-600">
+                                                {q.total_devolucoes.toFixed(2)}
+                                              </td>
+                                              <td className="py-1 px-2 text-right font-mono font-semibold">
+                                                {q.base_calculo.toFixed(2)}
+                                              </td>
+                                              <td className="py-1 px-2 text-right font-mono font-semibold text-amber-700">
+                                                {q.valor_comissao.toFixed(2)}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                          <tr className="border-t-2 border-slate-200 font-semibold">
+                                            <td className="py-1 px-2">Total do vendedor</td>
+                                            <td className="py-1 px-2 text-right font-mono">
+                                              {c.quantidade_vendas}
+                                            </td>
+                                            <td className="py-1 px-2 text-right font-mono">
+                                              {c.quantidade_devolucoes}
+                                            </td>
+                                            <td className="py-1 px-2 text-right font-mono">
+                                              {c.total_vendas_bruto.toFixed(2)}
+                                            </td>
+                                            <td className="py-1 px-2 text-right font-mono text-red-600">
+                                              {c.total_devolucoes.toFixed(2)}
+                                            </td>
+                                            <td className="py-1 px-2 text-right font-mono">
+                                              {c.base_calculo.toFixed(2)}
+                                            </td>
+                                            <td className="py-1 px-2 text-right font-mono text-amber-700">
+                                              {c.valor_comissao.toFixed(2)}
+                                            </td>
+                                          </tr>
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                )}
                                 <p className="text-xs font-semibold text-slate-800">
                                   Extrato Detalhado de Vendas ({c.vendas_detalhe.length}{' '}
                                   lançamentos)

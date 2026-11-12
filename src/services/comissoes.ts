@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import { salvarFornecedor } from '@/services/fornecedores'
+import { montarFiltroEmpresas } from '@/services/filtroMultiempresa'
 
 export interface ItemComissaoVendedor {
   vendedor_id: string
@@ -13,6 +14,36 @@ export interface ItemComissaoVendedor {
   quantidade_vendas: number
   quantidade_devolucoes: number
   vendas_detalhe: VendaComissaoDetalhe[]
+  /** Quebra do vendedor por empresa (um vendedor pode vender em mais de uma empresa) */
+  por_empresa: VendaComissaoPorEmpresa[]
+}
+
+export interface VendaComissaoPorEmpresa {
+  empresa_id: string
+  total_vendas_bruto: number
+  total_devolucoes: number
+  base_calculo: number
+  valor_comissao: number
+  quantidade_vendas: number
+  quantidade_devolucoes: number
+}
+
+export interface TotaisComissaoPorEmpresa {
+  empresa_id: string
+  total_vendas_bruto: number
+  total_devolucoes: number
+  base_calculo: number
+  valor_comissao: number
+  quantidade_vendas: number
+  quantidade_devolucoes: number
+  quantidade_vendedores: number
+}
+
+export interface ApuracaoComissoesResultado {
+  /** Lista consolidada por vendedor (o total dele soma todas as empresas) */
+  comissoes: ItemComissaoVendedor[]
+  /** Quebra por empresa (painel "Totais por Empresa") */
+  totais_por_empresa: TotaisComissaoPorEmpresa[]
 }
 
 export interface VendaComissaoDetalhe {
@@ -25,22 +56,52 @@ export interface VendaComissaoDetalhe {
   valor_devolucao: number
   base_comissao: number
   valor_comissao: number
+  empresa_id?: string
   status_recebimento?: 'Recebido total' | 'Pendente' | 'Parcial'
 }
 
 export interface FiltrosComissao {
-  empresa_id: string
+  /** Lista de empresas marcadas no filtro (multiempresa) */
+  empresa_ids?: string[]
+  /** @deprecated legado: use empresa_ids (multiempresa) */
+  empresa_id?: string
   data_inicio: string
   data_fim: string
   vendedor_id?: string
   base_calculo: 'Venda finalizada' | 'Venda recebida'
 }
 
+/** Normaliza a lista de empresas do filtro (aceita o legado empresa_id singular) */
+export function normalizarEmpresasComissao(filtros: FiltrosComissao): string[] {
+  const plural = (filtros.empresa_ids || []).filter(Boolean)
+  if (plural.length > 0) return plural
+  return filtros.empresa_id ? [filtros.empresa_id] : []
+}
+
 /**
  * Apura comissões por vendedor no período selecionado, descontando as devoluções.
  */
 export async function apurarComissoes(filtros: FiltrosComissao): Promise<ItemComissaoVendedor[]> {
-  const { empresa_id, data_inicio, data_fim, vendedor_id, base_calculo } = filtros
+  const res = await apurarComissoesDetalhado(filtros)
+  return res.comissoes
+}
+
+/**
+ * Apuração completa: comissões por vendedor + quebra por empresa.
+ * As vendas respeitam TODAS as empresas marcadas no filtro (filtro OR),
+ * sempre dentro das regras de acesso (assinante_id) das coleções.
+ */
+export async function apurarComissoesDetalhado(
+  filtros: FiltrosComissao,
+): Promise<ApuracaoComissoesResultado> {
+  const { data_inicio, data_fim, vendedor_id, base_calculo } = filtros
+  const empresaIds = normalizarEmpresasComissao(filtros)
+
+  if (empresaIds.length === 0) {
+    return { comissoes: [], totais_por_empresa: [] }
+  }
+
+  const filtroEmpresa = montarFiltroEmpresas(empresaIds)
 
   // 1. Carregar todos os usuários vendedores ativos
   let condsVendedores = ['ativo = true']
@@ -58,7 +119,7 @@ export async function apurarComissoes(filtros: FiltrosComissao): Promise<ItemCom
 
   // 2. Buscar vendas no período (tanto Venda normal quanto Devolução)
   const condsVendas = [
-    `empresa_id = '${empresa_id}'`,
+    filtroEmpresa,
     'ativo = true',
     `status = 'Finalizada'`,
     `data_emissao >= '${data_inicio}'`,
@@ -79,7 +140,7 @@ export async function apurarComissoes(filtros: FiltrosComissao): Promise<ItemCom
   const titulosPorVenda = new Map<string, { total: number; recebido: number }>()
   if (base_calculo === 'Venda recebida') {
     const titulos = await pb.collection('contas_receber').getFullList({
-      filter: `empresa_id = '${empresa_id}' && ativo = true`,
+      filter: `${filtroEmpresa} && ativo = true`,
       fields: 'origem_id,valor_original,valor_recebido,saldo,status',
     })
 
@@ -94,49 +155,39 @@ export async function apurarComissoes(filtros: FiltrosComissao): Promise<ItemCom
     })
   }
 
-  // 3. Agrupar por vendedor
+  // 3. Agrupar por vendedor (consolidado) e por vendedor dentro de cada empresa
   const acumuladorPorVendedor = new Map<string, ItemComissaoVendedor>()
+
+  const criarItemVendedor = (u: any): ItemComissaoVendedor => ({
+    vendedor_id: u.id,
+    vendedor_nome: u?.name || u?.email || 'Vendedor',
+    vendedor_email: u?.email,
+    percentual_comissao: Number(u?.comissao_percentual) || 0,
+    total_vendas_bruto: 0,
+    total_devolucoes: 0,
+    base_calculo: 0,
+    valor_comissao: 0,
+    quantidade_vendas: 0,
+    quantidade_devolucoes: 0,
+    vendas_detalhe: [],
+    por_empresa: [],
+  })
 
   // Inicializa com vendedores que possuem comissão cadastrada
   for (const u of usuariosList) {
-    const pct = Number((u as any).comissao_percentual) || 0
-    acumuladorPorVendedor.set(u.id, {
-      vendedor_id: u.id,
-      vendedor_nome: (u as any).name || (u as any).email || 'Vendedor',
-      vendedor_email: (u as any).email,
-      percentual_comissao: pct,
-      total_vendas_bruto: 0,
-      total_devolucoes: 0,
-      base_calculo: 0,
-      valor_comissao: 0,
-      quantidade_vendas: 0,
-      quantidade_devolucoes: 0,
-      vendas_detalhe: [],
-    })
+    acumuladorPorVendedor.set(u.id, criarItemVendedor(u))
   }
 
   // Processar vendas e devoluções
   for (const v of vendasPeriodo) {
     const vId = (v as any).vendedor_id
     if (!vId) continue
+    const empId = (v as any).empresa_id || '(sem empresa)'
 
     let itemVend = acumuladorPorVendedor.get(vId)
     if (!itemVend) {
       const uRec = (v.expand as any)?.vendedor_id
-      const pct = Number(uRec?.comissao_percentual) || 0
-      itemVend = {
-        vendedor_id: vId,
-        vendedor_nome: uRec?.name || uRec?.email || 'Vendedor',
-        vendedor_email: uRec?.email,
-        percentual_comissao: pct,
-        total_vendas_bruto: 0,
-        total_devolucoes: 0,
-        base_calculo: 0,
-        valor_comissao: 0,
-        quantidade_vendas: 0,
-        quantidade_devolucoes: 0,
-        vendas_detalhe: [],
-      }
+      itemVend = criarItemVendedor(uRec)
       acumuladorPorVendedor.set(vId, itemVend)
     }
 
@@ -149,12 +200,28 @@ export async function apurarComissoes(filtros: FiltrosComissao): Promise<ItemCom
       (v as any).cpf_cnpj_consumidor ||
       'Consumidor'
 
-    if (tipo === 'Devolução') {
+    const ehDevolucao = tipo === 'Devolução'
+
+    let baseVenda = valorTotal
+    let statusReceb: 'Recebido total' | 'Pendente' | 'Parcial' = 'Recebido total'
+
+    if (!ehDevolucao && base_calculo === 'Venda recebida') {
+      const infoTit = titulosPorVenda.get(v.id)
+      if (infoTit) {
+        baseVenda = Math.min(valorTotal, infoTit.recebido)
+        if (infoTit.recebido <= 0.009) {
+          statusReceb = 'Pendente'
+        } else if (infoTit.recebido < infoTit.total - 0.01) {
+          statusReceb = 'Parcial'
+        }
+      }
+    }
+
+    const comissaoItem = Number((baseVenda * (itemVend.percentual_comissao / 100)).toFixed(2))
+
+    if (ehDevolucao) {
       itemVend.total_devolucoes += valorTotal
       itemVend.quantidade_devolucoes += 1
-
-      const comissaoEstorno = Number((valorTotal * (itemVend.percentual_comissao / 100)).toFixed(2))
-
       itemVend.vendas_detalhe.push({
         venda_id: v.id,
         numero: Number((v as any).numero) || 0,
@@ -164,30 +231,13 @@ export async function apurarComissoes(filtros: FiltrosComissao): Promise<ItemCom
         valor_venda: 0,
         valor_devolucao: valorTotal,
         base_comissao: -valorTotal,
-        valor_comissao: -comissaoEstorno,
+        valor_comissao: -comissaoItem,
+        empresa_id: empId,
       })
     } else {
       // Venda normal (Pedido, PDV etc.)
-      let baseVenda = valorTotal
-      let statusReceb: 'Recebido total' | 'Pendente' | 'Parcial' = 'Recebido total'
-
-      if (base_calculo === 'Venda recebida') {
-        const infoTit = titulosPorVenda.get(v.id)
-        if (infoTit) {
-          baseVenda = Math.min(valorTotal, infoTit.recebido)
-          if (infoTit.recebido <= 0.009) {
-            statusReceb = 'Pendente'
-          } else if (infoTit.recebido < infoTit.total - 0.01) {
-            statusReceb = 'Parcial'
-          }
-        }
-      }
-
       itemVend.total_vendas_bruto += valorTotal
       itemVend.quantidade_vendas += 1
-
-      const comissaoItem = Number((baseVenda * (itemVend.percentual_comissao / 100)).toFixed(2))
-
       itemVend.vendas_detalhe.push({
         venda_id: v.id,
         numero: Number((v as any).numero) || 0,
@@ -198,8 +248,31 @@ export async function apurarComissoes(filtros: FiltrosComissao): Promise<ItemCom
         valor_devolucao: 0,
         base_comissao: baseVenda,
         valor_comissao: comissaoItem,
+        empresa_id: empId,
         status_recebimento: statusReceb,
       })
+    }
+
+    // Quebra do vendedor por empresa
+    let quebra = itemVend.por_empresa.find((q) => q.empresa_id === empId)
+    if (!quebra) {
+      quebra = {
+        empresa_id: empId,
+        total_vendas_bruto: 0,
+        total_devolucoes: 0,
+        base_calculo: 0,
+        valor_comissao: 0,
+        quantidade_vendas: 0,
+        quantidade_devolucoes: 0,
+      }
+      itemVend.por_empresa.push(quebra)
+    }
+    if (ehDevolucao) {
+      quebra.total_devolucoes += valorTotal
+      quebra.quantidade_devolucoes += 1
+    } else {
+      quebra.total_vendas_bruto += valorTotal
+      quebra.quantidade_vendas += 1
     }
   }
 
@@ -222,6 +295,16 @@ export async function apurarComissoes(filtros: FiltrosComissao): Promise<ItemCom
     item.total_devolucoes = Number(item.total_devolucoes.toFixed(2))
     item.valor_comissao = Number((item.base_calculo * (item.percentual_comissao / 100)).toFixed(2))
 
+    // Fechar a quebra por empresa do vendedor
+    for (const q of item.por_empresa) {
+      const baseLiqEmp = Math.max(0, q.total_vendas_bruto - q.total_devolucoes)
+      q.base_calculo = Number(baseLiqEmp.toFixed(2))
+      q.total_vendas_bruto = Number(q.total_vendas_bruto.toFixed(2))
+      q.total_devolucoes = Number(q.total_devolucoes.toFixed(2))
+      q.valor_comissao = Number((q.base_calculo * (item.percentual_comissao / 100)).toFixed(2))
+    }
+    item.por_empresa.sort((a, b) => b.base_calculo - a.base_calculo)
+
     // Ordenar vendas detalhe por data decrescente
     item.vendas_detalhe.sort((a, b) => b.numero - a.numero)
 
@@ -230,7 +313,43 @@ export async function apurarComissoes(filtros: FiltrosComissao): Promise<ItemCom
 
   resultado.sort((a, b) => b.valor_comissao - a.valor_comissao)
 
-  return resultado
+  // 5. Quebra por empresa (painel "Totais por Empresa"), a partir dos detalhes
+  const mapaEmpresa = new Map<string, TotaisComissaoPorEmpresa>()
+  for (const item of resultado) {
+    for (const q of item.por_empresa) {
+      const chave = q.empresa_id || '(sem empresa)'
+      const atual = mapaEmpresa.get(chave) || {
+        empresa_id: chave,
+        total_vendas_bruto: 0,
+        total_devolucoes: 0,
+        base_calculo: 0,
+        valor_comissao: 0,
+        quantidade_vendas: 0,
+        quantidade_devolucoes: 0,
+        quantidade_vendedores: 0,
+      }
+      atual.total_vendas_bruto += q.total_vendas_bruto
+      atual.total_devolucoes += q.total_devolucoes
+      atual.base_calculo += q.base_calculo
+      atual.valor_comissao += q.valor_comissao
+      atual.quantidade_vendas += q.quantidade_vendas
+      atual.quantidade_devolucoes += q.quantidade_devolucoes
+      atual.quantidade_vendedores += 1
+      mapaEmpresa.set(chave, atual)
+    }
+  }
+
+  const totaisPorEmpresa = Array.from(mapaEmpresa.values())
+    .map((t) => ({
+      ...t,
+      total_vendas_bruto: Number(t.total_vendas_bruto.toFixed(2)),
+      total_devolucoes: Number(t.total_devolucoes.toFixed(2)),
+      base_calculo: Number(t.base_calculo.toFixed(2)),
+      valor_comissao: Number(t.valor_comissao.toFixed(2)),
+    }))
+    .sort((a, b) => b.base_calculo - a.base_calculo)
+
+  return { comissoes: resultado, totais_por_empresa: totaisPorEmpresa }
 }
 
 /**
