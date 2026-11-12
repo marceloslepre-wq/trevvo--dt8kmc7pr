@@ -47,10 +47,20 @@ rotas, coleções e nomes de Segredos descritos aqui.
 - Tokens, `code` e `client_secret` nunca vão para log nem para resposta de rota.
 - A mesma conta do Mercado Livre não pode ser ligada a duas empresas.
 
+## Parte 10.2a — Fila de notificações
+
+- `pocketbase/migrations/0132_create_mercadolivre_notificacoes.js`: coleção `mercadolivre_notificacoes` (regras = null).
+- `pocketbase/hooks/mercadolivre_notificacoes.js`:
+  - `POST /backend/v1/mercadolivre/notificacoes` (pública): valida o aviso, descobre a empresa pela conta
+    conectada, grava com status `Pendente` e responde 200. Não chama a API do Mercado Livre
+    (exigência de resposta em até 500 ms). Avisos repetidos não são gravados de novo.
+  - `GET /backend/v1/mercadolivre/notificacoes/diagnostico` (pública): só contagens por tópico.
+- O processamento da fila ainda não existe: os avisos ficam guardados, sem efeito no sistema.
+
 ## Próximas partes (ainda não implementadas)
 
 - 10.1b Tela Configurações > Mercado Livre
-- 10.2 Webhook com fila e conferência de avisos perdidos
+- 10.2b Processamento da fila e conferência de avisos perdidos
 - 10.3 Importação de pedidos como venda
 - 10.4 NF-e do pedido, envio do XML e etiqueta
 - 10.5 Vínculo produto-anúncio e sincronização de estoque e preço
