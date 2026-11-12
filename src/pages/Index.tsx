@@ -540,7 +540,7 @@ export default function Index() {
                   .slice(0, 10)
 
                 const resultadoFluxo = await apurarFluxoCaixa({
-                  empresaId: empresaAtiva.id,
+                  empresaIds: [empresaAtiva.id],
                   dataInicio: dataInicioFluxo,
                   dataFim: dataFimFluxo,
                   agrupamento: 'dia',

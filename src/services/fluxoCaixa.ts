@@ -3,26 +3,32 @@
  * Módulo: financeiro_bancos
  *
  * Regras:
- * - Filtros: período (início e fim), contas financeiras (padrão todas da empresa), agrupamento (dia, semana, mês)
+ * - Filtros: período (início e fim), empresas (multiempresa — filtro OR), contas financeiras
+ *   (padrão todas das empresas marcadas), agrupamento (dia, semana, mês)
  * - "Incluir vencidos em aberto": somados no 1º período projetado
  * - Transferências entre contas selecionadas são NEUTRALIZADAS (não contam como entrada nem saída)
+ *   e só dentro da MESMA empresa (nunca cruza contas de lojas diferentes)
  * - Períodos passados: só realizados
  * - Período atual e futuros: realizados + previstos (títulos em aberto de contas_pagar e contas_receber)
- * - Saldo inicial computado da conta na data_inicio
- * - Composição detalhada por período (títulos e movimentações) para modal drill-down
+ * - Saldo inicial computado por CONTA financeira: contas de empresas diferentes nunca somam
+ *   seu saldo na mesma linha (quebra por empresa segregada no ResumoFluxoCaixa.porEmpresa)
  */
 
 import pb from '@/lib/pocketbase/client'
 import { ContaFinanceira, listarContasFinanceiras } from '@/services/contasFinanceiras'
 import { MovimentoExtratoItem } from '@/services/movimentacoesExtratos'
+import { montarFiltroEmpresas } from '@/services/filtroMultiempresa'
 
 export type AgrupamentoFluxo = 'dia' | 'semana' | 'mes'
 
 export interface FiltrosFluxoCaixa {
-  empresaId: string
+  /** @deprecated use empresaIds (multiempresa). Mantido para retrocompatibilidade. */
+  empresaId?: string
+  /** TODAS as empresas marcadas (o escopo de assinante é garantido pelas regras de acesso) */
+  empresaIds: string[]
   dataInicio: string // YYYY-MM-DD
   dataFim: string // YYYY-MM-DD
-  contasIds?: string[] // vazio ou indefinido = todas da empresa
+  contasIds?: string[] // vazio ou indefinido = todas das empresas marcadas
   agrupamento: AgrupamentoFluxo
   incluirVencidos: boolean
 }
@@ -37,6 +43,9 @@ export interface ItemComposicaoFluxo {
   valor: number
   origem: string
   status?: string
+  empresa_id?: string
+  conta_financeira_id?: string
+  contaNome?: string
 }
 
 export interface PeriodoFluxoCaixa {
@@ -59,6 +68,29 @@ export interface PeriodoFluxoCaixa {
   itens: ItemComposicaoFluxo[]
 }
 
+/** Quebra de um período por empresa (para o painel "Totais por Empresa") */
+export interface PeriodoPorEmpresa {
+  empresa_id: string
+  saldoInicial: number
+  entradasRealizadas: number
+  saidasRealizadas: number
+  aReceberPrevisto: number
+  aPagarPrevisto: number
+  totalEntradas: number
+  totalSaidas: number
+  saldoLiquido: number
+  saldoFinalProjetado: number
+}
+
+/** Saldo por CONTA financeira — cada conta carrega o saldo da SUA empresa (nunca somado a outra) */
+export interface SaldoPorConta {
+  conta_id: string
+  empresa_id: string
+  nome: string
+  tipo: string
+  saldoEmDataInicio: number
+}
+
 export interface ResumoFluxoCaixa {
   saldoInicialGeral: number
   totalEntradasRealizadas: number
@@ -67,7 +99,12 @@ export interface ResumoFluxoCaixa {
   totalAPagarPrevisto: number
   saldoFinalGeral: number
   periodos: PeriodoFluxoCaixa[]
+  /** Quebra por empresa por período (mesma ordem de `periodos`) */
+  porEmpresa: PeriodoPorEmpresa[][]
+  /** Saldo na data inicial por CONTA, segregado por empresa */
+  saldosPorConta: SaldoPorConta[]
   contasAnalisadas: ContaFinanceira[]
+  empresaIds: string[]
 }
 
 /**
@@ -209,58 +246,77 @@ function gerarBuckets(
   return buckets
 }
 
+/** Estrutura interna de acumulação por empresa por período */
+interface AcumEmpresa {
+  saldoInicial: number
+  entradasRealizadas: number
+  saidasRealizadas: number
+  aReceberPrevisto: number
+  aPagarPrevisto: number
+}
+
 /**
- * Apura o Fluxo de Caixa completo
+ * Apura o Fluxo de Caixa completo (multiempresa: TODAS as empresas marcadas via filtro OR)
  */
 export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<ResumoFluxoCaixa> {
-  const { empresaId, dataInicio, dataFim, contasIds, agrupamento, incluirVencidos } = filtros
+  const { dataInicio, dataFim, contasIds, agrupamento, incluirVencidos } = filtros
 
-  // 1. Obter contas da empresa ativa
-  const todasContas = await listarContasFinanceiras({
-    empresa_id: empresaId,
-    situacao: 'ativos',
-  })
+  // Multiempresa: TODAS as empresas marcadas (nunca colapsa na primeira)
+  const empresaIdsEfetivas = Array.from(
+    new Set(
+      [filtros.empresaIds || [], filtros.empresaId ? [filtros.empresaId] : []]
+        .flat()
+        .filter(Boolean),
+    ),
+  )
+  if (empresaIdsEfetivas.length === 0) {
+    throw new Error('Selecione pelo menos uma empresa para apurar o fluxo de caixa.')
+  }
+
+  const filtroEmpresas = montarFiltroEmpresas(empresaIdsEfetivas)
+
+  // 1. Contas financeiras das EMPRESAS MARCADAS (saldo por conta, segregado por empresa)
+  const todasContas = await listarContasFinanceiras({ situacao: 'ativos' })
+  const setEmpresas = new Set(empresaIdsEfetivas)
+  const contasDasEmpresas = todasContas.filter((c) => setEmpresas.has(c.empresa_id))
 
   const contasFiltradas =
     contasIds && contasIds.length > 0
-      ? todasContas.filter((c) => contasIds.includes(c.id))
-      : todasContas
+      ? contasDasEmpresas.filter((c) => contasIds.includes(c.id))
+      : contasDasEmpresas
 
   const setContasIds = new Set(contasFiltradas.map((c) => c.id))
 
-  // 2. Buscar TODAS as movimentações financeiras da empresa até dataFim
-  // Necessário para calcular exatamente o saldo_inicial em dataInicio e neutralizar transferências internas
+  // 2. Movimentações financeiras de TODAS as empresas marcadas até dataFim
   const movs = await pb.collection('movimentacoes_financeiras').getFullList<MovimentoExtratoItem>({
-    filter: `empresa_id = '${empresaId}' && ativo = true`,
+    filter: `${filtroEmpresas} && ativo = true`,
     sort: 'data_movimento,created',
     expand: 'conta_financeira_id',
     requestKey: null,
   })
 
-  // 3. Buscar títulos a pagar em aberto ou pagos parciais
-  // status: 'Em aberto' ou 'Pago parcial'
+  // 3. Títulos a pagar em aberto ou pagos parciais (todas as empresas marcadas)
   const titulosPagar = await pb.collection('contas_pagar').getFullList<any>({
-    filter: `empresa_id = '${empresaId}' && ativo = true && status != 'Pago' && status != 'Cancelado'`,
+    filter: `${filtroEmpresas} && ativo = true && status != 'Pago' && status != 'Cancelado'`,
     sort: 'data_vencimento',
     expand: 'fornecedor_id,plano_conta_id',
     requestKey: null,
   })
 
-  // 4. Buscar títulos a receber em aberto ou parciais
+  // 4. Títulos a receber em aberto ou parciais
   const titulosReceber = await pb.collection('contas_receber').getFullList<any>({
-    filter: `empresa_id = '${empresaId}' && ativo = true && status != 'Recebido' && status != 'Cancelado'`,
+    filter: `${filtroEmpresas} && ativo = true && status != 'Recebido' && status != 'Cancelado'`,
     sort: 'data_vencimento',
     expand: 'cliente_id,plano_conta_id',
     requestKey: null,
   })
 
-  // 5. Apurar Saldo Inicial das contas na dataInicio:
-  // Saldo inicial de cada conta cadastrado + movimentos anteriores a dataInicio
+  // 5. Apurar Saldo Inicial por CONTA na dataInicio (saldo por empresa, nunca somado entre lojas):
   let saldoInicialGeral = 0
-  const saldosPorConta = new Map<string, number>()
+  const saldosPorContaMap = new Map<string, number>() // conta_id -> saldo em dataInicio
 
   contasFiltradas.forEach((c) => {
-    saldosPorConta.set(c.id, Number(c.saldo_inicial) || 0)
+    saldosPorContaMap.set(c.id, Number(c.saldo_inicial) || 0)
   })
 
   for (const m of movs) {
@@ -271,17 +327,32 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
     const valor = Number(m.valor) || 0
 
     if (dataM < dataInicio) {
-      const atual = saldosPorConta.get(m.conta_financeira_id) || 0
+      const atual = saldosPorContaMap.get(m.conta_financeira_id) || 0
       if (m.tipo === 'Entrada') {
-        saldosPorConta.set(m.conta_financeira_id, Number((atual + valor).toFixed(2)))
+        saldosPorContaMap.set(m.conta_financeira_id, Number((atual + valor).toFixed(2)))
       } else {
-        saldosPorConta.set(m.conta_financeira_id, Number((atual - valor).toFixed(2)))
+        saldosPorContaMap.set(m.conta_financeira_id, Number((atual - valor).toFixed(2)))
       }
     }
   }
 
-  for (const val of saldosPorConta.values()) {
-    saldoInicialGeral += val
+  // Quebra do saldo inicial por empresa: cada conta só soma no saldo da SUA empresa
+  const saldoInicialPorEmpresa = new Map<string, number>()
+  const saldosPorContaLista: SaldoPorConta[] = []
+  for (const c of contasFiltradas) {
+    const saldo = saldosPorContaMap.get(c.id) || 0
+    saldoInicialPorEmpresa.set(
+      c.empresa_id,
+      Number(((saldoInicialPorEmpresa.get(c.empresa_id) || 0) + saldo).toFixed(2)),
+    )
+    saldoInicialGeral += saldo
+    saldosPorContaLista.push({
+      conta_id: c.id,
+      empresa_id: c.empresa_id,
+      nome: c.nome,
+      tipo: c.tipo,
+      saldoEmDataInicio: Number(saldo.toFixed(2)),
+    })
   }
   saldoInicialGeral = Number(saldoInicialGeral.toFixed(2))
 
@@ -296,34 +367,44 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
       totalAPagarPrevisto: 0,
       saldoFinalGeral: saldoInicialGeral,
       periodos: [],
+      porEmpresa: [],
+      saldosPorConta: saldosPorContaLista,
       contasAnalisadas: contasFiltradas,
+      empresaIds: empresaIdsEfetivas,
     }
   }
 
   const hojeIso = new Date().toISOString().slice(0, 10)
 
   // Mapear transferências entre contas que estão no filtro para neutralizar
-  // Se uma transferência tem origem e destino pertencentes a setContasIds, ambas pontas devem ser neutralizadas
+  // IMPORTANTE: a neutralização é por transferência_id e SÓ quando AMBAS as pontas estão no
+  // conjunto de contas E na MESMA empresa (transferência entre lojas não é neutralizada —
+  // é saída na loja de origem e entrada na de destino).
   const transfEntreContasSelecionadas = new Set<string>()
-  const transfMap = new Map<string, Set<string>>() // transfId -> Set de conta_ids
+  const transfMap = new Map<string, { contas: Set<string>; empresa: string }>()
 
   for (const m of movs) {
     if (m.transferencia_id && !m.estornado) {
-      const setC = transfMap.get(m.transferencia_id) || new Set<string>()
-      setC.add(m.conta_financeira_id)
-      transfMap.set(m.transferencia_id, setC)
+      const atual = transfMap.get(m.transferencia_id)
+      if (atual) {
+        atual.contas.add(m.conta_financeira_id)
+      } else {
+        const contas = new Set<string>()
+        contas.add(m.conta_financeira_id)
+        transfMap.set(m.transferencia_id, { contas, empresa: m.empresa_id })
+      }
     }
   }
 
-  for (const [tId, setC] of transfMap.entries()) {
-    // Se há pelo menos 2 contas do grupo selecionado envolvidas na transferência, neutraliza
-    const contasDentro = Array.from(setC).filter((id) => setContasIds.has(id))
-    if (contasDentro.length >= 2) {
-      transfEntreContasSelecionadas.add(tId)
+  for (const [transfId, info] of transfMap.entries()) {
+    // Só neutraliza quando TODAS as pontas estão nas contas filtradas e na MESMA empresa
+    const todasDentro = Array.from(info.contas).every((id) => setContasIds.has(id))
+    if (info.empresa && todasDentro && info.contas.size >= 2) {
+      transfEntreContasSelecionadas.add(transfId)
     }
   }
 
-  // 7. Estruturar cada período
+  // 7. Estruturar cada período (com acumulação por empresa)
   const periodos: PeriodoFluxoCaixa[] = buckets.map((b) => {
     const ehPassado = b.fim < hojeIso
     const ehAtual = b.inicio <= hojeIso && b.fim >= hojeIso
@@ -350,6 +431,21 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
     }
   })
 
+  // Acumuladores por empresa (por período): matrizes paralelas às periods
+  const acumPorEmpresa: Map<string, AcumEmpresa>[] = periodos.map(() => {
+    const m = new Map<string, AcumEmpresa>()
+    for (const eid of empresaIdsEfetivas) {
+      m.set(eid, {
+        saldoInicial: 0,
+        entradasRealizadas: 0,
+        saidasRealizadas: 0,
+        aReceberPrevisto: 0,
+        aPagarPrevisto: 0,
+      })
+    }
+    return m
+  })
+
   // Função auxiliar para encontrar o período de uma data
   function encontrarPeriodo(dataIso: string): PeriodoFluxoCaixa | undefined {
     return periodos.find((p) => dataIso >= p.dataInicioPeriodo && dataIso <= p.dataFimPeriodo)
@@ -360,7 +456,7 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
     if (!setContasIds.has(m.conta_financeira_id)) continue
     if (m.estornado) continue
 
-    // Se é transferência entre contas filtradas, NEUTRALIZA
+    // Se é transferência entre contas filtradas da MESMA empresa, NEUTRALIZA
     if (m.transferencia_id && transfEntreContasSelecionadas.has(m.transferencia_id)) {
       continue
     }
@@ -374,6 +470,16 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
     const valor = Number(m.valor) || 0
     const nomeConta = m.expand?.conta_financeira_id?.nome || 'Conta'
 
+    const idx = periodos.indexOf(p)
+    const empAcum = acumPorEmpresa[idx]?.get(m.empresa_id)
+    if (empAcum) {
+      if (m.tipo === 'Entrada') {
+        empAcum.entradasRealizadas = Number((empAcum.entradasRealizadas + valor).toFixed(2))
+      } else {
+        empAcum.saidasRealizadas = Number((empAcum.saidasRealizadas + valor).toFixed(2))
+      }
+    }
+
     if (m.tipo === 'Entrada') {
       p.entradasRealizadas = Number((p.entradasRealizadas + valor).toFixed(2))
       p.itens.push({
@@ -385,6 +491,9 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
         documentoNumero: m.documento_numero,
         valor,
         origem: m.origem,
+        empresa_id: m.empresa_id,
+        conta_financeira_id: m.conta_financeira_id,
+        contaNome: nomeConta,
       })
     } else {
       p.saidasRealizadas = Number((p.saidasRealizadas + valor).toFixed(2))
@@ -397,6 +506,9 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
         documentoNumero: m.documento_numero,
         valor,
         origem: m.origem,
+        empresa_id: m.empresa_id,
+        conta_financeira_id: m.conta_financeira_id,
+        contaNome: nomeConta,
       })
     }
   }
@@ -415,6 +527,11 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
     // Vencidos antes de hoje / antes de dataInicio
     if (venc < hojeIso || venc < dataInicio) {
       if (incluirVencidos && primeiroPeriodo) {
+        const idx = 0
+        const empAcum = acumPorEmpresa[idx].get(tit.empresa_id)
+        if (empAcum) {
+          empAcum.aReceberPrevisto = Number((empAcum.aReceberPrevisto + saldo).toFixed(2))
+        }
         primeiroPeriodo.aReceberPrevisto = Number(
           (primeiroPeriodo.aReceberPrevisto + saldo).toFixed(2),
         )
@@ -428,6 +545,7 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
           valor: saldo,
           origem: tit.origem || 'Manual',
           status: 'Vencido',
+          empresa_id: tit.empresa_id,
         })
       }
       continue
@@ -440,6 +558,12 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
       // Períodos passados não recebem previstos
       if (p.ehPassado) continue
 
+      const idx = periodos.indexOf(p)
+      const empAcum = acumPorEmpresa[idx].get(tit.empresa_id)
+      if (empAcum) {
+        empAcum.aReceberPrevisto = Number((empAcum.aReceberPrevisto + saldo).toFixed(2))
+      }
+
       p.aReceberPrevisto = Number((p.aReceberPrevisto + saldo).toFixed(2))
       p.itens.push({
         id: tit.id,
@@ -451,6 +575,7 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
         valor: saldo,
         origem: tit.origem || 'Manual',
         status: tit.status,
+        empresa_id: tit.empresa_id,
       })
     }
   }
@@ -467,6 +592,10 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
     // Vencidos antes de hoje / antes de dataInicio
     if (venc < hojeIso || venc < dataInicio) {
       if (incluirVencidos && primeiroPeriodo) {
+        const empAcum = acumPorEmpresa[0].get(tit.empresa_id)
+        if (empAcum) {
+          empAcum.aPagarPrevisto = Number((empAcum.aPagarPrevisto + saldo).toFixed(2))
+        }
         primeiroPeriodo.aPagarPrevisto = Number((primeiroPeriodo.aPagarPrevisto + saldo).toFixed(2))
         primeiroPeriodo.itens.push({
           id: tit.id,
@@ -478,6 +607,7 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
           valor: saldo,
           origem: tit.origem || 'Manual',
           status: 'Vencido',
+          empresa_id: tit.empresa_id,
         })
       }
       continue
@@ -488,6 +618,12 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
     const p = encontrarPeriodo(venc)
     if (p) {
       if (p.ehPassado) continue
+
+      const idx = periodos.indexOf(p)
+      const empAcum = acumPorEmpresa[idx].get(tit.empresa_id)
+      if (empAcum) {
+        empAcum.aPagarPrevisto = Number((empAcum.aPagarPrevisto + saldo).toFixed(2))
+      }
 
       p.aPagarPrevisto = Number((p.aPagarPrevisto + saldo).toFixed(2))
       p.itens.push({
@@ -500,12 +636,20 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
         valor: saldo,
         origem: tit.origem || 'Manual',
         status: tit.status,
+        empresa_id: tit.empresa_id,
       })
     }
   }
 
   // 11. Calcular Saldo Inicial, Totais e Saldo Final encadeados por período
+  // (consolidado geral = soma das empresas; quebra por empresa calculada em paralelo)
   let saldoAcumulado = saldoInicialGeral
+  const saldoAcumPorEmpresa = new Map<string, number>()
+  for (const eid of empresaIdsEfetivas) {
+    saldoAcumPorEmpresa.set(eid, saldoInicialPorEmpresa.get(eid) || 0)
+  }
+
+  const porEmpresa: PeriodoPorEmpresa[][] = []
   let totalEntradasRealizadas = 0
   let totalSaidasRealizadas = 0
   let totalAReceberPrevisto = 0
@@ -532,6 +676,39 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
     p.saldoLiquido = Number((p.totalEntradas - p.totalSaidas).toFixed(2))
     p.saldoFinalProjetado = Number((p.saldoInicial + p.saldoLiquido).toFixed(2))
     saldoAcumulado = p.saldoFinalProjetado
+
+    // Quebra por empresa deste período (consistente com a regra passado/atual/futuro)
+    const linhaEmpresa: PeriodoPorEmpresa[] = []
+    for (const eid of empresaIdsEfetivas) {
+      const acum = acumPorEmpresa[i].get(eid)
+      if (!acum) continue
+      const saldoInicialEmp = saldoAcumPorEmpresa.get(eid) || 0
+
+      const totalEntradasEmp = p.ehPassado
+        ? acum.entradasRealizadas
+        : Number((acum.entradasRealizadas + acum.aReceberPrevisto).toFixed(2))
+      const totalSaidasEmp = p.ehPassado
+        ? acum.saidasRealizadas
+        : Number((acum.saidasRealizadas + acum.aPagarPrevisto).toFixed(2))
+      const saldoLiquidoEmp = Number((totalEntradasEmp - totalSaidasEmp).toFixed(2))
+      const saldoFinalEmp = Number((saldoInicialEmp + saldoLiquidoEmp).toFixed(2))
+
+      linhaEmpresa.push({
+        empresa_id: eid,
+        saldoInicial: Number(saldoInicialEmp.toFixed(2)),
+        entradasRealizadas: acum.entradasRealizadas,
+        saidasRealizadas: acum.saidasRealizadas,
+        aReceberPrevisto: acum.aReceberPrevisto,
+        aPagarPrevisto: acum.aPagarPrevisto,
+        totalEntradas: totalEntradasEmp,
+        totalSaidas: totalSaidasEmp,
+        saldoLiquido: saldoLiquidoEmp,
+        saldoFinalProjetado: saldoFinalEmp,
+      })
+
+      saldoAcumPorEmpresa.set(eid, saldoFinalEmp)
+    }
+    porEmpresa.push(linhaEmpresa)
   }
 
   return {
@@ -542,6 +719,9 @@ export async function apurarFluxoCaixa(filtros: FiltrosFluxoCaixa): Promise<Resu
     totalAPagarPrevisto: Number(totalAPagarPrevisto.toFixed(2)),
     saldoFinalGeral: Number(saldoAcumulado.toFixed(2)),
     periodos,
+    porEmpresa,
+    saldosPorConta: saldosPorContaLista,
     contasAnalisadas: contasFiltradas,
+    empresaIds: empresaIdsEfetivas,
   }
 }

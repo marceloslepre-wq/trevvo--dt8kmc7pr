@@ -2,13 +2,15 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import {
   apurarFluxoCaixa,
-  FiltrosFluxoCaixa,
   ResumoFluxoCaixa,
   PeriodoFluxoCaixa,
+  PeriodoPorEmpresa,
   ItemComposicaoFluxo,
   AgrupamentoFluxo,
 } from '@/services/fluxoCaixa'
 import { ContaFinanceira, listarContasFinanceiras } from '@/services/contasFinanceiras'
+import { useEmpresasAcessiveis } from '@/contexts/EmpresaContext'
+import { buscarNomesEmpresas } from '@/services/filtroMultiempresa'
 import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
 import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import { toast } from '@/hooks/use-toast'
@@ -63,6 +65,7 @@ import {
   ArrowUpRight,
   AlertTriangle,
   Filter,
+  Building2,
 } from 'lucide-react'
 
 const chartConfig: ChartConfig = {
@@ -82,6 +85,7 @@ const chartConfig: ChartConfig = {
 
 export const FluxoCaixaPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
+  const { empresasAcessiveis } = useEmpresasAcessiveis()
 
   // Datas padrão: Hoje até 90 dias à frente
   const hoje = new Date()
@@ -113,8 +117,23 @@ export const FluxoCaixaPage: React.FC = () => {
 
   const dataInicio = filtros.periodo?.dataInicio || hojeIso
   const dataFim = filtros.periodo?.dataFim || d90Iso
-  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+  // Multiempresa: usar TODAS as empresas marcadas, não só a primeira
+  const empresasEfetivas =
+    filtros.empresas_ids && filtros.empresas_ids.length > 0
+      ? filtros.empresas_ids
+      : empresaAtiva?.id
+        ? [empresaAtiva.id]
+        : []
+  const empresaIdEfetiva = empresasEfetivas[0] || ''
+  // "Ver só o total consolidado" (FiltrosRelatorio): oculta a quebra por empresa
+  const verSoTotal = filtros.ver_so_total === true
   const contasSelecionadasIds = filtros.contas_financeiras_ids || []
+
+  // Nomes das empresas para o painel "Totais por Empresa"
+  const [nomesEmpresas, setNomesEmpresas] = useState<Record<string, string>>({})
+  useEffect(() => {
+    buscarNomesEmpresas(empresasEfetivas).then(setNomesEmpresas)
+  }, [empresasEfetivas.join(',')])
 
   const [resumo, setResumo] = useState<ResumoFluxoCaixa | null>(null)
   const [carregando, setCarregando] = useState<boolean>(false)
@@ -124,22 +143,28 @@ export const FluxoCaixaPage: React.FC = () => {
   const [periodoSelecionado, setPeriodoSelecionado] = useState<PeriodoFluxoCaixa | null>(null)
   const [filtroTipoModal, setFiltroTipoModal] = useState<string>('todos')
 
-  // Carregar contas financeiras da empresa
+  // Carregar contas financeiras das EMPRESAS MARCADAS (multiempresa)
   useEffect(() => {
-    if (empresaIdEfetiva) {
-      listarContasFinanceiras({ empresa_id: empresaIdEfetiva, situacao: 'ativos' }).then((res) => {
-        setContasDisponiveis(res)
-      })
+    let vivo = true
+    Promise.all(
+      empresasEfetivas.map((eid) =>
+        listarContasFinanceiras({ empresa_id: eid, situacao: 'ativos' }),
+      ),
+    ).then((listas) => {
+      if (vivo) setContasDisponiveis(listas.flat())
+    })
+    return () => {
+      vivo = false
     }
-  }, [empresaIdEfetiva])
+  }, [empresasEfetivas.join(',')])
 
   // Buscar apuração do fluxo
   const carregarFluxo = useCallback(async () => {
-    if (!empresaIdEfetiva) return
+    if (empresasEfetivas.length === 0) return
     try {
       setCarregando(true)
       const res = await apurarFluxoCaixa({
-        empresaId: empresaIdEfetiva,
+        empresaIds: empresasEfetivas,
         dataInicio,
         dataFim,
         agrupamento,
@@ -161,7 +186,7 @@ export const FluxoCaixaPage: React.FC = () => {
       setCarregando(false)
     }
   }, [
-    empresaIdEfetiva,
+    empresasEfetivas.join(','),
     dataInicio,
     dataFim,
     agrupamento,
@@ -171,10 +196,10 @@ export const FluxoCaixaPage: React.FC = () => {
   ])
 
   useEffect(() => {
-    if (empresaAtiva?.id && contasDisponiveis.length > 0) {
+    if (empresasEfetivas.length > 0 && contasDisponiveis.length > 0) {
       carregarFluxo()
     }
-  }, [carregarFluxo, contasDisponiveis.length, empresaIdEfetiva])
+  }, [carregarFluxo, contasDisponiveis.length, empresasEfetivas.join(',')])
 
   // Toggle conta no filtro
   const handleToggleConta = (contaId: string) => {
@@ -414,6 +439,101 @@ export const FluxoCaixaPage: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Quebra por empresa (oculta quando "Ver só o total consolidado" está marcado) */}
+      {!verSoTotal && (resumo?.periodos_por_empresa?.length || 0) > 0 && (
+        <Card className="border-slate-200 shadow-xs">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <h3 className="text-sm font-semibold text-slate-800">Totais por Empresa</h3>
+              <Badge variant="outline" className="text-[10px]">
+                {empresasEfetivas.length > 1
+                  ? `${empresasEfetivas.length} empresas no filtro`
+                  : '1 empresa no filtro'}
+              </Badge>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
+                    <th className="py-2 px-3">Empresa</th>
+                    <th className="py-2 px-3 text-right">Saldo Inicial</th>
+                    <th className="py-2 px-3 text-right">Total Entradas</th>
+                    <th className="py-2 px-3 text-right">Total Saídas</th>
+                    <th className="py-2 px-3 text-right">Líquido</th>
+                    <th className="py-2 px-3 text-right">Saldo Projetado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {resumo!.periodos_por_empresa.map((pe) => {
+                    const totalEntradas = pe.periodos.reduce((acc, p) => acc + p.totalEntradas, 0)
+                    const totalSaidas = pe.periodos.reduce((acc, p) => acc + p.totalSaidas, 0)
+                    const liquido = totalEntradas - totalSaidas
+                    const saldoFinal =
+                      pe.periodos.length > 0
+                        ? pe.periodos[pe.periodos.length - 1].saldoFinalProjetado
+                        : pe.saldoInicial
+                    return (
+                      <tr key={pe.empresa_id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-2 px-3 font-medium text-slate-800">
+                          {nomesEmpresas[pe.empresa_id] || pe.empresa_id}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-slate-700">
+                          R$ {pe.saldoInicial.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-emerald-700">
+                          R$ {totalEntradas.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-rose-700">
+                          R$ {totalSaidas.toFixed(2)}
+                        </td>
+                        <td
+                          className={`py-2 px-3 text-right font-mono font-medium ${
+                            liquido >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                          }`}
+                        >
+                          R$ {liquido.toFixed(2)}
+                        </td>
+                        <td
+                          className={`py-2 px-3 text-right font-mono font-semibold ${
+                            saldoFinal >= 0 ? 'text-slate-900' : 'text-rose-700'
+                          }`}
+                        >
+                          R$ {saldoFinal.toFixed(2)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+                    <td className="py-2 px-3 text-slate-900">Total Geral</td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      R$ {resumo!.saldoInicialGeral.toFixed(2)}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-emerald-700">
+                      R${' '}
+                      {(resumo!.totalEntradasRealizadas + resumo!.totalAReceberPrevisto).toFixed(2)}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-rose-700">
+                      R$ {(resumo!.totalSaidasRealizadas + resumo!.totalAPagarPrevisto).toFixed(2)}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      R$ {resumo!.saldoLiquidoGeral.toFixed(2)}
+                    </td>
+                    <td
+                      className={`py-2 px-3 text-right font-mono font-bold ${
+                        resumo!.saldoFinalGeral >= 0 ? 'text-slate-900' : 'text-rose-700'
+                      }`}
+                    >
+                      R$ {resumo!.saldoFinalGeral.toFixed(2)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Gráfico do Fluxo de Caixa (Barras de Entradas/Saídas + Linha de Saldo Projetado) */}
