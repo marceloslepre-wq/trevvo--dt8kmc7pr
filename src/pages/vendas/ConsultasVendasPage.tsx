@@ -25,9 +25,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { useEmpresaAtiva, useEmpresasAcessiveis } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useToast } from '@/hooks/use-toast'
+import { Building2 } from 'lucide-react'
+import { TotaisPorEmpresaVendas } from '@/services/consultasVendas'
 import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
 import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
 import {
@@ -42,6 +44,7 @@ import {
 
 export const ConsultasVendasPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
+  const { empresasAcessiveis } = useEmpresasAcessiveis()
   const { pode } = usePermissoes()
   const { toast } = useToast()
 
@@ -71,7 +74,14 @@ export const ConsultasVendasPage: React.FC = () => {
 
   const dataInicioEfetiva = filtros.periodo?.dataInicio || primeiroDiaMes
   const dataFimEfetiva = filtros.periodo?.dataFim || hojeIso
-  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+  // Multiempresa: usar TODAS as empresas marcadas, não só a primeira (padrão Itens Comprados)
+  const empresasEfetivas: string[] = (filtros.empresas_ids || []).filter(Boolean).length
+    ? (filtros.empresas_ids || []).filter(Boolean)
+    : empresaAtiva?.id
+      ? [empresaAtiva.id]
+      : []
+  // "Ver só o total consolidado": oculta o painel de quebra por empresa
+  const verSoTotal = filtros.ver_so_total === true
 
   // Sub-aba dentro de período: 'resumo' | 'dia' | 'formas' | 'vendedores' | 'terminais'
   const [subAbaPeriodo, setSubAbaPeriodo] = useState<
@@ -89,20 +99,20 @@ export const ConsultasVendasPage: React.FC = () => {
 
   // Carregar dados de acordo com a aba ativa
   const carregarDados = useCallback(async () => {
-    if (!empresaIdEfetiva) return
+    if (empresasEfetivas.length === 0) return
     setCarregando(true)
 
     try {
       if (abaAtiva === 'periodo') {
         const res = await consultarVendasPorPeriodo({
-          empresa_id: empresaIdEfetiva,
+          empresa_ids: empresasEfetivas,
           data_inicio: dataInicioEfetiva,
           data_fim: dataFimEfetiva,
         })
         setDadosPeriodo(res)
       } else if (abaAtiva === 'abc') {
         const res = await consultarCurvaAbcProdutos({
-          empresa_id: empresaIdEfetiva,
+          empresa_ids: empresasEfetivas,
           data_inicio: dataInicioEfetiva,
           data_fim: dataFimEfetiva,
           criterio: criterioAbc,
@@ -111,7 +121,7 @@ export const ConsultasVendasPage: React.FC = () => {
       } else if (abaAtiva === 'margem') {
         if (!podeVerMargem) return
         const res = await consultarMargemVendas({
-          empresa_id: empresaIdEfetiva,
+          empresa_ids: empresasEfetivas,
           data_inicio: dataInicioEfetiva,
           data_fim: dataFimEfetiva,
         })
@@ -127,7 +137,7 @@ export const ConsultasVendasPage: React.FC = () => {
       setCarregando(false)
     }
   }, [
-    empresaIdEfetiva,
+    empresasEfetivas,
     abaAtiva,
     dataInicioEfetiva,
     dataFimEfetiva,
@@ -139,6 +149,50 @@ export const ConsultasVendasPage: React.FC = () => {
   useEffect(() => {
     carregarDados()
   }, [carregarDados])
+
+  // Nomes das empresas acessíveis (padrão Itens Comprados)
+  const nomesEmpresas = useMemo(() => {
+    const mapa: Record<string, string> = {}
+    for (const e of empresasAcessiveis || []) {
+      mapa[e.id] = e.nome_fantasia || e.razao_social || e.id
+    }
+    return mapa
+  }, [empresasAcessiveis])
+
+  // Quebra por empresa com Total Geral (período e curva ABC)
+  const quebraPorEmpresa = useMemo(() => {
+    const mapa = new Map<string, TotaisPorEmpresaVendas>()
+    const linhas: TotaisPorEmpresaVendas[] = [
+      ...(dadosPeriodo?.totais_por_empresa || []),
+      ...(dadosAbc?.totais_por_empresa || []),
+    ]
+    for (const t of linhas) {
+      const chave = t.empresa_id || '(sem empresa)'
+      const atual =
+        mapa.get(chave) ||
+        ({
+          empresa_id: chave,
+          valor_total: 0,
+          quantidade_vendas: 0,
+          valor_devolucoes: 0,
+          valor_liquido: 0,
+        } as TotaisPorEmpresaVendas)
+      atual.valor_total += t.valor_total || 0
+      atual.quantidade_vendas += t.quantidade_vendas || 0
+      atual.valor_devolucoes += t.valor_devolucoes || 0
+      atual.valor_liquido += t.valor_liquido || 0
+      mapa.set(chave, atual)
+    }
+    return {
+      linhas: Array.from(mapa.values()).sort((a, b) => b.valor_total - a.valor_total),
+      totalGeral: {
+        valor_total: dadosPeriodo?.totais.valor_total || 0,
+        quantidade_vendas: dadosPeriodo?.totais.quantidade_vendas || 0,
+        valor_devolucoes: dadosPeriodo?.totais.valor_devolucoes || 0,
+        valor_liquido: dadosPeriodo?.totais.valor_liquido || 0,
+      },
+    }
+  }, [dadosPeriodo, dadosAbc])
 
   // Exportadores CSV
   const handleExportarCsvPeriodo = () => {
@@ -348,6 +402,95 @@ export const ConsultasVendasPage: React.FC = () => {
           Margem por Venda e Produto
         </Button>
       </div>
+
+      {/* Totais por Empresa (oculto quando "Ver só o total consolidado" está marcado) */}
+      {!verSoTotal && empresasEfetivas.length > 1 && quebraPorEmpresa.linhas.length > 0 && (
+        <Card className="border-slate-200 shadow-xs">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <h3 className="text-sm font-semibold text-slate-800">Totais por Empresa</h3>
+              <Badge variant="outline" className="text-[10px]">
+                {empresasEfetivas.length} empresas no filtro
+              </Badge>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
+                    <th className="py-2 px-3">Empresa</th>
+                    <th className="py-2 px-3 text-right">Qtd Vendas</th>
+                    <th className="py-2 px-3 text-right">Valor Bruto</th>
+                    <th className="py-2 px-3 text-right">Devoluções</th>
+                    <th className="py-2 px-3 text-right">Valor Líquido</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {quebraPorEmpresa.linhas.map((l) => (
+                    <tr key={l.empresa_id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2 px-3 font-medium text-slate-800">
+                        {nomesEmpresas[l.empresa_id] ||
+                          (l.empresa_id === '(sem empresa)' ? 'Sem empresa' : l.empresa_id)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        {l.quantidade_vendas}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        R${' '}
+                        {l.valor_total.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-red-600">
+                        R${' '}
+                        {l.valor_devolucoes.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-700">
+                        R${' '}
+                        {l.valor_liquido.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+                    <td className="py-2 px-3 text-slate-900">Total Geral</td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      {quebraPorEmpresa.totalGeral.quantidade_vendas}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      R${' '}
+                      {quebraPorEmpresa.totalGeral.valor_total.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-red-600">
+                      R${' '}
+                      {quebraPorEmpresa.totalGeral.valor_devolucoes.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-emerald-700">
+                      R${' '}
+                      {quebraPorEmpresa.totalGeral.valor_liquido.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* CONTEÚDO DA ABA 1: Vendas por Período */}
       {abaAtiva === 'periodo' && dadosPeriodo && (
@@ -581,6 +724,138 @@ export const ConsultasVendasPage: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Quebra por empresa (oculta quando "Ver só o total consolidado" está marcado) */}
+      {abaAtiva === 'periodo' &&
+        !verSoTotal &&
+        dadosPeriodo &&
+        dadosPeriodo.totais_por_empresa.length > 0 && (
+          <Card className="border-slate-200 shadow-xs">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Building2 className="h-4 w-4 text-blue-600" />
+                <h3 className="text-sm font-semibold text-slate-800">Totais por Empresa</h3>
+                <Badge variant="outline" className="text-[10px]">
+                  {empresasEfetivas.length > 1
+                    ? `${empresasEfetivas.length} empresas no filtro`
+                    : '1 empresa no filtro'}
+                </Badge>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
+                      <th className="py-2 px-3">Empresa</th>
+                      <th className="py-2 px-3 text-right">Vendas</th>
+                      <th className="py-2 px-3 text-right">Valor Bruto</th>
+                      <th className="py-2 px-3 text-right">Devoluções</th>
+                      <th className="py-2 px-3 text-right">Valor Líquido</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {dadosPeriodo.totais_por_empresa.map((e) => (
+                      <tr key={e.empresa_id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-2 px-3 font-medium text-slate-800">
+                          {nomesEmpresas[e.empresa_id] ||
+                            (e.empresa_id === '(sem empresa)' ? 'Sem empresa' : e.empresa_id)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-slate-700">
+                          {e.quantidade_vendas}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-slate-700">
+                          R$ {e.valor_total.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-red-600">
+                          R$ {e.valor_devolucoes.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-700">
+                          R$ {e.valor_liquido.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+                      <td className="py-2 px-3 text-slate-900">Total Geral</td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-900">
+                        {dadosPeriodo.totais.quantidade_vendas}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-900">
+                        R$ {dadosPeriodo.totais.valor_total.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-red-700">
+                        R$ {dadosPeriodo.totais.valor_devolucoes.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-emerald-700">
+                        R$ {dadosPeriodo.totais.valor_liquido.toFixed(2)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+      {/* Quebra por empresa na Curva ABC */}
+      {abaAtiva === 'abc' && !verSoTotal && dadosAbc && dadosAbc.totais_por_empresa.length > 0 && (
+        <Card className="border-slate-200 shadow-xs">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <h3 className="text-sm font-semibold text-slate-800">
+                Totais por Empresa (Curva ABC)
+              </h3>
+              <Badge variant="outline" className="text-[10px]">
+                {empresasEfetivas.length > 1
+                  ? `${empresasEfetivas.length} empresas no filtro`
+                  : '1 empresa no filtro'}
+              </Badge>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
+                    <th className="py-2 px-3">Empresa</th>
+                    <th className="py-2 px-3 text-right">Qtd de Itens Vendidos</th>
+                    <th className="py-2 px-3 text-right">Valor Total em Itens</th>
+                    <th className="py-2 px-3 text-right">Valor Líquido</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dadosAbc.totais_por_empresa.map((e) => (
+                    <tr key={e.empresa_id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2 px-3 font-medium text-slate-800">
+                        {nomesEmpresas[e.empresa_id] ||
+                          (e.empresa_id === '(sem empresa)' ? 'Sem empresa' : e.empresa_id)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        {e.quantidade_vendas}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">
+                        R$ {e.valor_total.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-700">
+                        R$ {e.valor_liquido.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+                    <td className="py-2 px-3 text-slate-900">Total Geral</td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      {dadosAbc.total_geral_quantidade}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-900">
+                      R$ {dadosAbc.total_geral_valor.toFixed(2)}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-emerald-700">
+                      R$ {dadosAbc.total_geral_valor.toFixed(2)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* CONTEÚDO DA ABA 2: Curva ABC de Produtos */}
