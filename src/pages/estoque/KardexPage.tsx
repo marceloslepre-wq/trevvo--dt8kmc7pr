@@ -1,892 +1,769 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { useAuth } from '@/contexts/AuthContext'
 import {
-  FileSpreadsheet,
-  Download,
-  Printer,
-  Calendar,
-  AlertCircle,
-  RotateCcw,
-  RefreshCw,
-  ArrowRight,
-  Package,
-  Layers,
-  Building,
-} from 'lucide-react'
+  consultarKardexMultiempresa,
+  buscarSaldosIniciaisMultiempresa,
+  KardexResposta,
+  KardexEmpresaSecao,
+} from '@/services/kardex'
+import { estornarMovimento } from '@/services/estoque'
+import { buscarNomesEmpresas } from '@/services/filtroMultiempresa'
+import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
+import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
+import { KardexTabela, KardexLinha } from '@/components/estoque/KardexTabela'
+import {
+  KardexTotaisPorEmpresa,
+  KardexSecaoEmpresa,
+  KardexEmpresaLinha,
+} from '@/components/estoque/KardexPainelEmpresa'
+import { toast } from '@/hooks/use-toast'
+import { ModalAutorizacaoSupervisor } from '@/components/ModalAutorizacaoSupervisor'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { toast } from '@/hooks/use-toast'
-import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
-import { usePermissoes } from '@/contexts/PermissoesContext'
-import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
-import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
-import { saldoEmData, estornarMovimento, EstoqueMovimento } from '@/services/estoque'
-import { Produto } from '@/services/produtos'
-import { SelectProduto } from '@/components/SelectProduto'
-import pb from '@/lib/pocketbase/client'
+import {
+  Select as SelectFiltro,
+  SelectContent as SelectContentFiltro,
+  SelectItem as SelectItemFiltro,
+  SelectTrigger as SelectTriggerFiltro,
+  SelectValue as SelectValueFiltro,
+} from '@/components/ui/select'
+import { Package, Building2, Download, Printer, Search, X } from 'lucide-react'
 
 export const KardexPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const navigate = useNavigate()
   const { empresaAtiva } = useEmpresaAtiva()
-  const { pode, administrador } = usePermissoes()
-  const podeExcluir = administrador || pode('estoque', 'excluir')
-
-  // Produto Selecionado
-  const [produtoId, setProdutoId] = useState<string>(searchParams.get('produto') || '')
-  const [produto, setProduto] = useState<Produto | null>(null)
-
-  // Período: padrão mês atual
-  const agora = new Date()
-  const primeiroDiaMes = new Date(agora.getFullYear(), agora.getMonth(), 1)
-    .toISOString()
-    .slice(0, 10)
-  const hoje = agora.toISOString().slice(0, 10)
+  const { usuario } = useAuth()
 
   // Estado FiltrosRelatorio (8.0b)
   const [filtros, setFiltros] = useState<ObjetoFiltrosRelatorio>({
     empresas_ids: empresaAtiva?.id ? [empresaAtiva.id] : [],
-    atalho_periodo: 'este_mes',
-    periodo: {
-      dataInicio: searchParams.get('inicio') || primeiroDiaMes,
-      dataFim: searchParams.get('fim') || hoje,
-    },
+    produtos_ids: [],
   })
 
-  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(() => ['datas_tipo_data'], [])
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(() => ['estoque_produtos'], [])
 
-  const dataInicio = filtros.periodo?.dataInicio || primeiroDiaMes
-  const dataFim = filtros.periodo?.dataFim || hoje
-  const empresaIdEfetiva = filtros.empresas_ids?.[0] || empresaAtiva?.id || ''
+  const [resumo, setResumo] = useState<KardexResposta | null>(null)
+  const [carregando, setCarregando] = useState<boolean>(true)
+  const [busca, setBusca] = useState<string>('')
+  const [produtoSel, setProdutoSel] = useState<{ id: string; nome: string } | null>(null)
+  const [tipoFiltro, setTipoFiltro] = useState<'TODOS' | 'Entrada' | 'Saída'>('TODOS')
+  const [origemFiltro, setOrigemFiltro] = useState<string>('TODAS')
 
-  // Estado de dados
-  const [carregando, setCarregando] = useState(false)
-  const [saldoInicial, setSaldoInicial] = useState<{
-    quantidade: number
-    custo_medio: number
-    valor_total: number
-  }>({ quantidade: 0, custo_medio: 0, valor_total: 0 })
-  const [movimentos, setMovimentos] = useState<EstoqueMovimento[]>([])
+  // Multiempresa: usar TODAS as empresas marcadas, não só a primeira (padrão da série 307–312)
+  const empresasEfetivas: string[] = (filtros.empresas_ids || []).filter(Boolean).length
+    ? (filtros.empresas_ids || []).filter(Boolean)
+    : empresaAtiva?.id
+      ? [empresaAtiva.id]
+      : []
+  // "Ver só o total consolidado" (FiltrosRelatorio): oculta quebra por empresa
+  const verSoTotal = filtros.ver_so_total === true
+  const multiempresa = empresasEfetivas.length > 1 && !verSoTotal
 
-  // Modal de Estorno
-  const [modalEstornoAberto, setModalEstornoAberto] = useState(false)
-  const [movimentoParaEstornar, setMovimentoParaEstornar] = useState<EstoqueMovimento | null>(null)
-  const [motivoEstorno, setMotivoEstorno] = useState('')
-  const [salvandoEstorno, setSalvandoEstorno] = useState(false)
-
-  // Carrega informações do produto
+  // Nomes das empresas para as seções e painel "Totais por Empresa"
+  const [nomesEmpresas, setNomesEmpresas] = useState<Record<string, string>>({})
   useEffect(() => {
-    if (!produtoId) {
-      setProduto(null)
-      return
-    }
+    buscarNomesEmpresas(empresasEfetivas).then(setNomesEmpresas)
+  }, [empresasEfetivas.join(',')])
 
-    pb.collection('produtos')
-      .getOne<Produto>(produtoId, { expand: 'unidade_id,marca_id,grupo_id' })
-      .then((p) => setProduto(p))
-      .catch((err) => {
-        console.error('Erro ao buscar produto:', err)
-        setProduto(null)
-      })
-  }, [produtoId])
+  const dataInicio = (filtros.data_inicio as string) || ''
+  const dataFim = (filtros.data_fim as string) || ''
 
-  // Atualiza parâmetros da URL
-  useEffect(() => {
-    const params = new URLSearchParams()
-    if (produtoId) params.set('produto', produtoId)
-    if (dataInicio) params.set('inicio', dataInicio)
-    if (dataFim) params.set('fim', dataFim)
-    setSearchParams(params, { replace: true })
-  }, [produtoId, dataInicio, dataFim, setSearchParams])
-
-  // Busca saldo anterior e histórico de movimentos
-  const carregarKardex = useCallback(async () => {
-    if (!empresaIdEfetiva || !produtoId || !dataInicio) return
-
+  const carregarDados = useCallback(async () => {
+    if (empresasEfetivas.length === 0 || !dataInicio || !dataFim) return
     setCarregando(true)
     try {
-      // 1. Saldo inicial retroativo até o dia anterior a dataInicio
-      const d = new Date(`${dataInicio}T00:00:00`)
-      d.setDate(d.getDate() - 1)
-      const dataAnteriorStr = d.toISOString().slice(0, 10)
-
-      const sIni = await saldoEmData(empresaIdEfetiva, produtoId, dataAnteriorStr)
-      setSaldoInicial(sIni)
-
-      // 2. Movimentos no período em ordem cronológica CRESCENTE (Kardex físico-financeiro)
-      const dataInicioIso = `${dataInicio}T00:00:00.000Z`
-      const dataFimIso = `${dataFim}T23:59:59.999Z`
-
-      const res = await pb.collection('estoque_movimentos').getFullList<EstoqueMovimento>({
-        filter: `empresa_id = '${empresaIdEfetiva}' && produto_id = '${produtoId}' && data_movimento >= '${dataInicioIso}' && data_movimento <= '${dataFimIso}'`,
-        sort: 'data_movimento,created',
-        expand: 'usuario_id,lote_id',
-      })
-
-      setMovimentos(res)
-    } catch (err) {
-      console.error('Erro ao carregar dados do Kardex:', err)
+      const [res, saldosIni] = await Promise.all([
+        consultarKardexMultiempresa({
+          empresaIds: empresasEfetivas,
+          produtoIds: filtros.produtos_ids || [],
+          dataInicio,
+          dataFim,
+          tipo: tipoFiltro !== 'TODOS' ? (tipoFiltro as 'Entrada' | 'Saída') : undefined,
+          origem: origemFiltro !== 'TODAS' ? origemFiltro : undefined,
+        }),
+        buscarSaldosIniciaisMultiempresa({
+          empresaIds: empresasEfetivas,
+          produtoIds: filtros.produtos_ids || [],
+          dataInicio,
+        }),
+      ])
+      setResumo({ ...res, saldoInicialPorEmpresa: saldosIni })
+    } catch (err: any) {
       toast({
         title: 'Erro ao carregar Kardex',
-        description: 'Não foi possível carregar as movimentações do período.',
+        description: err?.message || 'Falha ao buscar movimentações de estoque.',
         variant: 'destructive',
       })
     } finally {
       setCarregando(false)
     }
-  }, [empresaIdEfetiva, produtoId, dataInicio, dataFim])
+  }, [
+    empresasEfetivas.join(','),
+    dataInicio,
+    dataFim,
+    (filtros.produtos_ids || []).join(','),
+    tipoFiltro,
+    origemFiltro,
+  ])
 
   useEffect(() => {
-    if (produtoId && empresaAtiva) {
-      carregarKardex()
-    } else {
-      setMovimentos([])
-      setSaldoInicial({ quantidade: 0, custo_medio: 0, valor_total: 0 })
+    carregarDados()
+  }, [carregarDados])
+
+  // ===== Extração de dados (multiempresa OU empresa única) =====
+  const secoes = useMemo<KardexEmpresaSecao[]>(() => resumo?.secoes || [], [resumo])
+
+  // Consolidado: soma empresas por produto
+  const consolidado = useMemo(() => {
+    if (!resumo)
+      return {
+        saldoInicial: { quantidade: 0, custo_medio: 0, valor_total: 0 },
+        movimentos: [] as KardexLinha[],
+        saldoFinal: { quantidade: 0, custo_medio: 0, valor_total: 0 },
+      }
+    const mapa = new Map<
+      string,
+      { id: string; quantidade: number; custo_medio: number; valor_total: number }
+    >()
+    for (const [empId, si] of Object.entries(resumo.saldoInicialPorEmpresa || {})) {
+      const atual = mapa.get(empId) || { id: empId, quantidade: 0, custo_medio: 0, valor_total: 0 }
+      atual.quantidade += si.quantidade
+      atual.valor_total += si.valor_total
+      mapa.set(empId, atual)
     }
-  }, [produtoId, empresaAtiva, carregarKardex])
-
-  // Cálculo do Saldo Final do período
-  const saldoFinal = useMemo(() => {
-    if (movimentos.length === 0) {
-      return saldoInicial
+    const saldoInicial = {
+      quantidade: Array.from(mapa.values()).reduce((a, s) => a + s.quantidade, 0),
+      custo_medio: 0,
+      valor_total: Array.from(mapa.values()).reduce((a, s) => a + s.valor_total, 0),
     }
-    // Pega o último movimento não-estornado do período
-    // ou o saldo_posterior do último registro
-    const ultimo = movimentos[movimentos.length - 1]
-    const qtd = ultimo.saldo_posterior ?? 0
-    const custo = ultimo.custo_medio_posterior ?? ultimo.custo_unitario ?? 0
-    const valor = Math.round(qtd * custo * 100) / 100
-    return {
-      quantidade: qtd,
-      custo_medio: custo,
-      valor_total: valor,
+    // Movimentos concatenados (ordenados por data asc — já vem do serviço)
+    const movs: KardexLinha[] = []
+    for (const sec of secoes) {
+      for (const m of sec.movimentos) {
+        movs.push({ ...m, id: `${sec.empresaId}:${m.id}` })
+      }
     }
-  }, [movimentos, saldoInicial])
+    movs.sort((a, b) => a.data_movimento.localeCompare(b.data_movimento))
+    const saldoFinal = resumo.saldoFinalConsolidado || saldoInicial
+    return { saldoInicial, movimentos: movs, saldoFinal }
+  }, [resumo, secoes])
 
-  // Totais de entradas e saídas no período
-  const totaisPeriodo = useMemo(() => {
-    let entradasQtd = 0
-    let saidasQtd = 0
-    let entradasValor = 0
-    let saidasValor = 0
+  const linhasExibidas = useMemo(() => {
+    const lista = verSoTotal ? consolidado.movimentos : secoes.flatMap((s) => s.movimentos)
+    if (!busca.trim()) return lista
+    const termo = busca.toLowerCase()
+    return lista.filter(
+      (m) =>
+        m.documento_numero?.toLowerCase().includes(termo) ||
+        m.numero_lote?.toLowerCase().includes(termo) ||
+        m.usuario_nome?.toLowerCase().includes(termo) ||
+        m.motivo?.toLowerCase().includes(termo),
+    )
+  }, [verSoTotal, consolidado.movimentos, secoes, busca])
 
-    movimentos.forEach((m) => {
-      // Movimentos estornados não somam no fluxo
-      if (m.estornado) return
-
-      const q = m.quantidade || 0
-      const v = m.valor_total || 0
-      if (m.tipo === 'Entrada') {
-        entradasQtd += q
-        entradasValor += v
-      } else {
-        saidasQtd += q
-        saidasValor += v
+  // Painel "Totais por Empresa" (padrão Inadimplência/Fluxo de Caixa)
+  const totaisPorEmpresa = useMemo<KardexEmpresaLinha[]>(() => {
+    return secoes.map((sec) => {
+      let entradasQtd = 0
+      let saidasQtd = 0
+      let entradasValor = 0
+      let saidasValor = 0
+      for (const m of sec.movimentos) {
+        if (m.estornado) continue
+        if (m.tipo === 'Entrada') {
+          entradasQtd += m.quantidade
+          entradasValor += m.valor_total
+        } else {
+          saidasQtd += m.quantidade
+          saidasValor += m.valor_total
+        }
+      }
+      return {
+        empresaId: sec.empresaId,
+        qtdMovimentos: sec.movimentos.length,
+        entradasQtd,
+        saidasQtd,
+        entradasValor,
+        saidasValor,
+        saldoFinalQtd: sec.saldoFinal.quantidade,
+        saldoFinalValor: sec.saldoFinal.valor_total,
+        movimentos: [],
       }
     })
+  }, [secoes])
 
-    return {
-      entradasQtd,
-      saidasQtd,
-      entradasValor,
-      saidasValor,
-    }
-  }, [movimentos])
+  // ===== Estorno (supervisor) =====
+  const [movEstorno, setMovEstorno] = useState<KardexLinha | null>(null)
+  const [motivoEstorno, setMotivoEstorno] = useState('')
+  const [modalSupervisor, setModalSupervisor] = useState(false)
+  const [processando, setProcessando] = useState(false)
+  const [empresaEstorno, setEmpresaEstorno] = useState<string | null>(null)
 
-  // Abertura do modal de estorno
-  const abrirModalEstorno = (mov: EstoqueMovimento) => {
-    setMovimentoParaEstornar(mov)
+  const pedirEstorno = (l: KardexLinha, empresaId: string) => {
+    setMovEstorno(l)
+    setEmpresaEstorno(empresaId)
     setMotivoEstorno('')
-    setModalEstornoAberto(true)
+    setModalSupervisor(true)
   }
 
-  // Executar estorno
-  const confirmarEstorno = async () => {
-    if (!movimentoParaEstornar) return
+  const confirmarEstorno = async (
+    sucesso: boolean,
+    dadosAutorizacao?: { usuario: string; senha: string },
+  ) => {
+    setModalSupervisor(false)
+    if (!sucesso || !movEstorno || !empresaEstorno) return
     if (!motivoEstorno.trim()) {
-      toast({
-        title: 'Motivo obrigatório',
-        description: 'Informe uma justificativa detalhada para o estorno.',
-        variant: 'destructive',
-      })
+      toast({ title: 'Informe o motivo do estorno', variant: 'destructive' })
       return
     }
-
-    setSalvandoEstorno(true)
+    setProcessando(true)
     try {
-      const res = await estornarMovimento(movimentoParaEstornar.id, motivoEstorno)
-      if (res.sucesso) {
-        toast({
-          title: 'Movimento estornado com sucesso!',
-          description: 'O saldo e o custo médio foram recalculados.',
-        })
-        setModalEstornoAberto(false)
-        setMovimentoParaEstornar(null)
-        carregarKardex()
-      } else {
-        toast({
-          title: 'Não foi possível estornar',
-          description: res.message,
-          variant: 'destructive',
-        })
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
+      await estornarMovimento(movEstorno.id, motivoEstorno.trim())
+      toast({ title: 'Movimento estornado com sucesso' })
+      carregarDados()
+    } catch (err: any) {
       toast({
-        title: 'Falha no estorno',
-        description: msg,
+        title: 'Erro ao estornar movimento',
+        description: err?.message || 'Falha no estorno de estoque.',
         variant: 'destructive',
       })
     } finally {
-      setSalvandoEstorno(false)
+      setProcessando(false)
     }
+    // dadosAutorizacao contém credenciais do supervisor — validação é feita no backend
   }
 
-  // Exportar CSV
+  // ===== CSV =====
   const exportarCSV = () => {
-    if (!produto || movimentos.length === 0) return
+    const sep = ';'
+    const linhasCSV: string[] = []
+    const cab =
+      [
+        'Empresa',
+        'Data/Hora',
+        'Origem',
+        'Documento',
+        'Lote',
+        'Entrada',
+        'Saída',
+        'Saldo Físico',
+        'Custo Unitário',
+        'Custo Médio',
+        'Valor Total',
+        'Operador/Motivo',
+      ].join(sep) + '\n'
 
-    const colunas = [
-      'Data/Hora',
-      'Tipo',
-      'Origem',
-      'Lote',
-      'Documento',
-      'Número',
-      'Entrada (Qtd)',
-      'Saída (Qtd)',
-      'Saldo Resultante',
-      'Custo Unitário (R$)',
-      'Custo Médio (R$)',
-      'Valor Total (R$)',
-      'Usuário',
-      'Motivo / Obs',
-      'Estornado',
-    ]
+    const addLinhas = (nomeEmpresa: string, movs: KardexLinha[]) => {
+      for (const m of movs) {
+        linhasCSV.push(
+          [
+            `"${nomeEmpresa}"`,
+            `"${new Date(m.data_movimento).toLocaleString('pt-BR')}"`,
+            `"${m.origem}"`,
+            `"${m.documento_tipo ? `${m.documento_tipo} ${m.documento_numero || ''}` : ''}"`,
+            `"${m.numero_lote || ''}"`,
+            m.tipo === 'Entrada' ? m.quantidade : 0,
+            m.tipo === 'Saída' ? m.quantidade : 0,
+            m.saldo_posterior,
+            m.custo_unitario,
+            m.custo_medio_posterior,
+            m.valor_total,
+            `"${m.usuario_nome || m.motivo || ''}"`,
+          ].join(sep),
+        )
+      }
+    }
 
-    const linhas = movimentos.map((m) => {
-      const dataFormatada = new Date(m.data_movimento).toLocaleString('pt-BR')
-      const numLote = m.expand?.lote_id?.numero_lote || ''
-      const entrada = m.tipo === 'Entrada' ? m.quantidade.toFixed(4).replace('.', ',') : ''
-      const saida = m.tipo === 'Saída' ? m.quantidade.toFixed(4).replace('.', ',') : ''
-      const saldo = (m.saldo_posterior || 0).toFixed(4).replace('.', ',')
-      const custoUnit = (m.custo_unitario || 0).toFixed(4).replace('.', ',')
-      const custoMed = (m.custo_medio_posterior || 0).toFixed(4).replace('.', ',')
-      const valorTot = (m.valor_total || 0).toFixed(2).replace('.', ',')
-      const usuario = m.usuario_id || 'Sistema'
-      const obs = `${m.motivo ? m.motivo + ' ' : ''}${m.observacao || ''}`.trim()
+    if (verSoTotal) {
+      addLinhas('CONSOLIDADO', linhasExibidas)
+    } else {
+      for (const sec of secoes) {
+        const nome = nomesEmpresas[sec.empresaId] || sec.empresaId
+        addLinhas(nome, sec.movimentos)
+      }
+    }
 
-      return [
-        `"${dataFormatada}"`,
-        `"${m.tipo}"`,
-        `"${m.origem}"`,
-        `"${numLote}"`,
-        `"${m.documento_tipo || ''}"`,
-        `"${m.documento_numero || ''}"`,
-        entrada,
-        saida,
-        saldo,
-        custoUnit,
-        custoMed,
-        valorTot,
-        `"${usuario}"`,
-        `"${obs.replace(/"/g, '""')}"`,
-        m.estornado ? 'SIM' : 'NÃO',
-      ]
-    })
-
-    // Linha de Saldo Inicial no topo
-    const linhaInicial = [
-      `"Saldo Inicial (${dataInicio})"`,
-      '""',
-      '"SALDO_ANTERIOR"',
-      '""',
-      '""',
-      '""',
-      '""',
-      '""',
-      saldoInicial.quantidade.toFixed(4).replace('.', ','),
-      saldoInicial.custo_medio.toFixed(4).replace('.', ','),
-      saldoInicial.custo_medio.toFixed(4).replace('.', ','),
-      saldoInicial.valor_total.toFixed(2).replace('.', ','),
-      '""',
-      '""',
-      'NÃO',
-    ]
-
-    const csvContent =
-      '\uFEFF' +
-      [colunas.join(';'), linhaInicial.join(';'), ...linhas.map((l) => l.join(';'))].join('\r\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob([cab + linhasCSV.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', `kardex_produto_${produto.codigo}_${dataInicio}_a_${dataFim}.csv`)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `kardex_${new Date().toISOString().slice(0, 10)}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
   }
 
-  // Imprimir Ficha do Produto
-  const imprimirKardex = () => {
+  // ===== Impressão =====
+  const imprimir = () => {
     window.print()
   }
 
-  const formatarQtd = (val?: number) => {
-    return (val || 0).toLocaleString('pt-BR', {
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 4,
-    })
-  }
-
-  const formatarMoeda = (val?: number) => {
-    return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  }
-
-  const formatarDataHora = (dataStr: string) => {
-    try {
-      const d = new Date(dataStr)
-      return d.toLocaleString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    } catch {
-      return dataStr
-    }
-  }
+  // Filtro local de tipo/origem aplicado ao renderizar (o serviço já filtra, aqui é redundância segura)
+  const linhasTabela = useMemo(() => {
+    return linhasExibidas.filter(
+      (m) =>
+        (tipoFiltro === 'TODOS' || m.tipo === tipoFiltro) &&
+        (origemFiltro === 'TODAS' || m.origem === origemFiltro),
+    )
+  }, [linhasExibidas, tipoFiltro, origemFiltro])
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-[1600px] mx-auto print:p-0 print:space-y-3">
+    <div className="space-y-6">
       {/* Componente Comum de Filtros 8.0b */}
-      <div className="print:hidden">
-        <FiltrosRelatorio
-          relatorioId="estoque_kardex"
-          tituloRelatorio="Kardex de Estoque"
-          subtituloRelatorio="Rastreabilidade cronológica imutável de entradas, saídas, saldos e custo médio ponderado."
-          filtrosDeclarados={filtrosDeclarados}
-          filtros={filtros}
-          onChange={setFiltros}
-          onFiltrar={carregarKardex}
-          onExportarCsv={exportarCSV}
-          carregando={carregando}
-          filtrosExtras={
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="space-y-1 min-w-[280px]">
-                <label className="text-[11px] font-semibold text-slate-600 block">
-                  Selecione o Produto *
-                </label>
-                <SelectProduto
-                  value={produtoId}
-                  onChange={(id, p) => {
-                    setProdutoId(id)
-                    setProduto(p || null)
-                  }}
-                  placeholder="Busque por código, GTIN ou descrição..."
-                />
-              </div>
-              <div className="flex items-center gap-2 pt-4 ml-auto">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={imprimirKardex}
-                  disabled={!produto}
-                  className="h-9 text-xs"
-                >
-                  <Printer className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
-                  Imprimir
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => navigate('/estoque/lancamentos')}
-                  className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  <Layers className="h-3.5 w-3.5 mr-1.5" />
-                  Novo Lançamento
-                </Button>
-              </div>
+      <FiltrosRelatorio
+        relatorioId="estoque_kardex"
+        tituloRelatorio="Kardex"
+        subtituloRelatorio="Histórico de movimentações de estoque por produto e empresa, com saldo inicial, entradas, saídas e posição final."
+        filtrosDeclarados={filtrosDeclarados}
+        filtros={filtros}
+        onChange={setFiltros}
+        onFiltrar={carregarDados}
+        onExportarCsv={exportarCSV}
+        carregando={carregando}
+        filtrosExtras={
+          <div className="flex gap-2 items-end flex-wrap">
+            <div className="space-y-1 min-w-[140px]">
+              <label className="text-[11px] font-semibold text-slate-600 block">Tipo</label>
+              <SelectFiltro value={tipoFiltro} onValueChange={(v) => setTipoFiltro(v as any)}>
+                <SelectTriggerFiltro className="text-xs h-9">
+                  <SelectValueFiltro placeholder="Tipo" />
+                </SelectTriggerFiltro>
+                <SelectContentFiltro>
+                  <SelectItemFiltro value="TODOS">Todos</SelectItemFiltro>
+                  <SelectItemFiltro value="Entrada">Entradas</SelectItemFiltro>
+                  <SelectItemFiltro value="Saída">Saídas</SelectItemFiltro>
+                </SelectContentFiltro>
+              </SelectFiltro>
             </div>
-          }
-        />
-      </div>
-
-      {/* Dados do produto selecionado */}
-      {produto && (
-        <Card className="border-slate-200 bg-white print:border-none print:shadow-none">
-          <CardContent className="p-3">
-            <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-slate-50 p-2.5 rounded-md">
-              <div className="flex items-center gap-3">
-                <div className="font-mono font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-xs">
-                  #{produto.codigo}
-                </div>
-                <div className="font-semibold text-slate-900">{produto.descricao}</div>
-                {produto.expand?.unidade_id && (
-                  <Badge variant="outline" className="text-[10px] uppercase font-bold">
-                    {produto.expand.unidade_id.sigla}
-                  </Badge>
-                )}
-                {produto.gtin && (
-                  <span className="font-mono text-slate-500 text-[11px]">GTIN: {produto.gtin}</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-4 text-[11px] text-slate-600">
-                <span>
-                  Estoque Mínimo:{' '}
-                  <strong>
-                    {produto.estoque_minimo !== undefined && produto.estoque_minimo !== null
-                      ? Number(produto.estoque_minimo).toLocaleString('pt-BR')
-                      : '—'}
-                  </strong>
-                </span>
-                <span>
-                  Estoque Máximo:{' '}
-                  <strong>
-                    {produto.estoque_maximo !== undefined && produto.estoque_maximo !== null
-                      ? Number(produto.estoque_maximo).toLocaleString('pt-BR')
-                      : '—'}
-                  </strong>
-                </span>
-                <span>
-                  Preço de Venda:{' '}
-                  <strong className="text-emerald-700">{formatarMoeda(produto.preco_venda)}</strong>
-                </span>
-              </div>
+            <div className="space-y-1 min-w-[140px]">
+              <label className="text-[11px] font-semibold text-slate-600 block">Origem</label>
+              <SelectFiltro value={origemFiltro} onValueChange={setOrigemFiltro}>
+                <SelectTriggerFiltro className="text-xs h-9">
+                  <SelectValueFiltro placeholder="Origem" />
+                </SelectTriggerFiltro>
+                <SelectContentFiltro>
+                  <SelectItemFiltro value="TODAS">Todas</SelectItemFiltro>
+                  <SelectItemFiltro value="COMPRA">Compra</SelectItemFiltro>
+                  <SelectItemFiltro value="VENDA">Venda</SelectItemFiltro>
+                  <SelectItemFiltro value="AJUSTE_ENTRADA">Ajuste de Entrada</SelectItemFiltro>
+                  <SelectItemFiltro value="AJUSTE_SAIDA">Ajuste de Saída</SelectItemFiltro>
+                  <SelectItemFiltro value="TRANSFERENCIA_ENTRADA">Transf. Entrada</SelectItemFiltro>
+                  <SelectItemFiltro value="TRANSFERENCIA_SAIDA">Transf. Saída</SelectItemFiltro>
+                  <SelectItemFiltro value="INVENTARIO_ENTRADA">Inventário Entrada</SelectItemFiltro>
+                  <SelectItemFiltro value="INVENTARIO_SAIDA">Inventário Saída</SelectItemFiltro>
+                  <SelectItemFiltro value="DEVOLUCAO_COMPRA">Devolução Compra</SelectItemFiltro>
+                  <SelectItemFiltro value="DEVOLUCAO_VENDA">Devolução Venda</SelectItemFiltro>
+                  <SelectItemFiltro value="BONIFICACAO_ENTRADA">
+                    Bonificação Entrada
+                  </SelectItemFiltro>
+                  <SelectItemFiltro value="BONIFICACAO_SAIDA">Bonificação Saída</SelectItemFiltro>
+                  <SelectItemFiltro value="PERDA">Perda</SelectItemFiltro>
+                  <SelectItemFiltro value="CONSUMO_INTERNO">Consumo Interno</SelectItemFiltro>
+                  <SelectItemFiltro value="SALDO_INICIAL">Saldo Inicial</SelectItemFiltro>
+                  <SelectItemFiltro value="ESTORNO">Estorno</SelectItemFiltro>
+                </SelectContentFiltro>
+              </SelectFiltro>
             </div>
+            <div className="space-y-1 min-w-[200px]">
+              <label className="text-[11px] font-semibold text-slate-600 block">Busca Rápida</label>
+              <Input
+                type="text"
+                placeholder="Documento, lote, operador ou motivo..."
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                className="text-xs h-9"
+              />
+            </div>
+          </div>
+        }
+      />
+
+      {/* Cards de resumo geral */}
+      {resumo && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Card className="border-slate-200 shadow-2xs">
+            <CardHeader className="p-3 pb-1">
+              <CardTitle className="text-xs font-semibold text-slate-700 uppercase flex items-center justify-between">
+                <span>Movimentos no Período</span>
+                <Package className="w-4 h-4 text-slate-500" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0">
+              <div className="text-xl font-black font-mono text-slate-900">
+                {verSoTotal
+                  ? linhasExibidas.length
+                  : secoes.reduce((a, s) => a + s.movimentos.length, 0)}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                {verSoTotal ? 'Consolidado (todas as empresas)' : `${secoes.length} empresa(s)`}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-emerald-200 bg-emerald-50/30 shadow-2xs">
+            <CardHeader className="p-3 pb-1">
+              <CardTitle className="text-xs font-semibold text-emerald-800 uppercase">
+                Entradas (qtd)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0">
+              <div className="text-lg font-bold font-mono text-emerald-900">
+                {verSoTotal
+                  ? (consolidado.movimentos || [])
+                      .filter((m) => !m.estornado && m.tipo === 'Entrada')
+                      .reduce((a, m) => a + m.quantidade, 0)
+                      .toLocaleString('pt-BR', { minimumFractionDigits: 4 })
+                  : totaisPorEmpresa
+                      .reduce((a, e) => a + e.entradasQtd, 0)
+                      .toLocaleString('pt-BR', { minimumFractionDigits: 4 })}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-rose-200 bg-rose-50/30 shadow-2xs">
+            <CardHeader className="p-3 pb-1">
+              <CardTitle className="text-xs font-semibold text-rose-800 uppercase">
+                Saídas (qtd)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0">
+              <div className="text-lg font-bold font-mono text-rose-900">
+                {verSoTotal
+                  ? (consolidado.movimentos || [])
+                      .filter((m) => !m.estornado && m.tipo === 'Saída')
+                      .reduce((a, m) => a + m.quantidade, 0)
+                      .toLocaleString('pt-BR', { minimumFractionDigits: 4 })
+                  : totaisPorEmpresa
+                      .reduce((a, e) => a + e.saidasQtd, 0)
+                      .toLocaleString('pt-BR', { minimumFractionDigits: 4 })}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-blue-200 bg-blue-50/30 shadow-2xs">
+            <CardHeader className="p-3 pb-1">
+              <CardTitle className="text-xs font-semibold text-blue-800 uppercase">
+                Saldo Final (R$)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 pt-0">
+              <div className="text-lg font-bold font-mono text-blue-900">
+                {(verSoTotal
+                  ? consolidado.saldoFinal.valor_total
+                  : totaisPorEmpresa.reduce((a, e) => a + e.saldoFinalValor, 0)
+                ).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </div>
+              <p className="text-[11px] text-blue-700/80">
+                {verSoTotal ? 'Soma das empresas' : 'Soma dos saldos finais por empresa'}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Painel Totais por Empresa (oculto com "Ver só o total consolidado" ou 1 empresa) */}
+      {!verSoTotal && empresasEfetivas.length > 1 && totaisPorEmpresa.length > 0 && (
+        <Card className="border-slate-200 shadow-xs">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <h3 className="text-sm font-semibold text-slate-800">Totais por Empresa</h3>
+              <Badge variant="outline" className="text-[10px]">
+                {empresasEfetivas.length} empresas no filtro
+              </Badge>
+            </div>
+            <KardexTotaisPorEmpresa
+              porEmpresa={totaisPorEmpresa}
+              nomesEmpresas={nomesEmpresas}
+              saldoInicialPorEmpresa={resumo?.saldoInicialPorEmpresa || {}}
+            />
           </CardContent>
         </Card>
       )}
 
-      {/* Cabeçalho exclusivo para impressão */}
-      <div className="hidden print:block border-b border-slate-400 pb-3 mb-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-lg font-bold text-slate-900">FICHA DE KARDEX DO PRODUTO</h1>
-            <p className="text-xs text-slate-600">
-              Empresa: {empresaAtiva?.razao_social} ({empresaAtiva?.cnpj})
-            </p>
-          </div>
-          <div className="text-right text-xs text-slate-500">
-            Período: {new Date(dataInicio).toLocaleDateString('pt-BR')} até{' '}
-            {new Date(dataFim).toLocaleDateString('pt-BR')}
-            <br />
-            Emissão: {new Date().toLocaleString('pt-BR')}
-          </div>
-        </div>
-      </div>
-
-      {/* Cards de Saldo Inicial, Fluxo e Saldo Final */}
-      {produto && (
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          {/* 1. Saldo Inicial */}
-          <Card className="bg-slate-50/80 border-slate-200">
-            <CardContent className="p-3.5">
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                <span>Saldo Inicial</span>
-                <span className="text-[10px] font-normal text-slate-400">até {dataInicio}</span>
+      {/* CORPO PRINCIPAL */}
+      {verSoTotal ? (
+        /* ===== Modo consolidado: uma única tabela, sem seções ===== */
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-slate-500" />
+                Movimentações Consolidadas (todas as empresas)
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={imprimir} className="text-xs h-8">
+                  <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir
+                </Button>
+                <Button variant="outline" size="sm" onClick={exportarCSV} className="text-xs h-8">
+                  <Download className="h-3.5 w-3.5 mr-1" /> CSV
+                </Button>
               </div>
-              <div className="text-base font-bold text-slate-900 mt-1 font-mono">
-                {formatarQtd(saldoInicial.quantidade)} {produto.expand?.unidade_id?.sigla || ''}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5 flex justify-between">
-                <span>Custo: {formatarMoeda(saldoInicial.custo_medio)}</span>
-                <span className="font-semibold text-slate-700">
-                  {formatarMoeda(saldoInicial.valor_total)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 2. Total Entradas no Período */}
-          <Card className="bg-emerald-50/50 border-emerald-200">
-            <CardContent className="p-3.5">
-              <div className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wider">
-                Entradas no Período
-              </div>
-              <div className="text-base font-bold text-emerald-700 mt-1 font-mono">
-                + {formatarQtd(totaisPeriodo.entradasQtd)} {produto.expand?.unidade_id?.sigla || ''}
-              </div>
-              <div className="text-[11px] text-emerald-600 mt-0.5">
-                Valor Total: <strong>{formatarMoeda(totaisPeriodo.entradasValor)}</strong>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 3. Total Saídas no Período */}
-          <Card className="bg-rose-50/50 border-rose-200">
-            <CardContent className="p-3.5">
-              <div className="text-[11px] font-semibold text-rose-800 uppercase tracking-wider">
-                Saídas no Período
-              </div>
-              <div className="text-base font-bold text-rose-700 mt-1 font-mono">
-                - {formatarQtd(totaisPeriodo.saidasQtd)} {produto.expand?.unidade_id?.sigla || ''}
-              </div>
-              <div className="text-[11px] text-rose-600 mt-0.5">
-                Valor Total: <strong>{formatarMoeda(totaisPeriodo.saidasValor)}</strong>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 4. Saldo Final */}
-          <Card className="bg-blue-50/60 border-blue-200">
-            <CardContent className="p-3.5">
-              <div className="text-[11px] font-semibold text-blue-800 uppercase tracking-wider flex items-center justify-between">
-                <span>Saldo Final</span>
-                <span className="text-[10px] font-normal text-blue-600">em {dataFim}</span>
-              </div>
-              <div className="text-base font-bold text-blue-900 mt-1 font-mono">
-                {formatarQtd(saldoFinal.quantidade)} {produto.expand?.unidade_id?.sigla || ''}
-              </div>
-              <div className="text-[11px] text-blue-700 mt-0.5 flex justify-between">
-                <span>Custo Médio: {formatarMoeda(saldoFinal.custo_medio)}</span>
-                <span className="font-bold">{formatarMoeda(saldoFinal.valor_total)}</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Saldos somados entre empresas — não representa posição física de nenhuma loja isolada.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <KardexTabela
+              linhas={linhasTabela}
+              saldoInicial={consolidado.saldoInicial}
+              dataInicio={dataInicio}
+              podeExcluir={false}
+              onEstornar={() => {}}
+            />
+          </CardContent>
+        </Card>
+      ) : multiempresa ? (
+        /* ===== Multiempresa: UMA SEÇÃO POR EMPRESA — saldos nunca misturados ===== */
+        secoes.map((sec) => {
+          const linhas = sec.movimentos.filter(
+            (m) =>
+              (tipoFiltro === 'TODOS' || m.tipo === tipoFiltro) &&
+              (origemFiltro === 'TODAS' || m.origem === origemFiltro) &&
+              (!busca.trim() ||
+                m.documento_numero?.toLowerCase().includes(busca.toLowerCase()) ||
+                m.numero_lote?.toLowerCase().includes(busca.toLowerCase()) ||
+                m.usuario_nome?.toLowerCase().includes(busca.toLowerCase()) ||
+                m.motivo?.toLowerCase().includes(busca.toLowerCase())),
+          )
+          return (
+            <Card key={sec.empresaId} className="border-slate-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center justify-between">
+                  <KardexSecaoEmpresa
+                    empresaId={sec.empresaId}
+                    nomeEmpresa={nomesEmpresas[sec.empresaId] || sec.empresaId}
+                    saldoInicial={
+                      resumo?.saldoInicialPorEmpresa?.[sec.empresaId] || {
+                        quantidade: 0,
+                        custo_medio: 0,
+                        valor_total: 0,
+                      }
+                    }
+                    saldoFinal={sec.saldoFinal}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const nome = (nomesEmpresas[sec.empresaId] || sec.empresaId).replace(
+                          /[^\w]+/g,
+                          '_',
+                        )
+                        const cab =
+                          'Data/Hora;Origem;Documento;Lote;Entrada;Saída;Saldo Físico;Custo Unitário;Custo Médio;Valor Total;Operador/Motivo\n'
+                        const lin = sec.movimentos
+                          .map((m) =>
+                            [
+                              `"${new Date(m.data_movimento).toLocaleString('pt-BR')}"`,
+                              `"${m.origem}"`,
+                              `"${m.documento_tipo ? `${m.documento_tipo} ${m.documento_numero || ''}` : ''}"`,
+                              `"${m.numero_lote || ''}"`,
+                              m.tipo === 'Entrada' ? m.quantidade : 0,
+                              m.tipo === 'Saída' ? m.quantidade : 0,
+                              m.saldo_posterior,
+                              m.custo_unitario,
+                              m.custo_medio_posterior,
+                              m.valor_total,
+                              `"${m.usuario_nome || m.motivo || ''}"`,
+                            ].join(';'),
+                          )
+                          .join('\n')
+                        const blob = new Blob([cab + lin], { type: 'text/csv;charset=utf-8;' })
+                        const url = URL.createObjectURL(blob)
+                        const link = document.createElement('a')
+                        link.setAttribute('href', url)
+                        link.setAttribute('download', `kardex_${nome}.csv`)
+                        document.body.appendChild(link)
+                        link.click()
+                        document.body.removeChild(link)
+                      }}
+                      className="text-xs h-8"
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1" /> CSV
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <KardexTabela
+                  linhas={linhas}
+                  saldoInicial={
+                    resumo?.saldoInicialPorEmpresa?.[sec.empresaId] || {
+                      quantidade: 0,
+                      custo_medio: 0,
+                      valor_total: '0.00' as any as number,
+                    }
+                  }
+                  dataInicio={dataInicio}
+                  podeExcluir={true}
+                  onEstornar={(l) => pedirEstorno(l, sec.empresaId)}
+                />
+              </CardContent>
+            </Card>
+          )
+        })
+      ) : (
+        /* ===== Empresa única: comportamento anterior ===== */
+        (() => {
+          const sec = secoes[0]
+          return (
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-slate-500" />
+                    Movimentações do Período
+                  </span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={imprimir} className="text-xs h-8">
+                      <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={exportarCSV}
+                      className="text-xs h-8"
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1" /> CSV
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <KardexTabela
+                  linhas={linhasTabela}
+                  saldoInicial={
+                    sec
+                      ? resumo?.saldoInicialPorEmpresa?.[sec.empresaId] || {
+                          quantidade: 0,
+                          custo_medio: 0,
+                          valor_total: 0,
+                        }
+                      : { quantidade: 0, custo_medio: 0, valor_total: 0 }
+                  }
+                  dataInicio={dataInicio}
+                  podeExcluir={true}
+                  onEstornar={(l) => pedirEstorno(l, sec?.empresaId || '')}
+                />
+              </CardContent>
+            </Card>
+          )
+        })()
       )}
 
-      {/* Grade do Kardex */}
-      <div className="border border-slate-200 rounded-lg bg-white overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] font-semibold border-b border-slate-200 select-none">
-              <tr>
-                <th className="p-2.5">Data / Hora</th>
-                <th className="p-2.5">Origem / Operação</th>
-                <th className="p-2.5">Lote</th>
-                <th className="p-2.5">Documento</th>
-                <th className="p-2.5 text-right text-emerald-700">Entrada</th>
-                <th className="p-2.5 text-right text-rose-700">Saída</th>
-                <th className="p-2.5 text-right font-bold text-slate-800">Saldo Físico</th>
-                <th className="p-2.5 text-right">Custo Unitário</th>
-                <th className="p-2.5 text-right">Custo Médio</th>
-                <th className="p-2.5 text-right">Valor Total</th>
-                <th className="p-2.5">Operador / Motivo</th>
-                <th className="p-2.5 text-center print:hidden">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {!produtoId ? (
-                <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
-                    <Package className="h-8 w-8 mx-auto mb-2 text-slate-300" />
-                    <p className="font-semibold text-slate-600">Selecione um produto</p>
-                    <p className="text-[11px] mt-0.5">
-                      Use a busca acima para carregar o histórico físico-financeiro.
-                    </p>
-                  </td>
-                </tr>
-              ) : carregando ? (
-                <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
-                    <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
-                    <span>Calculando saldo retroativo e carregando movimentos...</span>
-                  </td>
-                </tr>
-              ) : (
-                <>
-                  {/* Linha de Saldo Inicial */}
-                  <tr className="bg-slate-50/80 font-medium">
-                    <td className="p-2.5 font-mono text-slate-500">
-                      {new Date(`${dataInicio}T00:00:00`).toLocaleDateString('pt-BR')} 00:00
-                    </td>
-                    <td className="p-2.5">
-                      <Badge variant="outline" className="bg-slate-200 text-slate-700 text-[10px]">
-                        SALDO ANTERIOR
-                      </Badge>
-                    </td>
-                    <td className="p-2.5 text-slate-400 font-mono text-[11px]">—</td>
-                    <td className="p-2.5 text-slate-400">—</td>
-                    <td className="p-2.5 text-right text-slate-400">—</td>
-                    <td className="p-2.5 text-right text-slate-400">—</td>
-                    <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                      {formatarQtd(saldoInicial.quantidade)}
-                    </td>
-                    <td className="p-2.5 text-right font-mono text-slate-500">
-                      {formatarMoeda(saldoInicial.custo_medio)}
-                    </td>
-                    <td className="p-2.5 text-right font-mono font-semibold text-slate-700">
-                      {formatarMoeda(saldoInicial.custo_medio)}
-                    </td>
-                    <td className="p-2.5 text-right font-mono font-bold text-slate-800">
-                      {formatarMoeda(saldoInicial.valor_total)}
-                    </td>
-                    <td className="p-2.5 text-slate-500 text-[11px]">
-                      Posição inicial no início do período
-                    </td>
-                    <td className="p-2.5 text-center text-slate-300 print:hidden">—</td>
-                  </tr>
-
-                  {/* Movimentações do Período */}
-                  {movimentos.length === 0 ? (
-                    <tr>
-                      <td colSpan={12} className="py-8 text-center text-slate-400">
-                        Nenhuma movimentação registrada no período selecionado.
-                      </td>
-                    </tr>
-                  ) : (
-                    movimentos.map((mov) => {
-                      const isEstornado = mov.estornado === true
-                      const isEntrada = mov.tipo === 'Entrada'
-                      const isAjuste =
-                        mov.origem.startsWith('AJUSTE_') ||
-                        mov.origem === 'SALDO_INICIAL' ||
-                        mov.origem === 'PERDA' ||
-                        mov.origem === 'CONSUMO_INTERNO' ||
-                        mov.origem.startsWith('BONIFICACAO_')
-
-                      return (
-                        <tr
-                          key={mov.id}
-                          className={`hover:bg-blue-50/30 transition-colors ${
-                            isEstornado
-                              ? 'line-through opacity-50 bg-slate-50/50 text-slate-400'
-                              : ''
-                          }`}
-                        >
-                          <td className="p-2.5 font-mono text-slate-600 whitespace-nowrap">
-                            {formatarDataHora(mov.data_movimento)}
-                          </td>
-                          <td className="p-2.5">
-                            <div className="flex items-center gap-1.5">
-                              <Badge
-                                className={`text-[10px] ${
-                                  mov.origem === 'ESTORNO'
-                                    ? 'bg-purple-100 text-purple-800 border-purple-300'
-                                    : isEntrada
-                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                      : 'bg-rose-100 text-rose-800 border-rose-300'
-                                }`}
-                              >
-                                {mov.origem}
-                              </Badge>
-                              {isEstornado && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[9px] text-rose-600 border-rose-300"
-                                >
-                                  Estornado
-                                </Badge>
-                              )}
-                            </div>
-                          </td>
-                          {/* Coluna Lote */}
-                          <td className="p-2.5 font-mono text-[11px]">
-                            {mov.expand?.lote_id?.numero_lote ? (
-                              <span className="font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded">
-                                {mov.expand.lote_id.numero_lote}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
-                          </td>
-                          <td className="p-2.5 text-slate-600">
-                            {mov.documento_tipo ? (
-                              <span>
-                                {mov.documento_tipo}
-                                {mov.documento_numero ? ` nº ${mov.documento_numero}` : ''}
-                              </span>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          {/* Entrada */}
-                          <td className="p-2.5 text-right font-mono font-semibold text-emerald-700">
-                            {isEntrada ? formatarQtd(mov.quantidade) : '—'}
-                          </td>
-                          {/* Saída */}
-                          <td className="p-2.5 text-right font-mono font-semibold text-rose-700">
-                            {!isEntrada ? formatarQtd(mov.quantidade) : '—'}
-                          </td>
-                          {/* Saldo Posterior */}
-                          <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                            {formatarQtd(mov.saldo_posterior)}
-                          </td>
-                          {/* Custo Unitário */}
-                          <td className="p-2.5 text-right font-mono text-slate-600">
-                            {formatarMoeda(mov.custo_unitario)}
-                          </td>
-                          {/* Custo Médio Posterior */}
-                          <td className="p-2.5 text-right font-mono font-semibold text-slate-800">
-                            {formatarMoeda(mov.custo_medio_posterior)}
-                          </td>
-                          {/* Valor Total do Movimento */}
-                          <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                            {formatarMoeda(mov.valor_total)}
-                          </td>
-                          {/* Usuário / Motivo */}
-                          <td className="p-2.5 max-w-[200px]">
-                            {mov.motivo && (
-                              <div
-                                className="font-medium text-slate-800 truncate"
-                                title={mov.motivo}
-                              >
-                                {mov.motivo}
-                              </div>
-                            )}
-                            {mov.observacao && (
-                              <div
-                                className="text-[10px] text-slate-400 truncate"
-                                title={mov.observacao}
-                              >
-                                {mov.observacao}
-                              </div>
-                            )}
-                            {mov.movimento_estorno_id && (
-                              <div className="text-[10px] text-purple-600 font-mono">
-                                Estorno: #{mov.movimento_estorno_id.slice(-6)}
-                              </div>
-                            )}
-                          </td>
-                          {/* Ações: Estornar */}
-                          <td className="p-2.5 text-center print:hidden">
-                            {!isEstornado &&
-                              mov.origem !== 'ESTORNO' &&
-                              isAjuste &&
-                              podeExcluir && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => abrirModalEstorno(mov)}
-                                  className="h-7 px-2 text-[11px] text-rose-600 hover:text-rose-800 hover:bg-rose-50"
-                                  title="Estornar lançamento de estoque"
-                                >
-                                  <RotateCcw className="h-3 w-3 mr-1" />
-                                  Estornar
-                                </Button>
-                              )}
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </>
-              )}
-            </tbody>
-            {/* Linha final consolidada */}
-            {produto && (
-              <tfoot className="bg-slate-100 font-bold border-t border-slate-300 text-xs">
-                <tr>
-                  <td colSpan={4} className="p-3 text-slate-800">
-                    Posição Final Consolidada:
-                  </td>
-                  <td className="p-3 text-right font-mono text-emerald-800">
-                    + {formatarQtd(totaisPeriodo.entradasQtd)}
-                  </td>
-                  <td className="p-3 text-right font-mono text-rose-800">
-                    - {formatarQtd(totaisPeriodo.saidasQtd)}
-                  </td>
-                  <td className="p-3 text-right font-mono text-blue-900 text-sm">
-                    {formatarQtd(saldoFinal.quantidade)}
-                  </td>
-                  <td className="p-3 text-right text-slate-400 font-normal text-[11px]">—</td>
-                  <td className="p-3 text-right font-mono text-slate-800">
-                    {formatarMoeda(saldoFinal.custo_medio)}
-                  </td>
-                  <td className="p-3 text-right font-mono text-emerald-800 text-sm">
-                    {formatarMoeda(saldoFinal.valor_total)}
-                  </td>
-                  <td colSpan={2} className="p-3"></td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-      </div>
-
-      {/* Modal de Confirmação de Estorno */}
-      <Dialog open={modalEstornoAberto} onOpenChange={setModalEstornoAberto}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
-              <RotateCcw className="h-5 w-5 text-rose-600" />
-              <DialogTitle className="text-base font-bold text-slate-900">
-                Confirmar Estorno de Movimento
-              </DialogTitle>
-            </div>
-            <DialogDescription className="text-xs text-slate-600">
-              Esta ação criará uma contrapartida de estorno invertendo o movimento, recalculando o
-              saldo e mantendo histórico fiscal no Kardex.
-            </DialogDescription>
-          </DialogHeader>
-
-          {movimentoParaEstornar && (
-            <div className="space-y-3 py-2 text-xs">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-md space-y-1">
-                <div>
-                  <strong>Operação:</strong> {movimentoParaEstornar.origem} (
-                  {movimentoParaEstornar.tipo})
-                </div>
-                <div>
-                  <strong>Quantidade:</strong>{' '}
-                  <span className="font-mono font-bold">
-                    {formatarQtd(movimentoParaEstornar.quantidade)}
-                  </span>
-                </div>
-                <div>
-                  <strong>Data:</strong> {formatarDataHora(movimentoParaEstornar.data_movimento)}
-                </div>
-                {movimentoParaEstornar.motivo && (
-                  <div>
-                    <strong>Motivo original:</strong> {movimentoParaEstornar.motivo}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-800 mb-1 block">
-                  Motivo do Estorno *
-                </label>
-                <Textarea
-                  value={motivoEstorno}
-                  onChange={(e) => setMotivoEstorno(e.target.value)}
-                  placeholder="Descreva a razão do estorno (ex: Digitação incorreta da quantidade)..."
-                  className="text-xs min-h-[80px]"
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2">
+      {/* Estado vazio global */}
+      {!carregando && secoes.length === 0 && (
+        <Card className="border-slate-200">
+          <CardContent className="py-12 text-center">
+            <Search className="h-8 w-8 text-slate-300 mx-auto mb-3" />
+            <p className="text-sm text-slate-500 font-medium">
+              Nenhuma movimentação encontrada para os filtros selecionados.
+            </p>
+            <p className="text-xs text-slate-400 mt-1">
+              Ajuste o período, as empresas ou os produtos no filtro.
+            </p>
             <Button
-              type="button"
               variant="outline"
               size="sm"
-              onClick={() => setModalEstornoAberto(false)}
-              disabled={salvandoEstorno}
-              className="text-xs"
+              onClick={() => {
+                setBusca('')
+                setTipoFiltro('TODOS')
+                setOrigemFiltro('TODAS')
+                setFiltros({ ...filtros, produtos_ids: [] })
+              }}
+              className="mt-4"
             >
+              <X className="h-3.5 w-3.5 mr-1" /> Limpar filtros
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Modal Estorno */}
+      <Dialog
+        open={Boolean(movEstorno)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMovEstorno(null)
+            setMotivoEstorno('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Estornar Movimento de Estoque
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Será criado um movimento inverso com o mesmo custo, mantendo o histórico íntegro.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {movEstorno && (
+              <div className="text-xs bg-slate-50 border rounded-md p-3 space-y-1">
+                <div>
+                  <strong>Origem:</strong> {movEstorno.origem}
+                </div>
+                <div>
+                  <strong>Quantidade:</strong> {movEstorno.quantidade} ({movEstorno.tipo})
+                </div>
+                <div>
+                  <strong>Data:</strong>{' '}
+                  {new Date(movEstorno.data_movimento).toLocaleString('pt-BR')}
+                </div>
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">Motivo do estorno *</Label>
+              <Textarea
+                value={motivoEstorno}
+                onChange={(e) => setMotivoEstorno(e.target.value)}
+                placeholder="Descreva o motivo do estorno (obrigatório)"
+                className="text-xs min-h-[70px]"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setMovEstorno(null)}>
               Cancelar
             </Button>
             <Button
-              type="button"
               size="sm"
-              onClick={confirmarEstorno}
-              disabled={salvandoEstorno || !motivoEstorno.trim()}
-              className="text-xs bg-rose-600 hover:bg-rose-700 text-white"
+              disabled={processando || !motivoEstorno.trim()}
+              onClick={() => {
+                setMovEstorno(null)
+                setModalSupervisor(true)
+              }}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
             >
-              {salvandoEstorno ? 'Estornando...' : 'Confirmar Estorno'}
+              Confirmar e Autorizar
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
+
+      {/* Autorização de Supervisor */}
+      <ModalAutorizacaoSupervisor open={modalSupervisor} onClose={confirmarEstorno} />
     </div>
   )
 }
+
 export default KardexPage
