@@ -50,6 +50,7 @@ import ConfiguracoesGeralPage from '@/pages/configuracoes/ConfiguracoesGeralPage
 import ConfiguracaoFiscalPage from '@/pages/configuracoes/ConfiguracaoFiscalPage'
 import IntegridadeEstoquePage from '@/pages/configuracoes/IntegridadeEstoquePage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
+import MercadoLivrePage from '@/pages/configuracoes/MercadoLivrePage'
 import PedidosCompraListaPage from '@/pages/compras/PedidosCompraListaPage'
 import PedidoCompraFormPage from '@/pages/compras/PedidoCompraFormPage'
 import PosicaoEstoquePage from '@/pages/estoque/PosicaoEstoquePage'
@@ -963,6 +964,14 @@ const App = () => (
                     element={
                       <PermissaoGuard modulo="config_fiscal" acao="ver">
                         <ConfiguracaoFiscalPage />
+                      </PermissaoGuard>
+                    }
+                  />
+                  <Route
+                    path="/configuracoes/mercado-livre"
+                    element={
+                      <PermissaoGuard modulo="configuracoes" acao="ver">
+                        <MercadoLivrePage />
                       </PermissaoGuard>
                     }
                   />

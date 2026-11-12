@@ -41,8 +41,15 @@ rotas, coleções e nomes de Segredos descritos aqui.
 - Tokens, `code` e `client_secret` nunca vão para log nem para resposta de rota.
 - A mesma conta do Mercado Livre não pode ser ligada a duas empresas.
 
+## Parte 10.1b — Tela Configurações > Mercado Livre
+
+- `src/pages/configuracoes/MercadoLivrePage.tsx` (rota `/configuracoes/mercado-livre`, item no menu Configurações)
+- `src/services/mercadoLivre.ts` (chamadas às rotas de conexão)
+- Mostra o estado da conexão da empresa ativa e os botões Conectar, Testar conexão e Desconectar.
+  Conectar e Desconectar aparecem só para administradores.
+- Ao voltar do Mercado Livre, lê `?resultado=ok` ou `?resultado=erro&motivo=...` e mostra o aviso.
+
 ## Próximas partes (ainda não implementadas)
-- 10.1b Tela Configurações > Mercado Livre
 - 10.2 Webhook com fila e conferência de avisos perdidos
 - 10.3 Importação de pedidos como venda
 - 10.4 NF-e do pedido, envio do XML e etiqueta
