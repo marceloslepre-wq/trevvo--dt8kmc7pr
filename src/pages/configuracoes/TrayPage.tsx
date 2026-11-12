@@ -267,8 +267,7 @@ export const TrayPage: React.FC = () => {
                     disabled={ocupado}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Você será levado à Tray para autorizar o acesso e depois voltará para esta
-                    tela.
+                    Você será levado à Tray para autorizar o acesso e depois voltará para esta tela.
                   </p>
                 </div>
               )}

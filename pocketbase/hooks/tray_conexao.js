@@ -207,7 +207,9 @@ routerAdd(
 
     // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
     function hostDaLoja(valor) {
-      let v = String(valor || '').trim().toLowerCase()
+      let v = String(valor || '')
+        .trim()
+        .toLowerCase()
       v = v.replace(/^https?:\/\//, '')
       v = v.split('/')[0].split('?')[0].split('#')[0]
       if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
@@ -256,7 +258,10 @@ routerAdd(
     function renovarTokenTray(conta) {
       const res = $http.send({
         method: 'GET',
-        url: conta.getString('api_address') + '/auth?refresh_token=' + encodeURIComponent(conta.getString('refresh_token')),
+        url:
+          conta.getString('api_address') +
+          '/auth?refresh_token=' +
+          encodeURIComponent(conta.getString('refresh_token')),
         headers: { Accept: 'application/json' },
         timeout: 20,
       })
@@ -276,7 +281,10 @@ routerAdd(
       const body = c.requestInfo().body || {}
       const ctx = contextoDoUsuario(auth)
       if (!ctx.admin) {
-        return c.json(403, { sucesso: false, mensagem: 'Apenas administradores podem conectar a loja Tray.' })
+        return c.json(403, {
+          sucesso: false,
+          mensagem: 'Apenas administradores podem conectar a loja Tray.',
+        })
       }
       const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
       const host = hostDaLoja(body.loja_url)
@@ -288,7 +296,11 @@ routerAdd(
       }
 
       let retornoUrl = String(body.retorno_url || '').trim()
-      if (retornoUrl && !/^https:\/\/[^\s]+$/.test(retornoUrl) && !/^http:\/\/localhost[:\/]/.test(retornoUrl)) {
+      if (
+        retornoUrl &&
+        !/^https:\/\/[^\s]+$/.test(retornoUrl) &&
+        !/^http:\/\/localhost[:\/]/.test(retornoUrl)
+      ) {
         retornoUrl = ''
       }
 
@@ -326,110 +338,121 @@ routerAdd(
 )
 
 routerAdd('GET', '/backend/v1/tray/oauth/callback/{estado}', (c) => {
+  // ---- Helpers de chamada à Tray (locais ao callback) ----
+  function segredosTray() {
+    let key = ''
+    let secret = ''
+    try {
+      key = ($os.getenv('TRAY_CONSUMER_KEY') || '').trim()
+    } catch (_) {}
+    try {
+      secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
+    } catch (_) {}
+    return { key: key, secret: secret, ok: !!(key && secret) }
+  }
 
-    // ---- Helpers de chamada à Tray (locais ao callback) ----
-    function segredosTray() {
-      let key = ''
-      let secret = ''
+  function lerJson(res) {
+    if (res && res.json) return res.json
+    try {
+      return JSON.parse(res.raw || '{}')
+    } catch (_) {
+      return {}
+    }
+  }
+
+  // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
+  function hostDaLoja(valor) {
+    let v = String(valor || '')
+      .trim()
+      .toLowerCase()
+    v = v.replace(/^https?:\/\//, '')
+    v = v.split('/')[0].split('?')[0].split('#')[0]
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
+    if (v.length > 200) return ''
+    return v
+  }
+
+  // A API da loja fica sempre em https://{host da loja}/web_api
+  function apiDaLoja(host) {
+    return 'https://' + host + '/web_api'
+  }
+
+  function formUrlEncoded(campos) {
+    const partes = []
+    Object.keys(campos).forEach((k) => {
+      partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
+    })
+    return partes.join('&')
+  }
+
+  function mensagemErroTray(r) {
+    const d = (r && r.dados) || {}
+    let txt = d.message || d.error || ''
+    if (!txt && d.causes) {
       try {
-        key = ($os.getenv('TRAY_CONSUMER_KEY') || '').trim()
+        txt = JSON.stringify(d.causes).slice(0, 200)
       } catch (_) {}
-      try {
-        secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
-      } catch (_) {}
-      return { key: key, secret: secret, ok: !!(key && secret) }
     }
+    return 'Tray respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
+  }
 
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
+  // Grava os tokens. A validade é calculada aqui (3 h e 30 dias, com margem), sem depender de fuso da Tray.
+  function gravarTokensTray(conta, dados) {
+    conta.set('access_token', String(dados.access_token || ''))
+    if (dados.refresh_token) {
+      conta.set('refresh_token', String(dados.refresh_token))
+      conta.set('refresh_expira_em', new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString())
     }
+    conta.set('token_expira_em', new Date(Date.now() + 170 * 60 * 1000).toISOString())
+    conta.set('ultima_renovacao_em', new Date().toISOString())
+    conta.set('status', 'Conectada')
+    conta.set('ultimo_erro', '')
+  }
 
-    // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
-    function hostDaLoja(valor) {
-      let v = String(valor || '').trim().toLowerCase()
-      v = v.replace(/^https?:\/\//, '')
-      v = v.split('/')[0].split('?')[0].split('#')[0]
-      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
-      if (v.length > 200) return ''
-      return v
-    }
+  // Nunca registrar em log os parâmetros destas chamadas.
+  function renovarTokenTray(conta) {
+    const res = $http.send({
+      method: 'GET',
+      url:
+        conta.getString('api_address') +
+        '/auth?refresh_token=' +
+        encodeURIComponent(conta.getString('refresh_token')),
+      headers: { Accept: 'application/json' },
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    // A API da loja fica sempre em https://{host da loja}/web_api
-    function apiDaLoja(host) {
-      return 'https://' + host + '/web_api'
-    }
-
-    function formUrlEncoded(campos) {
-      const partes = []
-      Object.keys(campos).forEach((k) => {
-        partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
-      })
-      return partes.join('&')
-    }
-
-    function mensagemErroTray(r) {
-      const d = (r && r.dados) || {}
-      let txt = d.message || d.error || ''
-      if (!txt && d.causes) {
-        try {
-          txt = JSON.stringify(d.causes).slice(0, 200)
-        } catch (_) {}
-      }
-      return 'Tray respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-    }
-
-    // Grava os tokens. A validade é calculada aqui (3 h e 30 dias, com margem), sem depender de fuso da Tray.
-    function gravarTokensTray(conta, dados) {
-      conta.set('access_token', String(dados.access_token || ''))
-      if (dados.refresh_token) {
-        conta.set('refresh_token', String(dados.refresh_token))
-        conta.set('refresh_expira_em', new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString())
-      }
-      conta.set('token_expira_em', new Date(Date.now() + 170 * 60 * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
-    }
-
-    // Nunca registrar em log os parâmetros destas chamadas.
-    function renovarTokenTray(conta) {
-      const res = $http.send({
-        method: 'GET',
-        url: conta.getString('api_address') + '/auth?refresh_token=' + encodeURIComponent(conta.getString('refresh_token')),
-        headers: { Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
-
-    function responder(ok, motivo, retornoUrl) {
-      if (retornoUrl) {
-        const sep = retornoUrl.indexOf('?') >= 0 ? '&' : '?'
-        return c.redirect(
-          302,
-          retornoUrl + sep + 'resultado=' + (ok ? 'ok' : 'erro') + (ok ? '' : '&motivo=' + encodeURIComponent(motivo || '')),
-        )
-      }
-      const titulo = ok ? 'Loja Tray conectada' : 'Não foi possível conectar'
-      const texto = ok
-        ? 'Pode fechar esta aba e voltar ao sistema.'
-        : String(motivo || 'Erro desconhecido.').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      return c.html(
-        ok ? 200 : 400,
-        '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>' +
-          titulo +
-          '</title></head><body style="font-family:sans-serif;padding:40px"><h2>' +
-          titulo +
-          '</h2><p>' +
-          texto +
-          '</p></body></html>',
+  function responder(ok, motivo, retornoUrl) {
+    if (retornoUrl) {
+      const sep = retornoUrl.indexOf('?') >= 0 ? '&' : '?'
+      return c.redirect(
+        302,
+        retornoUrl +
+          sep +
+          'resultado=' +
+          (ok ? 'ok' : 'erro') +
+          (ok ? '' : '&motivo=' + encodeURIComponent(motivo || '')),
       )
     }
+    const titulo = ok ? 'Loja Tray conectada' : 'Não foi possível conectar'
+    const texto = ok
+      ? 'Pode fechar esta aba e voltar ao sistema.'
+      : String(motivo || 'Erro desconhecido.')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+    return c.html(
+      ok ? 200 : 400,
+      '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>' +
+        titulo +
+        '</title></head><body style="font-family:sans-serif;padding:40px"><h2>' +
+        titulo +
+        '</h2><p>' +
+        texto +
+        '</p></body></html>',
+    )
+  }
 
   let retornoUrl = ''
   try {
@@ -437,20 +460,28 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback/{estado}', (c) => {
     if (c.request && typeof c.request.pathValue === 'function') {
       estado = String(c.request.pathValue('estado') || '').trim()
     }
-    if (!/^[A-Za-z0-9]{20,100}$/.test(estado)) return responder(false, 'Solicitação de conexão inválida.', '')
+    if (!/^[A-Za-z0-9]{20,100}$/.test(estado))
+      return responder(false, 'Solicitação de conexão inválida.', '')
 
     const q = c.requestInfo().query || {}
     const code = String(q['code'] || '').trim()
 
     let estRec = null
     try {
-      const recs = $app.findRecordsByFilter('tray_oauth_estados', "estado = '" + estado + "'", '-created', 1, 0)
+      const recs = $app.findRecordsByFilter(
+        'tray_oauth_estados',
+        "estado = '" + estado + "'",
+        '-created',
+        1,
+        0,
+      )
       if (recs && recs.length > 0) estRec = recs[0]
     } catch (_) {}
     if (!estRec) return responder(false, 'Solicitação de conexão não encontrada.', '')
     retornoUrl = estRec.getString('retorno_url')
 
-    if (estRec.getBool('usado')) return responder(false, 'Esta solicitação de conexão já foi utilizada.', retornoUrl)
+    if (estRec.getBool('usado'))
+      return responder(false, 'Esta solicitação de conexão já foi utilizada.', retornoUrl)
     estRec.set('usado', true)
     $app.save(estRec)
 
@@ -460,14 +491,23 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback/{estado}', (c) => {
     if (!code) return responder(false, 'A Tray não devolveu o código de autorização.', retornoUrl)
 
     const seg = segredosTray()
-    if (!seg.ok) return responder(false, 'Segredos TRAY_CONSUMER_KEY e TRAY_CONSUMER_SECRET não configurados.', retornoUrl)
+    if (!seg.ok)
+      return responder(
+        false,
+        'Segredos TRAY_CONSUMER_KEY e TRAY_CONSUMER_SECRET não configurados.',
+        retornoUrl,
+      )
 
     // Segurança: a API chamada é sempre a da loja informada pelo administrador ao iniciar,
     // nunca um endereço vindo solto na URL de retorno.
     const host = estRec.getString('loja_host')
     const hostRetorno = hostDaLoja(q['api_address'] || '')
     if (hostRetorno && hostRetorno !== host) {
-      return responder(false, 'A loja que autorizou (' + hostRetorno + ') não é a loja informada (' + host + ').', retornoUrl)
+      return responder(
+        false,
+        'A loja que autorizou (' + hostRetorno + ') não é a loja informada (' + host + ').',
+        retornoUrl,
+      )
     }
     const api = apiDaLoja(host)
 
@@ -487,7 +527,13 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback/{estado}', (c) => {
     const empresaId = estRec.getString('empresa_id')
     let conta = null
     try {
-      const recs = $app.findRecordsByFilter('tray_contas', "empresa_id = '" + empresaId + "'", '-created', 1, 0)
+      const recs = $app.findRecordsByFilter(
+        'tray_contas',
+        "empresa_id = '" + empresaId + "'",
+        '-created',
+        1,
+        0,
+      )
       if (recs && recs.length > 0) conta = recs[0]
     } catch (_) {}
     if (!conta) {
@@ -669,7 +715,9 @@ routerAdd(
 
     // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
     function hostDaLoja(valor) {
-      let v = String(valor || '').trim().toLowerCase()
+      let v = String(valor || '')
+        .trim()
+        .toLowerCase()
       v = v.replace(/^https?:\/\//, '')
       v = v.split('/')[0].split('?')[0].split('#')[0]
       if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
@@ -718,7 +766,10 @@ routerAdd(
     function renovarTokenTray(conta) {
       const res = $http.send({
         method: 'GET',
-        url: conta.getString('api_address') + '/auth?refresh_token=' + encodeURIComponent(conta.getString('refresh_token')),
+        url:
+          conta.getString('api_address') +
+          '/auth?refresh_token=' +
+          encodeURIComponent(conta.getString('refresh_token')),
         headers: { Accept: 'application/json' },
         timeout: 20,
       })
@@ -746,7 +797,10 @@ routerAdd(
       })
     } catch (err) {
       const status = err && err.status ? err.status : 400
-      return c.json(status, { sucesso: false, mensagem: err && err.message ? err.message : 'Falha ao consultar o status.' })
+      return c.json(status, {
+        sucesso: false,
+        mensagem: err && err.message ? err.message : 'Falha ao consultar o status.',
+      })
     }
   },
   $apis.requireAuth(),
@@ -910,7 +964,9 @@ routerAdd(
 
     // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
     function hostDaLoja(valor) {
-      let v = String(valor || '').trim().toLowerCase()
+      let v = String(valor || '')
+        .trim()
+        .toLowerCase()
       v = v.replace(/^https?:\/\//, '')
       v = v.split('/')[0].split('?')[0].split('#')[0]
       if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
@@ -959,7 +1015,10 @@ routerAdd(
     function renovarTokenTray(conta) {
       const res = $http.send({
         method: 'GET',
-        url: conta.getString('api_address') + '/auth?refresh_token=' + encodeURIComponent(conta.getString('refresh_token')),
+        url:
+          conta.getString('api_address') +
+          '/auth?refresh_token=' +
+          encodeURIComponent(conta.getString('refresh_token')),
         headers: { Accept: 'application/json' },
         timeout: 20,
       })
@@ -971,8 +1030,15 @@ routerAdd(
       const ctx = contextoDoUsuario(auth)
       const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
       const conta = contaDaEmpresa(empresa.id)
-      if (!conta || conta.getString('status') === 'Desconectada' || !conta.getString('refresh_token')) {
-        return c.json(400, { sucesso: false, mensagem: 'Nenhuma loja Tray conectada nesta empresa.' })
+      if (
+        !conta ||
+        conta.getString('status') === 'Desconectada' ||
+        !conta.getString('refresh_token')
+      ) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Nenhuma loja Tray conectada nesta empresa.',
+        })
       }
 
       const expira = new Date(conta.getString('token_expira_em') || 0).getTime()
@@ -985,13 +1051,19 @@ routerAdd(
           if (r.status === 400 || r.status === 401) conta.set('status', 'Reconectar')
           conta.set('ultimo_erro', mensagemErroTray(r))
           $app.save(conta)
-          return c.json(400, { sucesso: false, mensagem: 'Falha ao renovar o token. ' + mensagemErroTray(r) })
+          return c.json(400, {
+            sucesso: false,
+            mensagem: 'Falha ao renovar o token. ' + mensagemErroTray(r),
+          })
         }
       }
 
       const res = $http.send({
         method: 'GET',
-        url: conta.getString('api_address') + '/info?access_token=' + encodeURIComponent(conta.getString('access_token')),
+        url:
+          conta.getString('api_address') +
+          '/info?access_token=' +
+          encodeURIComponent(conta.getString('access_token')),
         headers: { Accept: 'application/json' },
         timeout: 20,
       })
@@ -1004,10 +1076,18 @@ routerAdd(
         conta.set('loja_nome', nome)
         $app.save(conta)
       }
-      return c.json(200, { sucesso: true, mensagem: 'Conexão funcionando.', loja_nome: nome, loja_host: conta.getString('loja_host') })
+      return c.json(200, {
+        sucesso: true,
+        mensagem: 'Conexão funcionando.',
+        loja_nome: nome,
+        loja_host: conta.getString('loja_host'),
+      })
     } catch (err) {
       const status = err && err.status ? err.status : 400
-      return c.json(status, { sucesso: false, mensagem: err && err.message ? err.message : 'Falha ao testar a conexão.' })
+      return c.json(status, {
+        sucesso: false,
+        mensagem: err && err.message ? err.message : 'Falha ao testar a conexão.',
+      })
     }
   },
   $apis.requireAuth(),
@@ -1151,7 +1231,10 @@ routerAdd(
       const body = c.requestInfo().body || {}
       const ctx = contextoDoUsuario(auth)
       if (!ctx.admin) {
-        return c.json(403, { sucesso: false, mensagem: 'Apenas administradores podem desconectar a loja Tray.' })
+        return c.json(403, {
+          sucesso: false,
+          mensagem: 'Apenas administradores podem desconectar a loja Tray.',
+        })
       }
       const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
       const conta = contaDaEmpresa(empresa.id)
@@ -1168,100 +1251,113 @@ routerAdd(
       return c.json(200, { sucesso: true, mensagem: 'Loja desconectada.' })
     } catch (err) {
       const status = err && err.status ? err.status : 400
-      return c.json(status, { sucesso: false, mensagem: err && err.message ? err.message : 'Falha ao desconectar.' })
+      return c.json(status, {
+        sucesso: false,
+        mensagem: err && err.message ? err.message : 'Falha ao desconectar.',
+      })
     }
   },
   $apis.requireAuth(),
 )
 
 cronAdd('tray_renovar_tokens', '*/30 * * * *', () => {
+  // ---- Helpers de chamada à Tray (locais ao callback) ----
+  function segredosTray() {
+    let key = ''
+    let secret = ''
+    try {
+      key = ($os.getenv('TRAY_CONSUMER_KEY') || '').trim()
+    } catch (_) {}
+    try {
+      secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
+    } catch (_) {}
+    return { key: key, secret: secret, ok: !!(key && secret) }
+  }
 
-    // ---- Helpers de chamada à Tray (locais ao callback) ----
-    function segredosTray() {
-      let key = ''
-      let secret = ''
+  function lerJson(res) {
+    if (res && res.json) return res.json
+    try {
+      return JSON.parse(res.raw || '{}')
+    } catch (_) {
+      return {}
+    }
+  }
+
+  // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
+  function hostDaLoja(valor) {
+    let v = String(valor || '')
+      .trim()
+      .toLowerCase()
+    v = v.replace(/^https?:\/\//, '')
+    v = v.split('/')[0].split('?')[0].split('#')[0]
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
+    if (v.length > 200) return ''
+    return v
+  }
+
+  // A API da loja fica sempre em https://{host da loja}/web_api
+  function apiDaLoja(host) {
+    return 'https://' + host + '/web_api'
+  }
+
+  function formUrlEncoded(campos) {
+    const partes = []
+    Object.keys(campos).forEach((k) => {
+      partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
+    })
+    return partes.join('&')
+  }
+
+  function mensagemErroTray(r) {
+    const d = (r && r.dados) || {}
+    let txt = d.message || d.error || ''
+    if (!txt && d.causes) {
       try {
-        key = ($os.getenv('TRAY_CONSUMER_KEY') || '').trim()
+        txt = JSON.stringify(d.causes).slice(0, 200)
       } catch (_) {}
-      try {
-        secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
-      } catch (_) {}
-      return { key: key, secret: secret, ok: !!(key && secret) }
     }
+    return 'Tray respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
+  }
 
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
+  // Grava os tokens. A validade é calculada aqui (3 h e 30 dias, com margem), sem depender de fuso da Tray.
+  function gravarTokensTray(conta, dados) {
+    conta.set('access_token', String(dados.access_token || ''))
+    if (dados.refresh_token) {
+      conta.set('refresh_token', String(dados.refresh_token))
+      conta.set('refresh_expira_em', new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString())
     }
+    conta.set('token_expira_em', new Date(Date.now() + 170 * 60 * 1000).toISOString())
+    conta.set('ultima_renovacao_em', new Date().toISOString())
+    conta.set('status', 'Conectada')
+    conta.set('ultimo_erro', '')
+  }
 
-    // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
-    function hostDaLoja(valor) {
-      let v = String(valor || '').trim().toLowerCase()
-      v = v.replace(/^https?:\/\//, '')
-      v = v.split('/')[0].split('?')[0].split('#')[0]
-      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
-      if (v.length > 200) return ''
-      return v
-    }
-
-    // A API da loja fica sempre em https://{host da loja}/web_api
-    function apiDaLoja(host) {
-      return 'https://' + host + '/web_api'
-    }
-
-    function formUrlEncoded(campos) {
-      const partes = []
-      Object.keys(campos).forEach((k) => {
-        partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
-      })
-      return partes.join('&')
-    }
-
-    function mensagemErroTray(r) {
-      const d = (r && r.dados) || {}
-      let txt = d.message || d.error || ''
-      if (!txt && d.causes) {
-        try {
-          txt = JSON.stringify(d.causes).slice(0, 200)
-        } catch (_) {}
-      }
-      return 'Tray respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-    }
-
-    // Grava os tokens. A validade é calculada aqui (3 h e 30 dias, com margem), sem depender de fuso da Tray.
-    function gravarTokensTray(conta, dados) {
-      conta.set('access_token', String(dados.access_token || ''))
-      if (dados.refresh_token) {
-        conta.set('refresh_token', String(dados.refresh_token))
-        conta.set('refresh_expira_em', new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString())
-      }
-      conta.set('token_expira_em', new Date(Date.now() + 170 * 60 * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
-    }
-
-    // Nunca registrar em log os parâmetros destas chamadas.
-    function renovarTokenTray(conta) {
-      const res = $http.send({
-        method: 'GET',
-        url: conta.getString('api_address') + '/auth?refresh_token=' + encodeURIComponent(conta.getString('refresh_token')),
-        headers: { Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  // Nunca registrar em log os parâmetros destas chamadas.
+  function renovarTokenTray(conta) {
+    const res = $http.send({
+      method: 'GET',
+      url:
+        conta.getString('api_address') +
+        '/auth?refresh_token=' +
+        encodeURIComponent(conta.getString('refresh_token')),
+      headers: { Accept: 'application/json' },
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
   try {
     if (!$app.hasTable('tray_contas')) return
     if (!segredosTray().ok) return
     let contas = []
     try {
-      contas = $app.findRecordsByFilter('tray_contas', "status = 'Conectada' && refresh_token != ''", 'token_expira_em', 500, 0)
+      contas = $app.findRecordsByFilter(
+        'tray_contas',
+        "status = 'Conectada' && refresh_token != ''",
+        'token_expira_em',
+        500,
+        0,
+      )
     } catch (_) {
       contas = []
     }
@@ -1281,7 +1377,12 @@ cronAdd('tray_renovar_tokens', '*/30 * * * *', () => {
           $app.save(conta)
           console.log('[tray] Loja precisa reconectar. empresa=' + conta.getString('empresa_id'))
         } else {
-          console.log('[tray] Renovação adiada: HTTP ' + r.status + ' empresa=' + conta.getString('empresa_id'))
+          console.log(
+            '[tray] Renovação adiada: HTTP ' +
+              r.status +
+              ' empresa=' +
+              conta.getString('empresa_id'),
+          )
         }
       } catch (e1) {
         console.log('[tray] Erro ao renovar token: ' + (e1 && e1.message ? e1.message : String(e1)))

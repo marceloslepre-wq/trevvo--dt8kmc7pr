@@ -98,7 +98,9 @@ migrate(
           { name: 'created', type: 'autodate', onCreate: true, onUpdate: false },
           { name: 'updated', type: 'autodate', onCreate: true, onUpdate: true },
         ],
-        indexes: ['CREATE UNIQUE INDEX idx_tray_oauth_estados_estado ON tray_oauth_estados (estado)'],
+        indexes: [
+          'CREATE UNIQUE INDEX idx_tray_oauth_estados_estado ON tray_oauth_estados (estado)',
+        ],
       })
       app.save(estados)
     }
