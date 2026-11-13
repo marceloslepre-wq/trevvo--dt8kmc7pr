@@ -8,15 +8,43 @@ routerAdd(
       return e.json(401, { error: 'Não autorizado.' })
     }
 
-    // 2. Verificar se o chamador tem permissão de administrador ou pode_criar usuarios
-    let isAllowed = false
+    // E-mail do token: o JSVM nem sempre expõe `.email` como propriedade direta,
+    // então preferir getString (campo hidden do auth é acessível via Get).
+    let tokenEmail = ''
     try {
-      let callerUser = null
+      if (authRecord.getString) {
+        tokenEmail = authRecord.getString('email')
+      }
+      if (!tokenEmail && authRecord.email) {
+        tokenEmail = authRecord.email
+      }
+      if (tokenEmail) {
+        tokenEmail = String(tokenEmail).toLowerCase()
+      }
+    } catch (_) {
+      tokenEmail = ''
+    }
+
+    // 2. Verificar se o chamador tem permissão de administrador ou pode_criar usuarios
+    //    O id declarado no token pode não existir na coleção users (ex.: sessão emitida
+    //    antes de uma troca de banco/limpeza), então a resolução do chamador nunca pode
+    //    confiar só no id: o e-mail do token é o fallback confiável.
+    let isAllowed = false
+    let callerUser = null
+    try {
       try {
         callerUser = $app.findFirstRecordByData('usuarios', 'auth_user_id', authRecord.id)
       } catch (_) {
-        if (authRecord.email) {
-          callerUser = $app.findFirstRecordByData('usuarios', 'email', authRecord.email)
+        callerUser = null
+      }
+
+      // Fallback: o id do token pode não existir no banco (sessão emitida antes de
+      // uma troca de banco/limpeza); o e-mail do token casa com o cadastro real.
+      if (!callerUser && tokenEmail) {
+        try {
+          callerUser = $app.findFirstRecordByData('usuarios', 'email', tokenEmail)
+        } catch (_) {
+          callerUser = null
         }
       }
 
@@ -106,9 +134,21 @@ routerAdd(
       }
     } catch (_) {}
 
+    // Última tentativa: se o assinante não veio nem do cadastro nem do token,
+    // resolver pelo e-mail (o id do token pode não existir no banco).
+    if (!assinanteId && tokenEmail) {
+      try {
+        const porEmail = $app.findFirstRecordByData('usuarios', 'email', tokenEmail)
+        if (porEmail) {
+          assinanteId = porEmail.getString('assinante_id')
+          if (assinanteId) callerUser = porEmail
+        }
+      } catch (_) {}
+    }
+
     if (!assinanteId) {
-      return e.json(400, {
-        error: 'Não foi possível identificar o assinante do usuário autenticado.',
+      return e.json(401, {
+        error: 'Sessão inválida ou expirada. Faça login novamente.',
       })
     }
 
@@ -124,10 +164,114 @@ routerAdd(
       return e.json(400, { error: 'Perfil inválido ou não encontrado.' })
     }
 
+    // Helper local (JSVM): verifica se a empresa informada pertence ao assinante
+    // do chamador. Padrão igual ao dos demais hooks (empresasDoUsuario/exigirEmpresaDoUsuario
+    // são declarados dentro de cada callback, nunca no topo do arquivo).
+    function exigirEmpresaDoUsuarioLocal(auth, empresaId) {
+      if (!empresaId) {
+        throw new BadRequestError('ID da empresa é obrigatório.')
+      }
+
+      let usuarioRec = null
+      try {
+        const uRecs = $app.findRecordsByFilter(
+          'usuarios',
+          "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (uRecs && uRecs.length > 0) {
+          usuarioRec = uRecs[0]
+        }
+      } catch (_) {}
+
+      if (!usuarioRec && tokenEmail) {
+        try {
+          const uRecs = $app.findRecordsByFilter(
+            'usuarios',
+            "email = '" + tokenEmail + "'",
+            '-created',
+            1,
+            0,
+          )
+          if (uRecs && uRecs.length > 0) {
+            usuarioRec = uRecs[0]
+          }
+        } catch (_) {}
+      }
+
+      if (!usuarioRec) {
+        throw new BadRequestError('Usuário ERP correspondente não encontrado.')
+      }
+
+      const assinanteLocal = usuarioRec.getString('assinante_id') || assinanteId
+      if (!assinanteLocal) {
+        throw new BadRequestError('Usuário autenticado sem vínculo com assinante.')
+      }
+
+      // Master/admin pode qualquer empresa do próprio assinante
+      let ehMasterLocal = false
+      try {
+        const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
+        ehMasterLocal = !!(userRec && userRec.getString('tipo') === 'master')
+      } catch (_) {}
+
+      let isAdminLocal = false
+      const perfilIdLocal = usuarioRec.getString('perfil_id')
+      if (perfilIdLocal) {
+        try {
+          const perfilRec = $app.findRecordById('perfis_acesso', perfilIdLocal)
+          if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
+            isAdminLocal = true
+          }
+        } catch (_) {}
+      }
+
+      try {
+        const emp = $app.findRecordById('empresas', empresaId)
+        if (!emp || !emp.getBool('ativo')) {
+          throw new BadRequestError('Empresa não encontrada ou inativa.')
+        }
+        if (emp.getString('assinante_id') !== assinanteLocal) {
+          throw new ForbiddenError(
+            'Operação rejeitada: a empresa selecionada pertence a outro assinante.',
+          )
+        }
+        if (!ehMasterLocal && !isAdminLocal) {
+          // Usuário comum: empresa deve estar entre as permitidas dele
+          let permitida = emp.id === usuarioRec.getString('empresa_padrao_id')
+          if (!permitida) {
+            try {
+              const vinculos = $app.findRecordsByFilter(
+                'usuarios_empresas',
+                "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+                '',
+                500,
+                0,
+              )
+              for (let v = 0; v < vinculos.length; v++) {
+                if (vinculos[v].getString('empresa_id') === empresaId) {
+                  permitida = true
+                  break
+                }
+              }
+            } catch (_) {}
+          }
+          if (!permitida) {
+            throw new ForbiddenError('Operação rejeitada: empresa não permitida para este usuário.')
+          }
+        }
+        return emp
+      } catch (errEmp) {
+        throw errEmp
+      }
+    }
+
     // Validar empresa padrão se informada
     if (empresa_padrao_id) {
       try {
-        exigirEmpresaDoUsuario(authRecord, empresa_padrao_id)
+        exigirEmpresaDoUsuarioLocal(authRecord, empresa_padrao_id)
       } catch (errE) {
         return e.json(403, {
           error: errE.message || 'Empresa padrão inválida ou não permitida para seu usuário.',
@@ -140,7 +284,7 @@ routerAdd(
       const empId = empresas_ids[i]
       if (empId) {
         try {
-          exigirEmpresaDoUsuario(authRecord, empId)
+          exigirEmpresaDoUsuarioLocal(authRecord, empId)
         } catch (errE) {
           return e.json(403, {
             error: `Operação rejeitada: ${errE.message || 'empresa não permitida'}`,
