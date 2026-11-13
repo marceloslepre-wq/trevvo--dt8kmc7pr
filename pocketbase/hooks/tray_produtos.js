@@ -262,7 +262,9 @@ routerAdd(
 
     function texto(v, max) {
       if (v === null || v === undefined) return ''
-      return String(v).trim().slice(0, max || 200)
+      return String(v)
+        .trim()
+        .slice(0, max || 200)
     }
 
     function numero(v) {
@@ -366,7 +368,9 @@ routerAdd(
         const ativo = String(p.available) === '1' || p.available === true
         const idsVar = p.Variant || p.variant || []
         const temVariacao =
-          (idsVar && idsVar.length > 0) || String(p.has_variation) === '1' || p.has_variation === true
+          (idsVar && idsVar.length > 0) ||
+          String(p.has_variation) === '1' ||
+          p.has_variation === true
 
         let variacoes = []
         if (temVariacao && /^[0-9]{1,20}$/.test(produtoId)) {
