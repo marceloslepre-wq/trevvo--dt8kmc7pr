@@ -3,11 +3,11 @@
  *
  * Fonte única de verdade usada para:
  *  (a) montar o menu lateral (Sidebar) — cada grupo aparece UMA vez, com só os itens filtrados;
- *  (b) proteger as rotas (PermissaoGuard) — abrir URL sem pode_ver mostra "Acesso negado";
- *  (c) mostrar/ocultar botões Novo/Editar/Excluir (podeCriar/ podeAcaoRotas).
+ *  (b) proteger as rotas (PermissaoGuard no App.tsx) — abrir URL sem pode_ver mostra "Acesso negado";
+ *  (c) mostrar/ocultar botões Novo/Editar/Excluir (podeCriar/podeAcaoRotas).
  *
- * Requisito do PROJETO_ERP.md: o módulo precisa existir na lista fixa de módulos do select
- * "modulo" da collection "permissoes".
+ * Todas as rotas foram conferidas linha a linha contra src/App.tsx.
+ * Módulos = valores reais do select "modulo" da collection permissoes (26 valores).
  */
 import {
   LayoutDashboard,
@@ -47,6 +47,7 @@ import {
   FileClock,
   FileCheck2,
   ClipboardList,
+  Globe,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -65,39 +66,44 @@ export interface ItemRota {
   acaoMinima: AcaoMinima
   /** Ordem do item dentro do grupo */
   ordem: number
-  icone: LucideIcon
+  /** Ícone do item no menu (opcional em rotas ocultas do menu) */
+  icone?: LucideIcon
   /** Esconde do menu (rota de detalhe/edição, acessível pela lista) */
   ocultoNoMenu?: boolean
 }
 
 /**
- * MÓDULOS FIXOS — mesmos valores do select "modulo" da collection permissoes
- * (schema). A tabela de rotas só pode usar módulos desta lista.
+ * MÓDULOS FIXOS — mesmos 26 valores do select "modulo" da collection permissoes.
+ * cfop/ncm/cest/matriz_icms/perfis_tributarios/regras_ncm/codigos_fiscais NÃO são
+ * módulos do select: telas de tabelas fiscais usam o módulo "tabelas_fiscais".
  */
 export const MODULOS_FIXOS = [
-  'dashboard',
+  'painel',
+  'empresas',
+  'usuarios',
+  'perfis_acesso',
+  'clientes',
+  'fornecedores',
+  'produtos',
+  'marcas',
+  'grupos_categorias',
+  'unidades_medida',
+  'tabelas_fiscais',
+  'condicoes_pagamento',
+  'estoque',
+  'compras',
+  'notas_entrada',
+  'financeiro_bancos',
+  'financeiro_pagar',
+  'financeiro_receber',
   'vendas',
   'pdv',
   'caixa',
-  'clientes',
-  'produtos',
-  'estoque',
-  'compras',
-  'financeiro',
-  'fiscal',
+  'notas_saida',
+  'sped',
   'relatorios',
   'configuracoes',
-  'usuarios',
-  'perfis_acesso',
-  'empresas',
-  'tabelas_fiscais',
-  'cfop',
-  'ncm',
-  'cest',
-  'matriz_icms',
-  'perfis_tributarios',
-  'regras_ncm',
-  'codigos_fiscais',
+  'config_fiscal',
 ] as const
 
 /** Ordem fixa dos grupos do menu lateral (evita grupos duplicados/intercalados) */
@@ -114,29 +120,22 @@ export const GRUPOS_MENU: { nome: string; ordem: number }[] = [
 ]
 
 /**
- * A TABELA. Cada item do menu (e cada rota protegida) aparece aqui uma única vez.
- * Terminais/Config. de vendas/Comissões ficam no módulo "configuracoes" (não em "vendas").
- * Conferência fiscal fica em "tabelas_fiscais" e Condições de pagamento em "configuracoes".
+ * A TABELA. Cada rota aparece aqui UMA única vez.
+ * Terminais/Config. de vendas/Comissões ficam no módulo "configuracoes" (são configuração,
+ * não vendas). Conferência fiscal usa "produtos" com ação "editar" (guard mais restrito que
+ * o "ver" da lista, impedindo perfil só-de-leitura de abri-la). Condições de pagamento usa
+ * o módulo próprio "condicoes_pagamento".
  */
 export const ROTAS: ItemRota[] = [
   // ---------- Painel ----------
   {
-    rota: '/',
-    rotulo: 'Painel',
-    grupo: 'Painel',
-    modulo: 'dashboard',
-    acaoMinima: 'ver',
-    ordem: 1,
-    icone: LayoutDashboard,
-  },
-  {
     rota: '/painel',
     rotulo: 'Painel',
     grupo: 'Painel',
-    modulo: 'dashboard',
+    modulo: 'painel',
     acaoMinima: 'ver',
-    ordem: 2,
-    ocultoNoMenu: true,
+    ordem: 1,
+    icone: LayoutDashboard,
   },
 
   // ---------- Vendas e PDV ----------
@@ -177,12 +176,21 @@ export const ROTAS: ItemRota[] = [
     ocultoNoMenu: true,
   },
   {
+    rota: '/vendas/pedidos/:id',
+    rotulo: 'Ver Pedido',
+    grupo: 'Vendas e PDV',
+    modulo: 'vendas',
+    acaoMinima: 'ver',
+    ordem: 5,
+    ocultoNoMenu: true,
+  },
+  {
     rota: '/vendas/pedidos/:id/editar',
     rotulo: 'Editar Pedido',
     grupo: 'Vendas e PDV',
     modulo: 'vendas',
     acaoMinima: 'editar',
-    ordem: 5,
+    ordem: 6,
     ocultoNoMenu: true,
   },
   {
@@ -190,9 +198,46 @@ export const ROTAS: ItemRota[] = [
     rotulo: 'Trocas e Devoluções',
     grupo: 'Vendas e PDV',
     modulo: 'vendas',
-    acaoMinima: 'ver',
-    ordem: 6,
+    acaoMinima: 'criar',
+    ordem: 7,
     icone: RotateCcw,
+  },
+  {
+    rota: '/vendas/consultas',
+    rotulo: 'Consultas de Vendas',
+    grupo: 'Vendas e PDV',
+    modulo: 'vendas',
+    acaoMinima: 'ver',
+    ordem: 8,
+    icone: FileText,
+  },
+  // ----- Configuração de vendas (módulo configuracoes, não vendas) -----
+  {
+    rota: '/vendas/terminais',
+    rotulo: 'Terminais',
+    grupo: 'Vendas e PDV',
+    modulo: 'configuracoes',
+    acaoMinima: 'ver',
+    ordem: 9,
+    icone: Terminal,
+  },
+  {
+    rota: '/vendas/configuracoes',
+    rotulo: 'Configurações de vendas',
+    grupo: 'Vendas e PDV',
+    modulo: 'configuracoes',
+    acaoMinima: 'ver',
+    ordem: 10,
+    icone: Settings,
+  },
+  {
+    rota: '/vendas/comissoes',
+    rotulo: 'Comissões',
+    grupo: 'Vendas e PDV',
+    modulo: 'configuracoes',
+    acaoMinima: 'ver',
+    ordem: 11,
+    icone: Percent,
   },
 
   // ---------- Estoque ----------
@@ -224,7 +269,7 @@ export const ROTAS: ItemRota[] = [
     icone: Boxes,
   },
   {
-    rota: '/estoque/transferencias/nova',
+    rota: '/estoque/transferencias/novo',
     rotulo: 'Nova Transferência',
     grupo: 'Estoque',
     modulo: 'estoque',
@@ -233,12 +278,21 @@ export const ROTAS: ItemRota[] = [
     ocultoNoMenu: true,
   },
   {
+    rota: '/estoque/transferencias/:id',
+    rotulo: 'Ver Transferência',
+    grupo: 'Estoque',
+    modulo: 'estoque',
+    acaoMinima: 'ver',
+    ordem: 5,
+    ocultoNoMenu: true,
+  },
+  {
     rota: '/estoque/lotes',
     rotulo: 'Lotes e Validades',
     grupo: 'Estoque',
     modulo: 'estoque',
     acaoMinima: 'ver',
-    ordem: 5,
+    ordem: 6,
     icone: CalendarClock,
   },
   {
@@ -247,8 +301,26 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Estoque',
     modulo: 'estoque',
     acaoMinima: 'ver',
-    ordem: 6,
+    ordem: 7,
     icone: ClipboardList,
+  },
+  {
+    rota: '/estoque/inventarios/novo',
+    rotulo: 'Novo Inventário',
+    grupo: 'Estoque',
+    modulo: 'estoque',
+    acaoMinima: 'criar',
+    ordem: 8,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/estoque/inventarios/:id',
+    rotulo: 'Detalhe do Inventário',
+    grupo: 'Estoque',
+    modulo: 'estoque',
+    acaoMinima: 'ver',
+    ordem: 9,
+    ocultoNoMenu: true,
   },
   {
     rota: '/estoque/kardex',
@@ -256,7 +328,7 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Estoque',
     modulo: 'estoque',
     acaoMinima: 'ver',
-    ordem: 7,
+    ordem: 10,
     icone: FileClock,
   },
   {
@@ -265,7 +337,7 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Estoque',
     modulo: 'estoque',
     acaoMinima: 'ver',
-    ordem: 8,
+    ordem: 11,
     icone: ClipboardCheck,
   },
 
@@ -289,39 +361,93 @@ export const ROTAS: ItemRota[] = [
     ocultoNoMenu: true,
   },
   {
-    rota: '/compras/notas-entrada',
-    rotulo: 'Notas de Entrada',
+    rota: '/compras/pedidos/:id',
+    rotulo: 'Ver Pedido de Compra',
     grupo: 'Compras',
     modulo: 'compras',
     acaoMinima: 'ver',
     ordem: 3,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/compras/pedidos/:id/editar',
+    rotulo: 'Editar Pedido de Compra',
+    grupo: 'Compras',
+    modulo: 'compras',
+    acaoMinima: 'editar',
+    ordem: 4,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/compras/notas-entrada',
+    rotulo: 'Notas de Entrada',
+    grupo: 'Compras',
+    modulo: 'notas_entrada',
+    acaoMinima: 'ver',
+    ordem: 5,
     icone: FileText,
+  },
+  {
+    rota: '/compras/notas-entrada/digitar',
+    rotulo: 'Digitar Nota de Entrada',
+    grupo: 'Compras',
+    modulo: 'notas_entrada',
+    acaoMinima: 'criar',
+    ordem: 6,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/compras/notas-entrada/:id',
+    rotulo: 'Conferência da Nota',
+    grupo: 'Compras',
+    modulo: 'notas_entrada',
+    acaoMinima: 'ver',
+    ordem: 7,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/compras/notas-entrada/:id/conferencia',
+    rotulo: 'Conferência da Nota',
+    grupo: 'Compras',
+    modulo: 'notas_entrada',
+    acaoMinima: 'ver',
+    ordem: 8,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/compras/itens-comprados',
+    rotulo: 'Itens Comprados',
+    grupo: 'Compras',
+    modulo: 'compras',
+    acaoMinima: 'ver',
+    ordem: 9,
+    icone: ShoppingBag,
   },
   {
     rota: '/compras/livro-entradas',
     rotulo: 'Livro de Entradas',
     grupo: 'Compras',
-    modulo: 'compras',
+    modulo: 'notas_entrada',
     acaoMinima: 'ver',
-    ordem: 4,
+    ordem: 10,
     icone: FileSpreadsheet,
   },
 
-  // ---------- Financeiro ----------
+  // ---------- Financeiro (rotas conferidas no App.tsx) ----------
   {
     rota: '/financeiro/contas-pagar',
     rotulo: 'Contas a Pagar',
     grupo: 'Financeiro',
-    modulo: 'financeiro',
+    modulo: 'financeiro_pagar',
     acaoMinima: 'ver',
     ordem: 1,
     icone: ArrowDownUp,
   },
   {
-    rota: '/financeiro/contas-receber',
+    rota: '/financeiro/receber',
     rotulo: 'Contas a Receber',
     grupo: 'Financeiro',
-    modulo: 'financeiro',
+    modulo: 'financeiro_receber',
     acaoMinima: 'ver',
     ordem: 2,
     icone: ArrowDownUp,
@@ -330,54 +456,99 @@ export const ROTAS: ItemRota[] = [
     rota: '/financeiro/fluxo-caixa',
     rotulo: 'Fluxo de Caixa',
     grupo: 'Financeiro',
-    modulo: 'financeiro',
+    modulo: 'financeiro_bancos',
     acaoMinima: 'ver',
     ordem: 3,
     icone: BarChart3,
   },
   {
-    rota: '/financeiro/extrato',
-    rotulo: 'Extrato Bancário',
+    rota: '/financeiro/dre',
+    rotulo: 'DRE',
     grupo: 'Financeiro',
-    modulo: 'financeiro',
+    modulo: 'financeiro_bancos',
     acaoMinima: 'ver',
     ordem: 4,
+    icone: BarChart3,
+  },
+  {
+    rota: '/financeiro/bancos',
+    rotulo: 'Extrato Bancário',
+    grupo: 'Financeiro',
+    modulo: 'financeiro_bancos',
+    acaoMinima: 'ver',
+    ordem: 5,
     icone: Landmark,
   },
   {
     rota: '/financeiro/conciliacao',
     rotulo: 'Conciliação Bancária',
     grupo: 'Financeiro',
-    modulo: 'financeiro',
+    modulo: 'financeiro_bancos',
     acaoMinima: 'ver',
-    ordem: 5,
+    ordem: 6,
     icone: ArrowDownUp,
   },
   {
     rota: '/financeiro/inadimplencia',
     rotulo: 'Inadimplência',
     grupo: 'Financeiro',
-    modulo: 'financeiro',
+    modulo: 'financeiro_receber',
     acaoMinima: 'ver',
-    ordem: 6,
+    ordem: 7,
     icone: FileCheck2,
   },
   {
-    rota: '/financeiro/dre',
-    rotulo: 'DRE',
+    rota: '/financeiro/cadastros/plano-contas',
+    rotulo: 'Plano de Contas',
     grupo: 'Financeiro',
-    modulo: 'financeiro',
+    modulo: 'financeiro_bancos',
     acaoMinima: 'ver',
-    ordem: 7,
-    icone: BarChart3,
+    ordem: 8,
+    icone: ListTree,
+  },
+  {
+    rota: '/financeiro/cadastros/centros-custo',
+    rotulo: 'Centros de Custo',
+    grupo: 'Financeiro',
+    modulo: 'financeiro_bancos',
+    acaoMinima: 'ver',
+    ordem: 9,
+    icone: Layers,
+  },
+  {
+    rota: '/financeiro/cadastros/contas-bancarias',
+    rotulo: 'Contas Bancárias',
+    grupo: 'Financeiro',
+    modulo: 'financeiro_bancos',
+    acaoMinima: 'ver',
+    ordem: 10,
+    icone: Landmark,
+  },
+  {
+    rota: '/financeiro/cadastros/formas-pagamento',
+    rotulo: 'Formas de Pagamento',
+    grupo: 'Financeiro',
+    modulo: 'financeiro_bancos',
+    acaoMinima: 'ver',
+    ordem: 11,
+    icone: CreditCard,
+  },
+  {
+    rota: '/financeiro/cadastros/configuracoes',
+    rotulo: 'Configuração Financeira',
+    grupo: 'Financeiro',
+    modulo: 'financeiro_bancos',
+    acaoMinima: 'ver',
+    ordem: 12,
+    icone: Settings,
   },
 
-  // ---------- Fiscal ----------
+  // ---------- Fiscal (App.tsx protege com notas_saida; SPED usa módulo sped) ----------
   {
     rota: '/fiscal/documentos',
     rotulo: 'Documentos Fiscais',
     grupo: 'Fiscal',
-    modulo: 'fiscal',
+    modulo: 'notas_saida',
     acaoMinima: 'ver',
     ordem: 1,
     icone: FileText,
@@ -386,7 +557,7 @@ export const ROTAS: ItemRota[] = [
     rota: '/fiscal/livro-saidas',
     rotulo: 'Livro de Saídas',
     grupo: 'Fiscal',
-    modulo: 'fiscal',
+    modulo: 'notas_saida',
     acaoMinima: 'ver',
     ordem: 2,
     icone: FileSpreadsheet,
@@ -395,7 +566,7 @@ export const ROTAS: ItemRota[] = [
     rota: '/fiscal/resumo-icms',
     rotulo: 'Resumo ICMS',
     grupo: 'Fiscal',
-    modulo: 'fiscal',
+    modulo: 'notas_saida',
     acaoMinima: 'ver',
     ordem: 3,
     icone: Calculator,
@@ -404,7 +575,7 @@ export const ROTAS: ItemRota[] = [
     rota: '/fiscal/exportar-xmls',
     rotulo: 'Exportar XMLs',
     grupo: 'Fiscal',
-    modulo: 'fiscal',
+    modulo: 'notas_saida',
     acaoMinima: 'ver',
     ordem: 4,
     icone: FileText,
@@ -413,7 +584,7 @@ export const ROTAS: ItemRota[] = [
     rota: '/fiscal/inutilizacao',
     rotulo: 'Inutilização de Numeração',
     grupo: 'Fiscal',
-    modulo: 'fiscal',
+    modulo: 'notas_saida',
     acaoMinima: 'ver',
     ordem: 5,
     icone: FileText,
@@ -422,10 +593,46 @@ export const ROTAS: ItemRota[] = [
     rota: '/fiscal/intermediadores',
     rotulo: 'Intermediadores',
     grupo: 'Fiscal',
-    modulo: 'fiscal',
+    modulo: 'notas_saida',
     acaoMinima: 'ver',
     ordem: 6,
     icone: Globe,
+  },
+  {
+    rota: '/fiscal/sped',
+    rotulo: 'SPED Fiscal',
+    grupo: 'Fiscal',
+    modulo: 'sped',
+    acaoMinima: 'ver',
+    ordem: 7,
+    icone: FileSpreadsheet,
+  },
+  {
+    rota: '/fiscal/sped/configuracoes',
+    rotulo: 'Configurações SPED',
+    grupo: 'Fiscal',
+    modulo: 'sped',
+    acaoMinima: 'ver',
+    ordem: 8,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/fiscal/sped/:id/relatorio',
+    rotulo: 'Relatório de Conferência SPED',
+    grupo: 'Fiscal',
+    modulo: 'sped',
+    acaoMinima: 'ver',
+    ordem: 9,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/fiscal/configuracoes',
+    rotulo: 'Configuração de Emissão',
+    grupo: 'Fiscal',
+    modulo: 'notas_saida',
+    acaoMinima: 'ver',
+    ordem: 10,
+    ocultoNoMenu: true,
   },
 
   // ---------- Relatórios ----------
@@ -437,6 +644,51 @@ export const ROTAS: ItemRota[] = [
     acaoMinima: 'ver',
     ordem: 1,
     icone: BarChart3,
+  },
+  {
+    rota: '/relatorios/vendas-canais',
+    rotulo: 'Vendas por Canais',
+    grupo: 'Relatórios',
+    modulo: 'vendas',
+    acaoMinima: 'ver',
+    ordem: 2,
+    icone: BarChart3,
+  },
+  {
+    rota: '/relatorios/estoque-gerencial',
+    rotulo: 'Estoque Gerencial',
+    grupo: 'Relatórios',
+    modulo: 'estoque',
+    acaoMinima: 'ver',
+    ordem: 3,
+    icone: PackageSearch,
+  },
+  {
+    rota: '/relatorios/contas-pagar',
+    rotulo: 'Contas a Pagar por Vencimento',
+    grupo: 'Relatórios',
+    modulo: 'financeiro_pagar',
+    acaoMinima: 'ver',
+    ordem: 4,
+    icone: ArrowDownUp,
+  },
+  {
+    rota: '/relatorios/personalizado',
+    rotulo: 'Relatório Personalizado',
+    grupo: 'Relatórios',
+    modulo: 'relatorios',
+    acaoMinima: 'ver',
+    ordem: 5,
+    icone: FileSpreadsheet,
+  },
+  {
+    rota: '/painel-grupo',
+    rotulo: 'Painel do Grupo',
+    grupo: 'Relatórios',
+    modulo: 'relatorios',
+    acaoMinima: 'ver',
+    ordem: 6,
+    icone: LayoutDashboard,
   },
 
   // ---------- Cadastros ----------
@@ -471,10 +723,28 @@ export const ROTAS: ItemRota[] = [
     rota: '/cadastros/fornecedores',
     rotulo: 'Fornecedores',
     grupo: 'Cadastros',
-    modulo: 'produtos',
+    modulo: 'fornecedores',
     acaoMinima: 'ver',
     ordem: 4,
     icone: Truck,
+  },
+  {
+    rota: '/cadastros/fornecedores/novo',
+    rotulo: 'Novo Fornecedor',
+    grupo: 'Cadastros',
+    modulo: 'fornecedores',
+    acaoMinima: 'criar',
+    ordem: 5,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/cadastros/fornecedores/:id/editar',
+    rotulo: 'Editar Fornecedor',
+    grupo: 'Cadastros',
+    modulo: 'fornecedores',
+    acaoMinima: 'editar',
+    ordem: 6,
+    ocultoNoMenu: true,
   },
   {
     rota: '/cadastros/produtos',
@@ -482,7 +752,7 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Cadastros',
     modulo: 'produtos',
     acaoMinima: 'ver',
-    ordem: 5,
+    ordem: 7,
     icone: Box,
   },
   {
@@ -491,7 +761,7 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Cadastros',
     modulo: 'produtos',
     acaoMinima: 'criar',
-    ordem: 6,
+    ordem: 8,
     ocultoNoMenu: true,
   },
   {
@@ -500,73 +770,165 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Cadastros',
     modulo: 'produtos',
     acaoMinima: 'editar',
-    ordem: 7,
+    ordem: 9,
     ocultoNoMenu: true,
   },
-
-  // ---------- Configurações ----------
+  // Conferência fiscal: edição de tributação do produto — guard de EDITAR em produtos,
+  // escondendo de perfis só-de-leitura (ex.: Vendedor/Caixa que tem produtos ver).
   {
-    rota: '/cadastros/conferencia-fiscal',
+    rota: '/cadastros/produtos/conferencia',
     rotulo: 'Conferência fiscal',
-    grupo: 'Configurações',
-    modulo: 'tabelas_fiscais',
+    grupo: 'Cadastros',
+    modulo: 'produtos',
     acaoMinima: 'editar',
-    ordem: 1,
+    ordem: 10,
     icone: ClipboardCheck,
+  },
+  {
+    rota: '/cadastros/marcas',
+    rotulo: 'Marcas',
+    grupo: 'Cadastros',
+    modulo: 'marcas',
+    acaoMinima: 'ver',
+    ordem: 11,
+    icone: Tags,
+  },
+  {
+    rota: '/cadastros/grupos-categorias',
+    rotulo: 'Grupos e Categorias',
+    grupo: 'Cadastros',
+    modulo: 'grupos_categorias',
+    acaoMinima: 'ver',
+    ordem: 12,
+    icone: Layers,
+  },
+  {
+    rota: '/cadastros/unidades-medida',
+    rotulo: 'Unidades de Medida',
+    grupo: 'Cadastros',
+    modulo: 'unidades_medida',
+    acaoMinima: 'ver',
+    ordem: 13,
+    icone: Ruler,
   },
   {
     rota: '/cadastros/condicoes-pagamento',
     rotulo: 'Condições de pagamento',
+    grupo: 'Cadastros',
+    modulo: 'condicoes_pagamento',
+    acaoMinima: 'ver',
+    ordem: 14,
+    icone: Percent,
+  },
+
+  // ---------- Configurações ----------
+  {
+    rota: '/cadastros/tabelas-fiscais',
+    rotulo: 'Tabelas fiscais',
     grupo: 'Configurações',
-    modulo: 'configuracoes',
+    modulo: 'tabelas_fiscais',
+    acaoMinima: 'ver',
+    ordem: 1,
+    icone: Layers,
+  },
+  {
+    rota: '/cadastros/tabelas-fiscais/codigos',
+    rotulo: 'Códigos fiscais',
+    grupo: 'Configurações',
+    modulo: 'tabelas_fiscais',
     acaoMinima: 'ver',
     ordem: 2,
-    icone: Percent,
+    icone: Database,
   },
   {
-    rota: '/vendas/terminais',
-    rotulo: 'Terminais',
+    rota: '/cadastros/tabelas-fiscais/ncm',
+    rotulo: 'NCM',
     grupo: 'Configurações',
-    modulo: 'configuracoes',
+    modulo: 'tabelas_fiscais',
     acaoMinima: 'ver',
     ordem: 3,
-    icone: Terminal,
+    icone: ListTree,
   },
   {
-    rota: '/vendas/config',
-    rotulo: 'Configurações de vendas',
+    rota: '/cadastros/tabelas-fiscais/cest',
+    rotulo: 'CEST',
     grupo: 'Configurações',
-    modulo: 'configuracoes',
+    modulo: 'tabelas_fiscais',
     acaoMinima: 'ver',
     ordem: 4,
-    icone: Settings,
+    icone: Tags,
   },
   {
-    rota: '/vendas/comissoes',
-    rotulo: 'Comissões',
+    rota: '/cadastros/tabelas-fiscais/cfop',
+    rotulo: 'CFOP',
     grupo: 'Configurações',
-    modulo: 'configuracoes',
+    modulo: 'tabelas_fiscais',
     acaoMinima: 'ver',
     ordem: 5,
-    icone: Percent,
+    icone: Shapes,
   },
   {
-    rota: '/configuracoes/geral',
-    rotulo: 'Configurações gerais',
+    rota: '/cadastros/tabelas-fiscais/conversao-cfop',
+    rotulo: 'Conversão de CFOP',
     grupo: 'Configurações',
-    modulo: 'configuracoes',
+    modulo: 'tabelas_fiscais',
     acaoMinima: 'ver',
     ordem: 6,
-    icone: Settings,
+    icone: GitCompare,
   },
   {
-    rota: '/configuracoes/fiscal',
-    rotulo: 'Configuração fiscal',
+    rota: '/cadastros/tabelas-fiscais/perfis',
+    rotulo: 'Perfis tributários',
     grupo: 'Configurações',
-    modulo: 'configuracoes',
+    modulo: 'tabelas_fiscais',
     acaoMinima: 'ver',
     ordem: 7,
-    icone: Settings,
+    icone: KeyRound,
+  },
+  {
+    rota: '/cadastros/tabelas-fiscais/regras-ncm',
+    rotulo: 'Regras por NCM',
+    grupo: 'Configurações',
+    modulo: 'tabelas_fiscais',
+    acaoMinima: 'ver',
+    ordem: 8,
+    icone: ListTree,
+  },
+  {
+    rota: '/cadastros/tabelas-fiscais/matriz-icms',
+    rotulo: 'Matriz ICMS',
+    grupo: 'Configurações',
+    modulo: 'tabelas_fiscais',
+    acaoMinima: 'ver',
+    ordem: 9,
+    icone: Calculator,
+  },
+  {
+    rota: '/cadastros/empresas',
+    rotulo: 'Empresas',
+    grupo: 'Configurações',
+    modulo: 'empresas',
+    acaoMinima: 'ver',
+    ordem: 10,
+    icone: Building2,
+  },
+  {
+    rota: '/cadastros/empresas/novo',
+    rotulo: 'Nova Empresa',
+    grupo: 'Configurações',
+    modulo: 'empresas',
+    acaoMinima: 'criar',
+    ordem: 11,
+    ocultoNoMenu: true,
+  },
+  {
+    rota: '/cadastros/empresas/:id/editar',
+    rotulo: 'Editar Empresa',
+    grupo: 'Configurações',
+    modulo: 'empresas',
+    acaoMinima: 'editar',
+    ordem: 12,
+    ocultoNoMenu: true,
   },
   {
     rota: '/cadastros/usuarios',
@@ -574,7 +936,7 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Configurações',
     modulo: 'usuarios',
     acaoMinima: 'ver',
-    ordem: 8,
+    ordem: 13,
     icone: UserCog,
   },
   {
@@ -583,7 +945,7 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Configurações',
     modulo: 'usuarios',
     acaoMinima: 'criar',
-    ordem: 9,
+    ordem: 14,
     ocultoNoMenu: true,
   },
   {
@@ -592,7 +954,7 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Configurações',
     modulo: 'usuarios',
     acaoMinima: 'editar',
-    ordem: 10,
+    ordem: 15,
     ocultoNoMenu: true,
   },
   {
@@ -601,112 +963,122 @@ export const ROTAS: ItemRota[] = [
     grupo: 'Configurações',
     modulo: 'perfis_acesso',
     acaoMinima: 'ver',
-    ordem: 11,
+    ordem: 16,
     icone: ShieldCheck,
   },
   {
-    rota: '/cadastros/empresas',
-    rotulo: 'Empresas',
+    rota: '/cadastros/perfis-acesso/novo',
+    rotulo: 'Novo Perfil de Acesso',
     grupo: 'Configurações',
-    modulo: 'empresas',
-    acaoMinima: 'ver',
-    ordem: 12,
-    icone: Building2,
-  },
-  {
-    rota: '/tabelas-fiscais',
-    rotulo: 'Tabelas fiscais',
-    grupo: 'Configurações',
-    modulo: 'tabelas_fiscais',
-    acaoMinima: 'ver',
-    ordem: 13,
-    icone: Layers,
-  },
-  {
-    rota: '/tabelas-fiscais/ncm',
-    rotulo: 'NCM',
-    grupo: 'Configurações',
-    modulo: 'ncm',
-    acaoMinima: 'ver',
-    ordem: 14,
-    icone: ListTree,
-  },
-  {
-    rota: '/tabelas-fiscais/cest',
-    rotulo: 'CEST',
-    grupo: 'Configurações',
-    modulo: 'cest',
-    acaoMinima: 'ver',
-    ordem: 15,
-    icone: Tags,
-  },
-  {
-    rota: '/tabelas-fiscais/cfop',
-    rotulo: 'CFOP',
-    grupo: 'Configurações',
-    modulo: 'cfop',
-    acaoMinima: 'ver',
-    ordem: 16,
-    icone: Shapes,
-  },
-  {
-    rota: '/tabelas-fiscais/cfop-conversao',
-    rotulo: 'Conversão de CFOP',
-    grupo: 'Configurações',
-    modulo: 'cfop',
-    acaoMinima: 'ver',
+    modulo: 'perfis_acesso',
+    acaoMinima: 'criar',
     ordem: 17,
-    icone: GitCompare,
+    ocultoNoMenu: true,
   },
   {
-    rota: '/tabelas-fiscais/perfis-tributarios',
-    rotulo: 'Perfis tributários',
+    rota: '/cadastros/perfis-acesso/:id/editar',
+    rotulo: 'Editar Perfil de Acesso',
     grupo: 'Configurações',
-    modulo: 'perfis_tributarios',
-    acaoMinima: 'ver',
+    modulo: 'perfis_acesso',
+    acaoMinima: 'editar',
     ordem: 18,
-    icone: KeyRound,
+    ocultoNoMenu: true,
   },
   {
-    rota: '/tabelas-fiscais/matriz-icms',
-    rotulo: 'Matriz ICMS',
+    rota: '/configuracoes/geral',
+    rotulo: 'Configurações gerais',
     grupo: 'Configurações',
-    modulo: 'matriz_icms',
+    modulo: 'configuracoes',
     acaoMinima: 'ver',
     ordem: 19,
-    icone: Calculator,
+    icone: Settings,
   },
   {
-    rota: '/tabelas-fiscais/regras-ncm',
-    rotulo: 'Regras por NCM',
+    rota: '/configuracoes/fiscal',
+    rotulo: 'Configuração fiscal',
     grupo: 'Configurações',
-    modulo: 'regras_ncm',
+    modulo: 'config_fiscal',
     acaoMinima: 'ver',
     ordem: 20,
-    icone: ListTree,
+    icone: Settings,
   },
   {
-    rota: '/tabelas-fiscais/codigos-fiscais',
-    rotulo: 'Códigos fiscais',
+    rota: '/configuracoes/tray',
+    rotulo: 'Integração Tray',
     grupo: 'Configurações',
-    modulo: 'codigos_fiscais',
+    modulo: 'configuracoes',
     acaoMinima: 'ver',
     ordem: 21,
-    icone: Database,
+    icone: ShoppingBag,
+  },
+  {
+    rota: '/configuracoes/mercado-livre',
+    rotulo: 'Integração Mercado Livre',
+    grupo: 'Configurações',
+    modulo: 'configuracoes',
+    acaoMinima: 'ver',
+    ordem: 22,
+    icone: ShoppingBag,
+  },
+  {
+    rota: '/configuracoes/auditoria',
+    rotulo: 'Log de Auditoria',
+    grupo: 'Configurações',
+    modulo: 'configuracoes',
+    acaoMinima: 'ver',
+    ordem: 23,
+    icone: ClipboardList,
+  },
+  {
+    rota: '/configuracoes/integridade-estoque',
+    rotulo: 'Integridade do Estoque',
+    grupo: 'Configurações',
+    modulo: 'configuracoes',
+    acaoMinima: 'ver',
+    ordem: 24,
+    icone: ClipboardCheck,
+  },
+  {
+    rota: '/configuracoes/integridade-financeiro',
+    rotulo: 'Integridade do Financeiro',
+    grupo: 'Configurações',
+    modulo: 'configuracoes',
+    acaoMinima: 'ver',
+    ordem: 25,
+    icone: ClipboardCheck,
   },
 ]
 
-/** Busca um item da tabela pelo caminho exato da rota */
+/** Correspondência de rota: suporta segmentos dinâmicos (:id) e a rota exata */
 export function buscarRota(rota: string): ItemRota | undefined {
-  return ROTAS.find((r) => r.rota === rota)
+  const exata = ROTAS.find((r) => r.rota === rota)
+  if (exata) return exata
+  const segmentos = rota.split('/').filter(Boolean)
+  return ROTAS.find((r) => {
+    const segsRota = r.rota.split('/').filter(Boolean)
+    if (segsRota.length !== segmentos.length) return false
+    return segsRota.every(
+      (s, i) => (s.startsWith(':') && segmentos[i] !== '') || s === segmentos[i],
+    )
+  })
+}
+
+/**
+ * Módulo/ação exigidos por uma rota (para o PermissaoGuard).
+ * Fallback: se a rota não estiver na tabela, o guard decide (recebe undefined).
+ */
+export function exigenciaDaRota(rota: string): { modulo: string; acao: AcaoMinima } | undefined {
+  const item = buscarRota(rota)
+  if (!item) return undefined
+  return { modulo: item.modulo, acao: item.acaoMinima }
 }
 
 /** Itens visíveis no menu, agrupados na ordem fixa de GRUPOS_MENU, sem duplicar grupo */
 export function gruposFiltrados(temAcesso: (item: ItemRota) => boolean) {
-  return GRUPOS_MENU.map((g) => ({
-    ...g,
-    itens: ROTAS.filter((r) => r.grupo === g.nome && !r.ocultoNoMenu && temAcesso(r)).sort(
+  return GRUPOS_MENU.map((g) => {
+    const itens = ROTAS.filter((r) => r.grupo === g.nome && !r.ocultoNoMenu && temAcesso(r)).sort(
       (a, b) => a.ordem - b.ordem,
-    ),
-  })).filter((g) => g.itens.length > 0)
+    )
+    return { nome: g.nome, ordem: g.ordem, itens }
+  }).filter((g) => g.itens.length > 0)
 }
