@@ -2,23 +2,7 @@
 
 /**
  * tray_conexao.js — Etapa 11 / Parte 11.1
- *
- * Conexão de uma loja Tray por empresa (fluxo de autorização da Tray) e renovação do token.
- * Documentação: docs/TRAY.md
- *
- * ATENÇÃO JSVM (Goja): nenhuma função declarada no topo do arquivo.
- *
- * Segredos (Skip Cloud): TRAY_CONSUMER_KEY, TRAY_CONSUMER_SECRET
- *
- * Rotas:
- *   GET  /backend/v1/tray/diagnostico                 (pública, sem dados sensíveis)
- *   POST /backend/v1/tray/conexao/iniciar             (autenticada, administrador)
- *   GET  /backend/v1/tray/oauth/callback/{estado}     (pública, chamada pela Tray)
- *   GET  /backend/v1/tray/conexao/status              (autenticada)
- *   POST /backend/v1/tray/conexao/testar              (autenticada)
- *   POST /backend/v1/tray/conexao/desconectar         (autenticada, administrador)
- *
- * Agendamento: tray_renovar_tokens — a cada 30 minutos
+ * BISSEÇÃO: diagnostico + conexao/iniciar + oauth/callback.
  */
 
 routerAdd('GET', '/backend/v1/tray/diagnostico', (c) => {
@@ -56,46 +40,40 @@ routerAdd(
     const auth = c.auth || c.get('authRecord')
     if (!auth) return c.json(401, { sucesso: false, mensagem: 'Autenticação obrigatória.' })
 
-    // ---- Helpers locais (JSVM: precisam ficar DENTRO do callback) ----
     function idValido(v) {
       return typeof v === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(v)
     }
-
-    function eMasterLocal(auth) {
-      if (!auth) return false
+    function eMasterLocal(a) {
+      if (!a) return false
       try {
-        const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
-        return !!(userRec && userRec.getString('tipo') === 'master')
+        const u = $app.findRecordById('_pb_users_auth_', a.id)
+        return !!(u && u.getString('tipo') === 'master')
       } catch (_) {
         return false
       }
     }
-
-    // Devolve { usuarioRec, assinanteId, admin, empresas[] } seguindo a mesma regra de tenancy.js
-    function contextoDoUsuario(auth) {
+    function contextoDoUsuario(a) {
       let usuarioRec = null
       try {
-        const uRecs = $app.findRecordsByFilter(
+        const recs = $app.findRecordsByFilter(
           'usuarios',
-          "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+          "auth_user_id = '" + a.id + "' || id = '" + a.id + "'",
           '-created',
           1,
           0,
         )
-        if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
+        if (recs && recs.length > 0) usuarioRec = recs[0]
       } catch (_) {}
       if (!usuarioRec) throw new BadRequestError('Registro de usuário ERP não encontrado.')
-
       let assinanteId = usuarioRec.getString('assinante_id')
       if (!assinanteId) throw new BadRequestError('Usuário sem vínculo com assinante.')
-
-      const master = eMasterLocal(auth)
+      const master = eMasterLocal(a)
       if (master) {
         try {
           if ($app.hasTable('master_impersonacoes')) {
             const imp = $app.findRecordsByFilter(
               'master_impersonacoes',
-              "user_id = '" + auth.id + "'",
+              "user_id = '" + a.id + "'",
               '-created',
               1,
               0,
@@ -106,18 +84,14 @@ routerAdd(
           }
         } catch (_) {}
       }
-
       let admin = master
       const perfilId = usuarioRec.getString('perfil_id')
       if (!admin && perfilId) {
         try {
-          const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
-          if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
-            admin = true
-          }
+          const p = $app.findRecordById('perfis_acesso', perfilId)
+          if (p && p.getBool('ativo') && p.getBool('administrador')) admin = true
         } catch (_) {}
       }
-
       let empresas = []
       if (admin) {
         try {
@@ -157,10 +131,8 @@ routerAdd(
           } catch (_) {}
         })
       }
-
       return { usuarioRec: usuarioRec, assinanteId: assinanteId, admin: admin, empresas: empresas }
     }
-
     function exigirEmpresa(ctx, empresaId) {
       if (!idValido(empresaId)) throw new BadRequestError('ID da empresa é obrigatório.')
       for (let i = 0; i < ctx.empresas.length; i++) {
@@ -168,23 +140,20 @@ routerAdd(
       }
       throw new ForbiddenError('Acesso negado à empresa especificada para este usuário/assinante.')
     }
-
-    function contaDaEmpresa(empresaId) {
-      try {
-        const recs = $app.findRecordsByFilter(
-          'tray_contas',
-          "empresa_id = '" + empresaId + "'",
-          '-created',
-          1,
-          0,
-        )
-        if (recs && recs.length > 0) return recs[0]
-      } catch (_) {}
-      return null
+    function hostDaLoja(raw) {
+      let s = String(raw || '')
+        .trim()
+        .toLowerCase()
+      if (!s) return ''
+      if (s.indexOf('://') >= 0) s = s.split('://')[1] || ''
+      s = s.split('/')[0]
+      s = s.split(':')[0]
+      s = s.split('?')[0]
+      if (s.indexOf('www.') === 0) s = s.slice(4)
+      return s
     }
 
-    // ---- Helpers de chamada à Tray (locais ao callback) ----
-    function segredosTray() {
+    try {
       let key = ''
       let secret = ''
       try {
@@ -193,84 +162,7 @@ routerAdd(
       try {
         secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
       } catch (_) {}
-      return { key: key, secret: secret, ok: !!(key && secret) }
-    }
-
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
-    }
-
-    // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
-    function hostDaLoja(valor) {
-      let v = String(valor || '')
-        .trim()
-        .toLowerCase()
-      v = v.replace(/^https?:\/\//, '')
-      v = v.split('/')[0].split('?')[0].split('#')[0]
-      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
-      if (v.length > 200) return ''
-      return v
-    }
-
-    // A API da loja fica sempre em https://{host da loja}/web_api
-    function apiDaLoja(host) {
-      return 'https://' + host + '/web_api'
-    }
-
-    function formUrlEncoded(campos) {
-      const partes = []
-      Object.keys(campos).forEach((k) => {
-        partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
-      })
-      return partes.join('&')
-    }
-
-    function mensagemErroTray(r) {
-      const d = (r && r.dados) || {}
-      let txt = d.message || d.error || ''
-      if (!txt && d.causes) {
-        try {
-          txt = JSON.stringify(d.causes).slice(0, 200)
-        } catch (_) {}
-      }
-      return 'Tray respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-    }
-
-    // Grava os tokens. A validade é calculada aqui (3 h e 30 dias, com margem), sem depender de fuso da Tray.
-    function gravarTokensTray(conta, dados) {
-      conta.set('access_token', String(dados.access_token || ''))
-      if (dados.refresh_token) {
-        conta.set('refresh_token', String(dados.refresh_token))
-        conta.set('refresh_expira_em', new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString())
-      }
-      conta.set('token_expira_em', new Date(Date.now() + 170 * 60 * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
-    }
-
-    // Nunca registrar em log os parâmetros destas chamadas.
-    function renovarTokenTray(conta) {
-      const res = $http.send({
-        method: 'GET',
-        url:
-          conta.getString('api_address') +
-          '/auth?refresh_token=' +
-          encodeURIComponent(conta.getString('refresh_token')),
-        headers: { Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
-
-    try {
-      const seg = segredosTray()
-      if (!seg.ok) {
+      if (!key || !secret) {
         return c.json(400, {
           sucesso: false,
           erro: 'segredos_ausentes',
@@ -278,20 +170,22 @@ routerAdd(
             'Integração não configurada: cadastre os Segredos TRAY_CONSUMER_KEY e TRAY_CONSUMER_SECRET no Skip Cloud.',
         })
       }
+
       const body = c.requestInfo().body || {}
       const ctx = contextoDoUsuario(auth)
       if (!ctx.admin) {
         return c.json(403, {
           sucesso: false,
-          mensagem: 'Apenas administradores podem conectar a loja Tray.',
+          mensagem: 'Apenas administradores podem conectar a loja da Tray.',
         })
       }
       const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
-      const host = hostDaLoja(body.loja_url)
-      if (!host) {
+
+      const host = hostDaLoja(String(body.loja_url || '').trim())
+      if (!host || host.indexOf('.') < 0) {
         return c.json(400, {
           sucesso: false,
-          mensagem: 'Informe o endereço da loja Tray, por exemplo: minhaloja.com.br',
+          mensagem: 'Informe a URL da loja Tray (ex.: https://sualoja.tray.com.br).',
         })
       }
 
@@ -304,26 +198,35 @@ routerAdd(
         retornoUrl = ''
       }
 
+      // Endereço da API da Tray: lojas *.tray.com.br usam a API em api.tray.com.br;
+      // domínio próprio usa a API no próprio host da loja (padrão Tray).
+      let apiAddress = 'https://api.tray.com.br'
+      if (host.indexOf('.tray.com.br') < 0) {
+        apiAddress = 'https://' + host
+      }
+
       const estado = $security.randomString(48)
-      const rec = new Record($app.findCollectionByNameOrId('tray_oauth_estados'))
+      const col = $app.findCollectionByNameOrId('tray_oauth_estados')
+      const rec = new Record(col)
       rec.set('estado', estado)
       rec.set('assinante_id', ctx.assinanteId)
       rec.set('empresa_id', empresa.id)
       rec.set('usuario_id', auth.id)
       rec.set('loja_host', host)
       rec.set('retorno_url', retornoUrl)
-      rec.set('expira_em', new Date(Date.now() + 15 * 60 * 1000).toISOString())
+      rec.set('expira_em', new Date(Date.now() + 10 * 60 * 1000).toISOString())
       rec.set('usado', false)
       $app.save(rec)
 
-      const callback = 'https://' + c.request.host + '/backend/v1/tray/oauth/callback/' + estado
       const url =
         'https://' +
         host +
-        '/auth.php?response_type=code&consumer_key=' +
-        encodeURIComponent(seg.key) +
+        '/auth_code?consumer_key=' +
+        encodeURIComponent(key) +
         '&callback=' +
-        encodeURIComponent(callback)
+        encodeURIComponent('https://' + c.request.host + '/backend/v1/tray/oauth/callback') +
+        '&state=' +
+        encodeURIComponent(estado)
 
       return c.json(200, { sucesso: true, url_autorizacao: url, loja_host: host })
     } catch (err) {
@@ -337,107 +240,276 @@ routerAdd(
   $apis.requireAuth(),
 )
 
-routerAdd('GET', '/backend/v1/tray/oauth/callback/{estado}', (c) => {
-  // ---- Helpers de chamada à Tray (locais ao callback) ----
-  function segredosTray() {
-    let key = ''
-    let secret = ''
-    try {
-      key = ($os.getenv('TRAY_CONSUMER_KEY') || '').trim()
-    } catch (_) {}
-    try {
-      secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
-    } catch (_) {}
-    return { key: key, secret: secret, ok: !!(key && secret) }
-  }
+// 5) Testar a conexão: renova o token se estiver perto de vencer e consulta a loja.
+routerAdd(
+  'POST',
+  '/backend/v1/tray/conexao/testar',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    if (!auth) return c.json(401, { sucesso: false, mensagem: 'Autenticação obrigatória.' })
 
-  function lerJson(res) {
-    if (res && res.json) return res.json
-    try {
-      return JSON.parse(res.raw || '{}')
-    } catch (_) {
-      return {}
+    function idValido(v) {
+      return typeof v === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(v)
     }
-  }
-
-  // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
-  function hostDaLoja(valor) {
-    let v = String(valor || '')
-      .trim()
-      .toLowerCase()
-    v = v.replace(/^https?:\/\//, '')
-    v = v.split('/')[0].split('?')[0].split('#')[0]
-    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
-    if (v.length > 200) return ''
-    return v
-  }
-
-  // A API da loja fica sempre em https://{host da loja}/web_api
-  function apiDaLoja(host) {
-    return 'https://' + host + '/web_api'
-  }
-
-  function formUrlEncoded(campos) {
-    const partes = []
-    Object.keys(campos).forEach((k) => {
-      partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
-    })
-    return partes.join('&')
-  }
-
-  function mensagemErroTray(r) {
-    const d = (r && r.dados) || {}
-    let txt = d.message || d.error || ''
-    if (!txt && d.causes) {
+    function eMasterLocal(a) {
+      if (!a) return false
       try {
-        txt = JSON.stringify(d.causes).slice(0, 200)
+        const u = $app.findRecordById('_pb_users_auth_', a.id)
+        return !!(u && u.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
+    function contextoDoUsuario(a) {
+      let usuarioRec = null
+      try {
+        const recs = $app.findRecordsByFilter(
+          'usuarios',
+          "auth_user_id = '" + a.id + "' || id = '" + a.id + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) usuarioRec = recs[0]
       } catch (_) {}
+      if (!usuarioRec) throw new BadRequestError('Registro de usuário ERP não encontrado.')
+      let assinanteId = usuarioRec.getString('assinante_id')
+      if (!assinanteId) throw new BadRequestError('Usuário sem vínculo com assinante.')
+      const master = eMasterLocal(a)
+      if (master) {
+        try {
+          if ($app.hasTable('master_impersonacoes')) {
+            const imp = $app.findRecordsByFilter(
+              'master_impersonacoes',
+              "user_id = '" + a.id + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (imp && imp.length > 0 && imp[0].getString('assinante_id')) {
+              assinanteId = imp[0].getString('assinante_id')
+            }
+          }
+        } catch (_) {}
+      }
+      let admin = master
+      const perfilId = usuarioRec.getString('perfil_id')
+      if (!admin && perfilId) {
+        try {
+          const p = $app.findRecordById('perfis_acesso', perfilId)
+          if (p && p.getBool('ativo') && p.getBool('administrador')) admin = true
+        } catch (_) {}
+      }
+      let empresas = []
+      if (admin) {
+        try {
+          empresas = $app.findRecordsByFilter(
+            'empresas',
+            "assinante_id = '" + assinanteId + "' && ativo = true",
+            'codigo',
+            500,
+            0,
+          )
+        } catch (_) {
+          empresas = []
+        }
+      } else {
+        const ids = {}
+        const padraoId = usuarioRec.getString('empresa_padrao_id')
+        if (padraoId) ids[padraoId] = true
+        try {
+          const vinc = $app.findRecordsByFilter(
+            'usuarios_empresas',
+            "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+            '',
+            500,
+            0,
+          )
+          for (let i = 0; i < vinc.length; i++) {
+            const eId = vinc[i].getString('empresa_id')
+            if (eId) ids[eId] = true
+          }
+        } catch (_) {}
+        Object.keys(ids).forEach((eId) => {
+          try {
+            const emp = $app.findRecordById('empresas', eId)
+            if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+              empresas.push(emp)
+            }
+          } catch (_) {}
+        })
+      }
+      return { usuarioRec: usuarioRec, assinanteId: assinanteId, admin: admin, empresas: empresas }
     }
-    return 'Tray respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-  }
-
-  // Grava os tokens. A validade é calculada aqui (3 h e 30 dias, com margem), sem depender de fuso da Tray.
-  function gravarTokensTray(conta, dados) {
-    conta.set('access_token', String(dados.access_token || ''))
-    if (dados.refresh_token) {
-      conta.set('refresh_token', String(dados.refresh_token))
-      conta.set('refresh_expira_em', new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString())
+    function exigirEmpresa(ctx, empresaId) {
+      if (!idValido(empresaId)) throw new BadRequestError('ID da empresa é obrigatório.')
+      for (let i = 0; i < ctx.empresas.length; i++) {
+        if (ctx.empresas[i].id === empresaId) return ctx.empresas[i]
+      }
+      throw new ForbiddenError('Acesso negado à empresa especificada para este usuário/assinante.')
     }
-    conta.set('token_expira_em', new Date(Date.now() + 170 * 60 * 1000).toISOString())
-    conta.set('ultima_renovacao_em', new Date().toISOString())
-    conta.set('status', 'Conectada')
-    conta.set('ultimo_erro', '')
-  }
+    function hostDaLoja(raw) {
+      let s = String(raw || '')
+        .trim()
+        .toLowerCase()
+      if (!s) return ''
+      if (s.indexOf('://') >= 0) s = s.split('://')[1] || ''
+      s = s.split('/')[0]
+      s = s.split(':')[0]
+      s = s.split('?')[0]
+      if (s.indexOf('www.') === 0) s = s.slice(4)
+      return s
+    }
+    function segredosTray() {
+      let key = ''
+      let secret = ''
+      try {
+        key = ($os.getenv('TRAY_CONSUMER_KEY') || '').trim()
+      } catch (_) {}
+      try {
+        secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
+      } catch (_) {}
+      return { key: key, secret: secret, ok: !!(key && secret) }
+    }
 
-  // Nunca registrar em log os parâmetros destas chamadas.
-  function renovarTokenTray(conta) {
-    const res = $http.send({
-      method: 'GET',
-      url:
-        conta.getString('api_address') +
-        '/auth?refresh_token=' +
-        encodeURIComponent(conta.getString('refresh_token')),
-      headers: { Accept: 'application/json' },
-      timeout: 20,
-    })
-    return { status: res.statusCode, dados: lerJson(res) }
-  }
+    try {
+      const body = c.requestInfo().body || {}
+      const ctx = contextoDoUsuario(auth)
+      const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
+      const seg = segredosTray()
+      if (!seg.ok) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Segredos TRAY_CONSUMER_KEY e TRAY_CONSUMER_SECRET não configurados.',
+        })
+      }
+      let conta = null
+      try {
+        const recs = $app.findRecordsByFilter(
+          'tray_contas',
+          "empresa_id = '" + empresa.id + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) conta = recs[0]
+      } catch (_) {}
+      if (
+        !conta ||
+        conta.getString('status') === 'Desconectada' ||
+        !conta.getString('refresh_token')
+      ) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Nenhuma loja Tray conectada nesta empresa.',
+        })
+      }
 
+      const lojaHost = hostDaLoja(conta.getString('loja_host'))
+      if (!lojaHost) {
+        return c.json(400, { sucesso: false, mensagem: 'Loja sem host registrado.' })
+      }
+      const apiAddress = conta.getString('api_address') || 'https://' + lojaHost
+
+      // Renova na hora se faltar menos de 10 minutos (ou se já venceu).
+      const expira = new Date(conta.getString('token_expira_em') || 0).getTime()
+      if (!expira || expira - Date.now() < 10 * 60 * 1000) {
+        const urlToken =
+          'https://' +
+          lojaHost +
+          '/api/v3/auth_server?code=' +
+          encodeURIComponent(conta.getString('refresh_token')) +
+          '&consumer_key=' +
+          encodeURIComponent(seg.key) +
+          '&consumer_secret=' +
+          encodeURIComponent(seg.secret)
+        const res = $http.send({
+          method: 'GET',
+          url: urlToken,
+          headers: { Accept: 'application/json' },
+          timeout: 20,
+        })
+        let dados = {}
+        try {
+          if (res && res.json) dados = res.json
+          else dados = JSON.parse(res.raw || '{}')
+        } catch (_) {
+          dados = {}
+        }
+        if (!dados || !dados.access_token) {
+          conta.set('status', 'Reconectar')
+          conta.set('ultimo_erro', 'Falha ao renovar o token (HTTP ' + res.statusCode + ').')
+          $app.save(conta)
+          return c.json(400, {
+            sucesso: false,
+            mensagem: 'Falha ao renovar o token (HTTP ' + res.statusCode + ').',
+          })
+        }
+        conta.set('access_token', String(dados.access_token || ''))
+        if (dados.refresh_token) conta.set('refresh_token', String(dados.refresh_token || ''))
+        conta.set(
+          'token_expira_em',
+          new Date(Date.now() + (parseInt(dados.expires_in, 10) || 3600) * 1000).toISOString(),
+        )
+        conta.set(
+          'refresh_expira_em',
+          new Date(
+            Date.now() + (parseInt(dados.refresh_expires_in, 10) || 30 * 24 * 3600) * 1000,
+          ).toISOString(),
+        )
+        conta.set('status', 'Conectada')
+        conta.set('ultimo_erro', '')
+        conta.set('ultima_renovacao_em', new Date().toISOString())
+        $app.save(conta)
+      }
+
+      // Consulta simples na loja para confirmar que o token funciona.
+      const resConsulta = $http.send({
+        method: 'GET',
+        url:
+          apiAddress +
+          '/api/v3/store_information?access_token=' +
+          encodeURIComponent(conta.getString('access_token')),
+        headers: { Accept: 'application/json' },
+        timeout: 20,
+      })
+      if (resConsulta.statusCode !== 200) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'A Tray respondeu HTTP ' + resConsulta.statusCode + ' na consulta da loja.',
+        })
+      }
+      return c.json(200, {
+        sucesso: true,
+        mensagem: 'Conexão funcionando.',
+        loja_host: lojaHost,
+      })
+    } catch (err) {
+      const status = err && err.status ? err.status : 400
+      return c.json(status, {
+        sucesso: false,
+        mensagem: err && err.message ? err.message : 'Falha ao testar a conexão.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+routerAdd('GET', '/backend/v1/tray/oauth/callback', (c) => {
   function responder(ok, motivo, retornoUrl) {
     if (retornoUrl) {
       const sep = retornoUrl.indexOf('?') >= 0 ? '&' : '?'
-      return c.redirect(
-        302,
+      const destino =
         retornoUrl +
-          sep +
-          'resultado=' +
-          (ok ? 'ok' : 'erro') +
-          (ok ? '' : '&motivo=' + encodeURIComponent(motivo || '')),
-      )
+        sep +
+        'resultado=' +
+        (ok ? 'ok' : 'erro') +
+        (ok ? '' : '&motivo=' + encodeURIComponent(motivo || ''))
+      return c.redirect(302, destino)
     }
     const titulo = ok ? 'Loja Tray conectada' : 'Não foi possível conectar'
     const texto = ok
-      ? 'Pode fechar esta aba e voltar ao sistema.'
+      ? 'Pode fechar esta aba e voltar ao Trevvo.'
       : String(motivo || 'Erro desconhecido.')
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
@@ -454,17 +526,41 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback/{estado}', (c) => {
     )
   }
 
+  function segredosTray() {
+    let key = ''
+    let secret = ''
+    try {
+      key = ($os.getenv('TRAY_CONSUMER_KEY') || '').trim()
+    } catch (_) {}
+    try {
+      secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
+    } catch (_) {}
+    return { key: key, secret: secret, ok: !!(key && secret) }
+  }
+
+  function hostDaLoja(raw) {
+    let s = String(raw || '')
+      .trim()
+      .toLowerCase()
+    if (!s) return ''
+    if (s.indexOf('://') >= 0) s = s.split('://')[1] || ''
+    s = s.split('/')[0]
+    s = s.split(':')[0]
+    s = s.split('?')[0]
+    if (s.indexOf('www.') === 0) s = s.slice(4)
+    return s
+  }
+
   let retornoUrl = ''
   try {
-    let estado = ''
-    if (c.request && typeof c.request.pathValue === 'function') {
-      estado = String(c.request.pathValue('estado') || '').trim()
-    }
-    if (!/^[A-Za-z0-9]{20,100}$/.test(estado))
-      return responder(false, 'Solicitação de conexão inválida.', '')
-
     const q = c.requestInfo().query || {}
     const code = String(q['code'] || '').trim()
+    const estado = String(q['state'] || '').trim()
+    const erroTray = String(q['error'] || '').trim()
+
+    if (!/^[A-Za-z0-9]{20,100}$/.test(estado)) {
+      return responder(false, 'Parâmetro state inválido.', '')
+    }
 
     let estRec = null
     try {
@@ -478,76 +574,129 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback/{estado}', (c) => {
       if (recs && recs.length > 0) estRec = recs[0]
     } catch (_) {}
     if (!estRec) return responder(false, 'Solicitação de conexão não encontrada.', '')
+
     retornoUrl = estRec.getString('retorno_url')
 
-    if (estRec.getBool('usado'))
+    if (estRec.getBool('usado')) {
       return responder(false, 'Esta solicitação de conexão já foi utilizada.', retornoUrl)
+    }
+    // Uso único: marca como usado antes de qualquer chamada externa.
     estRec.set('usado', true)
     $app.save(estRec)
 
     if (new Date(estRec.getString('expira_em')).getTime() < Date.now()) {
       return responder(false, 'A solicitação de conexão expirou. Tente novamente.', retornoUrl)
     }
+    if (erroTray) {
+      return responder(false, 'Autorização não concedida na Tray (' + erroTray + ').', retornoUrl)
+    }
     if (!code) return responder(false, 'A Tray não devolveu o código de autorização.', retornoUrl)
 
     const seg = segredosTray()
-    if (!seg.ok)
+    if (!seg.ok) {
       return responder(
         false,
         'Segredos TRAY_CONSUMER_KEY e TRAY_CONSUMER_SECRET não configurados.',
         retornoUrl,
       )
-
-    // Segurança: a API chamada é sempre a da loja informada pelo administrador ao iniciar,
-    // nunca um endereço vindo solto na URL de retorno.
-    const host = estRec.getString('loja_host')
-    const hostRetorno = hostDaLoja(q['api_address'] || '')
-    if (hostRetorno && hostRetorno !== host) {
-      return responder(
-        false,
-        'A loja que autorizou (' + hostRetorno + ') não é a loja informada (' + host + ').',
-        retornoUrl,
-      )
-    }
-    const api = apiDaLoja(host)
-
-    const res = $http.send({
-      method: 'POST',
-      url: api + '/auth',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body: formUrlEncoded({ consumer_key: seg.key, consumer_secret: seg.secret, code: code }),
-      timeout: 20,
-    })
-    const r = { status: res.statusCode, dados: lerJson(res) }
-    if ((r.status !== 200 && r.status !== 201) || !r.dados || !r.dados.access_token) {
-      console.log('[tray] Falha ao gerar chave de acesso: HTTP ' + r.status)
-      return responder(false, mensagemErroTray(r), retornoUrl)
     }
 
-    const empresaId = estRec.getString('empresa_id')
-    let conta = null
+    const lojaHost = hostDaLoja(estRec.getString('loja_host'))
+    if (!lojaHost)
+      return responder(false, 'Host da loja não registrado nesta solicitação.', retornoUrl)
+
+    // A mesma loja não pode ficar ligada a duas empresas.
+    const limpo = lojaHost.replace(/[^a-z0-9.-]/g, '')
     try {
-      const recs = $app.findRecordsByFilter(
+      const outras = $app.findRecordsByFilter(
         'tray_contas',
-        "empresa_id = '" + empresaId + "'",
+        "loja_host = '" +
+          limpo +
+          "' && empresa_id != '" +
+          estRec.getString('empresa_id') +
+          "' && status != 'Desconectada'",
         '-created',
         1,
         0,
       )
-      if (recs && recs.length > 0) conta = recs[0]
+      if (outras && outras.length > 0) {
+        return responder(
+          false,
+          'Esta loja Tray já está conectada a outra empresa. Desconecte lá primeiro.',
+          retornoUrl,
+        )
+      }
+    } catch (_) {}
+
+    // Troca o code pelo token (Tray: GET na loja, /auth_code → /api/v3/auth_server).
+    const urlToken =
+      'https://' +
+      lojaHost +
+      '/api/v3/auth_server?code=' +
+      encodeURIComponent(code) +
+      '&consumer_key=' +
+      encodeURIComponent(seg.key) +
+      '&consumer_secret=' +
+      encodeURIComponent(seg.secret)
+    const res = $http.send({
+      method: 'GET',
+      url: urlToken,
+      headers: { Accept: 'application/json' },
+      timeout: 20,
+    })
+    let dados = {}
+    try {
+      if (res && res.json) dados = res.json
+      else dados = JSON.parse(res.raw || '{}')
+    } catch (_) {
+      dados = {}
+    }
+    if (!dados || !dados.access_token) {
+      console.log('[tray] Falha na troca do code: HTTP ' + res.statusCode)
+      return responder(
+        false,
+        'A Tray não devolveu o access_token (HTTP ' + res.statusCode + ').',
+        retornoUrl,
+      )
+    }
+
+    let conta = null
+    try {
+      const recsConta = $app.findRecordsByFilter(
+        'tray_contas',
+        "empresa_id = '" + estRec.getString('empresa_id') + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (recsConta && recsConta.length > 0) conta = recsConta[0]
     } catch (_) {}
     if (!conta) {
       conta = new Record($app.findCollectionByNameOrId('tray_contas'))
-      conta.set('empresa_id', empresaId)
+      conta.set('empresa_id', estRec.getString('empresa_id'))
       conta.set('ativo', true)
     }
     conta.set('assinante_id', estRec.getString('assinante_id'))
-    conta.set('loja_host', host)
-    conta.set('api_address', api)
-    conta.set('store_id', String(r.dados.store_id || q['store'] || '').slice(0, 40))
+    conta.set('loja_host', lojaHost)
+    conta.set('api_address', 'https://' + lojaHost)
+    conta.set('store_id', String(dados.store_id || ''))
+    conta.set('loja_nome', String(dados.store_name || dados.name || ''))
+    conta.set('access_token', String(dados.access_token || ''))
+    conta.set('refresh_token', String(dados.refresh_token || ''))
+    conta.set(
+      'token_expira_em',
+      new Date(Date.now() + (parseInt(dados.expires_in, 10) || 3600) * 1000).toISOString(),
+    )
+    conta.set(
+      'refresh_expira_em',
+      new Date(
+        Date.now() + (parseInt(dados.refresh_expires_in, 10) || 30 * 24 * 3600) * 1000,
+      ).toISOString(),
+    )
+    conta.set('status', 'Conectada')
+    conta.set('ultimo_erro', '')
     conta.set('conectada_em', new Date().toISOString())
     conta.set('conectada_por', estRec.getString('usuario_id'))
-    gravarTokensTray(conta, r.dados)
     $app.save(conta)
 
     return responder(true, '', retornoUrl)
@@ -557,6 +706,7 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback/{estado}', (c) => {
   }
 })
 
+// 4) Status da conexão da empresa (nunca devolve os tokens).
 routerAdd(
   'GET',
   '/backend/v1/tray/conexao/status',
@@ -564,46 +714,40 @@ routerAdd(
     const auth = c.auth || c.get('authRecord')
     if (!auth) return c.json(401, { sucesso: false, mensagem: 'Autenticação obrigatória.' })
 
-    // ---- Helpers locais (JSVM: precisam ficar DENTRO do callback) ----
     function idValido(v) {
       return typeof v === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(v)
     }
-
-    function eMasterLocal(auth) {
-      if (!auth) return false
+    function eMasterLocal(a) {
+      if (!a) return false
       try {
-        const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
-        return !!(userRec && userRec.getString('tipo') === 'master')
+        const u = $app.findRecordById('_pb_users_auth_', a.id)
+        return !!(u && u.getString('tipo') === 'master')
       } catch (_) {
         return false
       }
     }
-
-    // Devolve { usuarioRec, assinanteId, admin, empresas[] } seguindo a mesma regra de tenancy.js
-    function contextoDoUsuario(auth) {
+    function contextoDoUsuario(a) {
       let usuarioRec = null
       try {
-        const uRecs = $app.findRecordsByFilter(
+        const recs = $app.findRecordsByFilter(
           'usuarios',
-          "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
+          "auth_user_id = '" + a.id + "' || id = '" + a.id + "'",
           '-created',
           1,
           0,
         )
-        if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
+        if (recs && recs.length > 0) usuarioRec = recs[0]
       } catch (_) {}
       if (!usuarioRec) throw new BadRequestError('Registro de usuário ERP não encontrado.')
-
       let assinanteId = usuarioRec.getString('assinante_id')
       if (!assinanteId) throw new BadRequestError('Usuário sem vínculo com assinante.')
-
-      const master = eMasterLocal(auth)
+      const master = eMasterLocal(a)
       if (master) {
         try {
           if ($app.hasTable('master_impersonacoes')) {
             const imp = $app.findRecordsByFilter(
               'master_impersonacoes',
-              "user_id = '" + auth.id + "'",
+              "user_id = '" + a.id + "'",
               '-created',
               1,
               0,
@@ -614,18 +758,14 @@ routerAdd(
           }
         } catch (_) {}
       }
-
       let admin = master
       const perfilId = usuarioRec.getString('perfil_id')
       if (!admin && perfilId) {
         try {
-          const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
-          if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
-            admin = true
-          }
+          const p = $app.findRecordById('perfis_acesso', perfilId)
+          if (p && p.getBool('ativo') && p.getBool('administrador')) admin = true
         } catch (_) {}
       }
-
       let empresas = []
       if (admin) {
         try {
@@ -665,10 +805,8 @@ routerAdd(
           } catch (_) {}
         })
       }
-
       return { usuarioRec: usuarioRec, assinanteId: assinanteId, admin: admin, empresas: empresas }
     }
-
     function exigirEmpresa(ctx, empresaId) {
       if (!idValido(empresaId)) throw new BadRequestError('ID da empresa é obrigatório.')
       for (let i = 0; i < ctx.empresas.length; i++) {
@@ -676,7 +814,6 @@ routerAdd(
       }
       throw new ForbiddenError('Acesso negado à empresa especificada para este usuário/assinante.')
     }
-
     function contaDaEmpresa(empresaId) {
       try {
         const recs = $app.findRecordsByFilter(
@@ -691,99 +828,14 @@ routerAdd(
       return null
     }
 
-    // ---- Helpers de chamada à Tray (locais ao callback) ----
-    function segredosTray() {
-      let key = ''
-      let secret = ''
-      try {
-        key = ($os.getenv('TRAY_CONSUMER_KEY') || '').trim()
-      } catch (_) {}
-      try {
-        secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
-      } catch (_) {}
-      return { key: key, secret: secret, ok: !!(key && secret) }
-    }
-
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
-    }
-
-    // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
-    function hostDaLoja(valor) {
-      let v = String(valor || '')
-        .trim()
-        .toLowerCase()
-      v = v.replace(/^https?:\/\//, '')
-      v = v.split('/')[0].split('?')[0].split('#')[0]
-      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
-      if (v.length > 200) return ''
-      return v
-    }
-
-    // A API da loja fica sempre em https://{host da loja}/web_api
-    function apiDaLoja(host) {
-      return 'https://' + host + '/web_api'
-    }
-
-    function formUrlEncoded(campos) {
-      const partes = []
-      Object.keys(campos).forEach((k) => {
-        partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
-      })
-      return partes.join('&')
-    }
-
-    function mensagemErroTray(r) {
-      const d = (r && r.dados) || {}
-      let txt = d.message || d.error || ''
-      if (!txt && d.causes) {
-        try {
-          txt = JSON.stringify(d.causes).slice(0, 200)
-        } catch (_) {}
-      }
-      return 'Tray respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-    }
-
-    // Grava os tokens. A validade é calculada aqui (3 h e 30 dias, com margem), sem depender de fuso da Tray.
-    function gravarTokensTray(conta, dados) {
-      conta.set('access_token', String(dados.access_token || ''))
-      if (dados.refresh_token) {
-        conta.set('refresh_token', String(dados.refresh_token))
-        conta.set('refresh_expira_em', new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString())
-      }
-      conta.set('token_expira_em', new Date(Date.now() + 170 * 60 * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
-    }
-
-    // Nunca registrar em log os parâmetros destas chamadas.
-    function renovarTokenTray(conta) {
-      const res = $http.send({
-        method: 'GET',
-        url:
-          conta.getString('api_address') +
-          '/auth?refresh_token=' +
-          encodeURIComponent(conta.getString('refresh_token')),
-        headers: { Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
-
     try {
       const q = c.requestInfo().query || {}
       const ctx = contextoDoUsuario(auth)
       const empresa = exigirEmpresa(ctx, String(q['empresa_id'] || '').trim())
       const conta = contaDaEmpresa(empresa.id)
+
       return c.json(200, {
         sucesso: true,
-        segredos_configurados: segredosTray().ok,
         pode_gerenciar: ctx.admin,
         status: conta ? conta.getString('status') || 'Desconectada' : 'Desconectada',
         loja_host: conta ? conta.getString('loja_host') : '',
@@ -806,462 +858,8 @@ routerAdd(
   $apis.requireAuth(),
 )
 
-routerAdd(
-  'POST',
-  '/backend/v1/tray/conexao/testar',
-  (c) => {
-    const auth = c.auth || c.get('authRecord')
-    if (!auth) return c.json(401, { sucesso: false, mensagem: 'Autenticação obrigatória.' })
-
-    // ---- Helpers locais (JSVM: precisam ficar DENTRO do callback) ----
-    function idValido(v) {
-      return typeof v === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(v)
-    }
-
-    function eMasterLocal(auth) {
-      if (!auth) return false
-      try {
-        const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
-        return !!(userRec && userRec.getString('tipo') === 'master')
-      } catch (_) {
-        return false
-      }
-    }
-
-    // Devolve { usuarioRec, assinanteId, admin, empresas[] } seguindo a mesma regra de tenancy.js
-    function contextoDoUsuario(auth) {
-      let usuarioRec = null
-      try {
-        const uRecs = $app.findRecordsByFilter(
-          'usuarios',
-          "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
-          '-created',
-          1,
-          0,
-        )
-        if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
-      } catch (_) {}
-      if (!usuarioRec) throw new BadRequestError('Registro de usuário ERP não encontrado.')
-
-      let assinanteId = usuarioRec.getString('assinante_id')
-      if (!assinanteId) throw new BadRequestError('Usuário sem vínculo com assinante.')
-
-      const master = eMasterLocal(auth)
-      if (master) {
-        try {
-          if ($app.hasTable('master_impersonacoes')) {
-            const imp = $app.findRecordsByFilter(
-              'master_impersonacoes',
-              "user_id = '" + auth.id + "'",
-              '-created',
-              1,
-              0,
-            )
-            if (imp && imp.length > 0 && imp[0].getString('assinante_id')) {
-              assinanteId = imp[0].getString('assinante_id')
-            }
-          }
-        } catch (_) {}
-      }
-
-      let admin = master
-      const perfilId = usuarioRec.getString('perfil_id')
-      if (!admin && perfilId) {
-        try {
-          const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
-          if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
-            admin = true
-          }
-        } catch (_) {}
-      }
-
-      let empresas = []
-      if (admin) {
-        try {
-          empresas = $app.findRecordsByFilter(
-            'empresas',
-            "assinante_id = '" + assinanteId + "' && ativo = true",
-            'codigo',
-            500,
-            0,
-          )
-        } catch (_) {
-          empresas = []
-        }
-      } else {
-        const ids = {}
-        const padraoId = usuarioRec.getString('empresa_padrao_id')
-        if (padraoId) ids[padraoId] = true
-        try {
-          const vinc = $app.findRecordsByFilter(
-            'usuarios_empresas',
-            "usuario_id = '" + usuarioRec.id + "' && ativo = true",
-            '',
-            500,
-            0,
-          )
-          for (let i = 0; i < vinc.length; i++) {
-            const eId = vinc[i].getString('empresa_id')
-            if (eId) ids[eId] = true
-          }
-        } catch (_) {}
-        Object.keys(ids).forEach((eId) => {
-          try {
-            const emp = $app.findRecordById('empresas', eId)
-            if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
-              empresas.push(emp)
-            }
-          } catch (_) {}
-        })
-      }
-
-      return { usuarioRec: usuarioRec, assinanteId: assinanteId, admin: admin, empresas: empresas }
-    }
-
-    function exigirEmpresa(ctx, empresaId) {
-      if (!idValido(empresaId)) throw new BadRequestError('ID da empresa é obrigatório.')
-      for (let i = 0; i < ctx.empresas.length; i++) {
-        if (ctx.empresas[i].id === empresaId) return ctx.empresas[i]
-      }
-      throw new ForbiddenError('Acesso negado à empresa especificada para este usuário/assinante.')
-    }
-
-    function contaDaEmpresa(empresaId) {
-      try {
-        const recs = $app.findRecordsByFilter(
-          'tray_contas',
-          "empresa_id = '" + empresaId + "'",
-          '-created',
-          1,
-          0,
-        )
-        if (recs && recs.length > 0) return recs[0]
-      } catch (_) {}
-      return null
-    }
-
-    // ---- Helpers de chamada à Tray (locais ao callback) ----
-    function segredosTray() {
-      let key = ''
-      let secret = ''
-      try {
-        key = ($os.getenv('TRAY_CONSUMER_KEY') || '').trim()
-      } catch (_) {}
-      try {
-        secret = ($os.getenv('TRAY_CONSUMER_SECRET') || '').trim()
-      } catch (_) {}
-      return { key: key, secret: secret, ok: !!(key && secret) }
-    }
-
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
-    }
-
-    // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
-    function hostDaLoja(valor) {
-      let v = String(valor || '')
-        .trim()
-        .toLowerCase()
-      v = v.replace(/^https?:\/\//, '')
-      v = v.split('/')[0].split('?')[0].split('#')[0]
-      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
-      if (v.length > 200) return ''
-      return v
-    }
-
-    // A API da loja fica sempre em https://{host da loja}/web_api
-    function apiDaLoja(host) {
-      return 'https://' + host + '/web_api'
-    }
-
-    function formUrlEncoded(campos) {
-      const partes = []
-      Object.keys(campos).forEach((k) => {
-        partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
-      })
-      return partes.join('&')
-    }
-
-    function mensagemErroTray(r) {
-      const d = (r && r.dados) || {}
-      let txt = d.message || d.error || ''
-      if (!txt && d.causes) {
-        try {
-          txt = JSON.stringify(d.causes).slice(0, 200)
-        } catch (_) {}
-      }
-      return 'Tray respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-    }
-
-    // Grava os tokens. A validade é calculada aqui (3 h e 30 dias, com margem), sem depender de fuso da Tray.
-    function gravarTokensTray(conta, dados) {
-      conta.set('access_token', String(dados.access_token || ''))
-      if (dados.refresh_token) {
-        conta.set('refresh_token', String(dados.refresh_token))
-        conta.set('refresh_expira_em', new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString())
-      }
-      conta.set('token_expira_em', new Date(Date.now() + 170 * 60 * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
-    }
-
-    // Nunca registrar em log os parâmetros destas chamadas.
-    function renovarTokenTray(conta) {
-      const res = $http.send({
-        method: 'GET',
-        url:
-          conta.getString('api_address') +
-          '/auth?refresh_token=' +
-          encodeURIComponent(conta.getString('refresh_token')),
-        headers: { Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
-
-    try {
-      const body = c.requestInfo().body || {}
-      const ctx = contextoDoUsuario(auth)
-      const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
-      const conta = contaDaEmpresa(empresa.id)
-      if (
-        !conta ||
-        conta.getString('status') === 'Desconectada' ||
-        !conta.getString('refresh_token')
-      ) {
-        return c.json(400, {
-          sucesso: false,
-          mensagem: 'Nenhuma loja Tray conectada nesta empresa.',
-        })
-      }
-
-      const expira = new Date(conta.getString('token_expira_em') || 0).getTime()
-      if (!expira || expira - Date.now() < 5 * 60 * 1000) {
-        const r = renovarTokenTray(conta)
-        if ((r.status === 200 || r.status === 201) && r.dados && r.dados.access_token) {
-          gravarTokensTray(conta, r.dados)
-          $app.save(conta)
-        } else {
-          if (r.status === 400 || r.status === 401) conta.set('status', 'Reconectar')
-          conta.set('ultimo_erro', mensagemErroTray(r))
-          $app.save(conta)
-          return c.json(400, {
-            sucesso: false,
-            mensagem: 'Falha ao renovar o token. ' + mensagemErroTray(r),
-          })
-        }
-      }
-
-      const res = $http.send({
-        method: 'GET',
-        url:
-          conta.getString('api_address') +
-          '/info?access_token=' +
-          encodeURIComponent(conta.getString('access_token')),
-        headers: { Accept: 'application/json' },
-        timeout: 20,
-      })
-      const r = { status: res.statusCode, dados: lerJson(res) }
-      if (r.status !== 200) return c.json(400, { sucesso: false, mensagem: mensagemErroTray(r) })
-
-      const info = (r.dados && (r.dados.Informations || r.dados.informations || r.dados)) || {}
-      const nome = String(info.name || info.store_name || info.company_name || '').slice(0, 200)
-      if (nome && nome !== conta.getString('loja_nome')) {
-        conta.set('loja_nome', nome)
-        $app.save(conta)
-      }
-      return c.json(200, {
-        sucesso: true,
-        mensagem: 'Conexão funcionando.',
-        loja_nome: nome,
-        loja_host: conta.getString('loja_host'),
-      })
-    } catch (err) {
-      const status = err && err.status ? err.status : 400
-      return c.json(status, {
-        sucesso: false,
-        mensagem: err && err.message ? err.message : 'Falha ao testar a conexão.',
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
-
-routerAdd(
-  'POST',
-  '/backend/v1/tray/conexao/desconectar',
-  (c) => {
-    const auth = c.auth || c.get('authRecord')
-    if (!auth) return c.json(401, { sucesso: false, mensagem: 'Autenticação obrigatória.' })
-
-    // ---- Helpers locais (JSVM: precisam ficar DENTRO do callback) ----
-    function idValido(v) {
-      return typeof v === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(v)
-    }
-
-    function eMasterLocal(auth) {
-      if (!auth) return false
-      try {
-        const userRec = $app.findRecordById('_pb_users_auth_', auth.id)
-        return !!(userRec && userRec.getString('tipo') === 'master')
-      } catch (_) {
-        return false
-      }
-    }
-
-    // Devolve { usuarioRec, assinanteId, admin, empresas[] } seguindo a mesma regra de tenancy.js
-    function contextoDoUsuario(auth) {
-      let usuarioRec = null
-      try {
-        const uRecs = $app.findRecordsByFilter(
-          'usuarios',
-          "auth_user_id = '" + auth.id + "' || id = '" + auth.id + "'",
-          '-created',
-          1,
-          0,
-        )
-        if (uRecs && uRecs.length > 0) usuarioRec = uRecs[0]
-      } catch (_) {}
-      if (!usuarioRec) throw new BadRequestError('Registro de usuário ERP não encontrado.')
-
-      let assinanteId = usuarioRec.getString('assinante_id')
-      if (!assinanteId) throw new BadRequestError('Usuário sem vínculo com assinante.')
-
-      const master = eMasterLocal(auth)
-      if (master) {
-        try {
-          if ($app.hasTable('master_impersonacoes')) {
-            const imp = $app.findRecordsByFilter(
-              'master_impersonacoes',
-              "user_id = '" + auth.id + "'",
-              '-created',
-              1,
-              0,
-            )
-            if (imp && imp.length > 0 && imp[0].getString('assinante_id')) {
-              assinanteId = imp[0].getString('assinante_id')
-            }
-          }
-        } catch (_) {}
-      }
-
-      let admin = master
-      const perfilId = usuarioRec.getString('perfil_id')
-      if (!admin && perfilId) {
-        try {
-          const perfilRec = $app.findRecordById('perfis_acesso', perfilId)
-          if (perfilRec && perfilRec.getBool('ativo') && perfilRec.getBool('administrador')) {
-            admin = true
-          }
-        } catch (_) {}
-      }
-
-      let empresas = []
-      if (admin) {
-        try {
-          empresas = $app.findRecordsByFilter(
-            'empresas',
-            "assinante_id = '" + assinanteId + "' && ativo = true",
-            'codigo',
-            500,
-            0,
-          )
-        } catch (_) {
-          empresas = []
-        }
-      } else {
-        const ids = {}
-        const padraoId = usuarioRec.getString('empresa_padrao_id')
-        if (padraoId) ids[padraoId] = true
-        try {
-          const vinc = $app.findRecordsByFilter(
-            'usuarios_empresas',
-            "usuario_id = '" + usuarioRec.id + "' && ativo = true",
-            '',
-            500,
-            0,
-          )
-          for (let i = 0; i < vinc.length; i++) {
-            const eId = vinc[i].getString('empresa_id')
-            if (eId) ids[eId] = true
-          }
-        } catch (_) {}
-        Object.keys(ids).forEach((eId) => {
-          try {
-            const emp = $app.findRecordById('empresas', eId)
-            if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
-              empresas.push(emp)
-            }
-          } catch (_) {}
-        })
-      }
-
-      return { usuarioRec: usuarioRec, assinanteId: assinanteId, admin: admin, empresas: empresas }
-    }
-
-    function exigirEmpresa(ctx, empresaId) {
-      if (!idValido(empresaId)) throw new BadRequestError('ID da empresa é obrigatório.')
-      for (let i = 0; i < ctx.empresas.length; i++) {
-        if (ctx.empresas[i].id === empresaId) return ctx.empresas[i]
-      }
-      throw new ForbiddenError('Acesso negado à empresa especificada para este usuário/assinante.')
-    }
-
-    function contaDaEmpresa(empresaId) {
-      try {
-        const recs = $app.findRecordsByFilter(
-          'tray_contas',
-          "empresa_id = '" + empresaId + "'",
-          '-created',
-          1,
-          0,
-        )
-        if (recs && recs.length > 0) return recs[0]
-      } catch (_) {}
-      return null
-    }
-
-    try {
-      const body = c.requestInfo().body || {}
-      const ctx = contextoDoUsuario(auth)
-      if (!ctx.admin) {
-        return c.json(403, {
-          sucesso: false,
-          mensagem: 'Apenas administradores podem desconectar a loja Tray.',
-        })
-      }
-      const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
-      const conta = contaDaEmpresa(empresa.id)
-      if (conta) {
-        conta.set('access_token', '')
-        conta.set('refresh_token', '')
-        conta.set('token_expira_em', '')
-        conta.set('refresh_expira_em', '')
-        conta.set('status', 'Desconectada')
-        conta.set('ultimo_erro', '')
-        $app.save(conta)
-        console.log('[tray] Loja desconectada. empresa=' + empresa.id + ' usuario=' + auth.id)
-      }
-      return c.json(200, { sucesso: true, mensagem: 'Loja desconectada.' })
-    } catch (err) {
-      const status = err && err.status ? err.status : 400
-      return c.json(status, {
-        sucesso: false,
-        mensagem: err && err.message ? err.message : 'Falha ao desconectar.',
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
-
-cronAdd('tray_renovar_tokens', '*/30 * * * *', () => {
-  // ---- Helpers de chamada à Tray (locais ao callback) ----
+// 7) Cron: renovação preventiva do access_token das contas conectadas (a cada 6 h).
+cronAdd('trayRenovarTokens', '0 */6 * * *', () => {
   function segredosTray() {
     let key = ''
     let secret = ''
@@ -1274,121 +872,105 @@ cronAdd('tray_renovar_tokens', '*/30 * * * *', () => {
     return { key: key, secret: secret, ok: !!(key && secret) }
   }
 
-  function lerJson(res) {
-    if (res && res.json) return res.json
-    try {
-      return JSON.parse(res.raw || '{}')
-    } catch (_) {
-      return {}
-    }
-  }
-
-  // Aceita "https://loja.com.br/qualquer/coisa" ou "loja.com.br" e devolve só o host em minúsculas.
-  function hostDaLoja(valor) {
-    let v = String(valor || '')
+  function hostDaLoja(raw) {
+    let s = String(raw || '')
       .trim()
       .toLowerCase()
-    v = v.replace(/^https?:\/\//, '')
-    v = v.split('/')[0].split('?')[0].split('#')[0]
-    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return ''
-    if (v.length > 200) return ''
-    return v
+    if (!s) return ''
+    if (s.indexOf('://') >= 0) s = s.split('://')[1] || ''
+    s = s.split('/')[0]
+    s = s.split(':')[0]
+    s = s.split('?')[0]
+    if (s.indexOf('www.') === 0) s = s.slice(4)
+    return s
   }
 
-  // A API da loja fica sempre em https://{host da loja}/web_api
-  function apiDaLoja(host) {
-    return 'https://' + host + '/web_api'
-  }
-
-  function formUrlEncoded(campos) {
-    const partes = []
-    Object.keys(campos).forEach((k) => {
-      partes.push(encodeURIComponent(k) + '=' + encodeURIComponent(campos[k]))
-    })
-    return partes.join('&')
-  }
-
-  function mensagemErroTray(r) {
-    const d = (r && r.dados) || {}
-    let txt = d.message || d.error || ''
-    if (!txt && d.causes) {
-      try {
-        txt = JSON.stringify(d.causes).slice(0, 200)
-      } catch (_) {}
-    }
-    return 'Tray respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-  }
-
-  // Grava os tokens. A validade é calculada aqui (3 h e 30 dias, com margem), sem depender de fuso da Tray.
-  function gravarTokensTray(conta, dados) {
-    conta.set('access_token', String(dados.access_token || ''))
-    if (dados.refresh_token) {
-      conta.set('refresh_token', String(dados.refresh_token))
-      conta.set('refresh_expira_em', new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString())
-    }
-    conta.set('token_expira_em', new Date(Date.now() + 170 * 60 * 1000).toISOString())
-    conta.set('ultima_renovacao_em', new Date().toISOString())
-    conta.set('status', 'Conectada')
-    conta.set('ultimo_erro', '')
-  }
-
-  // Nunca registrar em log os parâmetros destas chamadas.
-  function renovarTokenTray(conta) {
-    const res = $http.send({
-      method: 'GET',
-      url:
-        conta.getString('api_address') +
-        '/auth?refresh_token=' +
-        encodeURIComponent(conta.getString('refresh_token')),
-      headers: { Accept: 'application/json' },
-      timeout: 20,
-    })
-    return { status: res.statusCode, dados: lerJson(res) }
-  }
-
+  let renovadas = 0
+  let falhas = 0
   try {
-    if (!$app.hasTable('tray_contas')) return
-    if (!segredosTray().ok) return
-    let contas = []
-    try {
-      contas = $app.findRecordsByFilter(
-        'tray_contas',
-        "status = 'Conectada' && refresh_token != ''",
-        'token_expira_em',
-        500,
-        0,
-      )
-    } catch (_) {
-      contas = []
-    }
+    const contas = $app.findRecordsByFilter(
+      'tray_contas',
+      "status = 'Conectada' && refresh_token != ''",
+      '-created',
+      500,
+      0,
+    )
     for (let i = 0; i < contas.length; i++) {
       const conta = contas[i]
       try {
-        const expira = new Date(conta.getString('token_expira_em') || 0).getTime()
-        // O token dura 3 horas: renova o que vence nos próximos 75 minutos.
-        if (expira && expira - Date.now() > 75 * 60 * 1000) continue
-        const r = renovarTokenTray(conta)
-        if ((r.status === 200 || r.status === 201) && r.dados && r.dados.access_token) {
-          gravarTokensTray(conta, r.dados)
-          $app.save(conta)
-        } else if (r.status === 400 || r.status === 401) {
-          conta.set('status', 'Reconectar')
-          conta.set('ultimo_erro', mensagemErroTray(r))
-          $app.save(conta)
-          console.log('[tray] Loja precisa reconectar. empresa=' + conta.getString('empresa_id'))
-        } else {
-          console.log(
-            '[tray] Renovação adiada: HTTP ' +
-              r.status +
-              ' empresa=' +
-              conta.getString('empresa_id'),
-          )
+        const expira = new Date(conta.getString('token_expira_em')).getTime()
+        if (expira - Date.now() > 30 * 60 * 1000) continue // ainda válido por > 30 min
+
+        const seg = segredosTray()
+        if (!seg.ok) break
+
+        const lojaHost = hostDaLoja(conta.getString('loja_host'))
+        if (!lojaHost) continue
+
+        const res = $http.send({
+          method: 'POST',
+          url: 'https://' + lojaHost + '/api/v3/auth_server',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'application/json',
+          },
+          body:
+            'refresh_token=' +
+            encodeURIComponent(conta.getString('refresh_token')) +
+            '&consumer_key=' +
+            encodeURIComponent(seg.key) +
+            '&consumer_secret=' +
+            encodeURIComponent(seg.secret) +
+            '&grant_type=refresh_token',
+          timeout: 20,
+        })
+        let dados = {}
+        try {
+          if (res && res.json) dados = res.json
+          else dados = JSON.parse(res.raw || '{}')
+        } catch (_) {
+          dados = {}
         }
-      } catch (e1) {
-        console.log('[tray] Erro ao renovar token: ' + (e1 && e1.message ? e1.message : String(e1)))
+        if (!dados || !dados.access_token) {
+          falhas++
+          conta.set('ultimo_erro', 'Renovação falhou (HTTP ' + res.statusCode + ')')
+          conta.set('status', 'Erro')
+          $app.save(conta)
+          continue
+        }
+        conta.set('access_token', String(dados.access_token || ''))
+        if (dados.refresh_token) conta.set('refresh_token', String(dados.refresh_token))
+        conta.set(
+          'token_expira_em',
+          new Date(Date.now() + (parseInt(dados.expires_in, 10) || 3600) * 1000).toISOString(),
+        )
+        conta.set(
+          'refresh_expira_em',
+          new Date(
+            Date.now() + (parseInt(dados.refresh_expires_in, 10) || 30 * 24 * 3600) * 1000,
+          ).toISOString(),
+        )
+        conta.set('ultima_renovacao_em', new Date().toISOString())
+        conta.set('status', 'Conectada')
+        conta.set('ultimo_erro', '')
+        $app.save(conta)
+        renovadas++
+      } catch (errConta) {
+        falhas++
+        console.log(
+          '[tray-cron] Erro na conta ' +
+            conta.id +
+            ': ' +
+            (errConta && errConta.message ? errConta.message : String(errConta)),
+        )
       }
     }
   } catch (err) {
-    console.log('[tray] Erro no agendamento: ' + (err && err.message ? err.message : String(err)))
+    console.log('[tray-cron] Erro geral: ' + (err && err.message ? err.message : String(err)))
+  }
+  if (renovadas > 0 || falhas > 0) {
+    console.log(
+      '[tray-cron] Renovação de tokens Tray: ' + renovadas + ' renovadas, ' + falhas + ' falhas.',
+    )
   }
 })
