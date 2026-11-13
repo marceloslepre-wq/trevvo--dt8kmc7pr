@@ -63,3 +63,44 @@ export function mensagemErroTray(err: unknown, padrao: string): string {
   const e = err as { response?: { mensagem?: string; message?: string }; message?: string }
   return e?.response?.mensagem || e?.response?.message || e?.message || padrao
 }
+
+/** Parte 11.2 — conferência somente leitura dos produtos da loja (pocketbase/hooks/tray_produtos.js). */
+export interface LinhaProdutoTray {
+  produto_id: string
+  nome: string
+  ativo_na_tray: boolean
+  referencia_produto: string
+  variacao_id: string
+  variacao: string
+  codigo_tray: string
+  referencia: string
+  estoque: number
+  preco: number
+  situacao: string
+  produto_codigo: string
+  produto_descricao: string
+}
+
+export interface PaginaProdutosTray {
+  sucesso: boolean
+  pagina: number
+  limite: number
+  total_produtos: number
+  produtos_nesta_pagina: number
+  proxima_pagina: number | null
+  linhas: LinhaProdutoTray[]
+  falhas: { produto_id: string; motivo: string }[]
+  campos_produto: string[]
+  campos_variacao: string[]
+}
+
+export async function conferirProdutosTray(
+  empresaId: string,
+  pagina: number,
+  limite = 10,
+): Promise<PaginaProdutosTray> {
+  return await pb.send<PaginaProdutosTray>(
+    `/backend/v1/tray/produtos/conferencia?empresa_id=${encodeURIComponent(empresaId)}&pagina=${pagina}&limite=${limite}`,
+    { method: 'GET' },
+  )
+}

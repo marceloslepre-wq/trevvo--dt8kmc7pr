@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { toast } from '@/hooks/use-toast'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import ConferenciaProdutosTray from '@/components/tray/ConferenciaProdutosTray'
 import {
   StatusTray,
   desconectarTray,
@@ -316,6 +317,10 @@ export const TrayPage: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+
+          {situacao === 'Conectada' && (
+            <ConferenciaProdutosTray key={empresaId} empresaId={empresaId} />
+          )}
         </>
       )}
 
