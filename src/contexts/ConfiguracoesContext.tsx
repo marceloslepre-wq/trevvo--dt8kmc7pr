@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import {
   ConfiguracaoGeral,
   CONFIG_PADRAO,
@@ -96,19 +96,24 @@ export const ConfiguracoesProvider: React.FC<{ children: React.ReactNode }> = ({
     recarregarConfig()
   }, [recarregarConfig])
 
-  const logoUrl = obterUrlLogo(config)
+  const logoUrl = useMemo(() => obterUrlLogo(config), [config])
+
+  // Value memoizado: sem isso, um objeto NOVO de contexto a cada render do provider
+  // re-renderiza todos os consumidores (Header, Sidebar e páginas) em cascata a cada ciclo
+  // de commit dos componentes Radix (refs/setState internos do Presence), alimentando o
+  // loop "Maximum update depth exceeded" — mesmo motivo já tratado no PermissoesContext.
+  const contextValue = useMemo(
+    () => ({
+      config,
+      logoUrl,
+      carregando,
+      recarregarConfig,
+    }),
+    [config, logoUrl, carregando, recarregarConfig],
+  )
 
   return (
-    <ConfiguracoesContext.Provider
-      value={{
-        config,
-        logoUrl,
-        carregando,
-        recarregarConfig,
-      }}
-    >
-      {children}
-    </ConfiguracoesContext.Provider>
+    <ConfiguracoesContext.Provider value={contextValue}>{children}</ConfiguracoesContext.Provider>
   )
 }
 

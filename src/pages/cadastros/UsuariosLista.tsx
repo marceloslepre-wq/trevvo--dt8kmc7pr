@@ -592,117 +592,125 @@ export const UsuariosLista: React.FC = () => {
         </div>
       </div>
 
-      {/* Diálogo de confirmação de inativação */}
-      <Dialog
-        open={Boolean(usuarioParaInativar)}
-        onOpenChange={(open) => !open && setUsuarioParaInativar(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-2 text-amber-600">
-              <AlertTriangle size={20} />
-              <DialogTitle className="text-base text-slate-900">Inativar Usuário</DialogTitle>
-            </div>
-            <DialogDescription className="text-xs text-slate-500 mt-2">
-              Deseja inativar o usuário{' '}
-              <strong className="text-slate-800">"{usuarioParaInativar?.nome}"</strong>?
-              <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-200 text-red-800 text-xs leading-relaxed">
-                Ao inativar este usuário, o <strong>acesso ao login será bloqueado</strong>{' '}
-                imediatamente no Skip Cloud. Os dados históricos e vínculos de auditoria são
-                preservados intactos.
+      {/* Diálogo de confirmação de inativação (montado só quando há usuário selecionado:
+          evita instância Radix Dialog/Presence montada à toa no primeiro render da tela,
+          mesmo padrão aplicado ao UsuarioForm na v0.0.339) */}
+      {usuarioParaInativar && (
+        <Dialog
+          open={Boolean(usuarioParaInativar)}
+          onOpenChange={(open) => !open && setUsuarioParaInativar(null)}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <div className="flex items-center gap-2 text-amber-600">
+                <AlertTriangle size={20} />
+                <DialogTitle className="text-base text-slate-900">Inativar Usuário</DialogTitle>
               </div>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4 gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setUsuarioParaInativar(null)}
-              disabled={processandoAcao}
-              className="text-xs border-slate-200"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={handleConfirmarInativacao}
-              disabled={processandoAcao}
-              className="text-xs bg-red-600 hover:bg-red-700 text-white"
-            >
-              {processandoAcao ? 'Inativando...' : 'Confirmar Inativação'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              <DialogDescription className="text-xs text-slate-500 mt-2">
+                Deseja inativar o usuário{' '}
+                <strong className="text-slate-800">"{usuarioParaInativar?.nome}"</strong>?
+                <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-200 text-red-800 text-xs leading-relaxed">
+                  Ao inativar este usuário, o <strong>acesso ao login será bloqueado</strong>{' '}
+                  imediatamente no Skip Cloud. Os dados históricos e vínculos de auditoria são
+                  preservados intactos.
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="mt-4 gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setUsuarioParaInativar(null)}
+                disabled={processandoAcao}
+                className="text-xs border-slate-200"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={handleConfirmarInativacao}
+                disabled={processandoAcao}
+                className="text-xs bg-red-600 hover:bg-red-700 text-white"
+              >
+                {processandoAcao ? 'Inativando...' : 'Confirmar Inativação'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {/* Diálogo de redefinição de senha */}
-      <Dialog
-        open={Boolean(usuarioParaSenha)}
-        onOpenChange={(open) => !open && setUsuarioParaSenha(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-2 text-blue-600">
-              <KeyRound size={20} />
-              <DialogTitle className="text-base text-slate-900">
-                Redefinir Senha de Acesso
-              </DialogTitle>
+      {/* Diálogo de redefinição de senha (montado só quando há usuário selecionado:
+          evita instância Radix Dialog/Presence montada à toa no primeiro render da tela,
+          mesmo padrão aplicado ao UsuarioForm na v0.0.339) */}
+      {usuarioParaSenha && (
+        <Dialog
+          open={Boolean(usuarioParaSenha)}
+          onOpenChange={(open) => !open && setUsuarioParaSenha(null)}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <div className="flex items-center gap-2 text-blue-600">
+                <KeyRound size={20} />
+                <DialogTitle className="text-base text-slate-900">
+                  Redefinir Senha de Acesso
+                </DialogTitle>
+              </div>
+              <DialogDescription className="text-xs text-slate-500 mt-1">
+                Informe a nova senha de acesso provisória para o usuário{' '}
+                <strong className="text-slate-800">{usuarioParaSenha?.nome}</strong> (
+                {usuarioParaSenha?.email}).
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="nova_senha" className="text-xs font-medium text-slate-700">
+                  Nova Senha Provisória <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="nova_senha"
+                  type="password"
+                  placeholder="Mínimo de 8 caracteres"
+                  value={novaSenha}
+                  onChange={(e) => setNovaSenha(e.target.value)}
+                  className="text-xs h-9"
+                />
+                <p className="text-[11px] text-slate-400">
+                  O usuário poderá utilizar esta nova senha imediatamente na tela de login.
+                </p>
+              </div>
             </div>
-            <DialogDescription className="text-xs text-slate-500 mt-1">
-              Informe a nova senha de acesso provisória para o usuário{' '}
-              <strong className="text-slate-800">{usuarioParaSenha?.nome}</strong> (
-              {usuarioParaSenha?.email}).
-            </DialogDescription>
-          </DialogHeader>
 
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="nova_senha" className="text-xs font-medium text-slate-700">
-                Nova Senha Provisória <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="nova_senha"
-                type="password"
-                placeholder="Mínimo de 8 caracteres"
-                value={novaSenha}
-                onChange={(e) => setNovaSenha(e.target.value)}
-                className="text-xs h-9"
-              />
-              <p className="text-[11px] text-slate-400">
-                O usuário poderá utilizar esta nova senha imediatamente na tela de login.
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter className="mt-4 gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setUsuarioParaSenha(null)
-                setNovaSenha('')
-              }}
-              disabled={redefinindoSenha}
-              className="text-xs border-slate-200"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleSalvarNovaSenha}
-              disabled={redefinindoSenha || !novaSenha || novaSenha.length < 8}
-              className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {redefinindoSenha ? 'Redefinindo...' : 'Salvar Nova Senha'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="mt-4 gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setUsuarioParaSenha(null)
+                  setNovaSenha('')
+                }}
+                disabled={redefinindoSenha}
+                className="text-xs border-slate-200"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSalvarNovaSenha}
+                disabled={redefinindoSenha || !novaSenha || novaSenha.length < 8}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {redefinindoSenha ? 'Redefinindo...' : 'Salvar Nova Senha'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

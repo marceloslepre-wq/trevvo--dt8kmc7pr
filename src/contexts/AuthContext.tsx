@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { AuthRecord } from 'pocketbase'
 import pb from '@/lib/pocketbase/client'
 
@@ -142,25 +142,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isLoading,
-        isAuthenticated: !!user && !!token,
-        login,
-        logout,
-        requestPasswordReset,
-        confirmPasswordReset,
-        confirmVerification,
-        confirmEmailChange,
-        refreshUser,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  // isAuthenticated derivado de user/token (mantido fora do state para não criar
+  // ciclos de atualização em cascata).
+  const isAuthenticated = !!user && !!token
+
+  // Value memoizado: sem isso, um objeto NOVO de contexto a cada render do provider
+  // re-renderiza todos os consumidores (guards, Header, páginas) em cascata a cada ciclo
+  // de commit dos componentes Radix (refs/setState internos do Presence), alimentando o
+  // loop "Maximum update depth exceeded" — mesmo motivo já tratado no PermissoesContext.
+  const contextValue = useMemo(
+    () => ({
+      user,
+      token,
+      isLoading,
+      isAuthenticated,
+      login,
+      logout,
+      requestPasswordReset,
+      confirmPasswordReset,
+      confirmVerification,
+      confirmEmailChange,
+      refreshUser,
+    }),
+    [
+      user,
+      token,
+      isLoading,
+      isAuthenticated,
+      login,
+      logout,
+      requestPasswordReset,
+      confirmPasswordReset,
+      confirmVerification,
+      confirmEmailChange,
+      refreshUser,
+    ],
   )
+
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => {
