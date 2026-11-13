@@ -35,7 +35,7 @@ do Skip, mantenha as rotas, coleções e nomes de Segredos descritos aqui.
 | ------ | --------------------------------------------- | ------------- |
 | GET    | `/backend/v1/tray/diagnostico`                | pública       |
 | POST   | `/backend/v1/tray/conexao/iniciar`            | administrador |
-| GET    | `/backend/v1/tray/oauth/callback`    | pública       |
+| GET    | `/backend/v1/tray/oauth/callback`             | pública       |
 | GET    | `/backend/v1/tray/conexao/status?empresa_id=` | autenticada   |
 | POST   | `/backend/v1/tray/conexao/testar`             | autenticada   |
 | POST   | `/backend/v1/tray/conexao/desconectar`        | administrador |
@@ -56,6 +56,7 @@ do Skip, mantenha as rotas, coleções e nomes de Segredos descritos aqui.
 - 11.4 Sincronização de estoque e preço
 
 ## Cuidados ao editar `tray_conexao.js`
+
 - Não usar parâmetro de caminho (`{nome}`) nas rotas: uma rota assim impediu a carga do hook
   inteiro no servidor em 12/11/2026.
 - A URL de autorização é `https://{loja}/auth.php?response_type=code&consumer_key=...&callback=...`
