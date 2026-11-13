@@ -160,13 +160,18 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
     recarregarEmpresas()
   }, [recarregarEmpresas])
 
-  const selecionarEmpresa = (empresaId: string) => {
-    const escolhida = empresas.find((e) => e.id === empresaId)
-    if (escolhida) {
-      setEmpresaAtiva(escolhida)
-      localStorage.setItem(CHAVE_STORAGE, escolhida.id)
-    }
-  }
+  // useCallback: sem isso, a função seria recriada a cada render e anularia o
+  // useMemo do value abaixo (uma dependência que muda sempre derruba a memoização).
+  const selecionarEmpresa = useCallback(
+    (empresaId: string) => {
+      const escolhida = empresas.find((e) => e.id === empresaId)
+      if (escolhida) {
+        setEmpresaAtiva(escolhida)
+        localStorage.setItem(CHAVE_STORAGE, escolhida.id)
+      }
+    },
+    [empresas],
+  )
 
   const assinanteIdCalculado = useMemo(() => {
     return (
@@ -178,23 +183,36 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
     )
   }, [assinante, usuarioERP, empresaAtiva, empresas])
 
-  return (
-    <EmpresaContext.Provider
-      value={{
-        empresas,
-        empresaAtiva,
-        assinanteId: assinanteIdCalculado,
-        assinante,
-        carregando,
-        isMaster,
-        modoMaster,
-        selecionarEmpresa,
-        recarregarEmpresas,
-      }}
-    >
-      {children}
-    </EmpresaContext.Provider>
+  // Value memoizado: sem isso, um objeto NOVO de contexto a cada render re-renderiza
+  // todos os consumidores (Header, guards e páginas) em cascata a cada ciclo de commit
+  // dos componentes Radix (refs/setState internos), alimentando o loop
+  // "Maximum update depth exceeded" — mesmo motivo já tratado no PermissoesContext.
+  const contextValue = useMemo(
+    () => ({
+      empresas,
+      empresaAtiva,
+      assinanteId: assinanteIdCalculado,
+      assinante,
+      carregando,
+      isMaster,
+      modoMaster,
+      selecionarEmpresa,
+      recarregarEmpresas,
+    }),
+    [
+      empresas,
+      empresaAtiva,
+      assinanteIdCalculado,
+      assinante,
+      carregando,
+      isMaster,
+      modoMaster,
+      selecionarEmpresa,
+      recarregarEmpresas,
+    ],
   )
+
+  return <EmpresaContext.Provider value={contextValue}>{children}</EmpresaContext.Provider>
 }
 
 export const useEmpresaAtiva = () => {
