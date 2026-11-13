@@ -863,61 +863,65 @@ export const UsuarioForm: React.FC = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Diálogo Redefinir Senha */}
-      <Dialog open={dialogoSenhaAberto} onOpenChange={setDialogoSenhaAberto}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-2 text-blue-600">
-              <KeyRound size={20} />
-              <DialogTitle className="text-base text-slate-900">
-                Redefinir Senha do Usuário
-              </DialogTitle>
-            </div>
-            <DialogDescription className="text-xs text-slate-500 mt-1">
-              Informe a nova senha provisória para o usuário{' '}
-              <strong className="text-slate-800">{nome}</strong>.
-            </DialogDescription>
-          </DialogHeader>
+      {/* Diálogo Redefinir Senha (só existe na edição; montá-lo no cadastro novo
+          mantém o Presence do Radix montado sem necessidade e alimentava o loop
+          de re-render via refs internas no commit) */}
+      {ehEdicao && (
+        <Dialog open={dialogoSenhaAberto} onOpenChange={setDialogoSenhaAberto}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <div className="flex items-center gap-2 text-blue-600">
+                <KeyRound size={20} />
+                <DialogTitle className="text-base text-slate-900">
+                  Redefinir Senha do Usuário
+                </DialogTitle>
+              </div>
+              <DialogDescription className="text-xs text-slate-500 mt-1">
+                Informe a nova senha provisória para o usuário{' '}
+                <strong className="text-slate-800">{nome}</strong>.
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="modal_nova_senha" className="text-xs font-medium text-slate-700">
-                Nova Senha <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="modal_nova_senha"
-                type="password"
-                placeholder="Mínimo de 8 caracteres"
-                value={novaSenha}
-                onChange={(e) => setNovaSenha(e.target.value)}
-                className="text-xs h-9"
-              />
+            <div className="space-y-3 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="modal_nova_senha" className="text-xs font-medium text-slate-700">
+                  Nova Senha <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="modal_nova_senha"
+                  type="password"
+                  placeholder="Mínimo de 8 caracteres"
+                  value={novaSenha}
+                  onChange={(e) => setNovaSenha(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
             </div>
-          </div>
 
-          <DialogFooter className="mt-4 gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setDialogoSenhaAberto(false)}
-              disabled={redefinindoSenha}
-              className="text-xs border-slate-200"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleRedefinirSenhaSubmit}
-              disabled={redefinindoSenha || !novaSenha || novaSenha.length < 8}
-              className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {redefinindoSenha ? 'Salvando...' : 'Salvar Senha'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="mt-4 gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDialogoSenhaAberto(false)}
+                disabled={redefinindoSenha}
+                className="text-xs border-slate-200"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleRedefinirSenhaSubmit}
+                disabled={redefinindoSenha || !novaSenha || novaSenha.length < 8}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {redefinindoSenha ? 'Salvando...' : 'Salvar Senha'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </form>
   )
 }

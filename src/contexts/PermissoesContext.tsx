@@ -212,23 +212,36 @@ export const PermissoesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [pode],
   )
 
-  return (
-    <PermissoesContext.Provider
-      value={{
-        usuarioERP,
-        perfil,
-        permissoes,
-        carregando,
-        administrador,
-        isMaster,
-        pode,
-        podeGravar,
-        recarregarPermissoes,
-      }}
-    >
-      {children}
-    </PermissoesContext.Provider>
+  // Value memoizado: sem isso, um objeto NOVO de contexto a cada render do provider
+  // re-renderiza todos os consumidores (guards e páginas) em cascata a cada ciclo de
+  // commit dos componentes Radix (refs/setState internos), alimentando o loop
+  // "Maximum update depth exceeded" na montagem de telas como /cadastros/usuarios/novo.
+  const contextValue = useMemo(
+    () => ({
+      usuarioERP,
+      perfil,
+      permissoes,
+      carregando,
+      administrador,
+      isMaster,
+      pode,
+      podeGravar,
+      recarregarPermissoes,
+    }),
+    [
+      usuarioERP,
+      perfil,
+      permissoes,
+      carregando,
+      administrador,
+      isMaster,
+      pode,
+      podeGravar,
+      recarregarPermissoes,
+    ],
   )
+
+  return <PermissoesContext.Provider value={contextValue}>{children}</PermissoesContext.Provider>
 }
 
 export const usePermissoes = () => {
