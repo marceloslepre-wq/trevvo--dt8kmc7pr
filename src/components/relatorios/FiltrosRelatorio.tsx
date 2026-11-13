@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Calendar,
   Building2,
@@ -153,6 +153,25 @@ export const FiltrosRelatorio: React.FC<FiltrosRelatorioProps> = ({
       })
     }
   }, [empresaAtiva, filtros, onChange])
+
+  // Troca de empresa no cabeçalho: realinha a seleção do quadro "Empresas"
+  // para a nova empresa ativa (o usuário pode marcar outras depois).
+  const empresaIdAtiva = empresaAtiva?.id || null
+  const refEmpresaAnterior = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    // Primeira execução apenas registra a empresa corrente (não sobrescreve
+    // filtros carregados por tela/filtros salvos)
+    if (refEmpresaAnterior.current === undefined) {
+      refEmpresaAnterior.current = empresaIdAtiva
+      return
+    }
+    if (!empresaIdAtiva || empresaIdAtiva === refEmpresaAnterior.current) return
+    refEmpresaAnterior.current = empresaIdAtiva
+    const atual = filtros.empresas_ids || []
+    if (atual.length === 1 && atual[0] === empresaIdAtiva) return
+    onChange({ ...filtros, empresas_ids: [empresaIdAtiva] })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaIdAtiva])
 
   // Inicializa o período caso vazio
   useEffect(() => {

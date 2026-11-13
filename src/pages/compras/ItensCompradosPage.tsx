@@ -5,6 +5,7 @@ import { listarItensComprados, ItemCompradoLinha } from '@/services/consultasCom
 import { listarCfop, Cfop } from '@/services/cfop'
 import FiltrosRelatorio from '@/components/relatorios/FiltrosRelatorio'
 import { ObjetoFiltrosRelatorio, ChaveFiltroDeclaravel } from '@/services/relatorios'
+import { formatarDataBr } from '@/services/relatorios'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -159,6 +160,19 @@ export const ItensCompradosPage: React.FC = () => {
     return mapa
   }, [empresasAcessiveis])
 
+  // Dados da empresa de cada linha para o CSV (código + nome curto, CNPJ)
+  const empresasPorId = useMemo(() => {
+    const mapa: Record<string, { codigo: number; nomeCurto: string; cnpj: string }> = {}
+    for (const e of empresasAcessiveis || []) {
+      mapa[e.id] = {
+        codigo: e.codigo,
+        nomeCurto: e.nome_fantasia || e.razao_social || 'Empresa',
+        cnpj: e.cnpj || '',
+      }
+    }
+    return mapa
+  }, [empresasAcessiveis])
+
   // Total geral consolidado (soma das quebras por empresa)
   const totalGeral = useMemo(() => {
     let quantidadeTotal = 0
@@ -204,6 +218,8 @@ export const ItensCompradosPage: React.FC = () => {
     }
 
     const colunas = [
+      'Empresa',
+      'CNPJ Empresa',
       'Data Entrada',
       'Data Emissao',
       'Modelo',
@@ -225,27 +241,37 @@ export const ItensCompradosPage: React.FC = () => {
       'Chave Acesso',
     ]
 
-    const linhasCsv = itens.map((it) => [
-      it.data_entrada,
-      it.data_emissao,
-      it.modelo,
-      it.serie,
-      it.numero_nota,
-      `"${(it.fornecedor_nome || '').replace(/"/g, '""')}"`,
-      it.fornecedor_cnpj || '',
-      it.fornecedor_uf || '',
-      it.produto_codigo || '',
-      `"${(it.produto_descricao || '').replace(/"/g, '""')}"`,
-      it.unidade_sigla || '',
-      it.cfop_entrada,
-      it.quantidade_fornecedor.toFixed(4).replace('.', ','),
-      it.fator_conversao.toFixed(4).replace('.', ','),
-      it.quantidade_estoque.toFixed(4).replace('.', ','),
-      it.custo_unitario.toFixed(4).replace('.', ','),
-      it.valor_total_item.toFixed(2).replace('.', ','),
-      it.custo_total_item.toFixed(2).replace('.', ','),
-      it.chave_acesso || '',
-    ])
+    const linhasCsv = itens.map((it) => {
+      const emp = it.empresa_id ? empresasPorId[it.empresa_id] : undefined
+      const rotuloEmpresa = emp
+        ? emp.codigo !== undefined && emp.codigo !== null
+          ? `${emp.codigo} - ${emp.nomeCurto}`
+          : emp.nomeCurto
+        : ''
+      return [
+        `"${rotuloEmpresa.replace(/"/g, '""')}"`,
+        emp?.cnpj || '',
+        formatarDataBr(it.data_entrada || ''),
+        formatarDataBr(it.data_emissao || ''),
+        it.modelo,
+        it.serie,
+        it.numero_nota,
+        `"${(it.fornecedor_nome || '').replace(/"/g, '""')}"`,
+        it.fornecedor_cnpj || '',
+        it.fornecedor_uf || '',
+        it.produto_codigo || '',
+        `"${(it.produto_descricao || '').replace(/"/g, '""')}"`,
+        it.unidade_sigla || '',
+        it.cfop_entrada,
+        it.quantidade_fornecedor.toFixed(4).replace('.', ','),
+        it.fator_conversao.toFixed(4).replace('.', ','),
+        it.quantidade_estoque.toFixed(4).replace('.', ','),
+        it.custo_unitario.toFixed(4).replace('.', ','),
+        it.valor_total_item.toFixed(2).replace('.', ','),
+        it.custo_total_item.toFixed(2).replace('.', ','),
+        it.chave_acesso || '',
+      ]
+    })
 
     const conteudoCsv = [colunas.join(';'), ...linhasCsv.map((r) => r.join(';'))].join('\r\n')
     const blob = new Blob(['\uFEFF' + conteudoCsv], { type: 'text/csv;charset=utf-8;' })
@@ -475,11 +501,9 @@ export const ItensCompradosPage: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {itens.map((it) => (
                     <tr key={it.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Data Entrada */}
+                      {/* Data Entrada (data pura, sem conversão de fuso) */}
                       <td className="py-2.5 px-3 font-mono text-slate-600 whitespace-nowrap">
-                        {it.data_entrada
-                          ? new Date(it.data_entrada).toLocaleDateString('pt-BR')
-                          : '—'}
+                        {it.data_entrada ? formatarDataBr(it.data_entrada.slice(0, 10)) : '—'}
                       </td>
 
                       {/* Nota */}
