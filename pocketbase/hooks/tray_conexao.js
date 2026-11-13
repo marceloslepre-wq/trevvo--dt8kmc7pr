@@ -566,7 +566,11 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback', (c) => {
             if (String(k).toLowerCase() === 'server') servidor = String(hs[k]).slice(0, 40)
           }
         } catch (_) {}
-        msg += ' em ' + hostApi + (servidor ? ' (servidor: ' + servidor + ')' : '') + (trecho ? ' — ' + trecho : ' — resposta vazia')
+        msg +=
+          ' em ' +
+          hostApi +
+          (servidor ? ' (servidor: ' + servidor + ')' : '') +
+          (trecho ? ' — ' + trecho : ' — resposta vazia')
       }
       return responder(false, msg, retornoUrl)
     }
