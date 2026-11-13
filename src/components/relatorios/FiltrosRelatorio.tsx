@@ -165,7 +165,14 @@ export const FiltrosRelatorio: React.FC<FiltrosRelatorioProps> = ({
       refEmpresaAnterior.current = empresaIdAtiva
       return
     }
-    if (!empresaIdAtiva || empresaIdAtiva === refEmpresaAnterior.current) return
+    // Guarda só considera TROCA real de empresa (de um id válido para outro):
+    // a primeira carga do cabeçalho (null -> id) apenas registra, para não
+    // sobrescrever filtros salvos com várias empresas marcadas.
+    if (!refEmpresaAnterior.current || !empresaIdAtiva) {
+      refEmpresaAnterior.current = empresaIdAtiva
+      return
+    }
+    if (empresaIdAtiva === refEmpresaAnterior.current) return
     refEmpresaAnterior.current = empresaIdAtiva
     const atual = filtros.empresas_ids || []
     if (atual.length === 1 && atual[0] === empresaIdAtiva) return
