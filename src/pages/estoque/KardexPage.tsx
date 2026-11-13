@@ -1,3 +1,13 @@
+/**
+ * Kardex multiempresa (série v0.0.306–v0.0.313):
+ * - Filtro multiempresa via helper comum filtroMultiempresa.ts (todas as
+ *   empresas marcadas, sempre dentro do assinante do usuário);
+ * - UMA SEÇÃO POR EMPRESA (saldos de lojas diferentes nunca se misturam na
+ *   mesma coluna/linha) + painel "Totais por Empresa" com Total Geral;
+ * - "Ver só o total consolidado" esconde a quebra e mostra apenas o total geral.
+ * A consulta mora aqui na página via consultarKardexMultiempresa (services/kardex.ts),
+ * que também devolve o saldo inicial por empresa (último movimento ANTES do período).
+ */
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { consultarKardexMultiempresa, KardexResposta, KardexEmpresaSecao } from '@/services/kardex'
