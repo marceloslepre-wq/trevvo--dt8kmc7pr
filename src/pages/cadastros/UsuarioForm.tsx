@@ -1,24 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import {
-  Users,
-  ArrowLeft,
-  Save,
-  KeyRound,
-  Shield,
-  Building2,
-  CheckSquare,
-  Square,
-  AlertCircle,
-  Percent,
-  UserCheck,
-  Check,
-} from 'lucide-react'
+import { Users, ArrowLeft, Save, KeyRound, Shield, AlertCircle, Percent } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
@@ -80,6 +66,7 @@ export const UsuarioForm: React.FC = () => {
   const [carregando, setCarregando] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [houveAlteracao, setHouveAlteracao] = useState(false)
+  const [avisoEmpresaPadrao, setAvisoEmpresaPadrao] = useState(false)
 
   // Diálogo Redefinir Senha (na edição)
   const [dialogoSenhaAberto, setDialogoSenhaAberto] = useState(false)
@@ -152,30 +139,30 @@ export const UsuarioForm: React.FC = () => {
     carregarUsuario()
   }, [id, navigate])
 
+  // Toggle único, com updater PURO: nenhum setState dentro do updater
+  // (setEmpresaPadraoId chamado dentro do updater de setEmpresasPermitidas
+  // alimentava o loop "Maximum update depth exceeded" ao desmarcar empresa).
   const toggleEmpresaPermitida = (empresaId: string) => {
     marcarAlteracao()
-    setEmpresasPermitidas((prev) => {
-      if (prev.includes(empresaId)) {
-        const filtradas = prev.filter((item) => item !== empresaId)
-        // Se desmarcou a empresa padrão, redefine
-        if (empresaPadraoId === empresaId) {
-          setEmpresaPadraoId(filtradas.length > 0 ? filtradas[0] : 'nenhuma')
-        }
-        return filtradas
-      } else {
-        return [...prev, empresaId]
-      }
-    })
+    setAvisoEmpresaPadrao(empresaPadraoId === empresaId)
+    setEmpresasPermitidas((prev) =>
+      prev.includes(empresaId) ? prev.filter((item) => item !== empresaId) : [...prev, empresaId],
+    )
+    // Desmarcar a "Empresa Padrão ao Entrar" NÃO desmarca/redefine nada
+    // automaticamente: apenas mostra o aviso e bloqueia o Salvar (no submit)
+    // até o usuário escolher outra empresa padrão entre as marcadas.
   }
 
   const handleMarcarTodasEmpresas = (marcar: boolean) => {
     marcarAlteracao()
-    if (marcar) {
-      setEmpresasPermitidas(todasEmpresas.map((e) => e.id))
-    } else {
-      setEmpresasPermitidas([])
-      setEmpresaPadraoId('nenhuma')
-    }
+    setAvisoEmpresaPadrao(false)
+    setEmpresasPermitidas(marcar ? todasEmpresas.map((e) => e.id) : [])
+  }
+
+  const handleTrocarEmpresaPadrao = (val: string) => {
+    setEmpresaPadraoId(val)
+    setAvisoEmpresaPadrao(false)
+    marcarAlteracao()
   }
 
   const handleRedefinirSenhaSubmit = async () => {
@@ -284,9 +271,21 @@ export const UsuarioForm: React.FC = () => {
       toast({
         variant: 'destructive',
         title: 'Comissão inválida',
-        description: 'A comissão deve estar entre 0% e 100%.',
+        description: 'O percentual de comissão deve estar entre 0% e 100%.',
       })
       setAbaAtiva('vendas')
+      return
+    }
+
+    // A "Empresa Padrão ao Entrar" precisa estar entre as empresas marcadas
+    if (empresaPadraoId !== 'nenhuma' && !empresasPermitidas.includes(empresaPadraoId)) {
+      toast({
+        variant: 'destructive',
+        title: 'Empresa padrão inválida',
+        description:
+          'A "Empresa Padrão ao Entrar" foi desmarcada das Empresas/Filiais Permitidas. Escolha outra empresa padrão entre as marcadas antes de salvar.',
+      })
+      setAbaAtiva('acesso')
       return
     }
 
@@ -427,6 +426,16 @@ export const UsuarioForm: React.FC = () => {
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3.5 py-2.5 rounded-lg flex items-center gap-2 shadow-2xs">
           <AlertCircle size={15} className="text-amber-600 flex-shrink-0" />
           <span>Você possui alterações não salvas neste formulário.</span>
+        </div>
+      )}
+
+      {avisoEmpresaPadrao && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-800 text-xs px-3.5 py-2.5 rounded-lg flex items-center gap-2 shadow-2xs">
+          <AlertCircle size={15} className="text-amber-600 flex-shrink-0" />
+          <span>
+            A "Empresa Padrão ao Entrar" foi desmarcada das Empresas/Filiais Permitidas. Escolha
+            outra empresa padrão entre as marcadas antes de salvar.
+          </span>
         </div>
       )}
 
@@ -639,13 +648,7 @@ export const UsuarioForm: React.FC = () => {
                 <Label htmlFor="empresa_padrao" className="text-xs font-medium text-slate-700">
                   Empresa Padrão ao Entrar
                 </Label>
-                <Select
-                  value={empresaPadraoId}
-                  onValueChange={(val) => {
-                    setEmpresaPadraoId(val)
-                    marcarAlteracao()
-                  }}
-                >
+                <Select value={empresaPadraoId} onValueChange={handleTrocarEmpresaPadrao}>
                   <SelectTrigger id="empresa_padrao" className="text-xs h-9">
                     <SelectValue placeholder="Selecione a empresa padrão" />
                   </SelectTrigger>
@@ -666,7 +669,7 @@ export const UsuarioForm: React.FC = () => {
               </div>
             </div>
 
-            {/* Empresas autorizadas com checkboxes */}
+            {/* Empresas autorizadas com checkboxes nativos */}
             <div className="space-y-3 pt-3 border-t border-slate-100">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
@@ -708,19 +711,22 @@ export const UsuarioForm: React.FC = () => {
                   {todasEmpresas.map((emp) => {
                     const isChecked = empresasPermitidas.includes(emp.id)
                     return (
-                      <div
+                      // label envolvendo o input: o clique no cartão OU no checkbox
+                      // dispara UM único onChange — sem onClick extra no cartão,
+                      // sem duplo toggle e sem o Presence do Radix.
+                      <label
                         key={emp.id}
-                        onClick={() => toggleEmpresaPermitida(emp.id)}
                         className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer select-none ${
                           isChecked
                             ? 'bg-blue-50/60 border-blue-200 text-slate-900'
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        <Checkbox
+                        <input
+                          type="checkbox"
                           checked={isChecked}
-                          onCheckedChange={() => toggleEmpresaPermitida(emp.id)}
-                          className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                          onChange={() => toggleEmpresaPermitida(emp.id)}
+                          className="h-4 w-4 flex-shrink-0 accent-blue-600 cursor-pointer"
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -733,7 +739,7 @@ export const UsuarioForm: React.FC = () => {
                             CNPJ: {emp.cnpj}
                           </div>
                         </div>
-                      </div>
+                      </label>
                     )
                   })}
                 </div>
