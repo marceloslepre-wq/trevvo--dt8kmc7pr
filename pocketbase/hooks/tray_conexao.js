@@ -858,6 +858,173 @@ routerAdd(
   $apis.requireAuth(),
 )
 
+// 6) Desconectar a loja Tray da empresa (marca a conta como 'Desconectada').
+routerAdd(
+  'POST',
+  '/backend/v1/tray/conexao/desconectar',
+  (c) => {
+    const auth = c.auth || c.get('authRecord')
+    if (!auth) return c.json(401, { sucesso: false, mensagem: 'Autenticação obrigatória.' })
+
+    function idValido(v) {
+      return typeof v === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(v)
+    }
+    function eMasterLocal(a) {
+      if (!a) return false
+      try {
+        const u = $app.findRecordById('_pb_users_auth_', a.id)
+        return !!(u && u.getString('tipo') === 'master')
+      } catch (_) {
+        return false
+      }
+    }
+    function contextoDoUsuario(a) {
+      let usuarioRec = null
+      try {
+        const recs = $app.findRecordsByFilter(
+          'usuarios',
+          "auth_user_id = '" + a.id + "' || id = '" + a.id + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) usuarioRec = recs[0]
+      } catch (_) {}
+      if (!usuarioRec) throw new BadRequestError('Registro de usuário ERP não encontrado.')
+      let assinanteId = usuarioRec.getString('assinante_id')
+      if (!assinanteId) throw new BadRequestError('Usuário sem vínculo com assinante.')
+      const master = eMasterLocal(a)
+      if (master) {
+        try {
+          if ($app.hasTable('master_impersonacoes')) {
+            const imp = $app.findRecordsByFilter(
+              'master_impersonacoes',
+              "user_id = '" + a.id + "'",
+              '-created',
+              1,
+              0,
+            )
+            if (imp && imp.length > 0 && imp[0].getString('assinante_id')) {
+              assinanteId = imp[0].getString('assinante_id')
+            }
+          }
+        } catch (_) {}
+      }
+      let admin = master
+      const perfilId = usuarioRec.getString('perfil_id')
+      if (!admin && perfilId) {
+        try {
+          const p = $app.findRecordById('perfis_acesso', perfilId)
+          if (p && p.getBool('ativo') && p.getBool('administrador')) admin = true
+        } catch (_) {}
+      }
+      let empresas = []
+      if (admin) {
+        try {
+          empresas = $app.findRecordsByFilter(
+            'empresas',
+            "assinante_id = '" + assinanteId + "' && ativo = true",
+            'codigo',
+            500,
+            0,
+          )
+        } catch (_) {
+          empresas = []
+        }
+      } else {
+        const ids = {}
+        const padraoId = usuarioRec.getString('empresa_padrao_id')
+        if (padraoId) ids[padraoId] = true
+        try {
+          const vinc = $app.findRecordsByFilter(
+            'usuarios_empresas',
+            "usuario_id = '" + usuarioRec.id + "' && ativo = true",
+            '',
+            500,
+            0,
+          )
+          for (let i = 0; i < vinc.length; i++) {
+            const eId = vinc[i].getString('empresa_id')
+            if (eId) ids[eId] = true
+          }
+        } catch (_) {}
+        Object.keys(ids).forEach((eId) => {
+          try {
+            const emp = $app.findRecordById('empresas', eId)
+            if (emp && emp.getBool('ativo') && emp.getString('assinante_id') === assinanteId) {
+              empresas.push(emp)
+            }
+          } catch (_) {}
+        })
+      }
+      return { usuarioRec: usuarioRec, assinanteId: assinanteId, admin: admin, empresas: empresas }
+    }
+    function exigirEmpresa(ctx, empresaId) {
+      if (!idValido(empresaId)) throw new BadRequestError('ID da empresa é obrigatório.')
+      for (let i = 0; i < ctx.empresas.length; i++) {
+        if (ctx.empresas[i].id === empresaId) return ctx.empresas[i]
+      }
+      throw new ForbiddenError('Acesso negado à empresa especificada para este usuário/assinante.')
+    }
+    function contaDaEmpresa(empresaId) {
+      try {
+        const recs = $app.findRecordsByFilter(
+          'tray_contas',
+          "empresa_id = '" + empresaId + "'",
+          '-created',
+          1,
+          0,
+        )
+        if (recs && recs.length > 0) return recs[0]
+      } catch (_) {}
+      return null
+    }
+
+    try {
+      const body = c.requestInfo().body || {}
+      const ctx = contextoDoUsuario(auth)
+      if (!ctx.admin) {
+        return c.json(403, {
+          sucesso: false,
+          mensagem: 'Apenas administradores podem desconectar a loja da Tray.',
+        })
+      }
+      const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
+
+      const conta = contaDaEmpresa(empresa.id)
+      if (!conta) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Nenhuma loja Tray conectada nesta empresa.',
+        })
+      }
+
+      conta.set('status', 'Desconectada')
+      conta.set('ativo', false)
+      conta.set('access_token', '')
+      conta.set('refresh_token', '')
+      conta.set('token_expira_em', '')
+      conta.set('refresh_expira_em', '')
+      conta.set('ultimo_erro', '')
+      $app.save(conta)
+
+      return c.json(200, {
+        sucesso: true,
+        mensagem: 'Loja Tray desconectada com sucesso.',
+        status: 'Desconectada',
+        loja_host: conta.getString('loja_host'),
+      })
+    } catch (err) {
+      const status = err && err.status ? err.status : 400
+      return c.json(status, {
+        sucesso: false,
+        mensagem: err && err.message ? err.message : 'Falha ao desconectar a loja.',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
 // 7) Cron: renovação preventiva do access_token das contas conectadas (a cada 6 h).
 cronAdd('trayRenovarTokens', '0 */6 * * *', () => {
   function segredosTray() {
