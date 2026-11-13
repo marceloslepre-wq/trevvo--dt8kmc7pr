@@ -26,7 +26,7 @@ do Skip, mantenha as rotas, coleções e nomes de Segredos descritos aqui.
 
 1. O administrador informa o endereço da loja e clica em Conectar.
 2. O backend devolve `https://{loja}/auth.php?response_type=code&consumer_key=...&callback=...`.
-3. A Tray redireciona para `GET /backend/v1/tray/oauth/callback` com `code` e `api_address` (a solicitação pendente é localizada pelo endereço da loja).
+3. A Tray redireciona para `GET /backend/v1/tray/oauth/callback` com `code` e `api_address`. O `api_address` é um host da própria Tray (ex.: `xxxx.commercesuite.com.br`), diferente do endereço da loja; só é aceito se for de domínio da Tray (`.commercesuite.com.br`, `.tray.com.br`, `.corpsuite.com.br`) ou igual ao endereço de uma solicitação pendente, porque as chaves do aplicativo são enviadas para ele. O callback usa a solicitação pendente (não usada, até 15 min); havendo mais de uma, identifica a loja consultando `/info`. `loja_host` (informado pelo administrador) e `api_address` (devolvido pela Tray) são gravados separados.
 4. O backend troca o `code` em `POST https://{loja}/web_api/auth` e grava os tokens.
 
 ### Rotas
