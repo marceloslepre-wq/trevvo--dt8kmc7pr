@@ -158,6 +158,10 @@ export default function Index() {
   const [dataVencimentoCertificadoStr, setDataVencimentoCertificadoStr] = useState<string | null>(
     null,
   )
+  // Certificado A1 fica instalado na Focus NFe (não no ERP): true quando a empresa
+  // tem credencial/token Focus válido (coleção credenciais_fiscais)
+  const [focusGerenciado, setFocusGerenciado] = useState<boolean>(false)
+  const [testeConexaoFalhou, setTesteConexaoFalhou] = useState<boolean>(false)
   const [ambienteHomologacaoAtivo, setAmbienteHomologacaoAtivo] = useState<boolean>(false)
 
   // Indicador de SPED do mês anterior (Etapa 7 - Prompt 7.6b)
@@ -590,7 +594,52 @@ export default function Index() {
                   const amb = cfgFiscal.ambiente || 'Homologação'
                   setAmbienteHomologacaoAtivo(amb === 'Homologação')
 
-                  const dtVenc = cfgFiscal.data_vencimento_certificado
+                  // O ERP não guarda certificado A1: ele fica instalado na Focus NFe e as notas
+                  // são autorizadas por lá. O card considera "gerenciado" quando a empresa tem
+                  // credencial Focus com token (coleção credenciais_fiscais / rota de credenciais)
+                  // ou quando o último "Testar Conexão" (config_emissao_fiscal.
+                  // ultimo_teste_conexao_sucesso) foi bem-sucedido — o teste só passa com
+                  // token válido. Um teste com falha desmente o estado "gerenciado".
+                  let temTokenFocus = false
+                  try {
+                    const credsRes = await pb.collection('credenciais_fiscais').getFullList({
+                      filter: `empresa_id = '${empresaAtiva.id}'`,
+                    })
+                    temTokenFocus = credsRes.some(
+                      (cr: any) =>
+                        (cr.token_homologacao || '').trim() !== '' ||
+                        (cr.token_producao || '').trim() !== '',
+                    )
+                  } catch (_) {
+                    temTokenFocus = false
+                  }
+                  if (!temTokenFocus) {
+                    // A rota do backend também considera token vindo de segredo do servidor
+                    // (origem 'segredo' em obterTokenFocus), cobrindo empresas sem registro
+                    // na coleção credenciais_fiscais
+                    try {
+                      const rota = (await pb.send('/backend/v1/fiscal/credenciais', {
+                        query: { empresa_id: empresaAtiva.id },
+                      })) as any
+                      temTokenFocus = Boolean(
+                        rota &&
+                        (rota.cadastrado ||
+                          (rota.origem_efetiva && rota.origem_efetiva !== 'nenhuma')),
+                      )
+                    } catch (_) {
+                      // Sem permissão (rota exige administrador) ou rota indisponível:
+                      // mantém o que a coleção respondeu
+                    }
+                  }
+
+                  const testeFalhou = cfgFiscal.ultimo_teste_conexao_sucesso === false
+                  const testeOk = cfgFiscal.ultimo_teste_conexao_sucesso === true
+                  setTesteConexaoFalhou(testeFalhou)
+                  setFocusGerenciado((temTokenFocus || testeOk) && !testeFalhou)
+
+                  // Validade do certificado: mostra APENAS se a Focus devolver a data
+                  // (armazenada em certificado_validade pela consulta da empresa na Focus)
+                  const dtVenc = cfgFiscal.certificado_validade
                   if (dtVenc) {
                     setDataVencimentoCertificadoStr(dtVenc)
                     const dataVenc = new Date(dtVenc)
@@ -604,6 +653,8 @@ export default function Index() {
                   }
                 } else {
                   setAmbienteHomologacaoAtivo(false)
+                  setFocusGerenciado(false)
+                  setTesteConexaoFalhou(false)
                   setDiasVencimentoCertificado(null)
                   setDataVencimentoCertificadoStr(null)
                 }
@@ -614,6 +665,8 @@ export default function Index() {
                 setNotasEmitidasHojeCount(0)
                 setDiasVencimentoCertificado(null)
                 setDataVencimentoCertificadoStr(null)
+                setFocusGerenciado(false)
+                setTesteConexaoFalhou(false)
                 setAmbienteHomologacaoAtivo(false)
               }
             })(),
@@ -900,8 +953,13 @@ export default function Index() {
       // Checagem de Empresas (Contador e IE)
       if (podeVerEmpresas) {
         try {
-          const emp = empresaAtiva
-          if (emp) {
+          const empBase = empresaAtiva
+          if (empBase?.id) {
+            // Lê o registro COMPLETO da coleção empresas: a projeção devolvida por
+            // /empresas/acessiveis (empresaAtiva) não traz inscricao_estadual nem
+            // contador_*, o que gerava alertas falsos. Esta é a MESMA fonte que o
+            // SPED (registro 0100) e a NF-e usam.
+            const emp = (await pb.collection('empresas').getOne(empBase.id)) as any
             // Empresa sem dados do contador
             const semContador =
               !emp.contador_nome ||
@@ -1956,21 +2014,36 @@ export default function Index() {
                     <span className="text-xs font-medium text-slate-700">Certificado Digital</span>
                     <div
                       className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        diasVencimentoCertificado !== null && diasVencimentoCertificado <= 30
-                          ? diasVencimentoCertificado <= 0
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-amber-100 text-amber-700'
-                          : 'bg-blue-50 text-blue-600'
+                        focusGerenciado && diasVencimentoCertificado === null
+                          ? 'bg-emerald-50 text-emerald-600'
+                          : diasVencimentoCertificado !== null && diasVencimentoCertificado <= 30
+                            ? diasVencimentoCertificado <= 0
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-700'
+                            : 'bg-blue-50 text-blue-600'
                       }`}
                     >
                       <Award size={18} />
                     </div>
                   </div>
                   <div className="mt-3">
-                    {diasVencimentoCertificado === null ? (
+                    {focusGerenciado && diasVencimentoCertificado === null ? (
+                      <div>
+                        <div className="text-base font-bold text-emerald-700">
+                          Gerenciado na Focus NFe
+                        </div>
+                        <span className="text-[11px] text-slate-400">
+                          certificado A1 instalado na Focus →
+                        </span>
+                      </div>
+                    ) : diasVencimentoCertificado === null ? (
                       <div>
                         <div className="text-base font-bold text-slate-600">Não configurado</div>
-                        <span className="text-[11px] text-slate-400">configurar A1 na Focus →</span>
+                        <span className="text-[11px] text-slate-400">
+                          {testeConexaoFalhou
+                            ? 'falha no último teste de conexão →'
+                            : 'nenhuma credencial Focus →'}
+                        </span>
                       </div>
                     ) : diasVencimentoCertificado <= 0 ? (
                       <div>
