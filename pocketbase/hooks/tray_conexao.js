@@ -265,7 +265,7 @@ routerAdd(
           conta.getString('api_address') +
           '/auth?refresh_token=' +
           encodeURIComponent(conta.getString('refresh_token')),
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
         timeout: 20,
       })
       return { status: res.statusCode, dados: lerJson(res) }
@@ -421,7 +421,7 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback', (c) => {
         conta.getString('api_address') +
         '/auth?refresh_token=' +
         encodeURIComponent(conta.getString('refresh_token')),
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
       timeout: 20,
     })
     return { status: res.statusCode, dados: lerJson(res) }
@@ -530,14 +530,45 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback', (c) => {
     const res = $http.send({
       method: 'POST',
       url: api + '/auth',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+        'User-Agent': 'Trevvo-ERP/1.0',
+      },
       body: formUrlEncoded({ consumer_key: seg.key, consumer_secret: seg.secret, code: code }),
       timeout: 20,
     })
     const r = { status: res.statusCode, dados: lerJson(res) }
     if ((r.status !== 200 && r.status !== 201) || !r.dados || !r.dados.access_token) {
       console.log('[tray] Falha ao gerar chave de acesso: HTTP ' + r.status)
-      return responder(false, mensagemErroTray(r), retornoUrl)
+      // Quando a resposta não é o JSON de erro da Tray (ex.: bloqueio do firewall dela),
+      // mostra um trecho curto do que veio, sem chaves nem código, para identificar a causa.
+      let msg = mensagemErroTray(r)
+      if (msg.indexOf(': ') < 0) {
+        let trecho = ''
+        try {
+          trecho = String(res.raw || '')
+            .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+          const ocultar = [seg.key, seg.secret, code]
+          for (let i = 0; i < ocultar.length; i++) {
+            if (ocultar[i]) trecho = trecho.split(ocultar[i]).join('***')
+          }
+          trecho = trecho.slice(0, 220)
+        } catch (_) {}
+        let servidor = ''
+        try {
+          const hs = res.headers || {}
+          for (const k in hs) {
+            if (String(k).toLowerCase() === 'server') servidor = String(hs[k]).slice(0, 40)
+          }
+        } catch (_) {}
+        msg += ' em ' + hostApi + (servidor ? ' (servidor: ' + servidor + ')' : '') + (trecho ? ' — ' + trecho : ' — resposta vazia')
+      }
+      return responder(false, msg, retornoUrl)
     }
 
     // 3) Com mais de uma solicitação pendente, descobre a qual loja o acesso pertence
@@ -551,7 +582,7 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback', (c) => {
         const ri = $http.send({
           method: 'GET',
           url: api + '/info?access_token=' + encodeURIComponent(String(r.dados.access_token)),
-          headers: { Accept: 'application/json' },
+          headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
           timeout: 20,
         })
         texto = String(ri.raw || JSON.stringify(lerJson(ri)) || '').toLowerCase()
@@ -821,7 +852,7 @@ routerAdd(
           conta.getString('api_address') +
           '/auth?refresh_token=' +
           encodeURIComponent(conta.getString('refresh_token')),
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
         timeout: 20,
       })
       return { status: res.statusCode, dados: lerJson(res) }
@@ -1070,7 +1101,7 @@ routerAdd(
           conta.getString('api_address') +
           '/auth?refresh_token=' +
           encodeURIComponent(conta.getString('refresh_token')),
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
         timeout: 20,
       })
       return { status: res.statusCode, dados: lerJson(res) }
@@ -1115,7 +1146,7 @@ routerAdd(
           conta.getString('api_address') +
           '/info?access_token=' +
           encodeURIComponent(conta.getString('access_token')),
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
         timeout: 20,
       })
       const r = { status: res.statusCode, dados: lerJson(res) }
@@ -1391,7 +1422,7 @@ cronAdd('tray_renovar_tokens', '*/30 * * * *', () => {
         conta.getString('api_address') +
         '/auth?refresh_token=' +
         encodeURIComponent(conta.getString('refresh_token')),
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
       timeout: 20,
     })
     return { status: res.statusCode, dados: lerJson(res) }
