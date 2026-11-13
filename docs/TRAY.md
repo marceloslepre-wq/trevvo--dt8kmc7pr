@@ -62,3 +62,13 @@ do Skip, mantenha as rotas, coleções e nomes de Segredos descritos aqui.
 - A URL de autorização é `https://{loja}/auth.php?response_type=code&consumer_key=...&callback=...`
   (documentação oficial da Tray). A Tray não devolve parâmetro `state`.
 - O agendamento de renovação roda a cada 30 minutos, porque o token de acesso dura só 3 horas.
+
+## Parte 11.2 — Conferência de produtos (somente leitura)
+
+- Hook: `pocketbase/hooks/tray_produtos.js`. Rota `GET /backend/v1/tray/produtos/conferencia?empresa_id=&pagina=1&limite=10` (autenticada, limite máximo 25).
+- Lê `GET {api}/products` e, para produtos com variação, `GET {api}/products/variants?product_id=`. Só faz chamadas GET; nada é gravado na Tray nem em produtos/estoque do Trevvo.
+- Cada linha traz o código Tray (`produto` ou `produto_variação`, o mesmo usado como SKU nos anúncios do Mercado Livre), a referência, estoque, preço e a situação da comparação com `produtos.referencia`:
+  `OK`, `Sem referência na Tray`, `Referência repetida entre variações`, `Sem produto no Trevvo`, `Referência duplicada no Trevvo`, `Produto inativo no Trevvo`.
+- A resposta inclui `campos_produto` e `campos_variacao` (nomes dos campos devolvidos pela Tray, sem valores) para conferir o formato.
+- Tela: `src/components/tray/ConferenciaProdutosTray.tsx`, exibida em Configurações > Tray quando a loja está conectada.
+- Chamadas à Tray enviam `User-Agent: Trevvo-ERP/1.0`.
