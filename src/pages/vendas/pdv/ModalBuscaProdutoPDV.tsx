@@ -92,14 +92,14 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
-        <DialogHeader className="border-b border-slate-800 pb-3">
-          <DialogTitle className="text-lg font-bold text-white flex items-center justify-between">
+      <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white text-slate-900 border-slate-200 p-6">
+        <DialogHeader className="border-b border-slate-200 pb-3">
+          <DialogTitle className="text-lg font-bold text-slate-900 flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <Search className="h-5 w-5 text-blue-400" />
+              <Search className="h-5 w-5 text-blue-600" />
               Localizar Produto (F2)
             </span>
-            <span className="text-xs font-normal text-slate-400">
+            <span className="text-xs font-normal text-slate-500">
               Navegue com ↑ ↓ e pressione Enter
             </span>
           </DialogTitle>
@@ -115,7 +115,7 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="h-10 pl-9 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 text-sm"
+                className="h-10 pl-9 bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 text-sm"
               />
             </div>
             <div className="w-28">
@@ -127,7 +127,7 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
                 onChange={(e) => setQtd(parseFloat(e.target.value) || 1)}
                 onKeyDown={handleKeyDown}
                 placeholder="Qtd"
-                className="h-10 text-center font-bold bg-slate-800 border-slate-700 text-white text-sm"
+                className="h-10 text-center font-bold bg-white border-slate-300 text-slate-900 text-sm"
                 title="Quantidade"
               />
             </div>
@@ -135,7 +135,7 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
 
           <div
             ref={listaRef}
-            className="max-h-80 overflow-y-auto space-y-1 pr-1 border border-slate-800 rounded-lg p-1 bg-slate-950/60"
+            className="max-h-80 overflow-y-auto space-y-1 pr-1 border border-slate-200 rounded-lg p-1 bg-slate-50"
           >
             {filtrados.length === 0 ? (
               <div className="p-8 text-center text-slate-500 text-xs">
@@ -159,19 +159,19 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
                     className={`produto-item flex items-center justify-between p-2.5 rounded-md cursor-pointer transition-colors text-xs ${
                       ativo
                         ? 'bg-blue-600 text-white font-semibold'
-                        : 'bg-slate-900/60 hover:bg-slate-800 text-slate-200'
+                        : 'bg-white hover:bg-slate-100 text-slate-700'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span
-                        className={`w-14 font-mono text-[11px] shrink-0 ${ativo ? 'text-blue-100' : 'text-slate-400'}`}
+                        className={`w-14 font-mono text-[11px] shrink-0 ${ativo ? 'text-blue-100' : 'text-slate-500'}`}
                       >
                         #{p.codigo}
                       </span>
                       <div className="min-w-0">
                         <div className="truncate font-medium text-sm">{p.descricao}</div>
                         <div
-                          className={`text-[10px] ${ativo ? 'text-blue-200' : 'text-slate-400'}`}
+                          className={`text-[10px] ${ativo ? 'text-blue-200' : 'text-slate-500'}`}
                         >
                           {p.gtin ? `GTIN: ${p.gtin}` : ''}{' '}
                           {p.referencia ? `| Ref: ${p.referencia}` : ''} | UN:{' '}
@@ -182,7 +182,7 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
 
                     <div className="text-right shrink-0 ml-3">
                       <div
-                        className={`font-mono text-sm font-bold ${ativo ? 'text-white' : 'text-emerald-400'}`}
+                        className={`font-mono text-sm font-bold ${ativo ? 'text-white' : 'text-emerald-600'}`}
                       >
                         R$ {preco.toFixed(2)}
                       </div>
@@ -194,13 +194,13 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
           </div>
         </div>
 
-        <DialogFooter className="border-t border-slate-800 pt-3 flex justify-between">
+        <DialogFooter className="border-t border-slate-200 pt-3 flex justify-between">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => onOpenChange(false)}
-            className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 text-xs"
+            className="text-xs"
           >
             Fechar (Esc)
           </Button>
@@ -216,7 +216,7 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
               }
             }}
             disabled={filtrados.length === 0}
-            className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4"
           >
             Adicionar Item (Enter)
           </Button>

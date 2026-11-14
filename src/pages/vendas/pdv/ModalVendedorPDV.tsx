@@ -60,23 +60,23 @@ export const ModalVendedorPDV: React.FC<ModalVendedorPDVProps> = ({
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
-        <DialogHeader className="border-b border-slate-800 pb-3">
-          <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
-            <UserCheck className="h-5 w-5 text-blue-400" />
+      <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white text-slate-900 border-slate-200 p-6">
+        <DialogHeader className="border-b border-slate-200 pb-3">
+          <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <UserCheck className="h-5 w-5 text-blue-600" />
             Selecionar Vendedor (F5)
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-2 pt-2">
-          <div className="max-h-72 overflow-y-auto space-y-1 border border-slate-800 rounded-lg p-1 bg-slate-950/60">
+          <div className="max-h-72 overflow-y-auto space-y-1 border border-slate-200 rounded-lg p-1 bg-slate-50">
             {/* Opção sem vendedor */}
             <div
               onClick={() => setSelecionadoId('')}
               className={`flex items-center justify-between p-2.5 rounded cursor-pointer text-xs ${
                 !selecionadoId
                   ? 'bg-blue-600 text-white font-semibold'
-                  : 'hover:bg-slate-800 text-slate-300'
+                  : 'hover:bg-slate-100 text-slate-700'
               }`}
             >
               <span>Sem Vendedor Atribuído (Venda Balcão)</span>
@@ -92,7 +92,7 @@ export const ModalVendedorPDV: React.FC<ModalVendedorPDVProps> = ({
                   className={`flex items-center justify-between p-2.5 rounded cursor-pointer text-xs ${
                     ativo
                       ? 'bg-blue-600 text-white font-semibold'
-                      : 'hover:bg-slate-800 text-slate-300'
+                      : 'hover:bg-slate-100 text-slate-700'
                   }`}
                 >
                   <div>
@@ -106,13 +106,13 @@ export const ModalVendedorPDV: React.FC<ModalVendedorPDVProps> = ({
           </div>
         </div>
 
-        <DialogFooter className="border-t border-slate-800 pt-3 flex justify-between">
+        <DialogFooter className="border-t border-slate-200 pt-3 flex justify-between">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => onOpenChange(false)}
-            className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 text-xs"
+            className="text-xs"
           >
             Cancelar (Esc)
           </Button>
@@ -120,7 +120,7 @@ export const ModalVendedorPDV: React.FC<ModalVendedorPDVProps> = ({
             type="button"
             size="sm"
             onClick={handleSalvar}
-            className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-5"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-5"
           >
             Confirmar (Enter)
           </Button>

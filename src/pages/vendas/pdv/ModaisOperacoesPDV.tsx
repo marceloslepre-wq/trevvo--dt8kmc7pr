@@ -43,20 +43,20 @@ export const ModalQuantidadeItemPDV: React.FC<{
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
-        <DialogHeader className="border-b border-slate-800 pb-3">
-          <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
-            <Edit3 className="h-5 w-5 text-blue-400" />
+      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white text-slate-900 border-slate-200 p-6">
+        <DialogHeader className="border-b border-slate-200 pb-3">
+          <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Edit3 className="h-5 w-5 text-blue-600" />
             Alterar Quantidade (F4)
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-3 pt-2">
-          <div className="text-xs text-slate-400 truncate">
-            Item: <strong className="text-slate-200">{itemDescricao}</strong>
+          <div className="text-xs text-slate-500 truncate">
+            Item: <strong className="text-slate-800">{itemDescricao}</strong>
           </div>
           <div>
-            <Label className="text-xs text-slate-300">Nova Quantidade</Label>
+            <Label className="text-xs text-slate-600">Nova Quantidade</Label>
             <Input
               ref={inputRef}
               type="number"
@@ -64,7 +64,7 @@ export const ModalQuantidadeItemPDV: React.FC<{
               min="0.001"
               value={qtd}
               onChange={(e) => setQtd(e.target.value)}
-              className="h-11 text-xl font-bold bg-slate-800 border-slate-700 text-white text-center font-mono mt-1"
+              className="h-11 text-xl font-bold bg-white border-slate-300 text-slate-900 text-center font-mono mt-1"
             />
           </div>
 
@@ -74,14 +74,14 @@ export const ModalQuantidadeItemPDV: React.FC<{
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
-              className="bg-slate-800 border-slate-700 text-slate-300 text-xs"
+              className="text-xs"
             >
               Cancelar (Esc)
             </Button>
             <Button
               type="submit"
               size="sm"
-              className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4"
             >
               Confirmar (Enter)
             </Button>
@@ -152,20 +152,20 @@ export const ModalDescontoItemPDV: React.FC<{
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
-        <DialogHeader className="border-b border-slate-800 pb-3">
-          <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
-            <Percent className="h-5 w-5 text-amber-400" />
+      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white text-slate-900 border-slate-200 p-6">
+        <DialogHeader className="border-b border-slate-200 pb-3">
+          <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Percent className="h-5 w-5 text-amber-600" />
             Desconto no Item (F6)
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-3 pt-2">
-          <div className="text-xs text-slate-400 truncate">
-            Item: <strong className="text-slate-200">{itemDescricao}</strong>
+          <div className="text-xs text-slate-500 truncate">
+            Item: <strong className="text-slate-800">{itemDescricao}</strong>
           </div>
-          <div className="text-xs text-slate-400">
-            Subtotal: <strong className="text-white">R$ {subtotal.toFixed(2)}</strong>
+          <div className="text-xs text-slate-500">
+            Subtotal: <strong className="text-slate-900">R$ {subtotal.toFixed(2)}</strong>
           </div>
 
           <div className="flex gap-2">
@@ -174,7 +174,7 @@ export const ModalDescontoItemPDV: React.FC<{
               size="sm"
               variant={tipo === 'valor' ? 'default' : 'outline'}
               onClick={() => setTipo('valor')}
-              className={`flex-1 text-xs ${tipo === 'valor' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
+              className={`flex-1 text-xs ${tipo === 'valor' ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
             >
               Em Reais (R$)
             </Button>
@@ -183,14 +183,14 @@ export const ModalDescontoItemPDV: React.FC<{
               size="sm"
               variant={tipo === 'pct' ? 'default' : 'outline'}
               onClick={() => setTipo('pct')}
-              className={`flex-1 text-xs ${tipo === 'pct' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
+              className={`flex-1 text-xs ${tipo === 'pct' ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
             >
               Em Porcentagem (%)
             </Button>
           </div>
 
           <div>
-            <Label className="text-xs text-slate-300">
+            <Label className="text-xs text-slate-600">
               {tipo === 'valor' ? 'Valor do Desconto (R$)' : 'Percentual de Desconto (%)'}
             </Label>
             <Input
@@ -201,7 +201,7 @@ export const ModalDescontoItemPDV: React.FC<{
               value={valor}
               onChange={(e) => setValor(e.target.value)}
               placeholder="0,00"
-              className="h-11 text-xl font-bold bg-slate-800 border-slate-700 text-amber-400 text-center font-mono mt-1"
+              className="h-11 text-xl font-bold bg-white border-slate-300 text-amber-600 text-center font-mono mt-1"
             />
           </div>
 
@@ -211,14 +211,14 @@ export const ModalDescontoItemPDV: React.FC<{
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
-              className="bg-slate-800 border-slate-700 text-slate-300 text-xs"
+              className="text-xs"
             >
               Cancelar (Esc)
             </Button>
             <Button
               type="submit"
               size="sm"
-              className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4"
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs px-4"
             >
               Aplicar (Enter)
             </Button>
@@ -273,17 +273,18 @@ export const ModalDescontoTotalPDV: React.FC<{
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
-        <DialogHeader className="border-b border-slate-800 pb-3">
-          <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-emerald-400" />
+      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white text-slate-900 border-slate-200 p-6">
+        <DialogHeader className="border-b border-slate-200 pb-3">
+          <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-emerald-600" />
             Desconto no Total da Venda (F7)
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-3 pt-2">
-          <div className="text-xs text-slate-400">
-            Subtotal Produtos: <strong className="text-white">R$ {subtotalVenda.toFixed(2)}</strong>
+          <div className="text-xs text-slate-500">
+            Subtotal Produtos:{' '}
+            <strong className="text-slate-900">R$ {subtotalVenda.toFixed(2)}</strong>
           </div>
 
           <div className="flex gap-2">
@@ -292,7 +293,7 @@ export const ModalDescontoTotalPDV: React.FC<{
               size="sm"
               variant={tipo === 'valor' ? 'default' : 'outline'}
               onClick={() => setTipo('valor')}
-              className={`flex-1 text-xs ${tipo === 'valor' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
+              className={`flex-1 text-xs ${tipo === 'valor' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
             >
               Em Reais (R$)
             </Button>
@@ -301,14 +302,14 @@ export const ModalDescontoTotalPDV: React.FC<{
               size="sm"
               variant={tipo === 'pct' ? 'default' : 'outline'}
               onClick={() => setTipo('pct')}
-              className={`flex-1 text-xs ${tipo === 'pct' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
+              className={`flex-1 text-xs ${tipo === 'pct' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
             >
               Em Porcentagem (%)
             </Button>
           </div>
 
           <div>
-            <Label className="text-xs text-slate-300">
+            <Label className="text-xs text-slate-600">
               {tipo === 'valor' ? 'Valor do Desconto Geral (R$)' : 'Percentual Geral (%)'}
             </Label>
             <Input
@@ -319,7 +320,7 @@ export const ModalDescontoTotalPDV: React.FC<{
               value={valor}
               onChange={(e) => setValor(e.target.value)}
               placeholder="0,00"
-              className="h-11 text-xl font-bold bg-slate-800 border-slate-700 text-emerald-400 text-center font-mono mt-1"
+              className="h-11 text-xl font-bold bg-white border-slate-300 text-emerald-600 text-center font-mono mt-1"
             />
           </div>
 
@@ -329,14 +330,14 @@ export const ModalDescontoTotalPDV: React.FC<{
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
-              className="bg-slate-800 border-slate-700 text-slate-300 text-xs"
+              className="text-xs"
             >
               Cancelar (Esc)
             </Button>
             <Button
               type="submit"
               size="sm"
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4"
             >
               Aplicar (Enter)
             </Button>
@@ -382,16 +383,16 @@ export const ModalCancelarItemPDV: React.FC<{
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
-        <DialogHeader className="border-b border-slate-800 pb-3">
-          <DialogTitle className="text-base font-bold text-red-400 flex items-center gap-2">
+      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white text-slate-900 border-slate-200 p-6">
+        <DialogHeader className="border-b border-slate-200 pb-3">
+          <DialogTitle className="text-base font-bold text-red-600 flex items-center gap-2">
             Cancelar Item da Venda (F8)
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-3 pt-2">
           <div>
-            <Label className="text-xs text-slate-300">Número do Item (1 a {totalItens})</Label>
+            <Label className="text-xs text-slate-600">Número do Item (1 a {totalItens})</Label>
             <Input
               ref={inputRef}
               type="number"
@@ -399,16 +400,16 @@ export const ModalCancelarItemPDV: React.FC<{
               max={totalItens}
               value={numItem}
               onChange={(e) => setNumItem(e.target.value)}
-              className="h-11 text-xl font-bold bg-slate-800 border-slate-700 text-red-400 text-center font-mono mt-1"
+              className="h-11 text-xl font-bold bg-white border-slate-300 text-red-600 text-center font-mono mt-1"
             />
           </div>
 
           <div>
-            <Label className="text-xs text-slate-300">Motivo do Cancelamento</Label>
+            <Label className="text-xs text-slate-600">Motivo do Cancelamento</Label>
             <select
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
-              className="w-full h-9 bg-slate-800 border border-slate-700 text-white rounded text-xs px-2 mt-1"
+              className="w-full h-9 bg-white border border-slate-300 text-slate-900 rounded text-xs px-2 mt-1"
             >
               <option value="Desistência do cliente">Desistência do cliente</option>
               <option value="Item lançado por engano">Item lançado por engano</option>
@@ -424,14 +425,14 @@ export const ModalCancelarItemPDV: React.FC<{
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
-              className="bg-slate-800 border-slate-700 text-slate-300 text-xs"
+              className="text-xs"
             >
               Voltar (Esc)
             </Button>
             <Button
               type="submit"
               size="sm"
-              className="bg-red-600 hover:bg-red-500 text-white text-xs px-4"
+              className="bg-red-600 hover:bg-red-700 text-white text-xs px-4"
             >
               Cancelar Item (Enter)
             </Button>

@@ -453,22 +453,22 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden p-6 bg-slate-900 text-white border-slate-700">
-        <DialogHeader className="border-b border-slate-800 pb-3">
+      <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden p-6 bg-white text-slate-900 border-slate-200">
+        <DialogHeader className="border-b border-slate-200 pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-200">
                 <DollarSign className="h-6 w-6" />
               </div>
               <div>
-                <DialogTitle className="text-xl font-bold text-white tracking-wide">
+                <DialogTitle className="text-xl font-bold text-slate-900 tracking-wide">
                   Finalizar Pagamento (F10)
                 </DialogTitle>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500">
                   Total da Venda:{' '}
-                  <span className="font-semibold text-white">R$ {totalVenda.toFixed(2)}</span>
+                  <span className="font-semibold text-slate-900">R$ {totalVenda.toFixed(2)}</span>
                   {cliente?.nome_razao_social && (
-                    <span className="ml-2 border-l border-slate-700 pl-2">
+                    <span className="ml-2 border-l border-slate-200 pl-2">
                       Cliente: {cliente.nome_razao_social}
                     </span>
                   )}
@@ -477,7 +477,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
             </div>
             <Badge
               variant="outline"
-              className="bg-slate-800 text-slate-300 border-slate-700 text-xs"
+              className="bg-slate-50 text-slate-600 border-slate-200 text-xs"
             >
               ESC para voltar
             </Badge>
@@ -485,48 +485,48 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
         </DialogHeader>
 
         {erro && (
-          <div className="p-3 bg-red-950/80 border border-red-800 text-red-200 text-xs rounded-lg flex items-center gap-2">
-            <AlertCircle size={16} className="shrink-0 text-red-400" />
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-2">
+            <AlertCircle size={16} className="shrink-0 text-red-500" />
             <span>{erro}</span>
           </div>
         )}
 
         {/* Quadro Superior de Totais */}
-        <div className="grid grid-cols-3 gap-3 p-4 bg-slate-800/90 rounded-xl border border-slate-700/80">
-          <div className="text-center border-r border-slate-700/60 pr-2">
-            <span className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+        <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
+          <div className="text-center border-r border-slate-200 pr-2">
+            <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
               Total da Venda
             </span>
-            <div className="text-2xl font-black text-white mt-0.5">
+            <div className="text-2xl font-black text-slate-900 mt-0.5">
               R$ {totalVenda.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="text-center border-r border-slate-700/60 px-2">
-            <span className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+          <div className="text-center border-r border-slate-200 px-2">
+            <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
               Total Pago
             </span>
-            <div className="text-2xl font-black text-blue-400 mt-0.5">
+            <div className="text-2xl font-black text-blue-600 mt-0.5">
               R$ {totalInformado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </div>
           </div>
           <div className="text-center pl-2">
             {troco > 0 ? (
               <div>
-                <span className="text-[11px] uppercase tracking-wider text-emerald-400 font-bold animate-pulse">
+                <span className="text-[11px] uppercase tracking-wider text-emerald-600 font-bold animate-pulse">
                   Troco em Dinheiro
                 </span>
-                <div className="text-3xl font-black text-emerald-400 mt-0.5">
+                <div className="text-3xl font-black text-emerald-600 mt-0.5">
                   R$ {troco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
               </div>
             ) : (
               <div>
-                <span className="text-[11px] uppercase tracking-wider text-amber-400 font-semibold">
+                <span className="text-[11px] uppercase tracking-wider text-amber-600 font-semibold">
                   Restante
                 </span>
                 <div
                   className={`text-2xl font-black mt-0.5 ${
-                    restante > 0 ? 'text-amber-400' : 'text-slate-500'
+                    restante > 0 ? 'text-amber-600' : 'text-slate-500'
                   }`}
                 >
                   R$ {restante.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -539,7 +539,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
         <div className="grid grid-cols-12 gap-5 pt-2">
           {/* Lado Esquerdo: Formas de Pagamento em Botões Numerados */}
           <div className="col-span-5 space-y-3">
-            <Label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
+            <Label className="text-xs font-bold text-slate-700 uppercase tracking-wide">
               1. Selecione a Forma (Alt + Número)
             </Label>
             <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
@@ -557,14 +557,14 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                     }}
                     className={`flex items-center justify-between p-3 rounded-lg border text-left transition-all ${
                       ativa
-                        ? 'bg-blue-600 border-blue-400 text-white shadow-md shadow-blue-900/30 font-bold scale-[1.01]'
-                        : 'bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-700/80 hover:text-white'
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20 font-bold scale-[1.01]'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span
                         className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-mono font-bold ${
-                          ativa ? 'bg-white text-blue-700' : 'bg-slate-700 text-slate-300'
+                          ativa ? 'bg-white text-blue-700' : 'bg-slate-100 text-slate-600'
                         }`}
                       >
                         {num}
@@ -581,9 +581,9 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
           </div>
 
           {/* Lado Direito: Digitação de Valor e Detalhes da Forma */}
-          <div className="col-span-7 space-y-4 bg-slate-850/60 p-4 rounded-xl border border-slate-800">
+          <div className="col-span-7 space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
+              <Label className="text-xs font-bold text-slate-700 uppercase tracking-wide">
                 2. Valor para {formaAtivaAtual?.descricao || 'Pagamento'} (R$)
               </Label>
               <div className="flex gap-2">
@@ -601,7 +601,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                     }
                   }}
                   placeholder="0,00"
-                  className="h-12 text-2xl font-black bg-slate-900 border-slate-700 text-emerald-400 text-right font-mono"
+                  className="h-12 text-2xl font-black bg-white border-slate-300 text-emerald-600 text-right font-mono"
                 />
                 <Button
                   type="button"
@@ -616,39 +616,39 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
 
             {/* Campos Especiais: CARTÃO DE CRÉDITO / DÉBITO */}
             {ehCartaoAtual && (
-              <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700 space-y-2 text-xs">
-                <div className="font-semibold text-blue-300 flex items-center gap-1.5">
+              <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2 text-xs">
+                <div className="font-semibold text-blue-600 flex items-center gap-1.5">
                   <CreditCard size={15} />
                   <span>Dados da Transação de Cartão</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <Label className="text-[10px] text-slate-400">Parcelas</Label>
+                    <Label className="text-[10px] text-slate-500">Parcelas</Label>
                     <Input
                       type="number"
                       min="1"
                       max="24"
                       value={parcelasCartao}
                       onChange={(e) => setParcelasCartao(parseInt(e.target.value, 10) || 1)}
-                      className="h-8 text-xs bg-slate-900 border-slate-700 mt-1"
+                      className="h-8 text-xs bg-white border-slate-300 mt-1"
                     />
                   </div>
                   <div>
-                    <Label className="text-[10px] text-slate-400">Bandeira (opcional)</Label>
+                    <Label className="text-[10px] text-slate-500">Bandeira (opcional)</Label>
                     <Input
                       placeholder="Ex: Visa"
                       value={bandeiraCartao}
                       onChange={(e) => setBandeiraCartao(e.target.value)}
-                      className="h-8 text-xs bg-slate-900 border-slate-700 mt-1"
+                      className="h-8 text-xs bg-white border-slate-300 mt-1"
                     />
                   </div>
                   <div>
-                    <Label className="text-[10px] text-slate-400">NSU / Autorização</Label>
+                    <Label className="text-[10px] text-slate-500">NSU / Autorização</Label>
                     <Input
                       placeholder="000000"
                       value={nsuCartao}
                       onChange={(e) => setNsuCartao(e.target.value)}
-                      className="h-8 text-xs bg-slate-900 border-slate-700 mt-1"
+                      className="h-8 text-xs bg-white border-slate-300 mt-1"
                     />
                   </div>
                 </div>
@@ -657,8 +657,8 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
 
             {/* Campos Especiais: VALE-TROCA */}
             {ehValeTrocaAtual && (
-              <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700 space-y-2 text-xs">
-                <div className="font-semibold text-blue-300 flex items-center justify-between">
+              <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2 text-xs">
+                <div className="font-semibold text-blue-600 flex items-center justify-between">
                   <span>Código do Vale-Troca</span>
                   {valeCarregado && (
                     <Badge className="bg-emerald-600 text-white text-[10px]">
@@ -671,14 +671,14 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                     placeholder="Ex: VT-9482-K3X"
                     value={codigoValeTroca}
                     onChange={(e) => setCodigoValeTroca(e.target.value.toUpperCase())}
-                    className="h-8 text-xs bg-slate-900 border-slate-700 uppercase font-mono"
+                    className="h-8 text-xs bg-white border-slate-300 uppercase font-mono"
                   />
                   <Button
                     type="button"
                     size="sm"
                     disabled={buscandoVale}
                     onClick={handleValidarVale}
-                    className="h-8 text-xs bg-slate-700 hover:bg-slate-600 text-white"
+                    className="h-8 text-xs bg-slate-200 hover:bg-slate-300 text-slate-700"
                   >
                     {buscandoVale ? 'Validando...' : 'Validar'}
                   </Button>
@@ -688,22 +688,22 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
 
             {/* Campos Especiais: PIX */}
             {ehPixAtual && (
-              <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700 space-y-2 text-xs">
-                <div className="font-semibold text-emerald-400 flex items-center gap-1.5">
+              <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2 text-xs">
+                <div className="font-semibold text-emerald-600 flex items-center gap-1.5">
                   <QrCode size={16} />
                   <span>Pagamento por PIX Estático</span>
                 </div>
                 {contaPix?.chave_pix ? (
-                  <div className="bg-slate-900 p-2.5 rounded border border-slate-700/80 font-mono text-center select-all">
-                    <span className="text-[10px] text-slate-400 block font-sans">
+                  <div className="bg-slate-50 p-2.5 rounded border border-slate-200 font-mono text-center select-all">
+                    <span className="text-[10px] text-slate-500 block font-sans">
                       Chave PIX da Loja ({contaPix.nome}):
                     </span>
-                    <span className="text-sm font-bold text-white tracking-wider">
+                    <span className="text-sm font-bold text-slate-900 tracking-wider">
                       {contaPix.chave_pix}
                     </span>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-slate-500">
                     Chave PIX não cadastrada nas contas financeiras. Realize a cobrança pelo
                     terminal da empresa.
                   </p>
@@ -713,9 +713,9 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                     type="checkbox"
                     checked={pixConfirmadoManualmente}
                     onChange={(e) => setPixConfirmadoManualmente(e.target.checked)}
-                    className="rounded border-slate-600 bg-slate-900 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                    className="rounded border-slate-300 bg-white text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                   />
-                  <span className="text-slate-300 text-xs">
+                  <span className="text-slate-600 text-xs">
                     Confirmo o recebimento do valor na conta da empresa
                   </span>
                 </label>
@@ -724,31 +724,31 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
 
             {/* Campos Especiais: CREDIÁRIO */}
             {ehCrediarioAtual && (
-              <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700 space-y-2 text-xs">
-                <div className="font-semibold text-purple-300 flex items-center gap-1.5">
+              <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2 text-xs">
+                <div className="font-semibold text-purple-600 flex items-center gap-1.5">
                   <FileText size={15} />
                   <span>Crediário / Venda a Prazo</span>
                 </div>
                 {cliente ? (
                   <div className="space-y-1">
                     <div className="flex justify-between items-center text-[11px]">
-                      <span className="text-slate-400">Cliente Selecionado:</span>
-                      <span className="font-bold text-white">{cliente.nome_razao_social}</span>
+                      <span className="text-slate-500">Cliente Selecionado:</span>
+                      <span className="font-bold text-slate-900">{cliente.nome_razao_social}</span>
                     </div>
                     {checandoCredito ? (
-                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                      <span className="text-[10px] text-slate-500 flex items-center gap-1">
                         <Loader2 size={12} className="animate-spin" /> Consultando limite de
                         crédito...
                       </span>
                     ) : analiseCredito ? (
-                      <div className="p-2 bg-slate-900 rounded border border-slate-700 flex justify-between items-center text-[11px]">
+                      <div className="p-2 bg-slate-50 rounded border border-slate-200 flex justify-between items-center text-[11px]">
                         <span>
                           Situação:{' '}
                           <strong
                             className={
                               analiseCredito.situacao === 'Liberado'
-                                ? 'text-emerald-400'
-                                : 'text-red-400'
+                                ? 'text-emerald-600'
+                                : 'text-red-600'
                             }
                           >
                             {analiseCredito.situacao}
@@ -766,18 +766,18 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                     ) : null}
                   </div>
                 ) : (
-                  <p className="text-amber-400 text-[11px]">
+                  <p className="text-amber-600 text-[11px]">
                     Nenhum cliente identificado na venda. Use F3 para selecionar o cliente antes do
                     crediário.
                   </p>
                 )}
 
                 <div>
-                  <Label className="text-[10px] text-slate-400">Plano de Pagamento</Label>
+                  <Label className="text-[10px] text-slate-500">Plano de Pagamento</Label>
                   <select
                     value={condicaoCrediarioId}
                     onChange={(e) => setCondicaoCrediarioId(e.target.value)}
-                    className="w-full h-8 bg-slate-900 border border-slate-700 rounded text-xs text-white px-2 mt-1"
+                    className="w-full h-8 bg-white border border-slate-300 rounded text-xs text-slate-900 px-2 mt-1"
                   >
                     {condicoes.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -791,11 +791,11 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
 
             {/* Lista dos Pagamentos já lançados */}
             <div className="space-y-1.5 pt-1">
-              <Label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
+              <Label className="text-xs font-bold text-slate-700 uppercase tracking-wide">
                 Pagamentos Lançados nesta Venda ({linhas.length})
               </Label>
               {linhas.length === 0 ? (
-                <div className="p-3 bg-slate-900/60 rounded-lg border border-dashed border-slate-700 text-center text-xs text-slate-500">
+                <div className="p-3 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-center text-xs text-slate-500">
                   Nenhum pagamento lançado. Digite o valor e pressione Enter.
                 </div>
               ) : (
@@ -805,30 +805,30 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                     return (
                       <div
                         key={l.id}
-                        className="flex items-center justify-between p-2.5 bg-slate-900 rounded-lg border border-slate-750 text-xs"
+                        className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-xs"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-slate-400 font-bold">{i + 1}.</span>
-                          <span className="font-semibold text-white">
+                          <span className="font-mono text-slate-500 font-bold">{i + 1}.</span>
+                          <span className="font-semibold text-slate-900">
                             {f?.descricao || 'Forma'}
                           </span>
                           {l.parcelas > 1 && (
                             <Badge
                               variant="outline"
-                              className="bg-slate-800 text-slate-300 border-slate-700 text-[10px]"
+                              className="bg-slate-100 text-slate-600 border-slate-200 text-[10px]"
                             >
                               {l.parcelas}x
                             </Badge>
                           )}
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-bold text-emerald-400 font-mono text-sm">
+                          <span className="font-bold text-emerald-600 font-mono text-sm">
                             R$ {l.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleRemoverLinha(l.id)}
-                            className="p-1 text-slate-400 hover:text-red-400 rounded transition-colors"
+                            className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
                             title="Remover pagamento"
                           >
                             <Trash2 size={14} />
@@ -843,13 +843,13 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
           </div>
         </div>
 
-        <DialogFooter className="border-t border-slate-800 pt-4 flex items-center justify-between sm:justify-between">
+        <DialogFooter className="border-t border-slate-200 pt-4 flex items-center justify-between sm:justify-between">
           <Button
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={salvando}
-            className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 text-xs"
+            className="bg-white border-slate-300 text-slate-700 hover:bg-slate-100 text-xs"
           >
             Voltar (Esc)
           </Button>
@@ -859,7 +859,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
             size="lg"
             onClick={handleFinalizar}
             disabled={salvando || restante > 0.009 || linhas.length === 0}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-base px-8 gap-2 shadow-lg shadow-emerald-950/40"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-base px-8 gap-2 shadow-lg shadow-emerald-600/20"
           >
             {salvando ? (
               <>

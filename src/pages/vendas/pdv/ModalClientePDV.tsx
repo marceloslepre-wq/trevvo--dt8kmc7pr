@@ -101,11 +101,11 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
   return (
     <>
       <Dialog open={aberto} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
-          <DialogHeader className="border-b border-slate-800 pb-3">
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white text-slate-900 border-slate-200 p-6">
+          <DialogHeader className="border-b border-slate-200 pb-3">
             <div className="flex items-center justify-between">
-              <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
-                <Users className="h-5 w-5 text-blue-400" />
+              <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Users className="h-5 w-5 text-blue-600" />
                 Identificar Cliente / Consumidor (F3)
               </DialogTitle>
               <Button
@@ -113,7 +113,7 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
                 size="sm"
                 variant="outline"
                 onClick={() => setModalNovoClienteAberto(true)}
-                className="h-7 text-xs bg-slate-800 border-slate-700 text-blue-300 hover:bg-slate-700 gap-1"
+                className="h-7 text-xs text-blue-600 border-slate-300 hover:bg-slate-100 gap-1"
               >
                 <Plus size={14} />
                 Cadastro Rápido
@@ -123,24 +123,24 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
 
           <div className="space-y-4 pt-2">
             {/* CPF/CNPJ direto no cupom (não cadastrado) */}
-            <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700 space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-300">
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-600">
                 CPF ou CNPJ para Impressão no Cupom (Consumidor Não Cadastrado)
               </Label>
               <Input
                 placeholder="Digite apenas números (opcional)..."
                 value={cpfCnpjCupom}
                 onChange={(e) => setCpfCnpjCupom(e.target.value)}
-                className="h-9 bg-slate-900 border-slate-700 text-white font-mono text-sm"
+                className="h-9 bg-white border-slate-300 text-slate-900 font-mono text-sm"
               />
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500">
                 Útil para cupom fiscal/comprovante rápido sem necessidade de cadastro completo.
               </p>
             </div>
 
             {/* Busca de Cliente Cadastrado */}
             <div className="space-y-2">
-              <Label className="text-xs font-semibold text-slate-300">
+              <Label className="text-xs font-semibold text-slate-600">
                 Ou vincular Cliente Cadastrado (Obrigatório para Crediário)
               </Label>
               <form onSubmit={handleBuscar} className="flex gap-2">
@@ -151,26 +151,26 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
                     placeholder="Buscar por nome, razão social ou CPF/CNPJ..."
                     value={busca}
                     onChange={(e) => setBusca(e.target.value)}
-                    className="h-9 pl-9 bg-slate-800 border-slate-700 text-white text-xs"
+                    className="h-9 pl-9 bg-white border-slate-300 text-slate-900 text-xs"
                   />
                 </div>
                 <Button
                   type="submit"
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4"
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4"
                 >
                   Buscar
                 </Button>
               </form>
 
-              <div className="max-h-56 overflow-y-auto space-y-1 border border-slate-800 rounded-lg p-1 bg-slate-950/60">
+              <div className="max-h-56 overflow-y-auto space-y-1 border border-slate-200 rounded-lg p-1 bg-slate-50">
                 {/* Opção Consumidor Final Padrão */}
                 <div
                   onClick={() => setSelecionado(null)}
                   className={`flex items-center justify-between p-2 rounded cursor-pointer text-xs ${
                     selecionado === null
                       ? 'bg-blue-600 text-white font-semibold'
-                      : 'hover:bg-slate-800 text-slate-300'
+                      : 'hover:bg-slate-100 text-slate-700'
                   }`}
                 >
                   <div>
@@ -196,7 +196,7 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
                       className={`flex items-center justify-between p-2 rounded cursor-pointer text-xs ${
                         ativo
                           ? 'bg-blue-600 text-white font-semibold'
-                          : 'hover:bg-slate-800 text-slate-300'
+                          : 'hover:bg-slate-100 text-slate-700'
                       }`}
                     >
                       <div className="min-w-0">
@@ -214,13 +214,13 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
             </div>
           </div>
 
-          <DialogFooter className="border-t border-slate-800 pt-3 flex justify-between">
+          <DialogFooter className="border-t border-slate-200 pt-3 flex justify-between">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
-              className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 text-xs"
+              className="text-xs"
             >
               Cancelar (Esc)
             </Button>
@@ -228,7 +228,7 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
               type="button"
               size="sm"
               onClick={handleSalvar}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-5"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-5"
             >
               Confirmar Cliente (Enter)
             </Button>
