@@ -298,9 +298,17 @@ export async function atualizarUsuario(
     // Inserir os que não existiam
     for (const empId of dados.empresas_ids) {
       if (!atuaisMap.has(empId)) {
+        // auth_user_id no vínculo é OBRIGATÓRIO: as regras de leitura por vínculo
+        // (migrations 0068/0075/0134) exigem
+        // @collection.usuarios_empresas.auth_user_id ?= @request.auth.id — sem ele,
+        // o usuário criado deixa de ler pdv_terminais/caixa_sessoes/empresas
+        // da própria empresa (bug "PDV não abre caixa", corrigido na 0135).
+        // O valor é o auth_user_id do USUÁRIO editado ("antes", já carregado acima),
+        // nunca o do operador logado.
         await pb.collection('usuarios_empresas').create({
           usuario_id: id,
           empresa_id: empId,
+          auth_user_id: antes.auth_user_id || null,
           ativo: true,
           created_by: pb.authStore.record?.id || null,
           updated_by: pb.authStore.record?.id || null,

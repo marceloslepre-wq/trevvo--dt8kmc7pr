@@ -341,6 +341,12 @@ routerAdd(
         const ueRec = new Record(usuariosEmpresasCol)
         ueRec.set('usuario_id', usuarioRec.id)
         ueRec.set('empresa_id', empId)
+        // auth_user_id no vínculo é obrigatório: as regras de leitura por vínculo
+        // (migrations 0068/0075/0134) exigem
+        // @collection.usuarios_empresas.auth_user_id ?= @request.auth.id — sem ele
+        // o usuário novo deixa de ler terminais/sessões/empresas da própria empresa
+        // (bug "PDV não abre caixa", backfill na migration 0135).
+        ueRec.set('auth_user_id', authRec.id)
         ueRec.set('ativo', true)
         ueRec.set('created_by', authRecord.id)
         ueRec.set('updated_by', authRecord.id)
