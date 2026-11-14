@@ -36,7 +36,8 @@ export const ConfigVendasPage: React.FC = () => {
   const { toast } = useToast()
   const { empresaAtiva } = useEmpresaAtiva()
   const { pode } = usePermissoes()
-  const podeEditar = pode('vendas', 'editar')
+  // Módulo pela tabela única de rotas: /vendas/configuracoes -> configuracoes
+  const podeEditar = pode('configuracoes', 'editar')
 
   const [config, setConfig] = useState<ConfigVendasEmpresa | null>(null)
   const [contasPlano, setContasPlano] = useState<PlanoConta[]>([])

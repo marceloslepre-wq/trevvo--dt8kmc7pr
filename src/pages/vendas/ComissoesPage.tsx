@@ -49,17 +49,12 @@ import {
 export const ComissoesPage: React.FC = () => {
   const { empresaAtiva } = useEmpresaAtiva()
   const { empresasAcessiveis } = useEmpresasAcessiveis()
-  const { usuarioERP, administrador, perfil, pode } = usePermissoes()
+  const { administrador, pode } = usePermissoes()
   const { toast } = useToast()
 
-  // Regra de acesso: só Administrador, Gerente e Financeiro ou quem pode ver vendas
-  const perfilNome = (perfil?.nome || usuarioERP?.expand?.perfil_id?.nome || '').toLowerCase()
-  const temAcesso =
-    administrador ||
-    pode('vendas', 'ver') ||
-    perfilNome.includes('gerente') ||
-    perfilNome.includes('admin') ||
-    perfilNome.includes('financeiro')
+  // Regra de acesso pela tabela única de rotas: /vendas/comissoes -> configuracoes
+  // (a apuração gera contas a pagar, é atividade de configuração, não de venda)
+  const temAcesso = administrador || pode('configuracoes', 'ver')
 
   // Filtros
   const hoje = new Date()

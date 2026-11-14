@@ -58,8 +58,9 @@ export const TerminaisPage: React.FC = () => {
   const { toast } = useToast()
   const { empresaAtiva } = useEmpresaAtiva()
   const { pode } = usePermissoes()
-  const podeCriar = pode('caixa', 'criar') || pode('pdv', 'criar')
-  const podeEditar = pode('caixa', 'editar') || pode('pdv', 'editar')
+  // Módulo pela tabela única de rotas: /vendas/terminais -> configuracoes
+  const podeCriar = pode('configuracoes', 'criar')
+  const podeEditar = pode('configuracoes', 'editar')
 
   const [terminais, setTerminais] = useState<PdvTerminal[]>([])
   const [contasCaixaFisico, setContasCaixaFisico] = useState<ContaFinanceira[]>([])

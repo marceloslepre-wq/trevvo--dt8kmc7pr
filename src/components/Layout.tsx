@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './layout/Sidebar'
 import { Header } from './layout/Header'
+import GuardaRota from './GuardaRota'
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
@@ -41,7 +42,11 @@ export default function Layout() {
       >
         <Header onOpenMobileMenu={() => setMobileOpen(true)} />
         <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          <Outlet />
+          {/* Guarda de permissões pela tabela única de rotas (src/config/tabelaRotas.ts).
+              Protege TODAS as rotas do layout com uma mudança só, inclusive abrindo URL direto. */}
+          <GuardaRota>
+            <Outlet />
+          </GuardaRota>
         </main>
       </div>
     </div>

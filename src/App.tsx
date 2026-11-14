@@ -9,7 +9,6 @@ import { EmpresaProvider } from '@/contexts/EmpresaContext'
 import { ProtectedRoute, PublicOnlyRoute, MasterRoute } from '@/components/RouteGuards'
 import MasterPage from '@/pages/master/MasterPage'
 import Layout from '@/components/Layout'
-import PermissaoGuard from '@/components/PermissaoGuard'
 
 // Páginas de Autenticação
 import LoginScreen from '@/pages/auth/LoginScreen'
@@ -21,7 +20,6 @@ import CadastroPublicoPage from '@/pages/auth/CadastroPublicoPage'
 
 // Páginas do Sistema
 import Index from '@/pages/Index'
-import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import EmpresasLista from '@/pages/cadastros/EmpresasLista'
 import EmpresaForm from '@/pages/cadastros/EmpresaForm'
 import PerfisAcessoLista from '@/pages/cadastros/PerfisAcessoLista'
@@ -118,6 +116,17 @@ import EstoqueGerencialPage from '@/pages/relatorios/EstoqueGerencialPage'
 import ContasPagarPorVencimentoPage from '@/pages/relatorios/ContasPagarVencimentoPage'
 import RelatorioPersonalizadoPage from '@/pages/relatorios/RelatorioPersonalizadoPage'
 
+/**
+ * PERMISSÕES DE ROTAS (fonte única: src/config/tabelaRotas.ts)
+ *
+ * O <GuardaRota> dentro do Layout.tsx envolve o <Outlet /> e resolve,
+ * por localização (com suporte a :id), o módulo/ação exigidos por cada rota:
+ *  - rota na tabela  -> pode(modulo, acaoMinima) da tabela;
+ *  - rota FORA da tabela -> só administrador (perfis_acesso.administrador = true);
+ *  - administrador    -> acesso total (regra do próprio pode()).
+ * Rotas públicas (/login, /esqueci-senha, /redefinir-senha, /verify-email,
+ * /confirm-email-change, /cadastro) ficam FORA do Layout, sem guard de permissão.
+ */
 const App = () => (
   <BrowserRouter>
     <AuthProvider>
@@ -180,7 +189,7 @@ const App = () => (
                 <Route path="/verify-email" element={<VerifyEmailScreen />} />
                 <Route path="/confirm-email-change" element={<ConfirmEmailChangeScreen />} />
 
-                {/* Rotas Protegidas dentro do Layout */}
+                {/* Rotas Protegidas dentro do Layout — guard único pelo GuardaRota */}
                 <Route
                   element={
                     <ProtectedRoute>
@@ -191,822 +200,206 @@ const App = () => (
                   {/* Rota raiz redireciona para /painel */}
                   <Route path="/" element={<Navigate to="/painel" replace />} />
                   <Route path="/painel" element={<Index />} />
-                  <Route
-                    path="/painel-grupo"
-                    element={
-                      <PermissaoGuard modulo="relatorios" acao="ver">
-                        <PainelGrupoPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/painel-grupo" element={<PainelGrupoPage />} />
                   {/* Cadastros */}
-                  <Route
-                    path="/cadastros/empresas"
-                    element={
-                      <PermissaoGuard modulo="empresas" acao="ver">
-                        <EmpresasLista />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/empresas/novo"
-                    element={
-                      <PermissaoGuard modulo="empresas" acao="criar">
-                        <EmpresaForm />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/empresas/:id/editar"
-                    element={
-                      <PermissaoGuard modulo="empresas" acao="editar">
-                        <EmpresaForm />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/cadastros/empresas" element={<EmpresasLista />} />
+                  <Route path="/cadastros/empresas/novo" element={<EmpresaForm />} />
+                  <Route path="/cadastros/empresas/:id/editar" element={<EmpresaForm />} />
                   {/* Usuários */}
-                  <Route
-                    path="/cadastros/usuarios"
-                    element={
-                      <PermissaoGuard modulo="usuarios" acao="ver">
-                        <UsuariosLista />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/usuarios/novo"
-                    element={
-                      <PermissaoGuard modulo="usuarios" acao="criar">
-                        <UsuarioForm />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/usuarios/:id/editar"
-                    element={
-                      <PermissaoGuard modulo="usuarios" acao="editar">
-                        <UsuarioForm />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/cadastros/usuarios" element={<UsuariosLista />} />
+                  <Route path="/cadastros/usuarios/novo" element={<UsuarioForm />} />
+                  <Route path="/cadastros/usuarios/:id/editar" element={<UsuarioForm />} />
                   {/* Perfis de Acesso */}
-                  <Route
-                    path="/cadastros/perfis-acesso"
-                    element={
-                      <PermissaoGuard modulo="perfis_acesso" acao="ver">
-                        <PerfisAcessoLista />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/perfis-acesso/novo"
-                    element={
-                      <PermissaoGuard modulo="perfis_acesso" acao="criar">
-                        <PerfilAcessoForm />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/cadastros/perfis-acesso" element={<PerfisAcessoLista />} />
+                  <Route path="/cadastros/perfis-acesso/novo" element={<PerfilAcessoForm />} />
                   <Route
                     path="/cadastros/perfis-acesso/:id/editar"
-                    element={
-                      <PermissaoGuard modulo="perfis_acesso" acao="editar">
-                        <PerfilAcessoForm />
-                      </PermissaoGuard>
-                    }
+                    element={<PerfilAcessoForm />}
                   />
-                  <Route
-                    path="/cadastros/clientes"
-                    element={
-                      <PermissaoGuard modulo="clientes" acao="ver">
-                        <ClientesLista />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/clientes/novo"
-                    element={
-                      <PermissaoGuard modulo="clientes" acao="criar">
-                        <ClienteForm />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/clientes/:id/editar"
-                    element={
-                      <PermissaoGuard modulo="clientes" acao="editar">
-                        <ClienteForm />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/fornecedores"
-                    element={
-                      <PermissaoGuard modulo="fornecedores" acao="ver">
-                        <FornecedoresLista />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/fornecedores/novo"
-                    element={
-                      <PermissaoGuard modulo="fornecedores" acao="criar">
-                        <FornecedorForm />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/fornecedores/:id/editar"
-                    element={
-                      <PermissaoGuard modulo="fornecedores" acao="editar">
-                        <FornecedorForm />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/produtos"
-                    element={
-                      <PermissaoGuard modulo="produtos" acao="ver">
-                        <ProdutosLista />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/cadastros/clientes" element={<ClientesLista />} />
+                  <Route path="/cadastros/clientes/novo" element={<ClienteForm />} />
+                  <Route path="/cadastros/clientes/:id/editar" element={<ClienteForm />} />
+                  <Route path="/cadastros/fornecedores" element={<FornecedoresLista />} />
+                  <Route path="/cadastros/fornecedores/novo" element={<FornecedorForm />} />
+                  <Route path="/cadastros/fornecedores/:id/editar" element={<FornecedorForm />} />
+                  <Route path="/cadastros/produtos" element={<ProdutosLista />} />
                   <Route
                     path="/cadastros/produtos/conferencia"
-                    element={
-                      <PermissaoGuard modulo="produtos" acao="ver">
-                        <ConferenciaFiscalPage />
-                      </PermissaoGuard>
-                    }
+                    element={<ConferenciaFiscalPage />}
                   />
-                  <Route
-                    path="/cadastros/produtos/novo"
-                    element={
-                      <PermissaoGuard modulo="produtos" acao="criar">
-                        <ProdutoForm />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/produtos/:id/editar"
-                    element={
-                      <PermissaoGuard modulo="produtos" acao="editar">
-                        <ProdutoForm />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/marcas"
-                    element={
-                      <PermissaoGuard modulo="marcas" acao="ver">
-                        <MarcasPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/grupos-categorias"
-                    element={
-                      <PermissaoGuard modulo="grupos_categorias" acao="ver">
-                        <GruposCategoriasPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/unidades-medida"
-                    element={
-                      <PermissaoGuard modulo="unidades_medida" acao="ver">
-                        <UnidadesMedidaPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/cadastros/produtos/novo" element={<ProdutoForm />} />
+                  <Route path="/cadastros/produtos/:id/editar" element={<ProdutoForm />} />
+                  <Route path="/cadastros/marcas" element={<MarcasPage />} />
+                  <Route path="/cadastros/grupos-categorias" element={<GruposCategoriasPage />} />
+                  <Route path="/cadastros/unidades-medida" element={<UnidadesMedidaPage />} />
                   <Route
                     path="/cadastros/condicoes-pagamento"
-                    element={
-                      <PermissaoGuard modulo="condicoes_pagamento" acao="ver">
-                        <CondicoesPagamentoPage />
-                      </PermissaoGuard>
-                    }
+                    element={<CondicoesPagamentoPage />}
                   />
-                  <Route
-                    path="/cadastros/tabelas-fiscais"
-                    element={
-                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                        <TabelasFiscaisHubPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/cadastros/tabelas-fiscais" element={<TabelasFiscaisHubPage />} />
                   <Route
                     path="/cadastros/tabelas-fiscais/codigos"
-                    element={
-                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                        <CodigosFiscaisPage />
-                      </PermissaoGuard>
-                    }
+                    element={<CodigosFiscaisPage />}
                   />
-                  <Route
-                    path="/cadastros/tabelas-fiscais/ncm"
-                    element={
-                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                        <NcmPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/tabelas-fiscais/cest"
-                    element={
-                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                        <CestPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/cadastros/tabelas-fiscais/cfop"
-                    element={
-                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                        <CfopPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/cadastros/tabelas-fiscais/ncm" element={<NcmPage />} />
+                  <Route path="/cadastros/tabelas-fiscais/cest" element={<CestPage />} />
+                  <Route path="/cadastros/tabelas-fiscais/cfop" element={<CfopPage />} />
                   <Route
                     path="/cadastros/tabelas-fiscais/conversao-cfop"
-                    element={
-                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                        <CfopConversaoPage />
-                      </PermissaoGuard>
-                    }
+                    element={<CfopConversaoPage />}
                   />
                   <Route
                     path="/cadastros/tabelas-fiscais/perfis"
-                    element={
-                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                        <PerfisTributariosPage />
-                      </PermissaoGuard>
-                    }
+                    element={<PerfisTributariosPage />}
                   />
                   <Route
                     path="/cadastros/tabelas-fiscais/regras-ncm"
-                    element={
-                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                        <RegrasFiscaisNcmPage />
-                      </PermissaoGuard>
-                    }
+                    element={<RegrasFiscaisNcmPage />}
                   />
                   <Route
                     path="/cadastros/tabelas-fiscais/matriz-icms"
-                    element={
-                      <PermissaoGuard modulo="tabelas_fiscais" acao="ver">
-                        <MatrizIcmsPage />
-                      </PermissaoGuard>
-                    }
+                    element={<MatrizIcmsPage />}
                   />
                   {/* Financeiro: Contas a Pagar, Contas a Receber e Cadastros */}
                   <Route
                     path="/financeiro"
                     element={<Navigate to="/financeiro/contas-pagar" replace />}
                   />
-                  <Route
-                    path="/financeiro/contas-pagar"
-                    element={
-                      <PermissaoGuard modulo="financeiro_pagar" acao="ver">
-                        <ContasPagarPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/financeiro/receber"
-                    element={
-                      <PermissaoGuard modulo="financeiro_receber" acao="ver">
-                        <ContasReceberPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/financeiro/contas-pagar" element={<ContasPagarPage />} />
+                  <Route path="/financeiro/receber" element={<ContasReceberPage />} />
                   <Route
                     path="/financeiro/contas-receber"
                     element={<Navigate to="/financeiro/receber" replace />}
                   />
-                  <Route
-                    path="/financeiro/dre"
-                    element={
-                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
-                        <DrePage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/financeiro/fluxo-caixa"
-                    element={
-                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
-                        <FluxoCaixaPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/financeiro/inadimplencia"
-                    element={
-                      <PermissaoGuard modulo="financeiro_receber" acao="ver">
-                        <InadimplenciaPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/financeiro/bancos"
-                    element={
-                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
-                        <ExtratoBancarioPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/financeiro/dre" element={<DrePage />} />
+                  <Route path="/financeiro/fluxo-caixa" element={<FluxoCaixaPage />} />
+                  <Route path="/financeiro/inadimplencia" element={<InadimplenciaPage />} />
+                  <Route path="/financeiro/bancos" element={<ExtratoBancarioPage />} />
                   <Route
                     path="/financeiro/extrato"
                     element={<Navigate to="/financeiro/bancos" replace />}
                   />
-                  <Route
-                    path="/financeiro/conciliacao"
-                    element={
-                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
-                        <ConciliacaoBancariaPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/financeiro/conciliacao" element={<ConciliacaoBancariaPage />} />
                   <Route
                     path="/financeiro/cadastros"
                     element={<Navigate to="/financeiro/cadastros/plano-contas" replace />}
                   />
-                  <Route
-                    path="/financeiro/cadastros/plano-contas"
-                    element={
-                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
-                        <PlanoContasPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/financeiro/cadastros/plano-contas" element={<PlanoContasPage />} />
                   <Route
                     path="/financeiro/cadastros/centros-custo"
-                    element={
-                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
-                        <CentrosCustoPage />
-                      </PermissaoGuard>
-                    }
+                    element={<CentrosCustoPage />}
                   />
                   <Route
                     path="/financeiro/cadastros/contas-bancarias"
-                    element={
-                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
-                        <ContasFinanceirasPage />
-                      </PermissaoGuard>
-                    }
+                    element={<ContasFinanceirasPage />}
                   />
                   <Route
                     path="/financeiro/cadastros/formas-pagamento"
-                    element={
-                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
-                        <FormasPagamentoPage />
-                      </PermissaoGuard>
-                    }
+                    element={<FormasPagamentoPage />}
                   />
                   <Route
                     path="/financeiro/cadastros/configuracoes"
-                    element={
-                      <PermissaoGuard modulo="financeiro_bancos" acao="ver">
-                        <ConfiguracaoFinanceiraPage />
-                      </PermissaoGuard>
-                    }
+                    element={<ConfiguracaoFinanceiraPage />}
                   />
                   {/* Estoque */}
                   <Route path="/estoque" element={<Navigate to="/estoque/posicao" replace />} />
-                  <Route
-                    path="/estoque/posicao"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
-                        <PosicaoEstoquePage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/estoque/posicao" element={<PosicaoEstoquePage />} />
                   {/* Etapa 3: Compras */}
                   <Route path="/compras" element={<Navigate to="/compras/pedidos" replace />} />
-                  <Route
-                    path="/compras/pedidos"
-                    element={
-                      <PermissaoGuard modulo="compras" acao="ver">
-                        <PedidosCompraListaPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/compras/pedidos/novo"
-                    element={
-                      <PermissaoGuard modulo="compras" acao="criar">
-                        <PedidoCompraFormPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/compras/pedidos/:id"
-                    element={
-                      <PermissaoGuard modulo="compras" acao="ver">
-                        <PedidoCompraFormPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/compras/pedidos/:id/editar"
-                    element={
-                      <PermissaoGuard modulo="compras" acao="editar">
-                        <PedidoCompraFormPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/compras/pedidos" element={<PedidosCompraListaPage />} />
+                  <Route path="/compras/pedidos/novo" element={<PedidoCompraFormPage />} />
+                  <Route path="/compras/pedidos/:id" element={<PedidoCompraFormPage />} />
+                  <Route path="/compras/pedidos/:id/editar" element={<PedidoCompraFormPage />} />
                   {/* Notas Fiscais de Entrada */}
-                  <Route
-                    path="/compras/notas-entrada"
-                    element={
-                      <PermissaoGuard modulo="notas_entrada" acao="ver">
-                        <NotasEntradaListaPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/compras/notas-entrada" element={<NotasEntradaListaPage />} />
                   <Route
                     path="/compras/notas-entrada/digitar"
-                    element={
-                      <PermissaoGuard modulo="notas_entrada" acao="criar">
-                        <NotaEntradaDigitacaoPage />
-                      </PermissaoGuard>
-                    }
+                    element={<NotaEntradaDigitacaoPage />}
                   />
                   <Route
                     path="/compras/notas-entrada/novo"
-                    element={
-                      <PermissaoGuard modulo="notas_entrada" acao="criar">
-                        <NotaEntradaDigitacaoPage />
-                      </PermissaoGuard>
-                    }
+                    element={<NotaEntradaDigitacaoPage />}
                   />
                   <Route
                     path="/compras/notas-entrada/:id"
-                    element={
-                      <PermissaoGuard modulo="notas_entrada" acao="ver">
-                        <NotaEntradaConferenciaPage />
-                      </PermissaoGuard>
-                    }
+                    element={<NotaEntradaConferenciaPage />}
                   />
                   <Route
                     path="/compras/notas-entrada/:id/conferencia"
-                    element={
-                      <PermissaoGuard modulo="notas_entrada" acao="ver">
-                        <NotaEntradaConferenciaPage />
-                      </PermissaoGuard>
-                    }
+                    element={<NotaEntradaConferenciaPage />}
                   />
-                  <Route
-                    path="/compras/itens-comprados"
-                    element={
-                      <PermissaoGuard modulo="compras" acao="ver">
-                        <ItensCompradosPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/compras/livro-entradas"
-                    element={
-                      <PermissaoGuard modulo="notas_entrada" acao="ver">
-                        <LivroEntradasPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/sugestao-compra"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
-                        <SugestaoCompraPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/inventarios"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
-                        <InventariosListaPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/inventarios/novo"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="criar">
-                        <InventarioNovoPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/inventarios/:id"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
-                        <InventarioDetalhePage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/kardex"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
-                        <KardexPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/lancamentos"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="criar">
-                        <LancamentosEstoquePage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/transferencias"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
-                        <TransferenciasListaPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/transferencias/novo"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="criar">
-                        <TransferenciaFormPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/transferencias/:id"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
-                        <TransferenciaFormPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/estoque/lotes"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
-                        <LotesValidadePage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/compras/itens-comprados" element={<ItensCompradosPage />} />
+                  <Route path="/compras/livro-entradas" element={<LivroEntradasPage />} />
+                  <Route path="/estoque/sugestao-compra" element={<SugestaoCompraPage />} />
+                  <Route path="/estoque/inventarios" element={<InventariosListaPage />} />
+                  <Route path="/estoque/inventarios/novo" element={<InventarioNovoPage />} />
+                  <Route path="/estoque/inventarios/:id" element={<InventarioDetalhePage />} />
+                  <Route path="/estoque/kardex" element={<KardexPage />} />
+                  <Route path="/estoque/lancamentos" element={<LancamentosEstoquePage />} />
+                  <Route path="/estoque/transferencias" element={<TransferenciasListaPage />} />
+                  <Route path="/estoque/transferencias/novo" element={<TransferenciaFormPage />} />
+                  <Route path="/estoque/transferencias/:id" element={<TransferenciaFormPage />} />
+                  <Route path="/estoque/lotes" element={<LotesValidadePage />} />
                   {/* Vendas e PDV (Etapa 5) */}
                   <Route path="/vendas" element={<Navigate to="/vendas/pedidos" replace />} />
-                  <Route
-                    path="/vendas/pedidos"
-                    element={
-                      <PermissaoGuard modulo="vendas" acao="ver">
-                        <VendasListaPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/vendas/pedidos/novo"
-                    element={
-                      <PermissaoGuard modulo="vendas" acao="criar">
-                        <VendaFormPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/vendas/pedidos/:id"
-                    element={
-                      <PermissaoGuard modulo="vendas" acao="ver">
-                        <VendaFormPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/vendas/pdv"
-                    element={
-                      <PermissaoGuard modulo="pdv" acao="ver">
-                        <PdvPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/vendas/caixa"
-                    element={
-                      <PermissaoGuard modulo="caixa" acao="ver">
-                        <CaixaPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/vendas/terminais"
-                    element={
-                      <PermissaoGuard modulo="caixa" acao="ver">
-                        <TerminaisPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/vendas/trocas"
-                    element={
-                      <PermissaoGuard modulo="vendas" acao="criar">
-                        <TrocasDevolucoesPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/vendas/pedidos" element={<VendasListaPage />} />
+                  <Route path="/vendas/pedidos/novo" element={<VendaFormPage />} />
+                  <Route path="/vendas/pedidos/:id" element={<VendaFormPage />} />
+                  <Route path="/vendas/pdv" element={<PdvPage />} />
+                  <Route path="/vendas/caixa" element={<CaixaPage />} />
+                  <Route path="/vendas/terminais" element={<TerminaisPage />} />
+                  <Route path="/vendas/trocas" element={<TrocasDevolucoesPage />} />
                   <Route
                     path="/vendas/devolucoes"
                     element={<Navigate to="/vendas/trocas" replace />}
                   />
-                  <Route
-                    path="/vendas/comissoes"
-                    element={
-                      <PermissaoGuard modulo="vendas" acao="ver">
-                        <ComissoesPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/vendas/consultas"
-                    element={
-                      <PermissaoGuard modulo="vendas" acao="ver">
-                        <ConsultasVendasPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/vendas/configuracoes"
-                    element={
-                      <PermissaoGuard modulo="vendas" acao="ver">
-                        <ConfigVendasPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/vendas/comissoes" element={<ComissoesPage />} />
+                  <Route path="/vendas/consultas" element={<ConsultasVendasPage />} />
+                  <Route path="/vendas/configuracoes" element={<ConfigVendasPage />} />
                   {/* Módulo Fiscal (Etapa 6) */}
                   <Route path="/fiscal" element={<Navigate to="/fiscal/configuracoes" replace />} />
-                  <Route
-                    path="/fiscal/configuracoes"
-                    element={
-                      <PermissaoGuard modulo="notas_saida" acao="ver">
-                        <ConfiguracaoEmissaoFiscalPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/fiscal/documentos"
-                    element={
-                      <PermissaoGuard modulo="notas_saida" acao="ver">
-                        <DocumentosFiscaisPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/fiscal/intermediadores"
-                    element={
-                      <PermissaoGuard modulo="notas_saida" acao="ver">
-                        <IntermediadoresPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/fiscal/configuracoes" element={<ConfiguracaoEmissaoFiscalPage />} />
+                  <Route path="/fiscal/documentos" element={<DocumentosFiscaisPage />} />
+                  <Route path="/fiscal/intermediadores" element={<IntermediadoresPage />} />
                   <Route path="/fiscal/inutilizacao" element={<InutilizacaoPage />} />
                   <Route path="/fiscal/exportar-xmls" element={<ExportarXmlsPage />} />
-                  <Route
-                    path="/fiscal/sped"
-                    element={
-                      <PermissaoGuard modulo="notas_saida" acao="ver">
-                        <SpedFiscalPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/fiscal/sped/configuracoes"
-                    element={
-                      <PermissaoGuard modulo="notas_saida" acao="ver">
-                        <ConfiguracaoSpedPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/fiscal/sped" element={<SpedFiscalPage />} />
+                  <Route path="/fiscal/sped/configuracoes" element={<ConfiguracaoSpedPage />} />
                   <Route
                     path="/fiscal/sped/:id/relatorio"
-                    element={
-                      <PermissaoGuard modulo="notas_saida" acao="ver">
-                        <SpedRelatorioConferenciaPage />
-                      </PermissaoGuard>
-                    }
+                    element={<SpedRelatorioConferenciaPage />}
                   />
-                  <Route
-                    path="/fiscal/livro-saidas"
-                    element={
-                      <PermissaoGuard modulo="notas_saida" acao="ver">
-                        <LivroSaidasPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/fiscal/resumo-icms"
-                    element={
-                      <PermissaoGuard modulo="notas_saida" acao="ver">
-                        <ResumoIcmsPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/fiscal/livro-saidas" element={<LivroSaidasPage />} />
+                  <Route path="/fiscal/resumo-icms" element={<ResumoIcmsPage />} />
                   {/* Relatórios (Etapa 8) */}
-                  <Route
-                    path="/relatorios"
-                    element={
-                      <PermissaoGuard modulo="relatorios" acao="ver">
-                        <CentralRelatoriosPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/relatorios/vendas-canais"
-                    element={
-                      <PermissaoGuard modulo="vendas" acao="ver">
-                        <VendasCanaisPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/relatorios/estoque-gerencial"
-                    element={
-                      <PermissaoGuard modulo="estoque" acao="ver">
-                        <EstoqueGerencialPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/relatorios" element={<CentralRelatoriosPage />} />
+                  <Route path="/relatorios/vendas-canais" element={<VendasCanaisPage />} />
+                  <Route path="/relatorios/estoque-gerencial" element={<EstoqueGerencialPage />} />
                   <Route
                     path="/relatorios/contas-pagar"
-                    element={
-                      <PermissaoGuard modulo="financeiro_pagar" acao="ver">
-                        <ContasPagarPorVencimentoPage />
-                      </PermissaoGuard>
-                    }
+                    element={<ContasPagarPorVencimentoPage />}
                   />
                   <Route
                     path="/relatorios/personalizado"
-                    element={
-                      <PermissaoGuard modulo="relatorios" acao="ver">
-                        <RelatorioPersonalizadoPage />
-                      </PermissaoGuard>
-                    }
+                    element={<RelatorioPersonalizadoPage />}
                   />
                   {/* Configurações */}
                   <Route
                     path="/configuracoes"
                     element={<Navigate to="/configuracoes/geral" replace />}
-                  />{' '}
-                  <Route
-                    path="/configuracoes/geral"
-                    element={
-                      <PermissaoGuard modulo="configuracoes" acao="ver">
-                        <ConfiguracoesGeralPage />
-                      </PermissaoGuard>
-                    }
                   />
-                  <Route
-                    path="/configuracoes/fiscal"
-                    element={
-                      <PermissaoGuard modulo="config_fiscal" acao="ver">
-                        <ConfiguracaoFiscalPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/configuracoes/tray"
-                    element={
-                      <PermissaoGuard modulo="configuracoes" acao="ver">
-                        <TrayPage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/configuracoes/mercado-livre"
-                    element={
-                      <PermissaoGuard modulo="configuracoes" acao="ver">
-                        <MercadoLivrePage />
-                      </PermissaoGuard>
-                    }
-                  />
-                  <Route
-                    path="/configuracoes/auditoria"
-                    element={
-                      <PermissaoGuard modulo="configuracoes" acao="ver">
-                        <LogAuditoriaPage />
-                      </PermissaoGuard>
-                    }
-                  />
+                  <Route path="/configuracoes/geral" element={<ConfiguracoesGeralPage />} />
+                  <Route path="/configuracoes/fiscal" element={<ConfiguracaoFiscalPage />} />
+                  <Route path="/configuracoes/tray" element={<TrayPage />} />
+                  <Route path="/configuracoes/mercado-livre" element={<MercadoLivrePage />} />
+                  <Route path="/configuracoes/auditoria" element={<LogAuditoriaPage />} />
                   <Route
                     path="/configuracoes/integridade-estoque"
-                    element={
-                      <PermissaoGuard modulo="configuracoes" acao="ver">
-                        <IntegridadeEstoquePage />
-                      </PermissaoGuard>
-                    }
+                    element={<IntegridadeEstoquePage />}
                   />
                   <Route
                     path="/configuracoes/integridade-financeiro"
-                    element={
-                      <PermissaoGuard modulo="configuracoes" acao="ver">
-                        <IntegridadeFinanceiroPage />
-                      </PermissaoGuard>
-                    }
+                    element={<IntegridadeFinanceiroPage />}
                   />
                 </Route>
 
