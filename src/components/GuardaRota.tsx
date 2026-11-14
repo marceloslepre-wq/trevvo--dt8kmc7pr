@@ -1,7 +1,9 @@
 import React from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Navigate } from 'react-router-dom'
 import PermissaoGuard from '@/components/PermissaoGuard'
+import AcessoNegado from '@/components/AcessoNegado'
 import { exigenciaDaRota } from '@/config/tabelaRotas'
+import { useDestinoInicial } from '@/components/destinoInicial'
 
 /**
  * GUARDA DE ROTA PELA TABELA ÚNICA (src/config/tabelaRotas.ts)
@@ -19,9 +21,22 @@ import { exigenciaDaRota } from '@/config/tabelaRotas'
 export const GuardaRota: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation()
   const exigencia = exigenciaDaRota(location.pathname)
+  const destino = useDestinoInicial()
+
+  // /painel sem pode_ver no módulo painel: redireciona (Navigate replace) para
+  // o destino inicial do perfil (/vendas/pdv ou primeira rota permitida do
+  // menu) — nunca mostra "Acesso negado". Se o destino calculado for o próprio
+  // /painel ou se não houver NENHUMA rota permitida, mostra Acesso negado
+  // (defesa contra loop de redirecionamento — item 5 da rodada).
+  if (location.pathname === '/painel' && destino !== '/painel' && destino !== location.pathname) {
+    if (destino) {
+      return <Navigate to={destino} replace />
+    }
+    return <AcessoNegado />
+  }
 
   if (!exigencia) {
-    // Rota fora da tabela (ex.: /painel, telas internas sem item próprio): só administrador
+    // Rota fora da tabela (ex.: telas internas sem item próprio): só administrador
     return (
       <PermissaoGuard modulo="__nenhum__" acao="ver">
         {children}

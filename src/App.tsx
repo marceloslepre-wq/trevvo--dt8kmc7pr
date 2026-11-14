@@ -9,6 +9,7 @@ import { EmpresaProvider } from '@/contexts/EmpresaContext'
 import { ProtectedRoute, PublicOnlyRoute, MasterRoute } from '@/components/RouteGuards'
 import MasterPage from '@/pages/master/MasterPage'
 import Layout from '@/components/Layout'
+import RedirecionarRaiz from '@/components/destinoInicial'
 
 // Páginas de Autenticação
 import LoginScreen from '@/pages/auth/LoginScreen'
@@ -197,8 +198,10 @@ const App = () => (
                     </ProtectedRoute>
                   }
                 >
-                  {/* Rota raiz redireciona para /painel */}
-                  <Route path="/" element={<Navigate to="/painel" replace />} />
+                  {/* Rota raiz: NUNCA passa pela exigência de módulo — resolve o
+                      destino pelo perfil (admin/painel -> /painel; senão PDV; senão
+                      primeira rota permitida do menu, ver destinoInicial.tsx) */}
+                  <Route path="/" element={<RedirecionarRaiz />} />
                   <Route path="/painel" element={<Index />} />
                   <Route path="/painel-grupo" element={<PainelGrupoPage />} />
                   {/* Cadastros */}
