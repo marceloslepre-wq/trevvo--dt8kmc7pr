@@ -40,6 +40,10 @@ migrate(
   (app) => {
     const leituraPorEmpresa =
       "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= empresa_id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
+    // Regra de leitura da collection `empresas`: ela NÃO tem campo `empresa_id`
+    // (o vínculo é pelo próprio id da empresa), então o escopo é assinante_id dela.
+    const leituraEmpresas =
+      "@request.auth.id != '' && assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true || (@collection.usuarios_empresas.empresa_id ?= id && @collection.usuarios_empresas.auth_user_id ?= @request.auth.id && @collection.usuarios_empresas.ativo = true))"
     const escritaAdmin =
       "@request.auth.id != '' && empresa_id.assinante_id = @request.auth.assinante_id && (@request.auth.tipo = 'master' || @request.auth.is_admin = true)"
 
@@ -80,8 +84,8 @@ migrate(
 
     // 5. empresas: usuário comum lê só as empresas com vínculo ativo em usuarios_empresas
     aplicar('empresas', {
-      listRule: leituraPorEmpresa,
-      viewRule: leituraPorEmpresa,
+      listRule: leituraEmpresas,
+      viewRule: leituraEmpresas,
     })
 
     // 6. usuarios: usuário comum lê o próprio registro + colegas vendedores/caixas do assinante
