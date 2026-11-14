@@ -978,35 +978,38 @@ export const PdvPage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-full w-full bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
+    <div className="flex flex-col h-full w-full bg-slate-100 text-slate-800 font-sans select-none overflow-hidden">
       {/* 1) TOPO: EMPRESA, TERMINAL, OPERADOR, SESSÃO DE CAIXA E RELÓGIO */}
-      <header className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between shrink-0 shadow-md">
+      <header className="h-14 bg-white border-b border-slate-200 px-4 flex items-center justify-between shrink-0 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-black text-xl tracking-wider text-blue-400">PDV</span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-950 border border-blue-800 text-blue-300">
+            <span className="font-black text-xl tracking-wider text-blue-600">PDV</span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700">
               {empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || 'Empresa'}
             </span>
           </div>
 
-          <div className="hidden md:flex items-center gap-3 text-xs text-slate-400 border-l border-slate-800 pl-4">
+          <div className="hidden md:flex items-center gap-3 text-xs text-slate-500 border-l border-slate-200 pl-4">
             <span title="Terminal Atual">
-              Terminal: <strong className="text-white">{terminalAtivo?.nome || 'PDV 01'}</strong>
+              Terminal:{' '}
+              <strong className="text-slate-800">{terminalAtivo?.nome || 'PDV 01'}</strong>
             </span>
-            <span className="text-slate-700">|</span>
+            <span className="text-slate-300">|</span>
             <span title="Operador">
-              Operador: <strong className="text-white">{usuario?.nome || 'Caixa'}</strong>
+              Operador: <strong className="text-slate-800">{usuario?.nome || 'Caixa'}</strong>
             </span>
-            <span className="text-slate-700">|</span>
-            <span title="Sessão de Caixa">
+            <span className="text-slate-300">|</span>
+            <span title="Sessão de Caixa" className="flex items-center gap-1">
               Caixa:{' '}
               {sessaoCaixa ? (
-                <strong className="text-emerald-400">Aberto</strong>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[11px]">
+                  Aberto
+                </span>
               ) : (
                 <button
                   type="button"
                   onClick={() => setModalAbrirCaixaAberto(true)}
-                  className="text-amber-400 font-bold underline cursor-pointer"
+                  className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-amber-700 font-bold text-[11px] hover:bg-amber-100 cursor-pointer"
                 >
                   Abrir Caixa
                 </button>
@@ -1019,19 +1022,19 @@ export const PdvPage: React.FC = () => {
           {/* Status de Rede */}
           <div className="flex items-center gap-1.5 text-xs font-medium">
             {online ? (
-              <span className="flex items-center gap-1 text-emerald-400">
+              <span className="flex items-center gap-1 text-emerald-600">
                 <Wifi size={14} /> Online
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-red-400 animate-pulse font-bold">
+              <span className="flex items-center gap-1 text-red-600 animate-pulse font-bold">
                 <WifiOff size={14} /> Offline
               </span>
             )}
           </div>
 
           {/* Relógio */}
-          <div className="flex items-center gap-1.5 bg-slate-800/80 px-3 py-1 rounded-md border border-slate-700 text-white font-mono text-sm font-bold shadow-inner">
-            <Clock size={15} className="text-blue-400" />
+          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1 rounded-md border border-slate-200 text-slate-800 font-mono text-sm font-bold shadow-inner">
+            <Clock size={15} className="text-blue-600" />
             <span>{horaAtual}</span>
           </div>
 
@@ -1039,7 +1042,7 @@ export const PdvPage: React.FC = () => {
           <button
             type="button"
             onClick={toggleFullScreen}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
             title="Tela Cheia"
           >
             {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
@@ -1057,7 +1060,7 @@ export const PdvPage: React.FC = () => {
                 navigate('/vendas/pedidos')
               }
             }}
-            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition-colors"
+            className="text-xs bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded border border-slate-200 transition-colors"
           >
             Sair do PDV
           </button>
@@ -1067,9 +1070,9 @@ export const PdvPage: React.FC = () => {
       {/* 2) CORPO PRINCIPAL DO PDV: ESQUERDA (ITENS) E DIREITA (TOTAL, CLIENTE, ATALHOS) */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* ESQUERDA: LISTA DE ITENS + ÚLTIMO ITEM EM DESTAQUE — ocupa todo o resto, lista rola por dentro */}
-        <section className="flex-1 min-w-0 flex flex-col border-r border-slate-800 bg-slate-900/40 overflow-hidden">
+        <section className="flex-1 min-w-0 flex flex-col border-r border-slate-200 bg-white overflow-hidden">
           {/* Cabeçalho da Lista */}
-          <div className="grid grid-cols-12 px-4 py-2.5 bg-slate-900 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+          <div className="grid grid-cols-12 px-4 py-2.5 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
             <span className="col-span-1 text-center">Item</span>
             <span className="col-span-5">Descrição</span>
             <span className="col-span-2 text-right">Qtd x Preço</span>
@@ -1078,12 +1081,12 @@ export const PdvPage: React.FC = () => {
           </div>
 
           {/* Lista Rolável de Itens */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-950/40">
+          <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50">
             {itens.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3">
+              <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-3">
                 <ShoppingCart size={48} className="opacity-30 stroke-[1.5]" />
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-slate-400">
+                  <p className="text-sm font-semibold text-slate-600">
                     Caixa Livre / Aguardando Itens
                   </p>
                   <p className="text-xs text-slate-500">
@@ -1099,21 +1102,21 @@ export const PdvPage: React.FC = () => {
                     key={it.tempId}
                     className={`grid grid-cols-12 items-center px-3 py-2 rounded-lg text-xs transition-colors ${
                       ehUltimo
-                        ? 'bg-blue-900/40 border border-blue-500/50 shadow-sm text-white font-medium'
-                        : 'bg-slate-900/60 border border-slate-850 hover:bg-slate-850 text-slate-300'
+                        ? 'bg-blue-50 border border-blue-300 shadow-sm text-slate-800 font-medium'
+                        : 'bg-white border border-slate-200 hover:bg-slate-100 text-slate-700'
                     }`}
                   >
-                    <span className="col-span-1 text-center font-mono font-bold text-slate-400">
+                    <span className="col-span-1 text-center font-mono font-bold text-slate-500">
                       {String(it.item).padStart(2, '0')}
                     </span>
                     <div className="col-span-5 min-w-0 pr-2">
-                      <div className="truncate font-semibold text-white text-[13px]">
+                      <div className="truncate font-semibold text-slate-800 text-[13px]">
                         {it.descricao}
                       </div>
-                      <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                      <div className="text-[10px] text-slate-500 flex items-center gap-2">
                         <span>Cód: #{it.codigo}</span>
                         {it.eh_balanca && (
-                          <span className="text-emerald-400 font-bold bg-emerald-950/60 px-1 rounded">
+                          <span className="text-emerald-700 font-bold bg-emerald-50 px-1 rounded">
                             Balança
                           </span>
                         )}
@@ -1122,14 +1125,14 @@ export const PdvPage: React.FC = () => {
                     </div>
                     <div className="col-span-2 text-right font-mono">
                       <span>{it.quantidade}</span>
-                      <span className="text-[11px] text-slate-400 block">
+                      <span className="text-[11px] text-slate-500 block">
                         x R$ {it.preco_unitario.toFixed(2)}
                       </span>
                     </div>
-                    <div className="col-span-2 text-right font-mono text-amber-400">
+                    <div className="col-span-2 text-right font-mono text-amber-600">
                       {it.desconto_valor > 0 ? `- R$ ${it.desconto_valor.toFixed(2)}` : '—'}
                     </div>
-                    <div className="col-span-2 text-right font-mono font-bold text-sm text-emerald-400">
+                    <div className="col-span-2 text-right font-mono font-bold text-sm text-emerald-600">
                       R$ {it.valor_total.toFixed(2)}
                     </div>
                   </div>
@@ -1140,10 +1143,10 @@ export const PdvPage: React.FC = () => {
           </div>
 
           {/* ÚLTIMO ITEM EM DESTAQUE (CARD INFERIOR COM FOTO) */}
-          <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-4 shrink-0 min-h-[90px]">
+          <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center gap-4 shrink-0 min-h-[90px]">
             {ultimoItem ? (
               <>
-                <div className="w-16 h-16 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0">
+                <div className="w-16 h-16 rounded-lg bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                   {ultimoItem.foto ? (
                     <img
                       src={ultimoItem.foto}
@@ -1156,24 +1159,24 @@ export const PdvPage: React.FC = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500 text-white uppercase">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-600 text-white uppercase">
                       Último Item ({ultimoItem.item})
                     </span>
-                    <span className="text-xs text-slate-400 font-mono">#{ultimoItem.codigo}</span>
+                    <span className="text-xs text-slate-500 font-mono">#{ultimoItem.codigo}</span>
                   </div>
-                  <div className="text-sm font-bold text-white truncate mt-0.5">
+                  <div className="text-sm font-bold text-slate-800 truncate mt-0.5">
                     {ultimoItem.descricao}
                   </div>
-                  <div className="text-xs text-slate-400 mt-0.5">
+                  <div className="text-xs text-slate-500 mt-0.5">
                     {ultimoItem.quantidade} {ultimoItem.unidade} x R${' '}
                     {ultimoItem.preco_unitario.toFixed(2)}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <span className="text-[11px] text-slate-400 uppercase font-semibold block">
+                  <span className="text-[11px] text-slate-500 uppercase font-semibold block">
                     Subtotal
                   </span>
-                  <div className="text-2xl font-black text-emerald-400 font-mono">
+                  <div className="text-2xl font-black text-emerald-600 font-mono">
                     R$ {ultimoItem.valor_total.toFixed(2)}
                   </div>
                 </div>
@@ -1187,10 +1190,10 @@ export const PdvPage: React.FC = () => {
         </section>
 
         {/* DIREITA: TOTAL, CLIENTE, VENDEDOR E PAINEL DE ATALHOS — flexível (min 340 / max 420) */}
-        <section className="w-[380px] min-w-[340px] max-w-[420px] flex flex-col bg-slate-950 p-4 gap-3 overflow-hidden shrink-0">
+        <section className="w-[380px] min-w-[340px] max-w-[420px] flex flex-col bg-slate-100 p-4 gap-3 overflow-hidden shrink-0">
           {/* Quadro de Total Grande — fixo no topo da coluna, nunca cortado */}
-          <div className="shrink-0 bg-gradient-to-br from-slate-900 to-slate-950 rounded-2xl p-5 border border-slate-800 shadow-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-slate-400 uppercase font-bold tracking-wider">
+          <div className="shrink-0 bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-wider">
               <span>Total a Pagar</span>
               <span>
                 {itens.length} {itens.length === 1 ? 'item' : 'itens'} (
@@ -1199,32 +1202,32 @@ export const PdvPage: React.FC = () => {
             </div>
 
             <div className="my-2 text-right">
-              <div className="text-5xl font-black text-emerald-400 tracking-tight font-mono drop-shadow-md">
+              <div className="text-5xl font-black text-emerald-700 tracking-tight font-mono">
                 R$ {totalVendaFinal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </div>
               {descontoTotal > 0 && (
-                <div className="text-xs text-amber-400 font-mono mt-1 font-semibold">
+                <div className="text-xs text-amber-600 font-mono mt-1 font-semibold">
                   Subtotal: R$ {subtotalItens.toFixed(2)} | Desconto Geral: - R${' '}
                   {descontoTotal.toFixed(2)}
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-xs text-slate-300">
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 text-xs text-slate-600">
               <div
                 onClick={() => setModalClienteAberto(true)}
-                className="p-2 bg-slate-800/60 rounded-lg hover:bg-slate-800 cursor-pointer border border-slate-750 transition-colors"
+                className="p-2 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer border border-slate-200 transition-colors"
                 title="Clique ou pressione F3 para alterar o cliente"
               >
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold uppercase">
-                  <User size={12} className="text-blue-400" />
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-semibold uppercase">
+                  <User size={12} className="text-blue-600" />
                   <span>Cliente (F3)</span>
                 </div>
-                <div className="truncate font-bold text-white mt-0.5">
+                <div className="truncate font-bold text-slate-800 mt-0.5">
                   {cliente?.nome_razao_social || 'Consumidor Final'}
                 </div>
                 {cpfCnpjCupom && (
-                  <div className="text-[10px] text-blue-300 font-mono truncate">
+                  <div className="text-[10px] text-blue-600 font-mono truncate">
                     CPF/CNPJ: {cpfCnpjCupom}
                   </div>
                 )}
@@ -1232,14 +1235,14 @@ export const PdvPage: React.FC = () => {
 
               <div
                 onClick={() => setModalVendedorAberto(true)}
-                className="p-2 bg-slate-800/60 rounded-lg hover:bg-slate-800 cursor-pointer border border-slate-750 transition-colors"
+                className="p-2 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer border border-slate-200 transition-colors"
                 title="Clique ou pressione F5 para alterar o vendedor"
               >
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold uppercase">
-                  <UserCheck size={12} className="text-emerald-400" />
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-semibold uppercase">
+                  <UserCheck size={12} className="text-emerald-600" />
                   <span>Vendedor (F5)</span>
                 </div>
-                <div className="truncate font-bold text-white mt-0.5">
+                <div className="truncate font-bold text-slate-800 mt-0.5">
                   {vendedor?.nome || 'Balcão / Geral'}
                 </div>
               </div>
@@ -1247,13 +1250,13 @@ export const PdvPage: React.FC = () => {
           </div>
 
           {/* CAMPO DE LEITURA PRINCIPAL (SEMPRE COM O FOCO) — nunca comprimido */}
-          <div className="shrink-0 bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md">
-            <label className="text-xs font-bold text-blue-400 uppercase tracking-wide flex items-center justify-between mb-1.5">
+          <div className="shrink-0 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <label className="text-xs font-bold text-blue-600 uppercase tracking-wide flex items-center justify-between mb-1.5">
               <span className="flex items-center gap-1.5">
                 <Barcode size={16} />
                 Código de Barras / Ref / Qtd*Cód
               </span>
-              <span className="text-[10px] text-slate-400 font-normal">Ex: 3*7891000...</span>
+              <span className="text-[10px] text-slate-500 font-normal">Ex: 3*7891000...</span>
             </label>
             <form onSubmit={handleProcessarLeitura} className="flex gap-2">
               <input
@@ -1263,11 +1266,11 @@ export const PdvPage: React.FC = () => {
                 onChange={(e) => setEntradaLeitor(e.target.value)}
                 placeholder="Passe o leitor ou digite o código..."
                 autoFocus
-                className="flex-1 h-12 bg-slate-950 border-2 border-blue-500/80 focus:border-blue-400 rounded-lg px-3 text-lg font-mono font-bold text-white placeholder:text-slate-600 outline-none transition-all"
+                className="flex-1 h-12 bg-white border-2 border-slate-300 focus:border-blue-500 rounded-lg px-3 text-lg font-mono font-bold text-slate-800 placeholder:text-slate-400 outline-none transition-all"
               />
               <button
                 type="submit"
-                className="h-12 px-5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition-colors shadow-lg shadow-blue-950/50"
+                className="h-12 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-sm transition-colors shadow-md shadow-blue-600/20"
               >
                 Enter
               </button>
@@ -1278,16 +1281,16 @@ export const PdvPage: React.FC = () => {
               <div
                 className={`mt-2 p-2 rounded text-xs flex items-center gap-1.5 transition-all ${
                   tipoMensagemStatus === 'erro'
-                    ? 'bg-red-950/80 text-red-300 border border-red-800'
+                    ? 'bg-red-50 text-red-700 border border-red-200'
                     : tipoMensagemStatus === 'sucesso'
-                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
-                      : 'bg-slate-800 text-slate-300'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-slate-100 text-slate-600'
                 }`}
               >
                 {tipoMensagemStatus === 'erro' ? (
-                  <AlertTriangle size={14} className="shrink-0 text-red-400" />
+                  <AlertTriangle size={14} className="shrink-0 text-red-500" />
                 ) : (
-                  <CheckCircle size={14} className="shrink-0 text-emerald-400" />
+                  <CheckCircle size={14} className="shrink-0 text-emerald-600" />
                 )}
                 <span className="truncate">{mensagemStatus}</span>
               </div>
@@ -1300,7 +1303,7 @@ export const PdvPage: React.FC = () => {
               type="button"
               onClick={handleCancelarVendaEmAndamento}
               disabled={itens.length === 0}
-              className="col-span-1 h-12 bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 disabled:opacity-30 transition-all"
+              className="col-span-1 h-12 bg-white hover:bg-red-50 border border-red-300 text-red-600 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 disabled:opacity-40 transition-all"
             >
               <XCircle size={16} />
               <span>Cancelar (F12)</span>
@@ -1324,7 +1327,7 @@ export const PdvPage: React.FC = () => {
                 setModalPagamentoAberto(true)
               }}
               disabled={itens.length === 0 || !online}
-              className="col-span-2 h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 disabled:opacity-30 transition-all"
+              className="col-span-2 h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-600/30 disabled:bg-emerald-100 disabled:text-slate-400 transition-all"
             >
               <DollarSign size={18} />
               <span>FINALIZAR VENDA (F10)</span>
@@ -1332,8 +1335,8 @@ export const PdvPage: React.FC = () => {
           </div>
 
           {/* PAINEL DE ATALHOS DE TECLADO (VISÍVEIS NA TELA) — fica no fundo e rola por dentro se faltar altura */}
-          <div className="flex-1 min-h-0 bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 flex flex-col overflow-y-auto">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+          <div className="flex-1 min-h-0 bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col overflow-y-auto">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
               Atalhos de Operação (Teclado)
             </span>
 
@@ -1341,10 +1344,10 @@ export const PdvPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setModalBuscaProdutoAberto(true)}
-                className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/60 text-slate-200"
+                className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700"
               >
                 <span className="font-semibold text-left">Buscar Produto</span>
-                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-blue-900 text-blue-300 text-[10px]">
+                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">
                   F2
                 </span>
               </button>
@@ -1352,10 +1355,10 @@ export const PdvPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setModalClienteAberto(true)}
-                className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/60 text-slate-200"
+                className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700"
               >
                 <span className="font-semibold text-left">Cliente</span>
-                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-blue-900 text-blue-300 text-[10px]">
+                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">
                   F3
                 </span>
               </button>
@@ -1364,10 +1367,10 @@ export const PdvPage: React.FC = () => {
                 type="button"
                 onClick={() => setModalQtdItemAberto(true)}
                 disabled={itens.length === 0}
-                className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/60 text-slate-200 disabled:opacity-40"
+                className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 disabled:opacity-40"
               >
                 <span className="font-semibold text-left">Alterar Qtd Item</span>
-                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 text-[10px]">
+                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">
                   F4
                 </span>
               </button>
@@ -1375,10 +1378,10 @@ export const PdvPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setModalVendedorAberto(true)}
-                className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/60 text-slate-200"
+                className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700"
               >
                 <span className="font-semibold text-left">Vendedor</span>
-                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-blue-900 text-blue-300 text-[10px]">
+                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">
                   F5
                 </span>
               </button>
@@ -1387,10 +1390,10 @@ export const PdvPage: React.FC = () => {
                 type="button"
                 onClick={() => setModalDescontoItemAberto(true)}
                 disabled={itens.length === 0}
-                className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/60 text-slate-200 disabled:opacity-40"
+                className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 disabled:opacity-40"
               >
                 <span className="font-semibold text-left">Desconto Item</span>
-                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-400 text-[10px]">
+                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">
                   F6
                 </span>
               </button>
@@ -1399,10 +1402,10 @@ export const PdvPage: React.FC = () => {
                 type="button"
                 onClick={() => setModalDescontoTotalAberto(true)}
                 disabled={itens.length === 0}
-                className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/60 text-slate-200 disabled:opacity-40"
+                className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 disabled:opacity-40"
               >
                 <span className="font-semibold text-left">Desconto Total</span>
-                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-400 text-[10px]">
+                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">
                   F7
                 </span>
               </button>
@@ -1411,10 +1414,10 @@ export const PdvPage: React.FC = () => {
                 type="button"
                 onClick={() => setModalCancelarItemAberto(true)}
                 disabled={itens.length === 0}
-                className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/60 text-slate-200 disabled:opacity-40"
+                className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 disabled:opacity-40"
               >
-                <span className="font-semibold text-left text-red-300">Cancelar Item</span>
-                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 text-[10px]">
+                <span className="font-semibold text-left text-red-600">Cancelar Item</span>
+                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 text-[10px]">
                   F8
                 </span>
               </button>
@@ -1425,10 +1428,10 @@ export const PdvPage: React.FC = () => {
                   if (!sessaoCaixa) setModalAbrirCaixaAberto(true)
                   else setModalSangriaAberto(true)
                 }}
-                className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/60 text-slate-200"
+                className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700"
               >
                 <span className="font-semibold text-left">Sangria / Supr.</span>
-                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 text-[10px]">
+                <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">
                   F9
                 </span>
               </button>
@@ -1439,22 +1442,24 @@ export const PdvPage: React.FC = () => {
 
       {/* MODAL DE PERGUNTA DE RASCUNHO PENDENTE */}
       {modalPerguntaRascunhoAberto && rascunhoPendente && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-6 text-white space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-6 text-slate-800 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30">
+              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl border border-blue-200">
                 <RotateCcw size={24} />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Venda em Andamento Recuperada</h3>
-                <p className="text-xs text-slate-400">
+                <h3 className="text-base font-bold text-slate-800">
+                  Venda em Andamento Recuperada
+                </h3>
+                <p className="text-xs text-slate-500">
                   Existe um rascunho com {rascunhoPendente.itens.length} itens salvo neste
                   navegador.
                 </p>
               </div>
             </div>
 
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-600">
               Deseja continuar atendendo a venda anterior ou prefere descartar e iniciar uma nova
               venda em branco?
             </p>
@@ -1468,7 +1473,7 @@ export const PdvPage: React.FC = () => {
                   setModalPerguntaRascunhoAberto(false)
                   focarLeitor()
                 }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-semibold"
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded text-xs font-semibold"
               >
                 Descartar Rascunho
               </button>
@@ -1663,27 +1668,27 @@ export const PdvPage: React.FC = () => {
 
       {/* MODAL AVISO DE REJEIÇÃO NFC-E (PDV) */}
       {modalRejeicaoNfceAberto && dadosRejeicaoNfce && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-600/60 rounded-xl max-w-lg w-full p-6 text-white space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white border border-amber-300 rounded-xl max-w-lg w-full p-6 text-slate-800 space-y-4 shadow-2xl">
             <div className="flex items-start gap-3">
-              <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30 shrink-0">
+              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl border border-amber-200 shrink-0">
                 <AlertTriangle size={26} />
               </div>
               <div className="flex-1 min-w-0">
                 {dadosRejeicaoNfce.erroInterno ? (
                   <>
-                    <h3 className="text-base font-bold text-red-300">Erro interno do ERP</h3>
-                    <p className="text-xs text-slate-300 mt-1">
+                    <h3 className="text-base font-bold text-red-600">Erro interno do ERP</h3>
+                    <p className="text-xs text-slate-600 mt-1">
                       A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com sucesso no caixa,
                       mas houve uma falha interna na emissão da nota (não chegou à SEFAZ).
                     </p>
                   </>
                 ) : (
                   <>
-                    <h3 className="text-base font-bold text-amber-300">
+                    <h3 className="text-base font-bold text-amber-600">
                       NFC-e Rejeitada pela SEFAZ
                     </h3>
-                    <p className="text-xs text-slate-300 mt-1">
+                    <p className="text-xs text-slate-600 mt-1">
                       A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com sucesso no caixa,
                       mas a emissão da nota fiscal foi rejeitada pela SEFAZ.
                     </p>
@@ -1692,19 +1697,19 @@ export const PdvPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-3.5 bg-slate-950/80 rounded-lg border border-slate-800 text-xs font-mono text-amber-200 break-words leading-relaxed max-h-36 overflow-y-auto">
-              <span className="text-slate-400 font-sans block mb-1 font-bold">
+            <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono text-amber-700 break-words leading-relaxed max-h-36 overflow-y-auto">
+              <span className="text-slate-500 font-sans block mb-1 font-bold">
                 Motivo retornado:
               </span>
               {dadosRejeicaoNfce.motivo}
             </div>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500">
               Você pode tentar reenviar a mesma nota agora ou fechar este aviso para continuar
               atendendo os clientes. A venda ficará com status "Rejeitada" no monitor fiscal.
             </p>
 
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200">
               <button
                 type="button"
                 onClick={() => {
@@ -1712,7 +1717,7 @@ export const PdvPage: React.FC = () => {
                   setDadosRejeicaoNfce(null)
                   focarLeitor()
                 }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold"
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold"
               >
                 Seguir Vendendo (Fechar)
               </button>
