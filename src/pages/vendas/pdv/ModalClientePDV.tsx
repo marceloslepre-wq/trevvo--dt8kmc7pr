@@ -101,7 +101,7 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
   return (
     <>
       <Dialog open={aberto} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl bg-slate-900 text-white border-slate-700 p-6">
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
           <DialogHeader className="border-b border-slate-800 pb-3">
             <div className="flex items-center justify-between">
               <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">

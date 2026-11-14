@@ -60,7 +60,7 @@ export const ModalVendedorPDV: React.FC<ModalVendedorPDVProps> = ({
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-slate-900 text-white border-slate-700 p-6">
+      <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
         <DialogHeader className="border-b border-slate-800 pb-3">
           <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
             <UserCheck className="h-5 w-5 text-blue-400" />

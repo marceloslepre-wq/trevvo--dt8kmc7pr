@@ -92,7 +92,7 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl bg-slate-900 text-white border-slate-700 p-6">
+      <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
         <DialogHeader className="border-b border-slate-800 pb-3">
           <DialogTitle className="text-lg font-bold text-white flex items-center justify-between">
             <span className="flex items-center gap-2">

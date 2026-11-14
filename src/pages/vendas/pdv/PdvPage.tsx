@@ -978,7 +978,7 @@ export const PdvPage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
+    <div className="flex flex-col h-full w-full bg-slate-950 text-slate-100 font-sans select-none overflow-hidden">
       {/* 1) TOPO: EMPRESA, TERMINAL, OPERADOR, SESSÃO DE CAIXA E RELÓGIO */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between shrink-0 shadow-md">
         <div className="flex items-center gap-4">
@@ -1065,9 +1065,9 @@ export const PdvPage: React.FC = () => {
       </header>
 
       {/* 2) CORPO PRINCIPAL DO PDV: ESQUERDA (ITENS) E DIREITA (TOTAL, CLIENTE, ATALHOS) */}
-      <div className="flex-1 grid grid-cols-12 overflow-hidden">
-        {/* ESQUERDA: LISTA DE ITENS + ÚLTIMO ITEM EM DESTAQUE (7 COLUNAS) */}
-        <section className="col-span-7 flex flex-col border-r border-slate-800 bg-slate-900/40 overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        {/* ESQUERDA: LISTA DE ITENS + ÚLTIMO ITEM EM DESTAQUE — ocupa todo o resto, lista rola por dentro */}
+        <section className="flex-1 min-w-0 flex flex-col border-r border-slate-800 bg-slate-900/40 overflow-hidden">
           {/* Cabeçalho da Lista */}
           <div className="grid grid-cols-12 px-4 py-2.5 bg-slate-900 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
             <span className="col-span-1 text-center">Item</span>
@@ -1186,10 +1186,10 @@ export const PdvPage: React.FC = () => {
           </div>
         </section>
 
-        {/* DIREITA: TOTAL, CLIENTE, VENDEDOR E PAINEL DE ATALHOS (5 COLUNAS) */}
-        <section className="col-span-5 flex flex-col bg-slate-950 p-4 gap-3 overflow-hidden">
-          {/* Quadro de Total Grande */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-2xl p-5 border border-slate-800 shadow-xl flex flex-col justify-between">
+        {/* DIREITA: TOTAL, CLIENTE, VENDEDOR E PAINEL DE ATALHOS — flexível (min 340 / max 420) */}
+        <section className="w-[380px] min-w-[340px] max-w-[420px] flex flex-col bg-slate-950 p-4 gap-3 overflow-hidden shrink-0">
+          {/* Quadro de Total Grande — fixo no topo da coluna, nunca cortado */}
+          <div className="shrink-0 bg-gradient-to-br from-slate-900 to-slate-950 rounded-2xl p-5 border border-slate-800 shadow-xl flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs text-slate-400 uppercase font-bold tracking-wider">
               <span>Total a Pagar</span>
               <span>
@@ -1246,8 +1246,8 @@ export const PdvPage: React.FC = () => {
             </div>
           </div>
 
-          {/* CAMPO DE LEITURA PRINCIPAL (SEMPRE COM O FOCO) */}
-          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md">
+          {/* CAMPO DE LEITURA PRINCIPAL (SEMPRE COM O FOCO) — nunca comprimido */}
+          <div className="shrink-0 bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md">
             <label className="text-xs font-bold text-blue-400 uppercase tracking-wide flex items-center justify-between mb-1.5">
               <span className="flex items-center gap-1.5">
                 <Barcode size={16} />
@@ -1294,8 +1294,45 @@ export const PdvPage: React.FC = () => {
             )}
           </div>
 
-          {/* PAINEL DE ATALHOS DE TECLADO (VISÍVEIS NA TELA) */}
-          <div className="flex-1 bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 flex flex-col justify-between overflow-hidden">
+        {/* BOTÕES GRANDES DE FINALIZAR E CANCELAR — logo abaixo do campo de código, sempre visíveis */}
+        <div className="shrink-0 grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={handleCancelarVendaEmAndamento}
+                disabled={itens.length === 0}
+                className="col-span-1 h-12 bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 disabled:opacity-30 transition-all"
+              >
+                <XCircle size={16} />
+                <span>Cancelar (F12)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (itens.length === 0) {
+                    toast({
+                      title: 'Venda vazia',
+                      description: 'Insira pelo menos um produto antes de finalizar.',
+                      variant: 'destructive',
+                    })
+                    return
+                  }
+                  if (!sessaoCaixa) {
+                    setModalAbrirCaixaAberto(true)
+                    return
+                  }
+                  setModalPagamentoAberto(true)
+                }}
+                disabled={itens.length === 0 || !online}
+                className="col-span-2 h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 disabled:opacity-30 transition-all"
+              >
+                <DollarSign size={18} />
+                <span>FINALIZAR VENDA (F10)</span>
+              </button>
+        </div>
+
+        {/* PAINEL DE ATALHOS DE TECLADO (VISÍVEIS NA TELA) — fica no fundo e rola por dentro se faltar altura */}
+        <div className="flex-1 min-h-0 bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 flex flex-col overflow-y-auto">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
               Atalhos de Operação (Teclado)
             </span>
@@ -1397,42 +1434,7 @@ export const PdvPage: React.FC = () => {
               </button>
             </div>
 
-            {/* BOTÕES GRANDES DE FINALIZAR E CANCELAR */}
-            <div className="grid grid-cols-3 gap-2 mt-3 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={handleCancelarVendaEmAndamento}
-                disabled={itens.length === 0}
-                className="col-span-1 h-12 bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 disabled:opacity-30 transition-all"
-              >
-                <XCircle size={16} />
-                <span>Cancelar (F12)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (itens.length === 0) {
-                    toast({
-                      title: 'Venda vazia',
-                      description: 'Insira pelo menos um produto antes de finalizar.',
-                      variant: 'destructive',
-                    })
-                    return
-                  }
-                  if (!sessaoCaixa) {
-                    setModalAbrirCaixaAberto(true)
-                    return
-                  }
-                  setModalPagamentoAberto(true)
-                }}
-                disabled={itens.length === 0 || !online}
-                className="col-span-2 h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 disabled:opacity-30 transition-all"
-              >
-                <DollarSign size={18} />
-                <span>FINALIZAR VENDA (F10)</span>
-              </button>
-            </div>
+        </div>
           </div>
         </section>
       </div>

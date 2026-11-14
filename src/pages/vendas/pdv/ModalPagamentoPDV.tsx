@@ -453,7 +453,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-6 bg-slate-900 text-white border-slate-700">
+      <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden p-6 bg-slate-900 text-white border-slate-700">
         <DialogHeader className="border-b border-slate-800 pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">

@@ -257,7 +257,7 @@ export const ClienteCadastroRapido: React.FC<ClienteCadastroRapidoProps> = ({
         onOpenChange(abertoAgora)
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold text-slate-900">
             Cadastro Rápido de Cliente

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Outlet } from 'react-router-dom'
+import React, { useState, useEffect, useRef } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './layout/Sidebar'
 import { Header } from './layout/Header'
 import GuardaRota from './GuardaRota'
@@ -7,6 +7,21 @@ import GuardaRota from './GuardaRota'
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const location = useLocation()
+
+  // PDV em modo tela cheia: recolhe o menu lateral ao montar o PDV e restaura
+  // ao sair (o próprio PDV tem o botão "Sair do PDV" que volta ao ERP).
+  const ehPdv = location.pathname.startsWith('/vendas/pdv')
+  const colapsouPeloPdv = useRef(false)
+  useEffect(() => {
+    if (ehPdv && !colapsouPeloPdv.current) {
+      colapsouPeloPdv.current = true
+      setCollapsed(true)
+    } else if (!ehPdv && colapsouPeloPdv.current) {
+      colapsouPeloPdv.current = false
+      setCollapsed(false)
+    }
+  }, [ehPdv])
 
   // Auto-colapsar em telas tablet (641px - 1024px)
   useEffect(() => {
@@ -25,7 +40,11 @@ export default function Layout() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-900">
+    <div
+      className={`bg-slate-100 flex flex-col font-sans text-slate-900 ${
+        ehPdv ? 'h-dvh overflow-hidden' : 'min-h-screen'
+      }`}
+    >
       {/* Sidebar Retrátil / Drawer */}
       <Sidebar
         collapsed={collapsed}
@@ -41,7 +60,13 @@ export default function Layout() {
         }`}
       >
         <Header onOpenMobileMenu={() => setMobileOpen(true)} />
-        <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main
+          className={
+            ehPdv
+              ? 'flex-1 min-h-0 w-full flex flex-col'
+              : 'flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto'
+          }
+        >
           {/* Guarda de permissões pela tabela única de rotas (src/config/tabelaRotas.ts).
               Protege TODAS as rotas do layout com uma mudança só, inclusive abrindo URL direto. */}
           <GuardaRota>

@@ -122,7 +122,7 @@ export function ModalSangria({
         onOpenChange(v)
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <ArrowDownLeft className="h-5 w-5 text-rose-600" />

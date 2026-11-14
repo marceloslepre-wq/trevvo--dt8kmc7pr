@@ -43,7 +43,7 @@ export const ModalQuantidadeItemPDV: React.FC<{
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm bg-slate-900 text-white border-slate-700 p-6">
+      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
         <DialogHeader className="border-b border-slate-800 pb-3">
           <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
             <Edit3 className="h-5 w-5 text-blue-400" />
@@ -152,7 +152,7 @@ export const ModalDescontoItemPDV: React.FC<{
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm bg-slate-900 text-white border-slate-700 p-6">
+      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
         <DialogHeader className="border-b border-slate-800 pb-3">
           <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
             <Percent className="h-5 w-5 text-amber-400" />
@@ -273,7 +273,7 @@ export const ModalDescontoTotalPDV: React.FC<{
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm bg-slate-900 text-white border-slate-700 p-6">
+      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
         <DialogHeader className="border-b border-slate-800 pb-3">
           <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-emerald-400" />
@@ -382,7 +382,7 @@ export const ModalCancelarItemPDV: React.FC<{
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm bg-slate-900 text-white border-slate-700 p-6">
+      <DialogContent className="max-w-sm w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-slate-900 text-white border-slate-700 p-6">
         <DialogHeader className="border-b border-slate-800 pb-3">
           <DialogTitle className="text-base font-bold text-red-400 flex items-center gap-2">
             Cancelar Item da Venda (F8)
