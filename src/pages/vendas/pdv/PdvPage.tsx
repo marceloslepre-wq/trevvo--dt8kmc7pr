@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast'
 
 import { obterSessaoAbertaOperador, CaixaSessao } from '@/services/caixa'
 import { resolverOperadorErpId } from '@/services/operadorErp'
-import { listarTerminais, PdvTerminal } from '@/services/terminais'
+import { listarTerminais, obterTerminalPorId, PdvTerminal } from '@/services/terminais'
 import {
   obterOuCriarConfigVendasEmpresa,
   obterOuCriarConsumidorFinal,
@@ -82,8 +82,11 @@ import {
 import { obterConfigFiscalEmpresa, ConfigEmissaoFiscal } from '@/services/configEmissaoFiscal'
 import { emitirNFCeVenda, imprimirDanfeUrl } from '@/services/fiscalIntegracao'
 
+const MENSAGEM_BLOQUEIO_TROCA_EMPRESA = 'Feche o caixa (ou saia do PDV) para trocar de empresa'
+
 export const PdvPage: React.FC = () => {
-  const { empresaAtiva } = useEmpresaAtiva()
+  const { empresaAtiva, empresas, selecionarEmpresa, definirBloqueioTrocaEmpresa } =
+    useEmpresaAtiva()
   const { user } = useAuth()
   const { usuarioERP, pode } = usePermissoes()
   const usuario = usuarioERP || (user ? { id: user.id, nome: user.name || user.email } : null)
@@ -237,6 +240,57 @@ export const PdvPage: React.FC = () => {
   useEffect(() => {
     carregarDadosIniciais()
   }, [carregarDadosIniciais])
+
+  // Alinha a empresa ativa à empresa do terminal da sessão de caixa aberta do operador.
+  // Se a empresa ativa não tem caixa aberto, procura nas empresas permitidas e troca para a do terminal.
+  useEffect(() => {
+    if (!empresaAtiva?.id || !usuarioERP?.id) return
+    let cancelado = false
+    const operadorErpId = usuarioERP.id
+    const alinhar = async () => {
+      try {
+        const sessaoAtiva = await obterSessaoAbertaOperador(empresaAtiva.id, operadorErpId)
+        if (sessaoAtiva || cancelado) return
+        for (const emp of empresas) {
+          if (emp.id === empresaAtiva.id) continue
+          const s = await obterSessaoAbertaOperador(emp.id, operadorErpId).catch(() => null)
+          if (!s || cancelado) continue
+          let empresaDoTerminalId = s.empresa_id
+          if (s.pdv_terminal_id) {
+            const t = await obterTerminalPorId(s.pdv_terminal_id).catch(() => null)
+            if (t?.empresa_id) empresaDoTerminalId = t.empresa_id
+          }
+          const destino = empresas.find((e) => e.id === empresaDoTerminalId)
+          if (!destino || destino.id === empresaAtiva.id) return
+          selecionarEmpresa(destino.id)
+          toast({
+            title: 'Empresa ajustada ao caixa aberto',
+            description: `O caixa aberto pertence a ${destino.codigo} - ${destino.nome_fantasia || destino.razao_social}. A empresa ativa foi trocada para ela.`,
+          })
+          return
+        }
+      } catch (err) {
+        console.error('Erro ao alinhar empresa ao caixa aberto do PDV:', err)
+      }
+    }
+    alinhar()
+    return () => {
+      cancelado = true
+    }
+    // toast fica fora das dependências para não reexecutar a checagem a cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaAtiva?.id, usuarioERP?.id, empresas, selecionarEmpresa])
+
+  // Bloqueia o seletor de empresa do cabeçalho enquanto há caixa aberto ou itens na venda.
+  useEffect(() => {
+    const bloqueado = Boolean(sessaoCaixa) || itens.length > 0
+    definirBloqueioTrocaEmpresa(bloqueado ? MENSAGEM_BLOQUEIO_TROCA_EMPRESA : null)
+  }, [sessaoCaixa, itens.length, definirBloqueioTrocaEmpresa])
+
+  // Ao sair do PDV, libera o seletor de empresa.
+  useEffect(() => {
+    return () => definirBloqueioTrocaEmpresa(null)
+  }, [definirBloqueioTrocaEmpresa])
 
   // Carrega catálogo de produtos na inicialização e atualiza a cada 5 minutos
   const recarregarProdutos = useCallback(

@@ -38,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
     assinante,
     modoMaster,
     recarregarEmpresas,
+    bloqueioTrocaEmpresa,
   } = useEmpresaAtiva()
   const { perfil, administrador } = usePermissoes()
   const { config, logoUrl } = useConfiguracoes()
@@ -144,22 +145,24 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
 
         {/* Centro: Seletor de Empresa Ativa */}
         <div className="flex items-center gap-2 max-w-md w-full mx-2 md:mx-4">
-          <div className="w-full">
+          <div className="w-full" title={bloqueioTrocaEmpresa ?? undefined}>
             <Select
               value={empresaAtiva ? empresaAtiva.id : ''}
               onValueChange={(val) => selecionarEmpresa(val)}
-              disabled={carregando || empresas.length === 0}
+              disabled={carregando || empresas.length === 0 || Boolean(bloqueioTrocaEmpresa)}
             >
               <SelectTrigger
                 className={`h-9 text-xs border-slate-200 ${
-                  empresas.length === 0
+                  empresas.length === 0 || bloqueioTrocaEmpresa
                     ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
                     : 'bg-white hover:bg-slate-50 font-medium text-slate-800'
                 }`}
                 title={
-                  empresas.length === 0
-                    ? 'Nenhuma empresa cadastrada ou ativa'
-                    : 'Selecione a empresa ativa para operações'
+                  bloqueioTrocaEmpresa
+                    ? bloqueioTrocaEmpresa
+                    : empresas.length === 0
+                      ? 'Nenhuma empresa cadastrada ou ativa'
+                      : 'Selecione a empresa ativa para operações'
                 }
               >
                 <div className="flex items-center gap-2 truncate">

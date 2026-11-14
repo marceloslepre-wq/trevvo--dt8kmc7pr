@@ -26,6 +26,9 @@ interface EmpresaContextType {
   modoMaster: boolean
   selecionarEmpresa: (empresaId: string) => void
   recarregarEmpresas: () => Promise<void>
+  /** Motivo do bloqueio do seletor de empresa do cabeçalho (ex.: PDV com caixa aberto). null = livre. */
+  bloqueioTrocaEmpresa: string | null
+  definirBloqueioTrocaEmpresa: (motivo: string | null) => void
 }
 
 const EmpresaContext = createContext<EmpresaContextType | undefined>(undefined)
@@ -54,6 +57,11 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
   })
   const [modoMaster, setModoMaster] = useState<boolean>(false)
   const [carregando, setCarregando] = useState(false)
+  const [bloqueioTrocaEmpresa, setBloqueioTrocaEmpresa] = useState<string | null>(null)
+
+  const definirBloqueioTrocaEmpresa = useCallback((motivo: string | null) => {
+    setBloqueioTrocaEmpresa(motivo)
+  }, [])
 
   const { usuarioERP, administrador, carregando: carregandoPerms } = usePermissoes()
 
@@ -198,6 +206,8 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
       modoMaster,
       selecionarEmpresa,
       recarregarEmpresas,
+      bloqueioTrocaEmpresa,
+      definirBloqueioTrocaEmpresa,
     }),
     [
       empresas,
@@ -209,6 +219,8 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
       modoMaster,
       selecionarEmpresa,
       recarregarEmpresas,
+      bloqueioTrocaEmpresa,
+      definirBloqueioTrocaEmpresa,
     ],
   )
 
