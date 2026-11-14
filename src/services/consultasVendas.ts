@@ -321,7 +321,9 @@ export async function consultarCurvaAbcProdutos(params: {
   // Buscar itens de vendas finalizadas (não devoluções) no período
   const itensVenda = await pb.collection('vendas_itens').getFullList({
     filter: `ativo = true && ${filtroEmpresa} && venda_id.status = 'Finalizada' && venda_id.tipo != 'Devolução' && venda_id.data_emissao >= '${data_inicio}' && venda_id.data_emissao <= '${data_fim}'`,
-    expand: 'produto_id',
+    // expand venda_id é obrigatório: a quebra por empresa lê venda_id.empresa_id do item
+    // (sem o expand, tudo caía em "(sem empresa)" e virava a linha fantasma "Sem empresa")
+    expand: 'produto_id,venda_id',
   })
 
   const mapaProdutos = new Map<

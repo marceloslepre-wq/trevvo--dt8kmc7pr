@@ -127,10 +127,14 @@ export const ConsultasVendasPage: React.FC = () => {
         })
         setDadosMargem(res)
       }
-    } catch {
+    } catch (err: any) {
+      // Mostra a mensagem real do erro (PocketBase devolve em response.message)
+      const detalhe =
+        err?.response?.message || err?.message || 'Falha ao buscar indicadores de vendas.'
+      console.error('Erro na consulta de vendas:', detalhe)
       toast({
         title: 'Erro na consulta',
-        description: 'Falha ao buscar indicadores de vendas.',
+        description: detalhe,
         variant: 'destructive',
       })
     } finally {
@@ -159,40 +163,46 @@ export const ConsultasVendasPage: React.FC = () => {
     return mapa
   }, [empresasAcessiveis])
 
-  // Quebra por empresa com Total Geral (período e curva ABC)
+  // Quebra por empresa com Total consolidado: UMA linha por empresa marcada
+  // (inclusive com zero vendas) e NUNCA linha "Sem empresa".
+  // Fonte única: dadosPeriodo (chaveado por venda.empresa_id) — a curva ABC é
+  // agregada por item e não entra aqui para não duplicar quantidade.
   const quebraPorEmpresa = useMemo(() => {
     const mapa = new Map<string, TotaisPorEmpresaVendas>()
-    const linhas: TotaisPorEmpresaVendas[] = [
-      ...(dadosPeriodo?.totais_por_empresa || []),
-      ...(dadosAbc?.totais_por_empresa || []),
-    ]
-    for (const t of linhas) {
-      const chave = t.empresa_id || '(sem empresa)'
-      const atual =
-        mapa.get(chave) ||
-        ({
-          empresa_id: chave,
-          valor_total: 0,
-          quantidade_vendas: 0,
-          valor_devolucoes: 0,
-          valor_liquido: 0,
-        } as TotaisPorEmpresaVendas)
+    for (const id of empresasEfetivas) {
+      mapa.set(id, {
+        empresa_id: id,
+        valor_total: 0,
+        quantidade_vendas: 0,
+        valor_devolucoes: 0,
+        valor_liquido: 0,
+      })
+    }
+    for (const t of dadosPeriodo?.totais_por_empresa || []) {
+      const chave = t.empresa_id || ''
+      // ignora vendas sem empresa (não devem existir) e ids fora do filtro
+      if (!chave || !mapa.has(chave)) continue
+      const atual = mapa.get(chave)!
       atual.valor_total += t.valor_total || 0
       atual.quantidade_vendas += t.quantidade_vendas || 0
       atual.valor_devolucoes += t.valor_devolucoes || 0
       atual.valor_liquido += t.valor_liquido || 0
-      mapa.set(chave, atual)
     }
+    const linhas = Array.from(mapa.values()).sort((a, b) => b.valor_total - a.valor_total)
+    const somaQuantidade = linhas.reduce((acc, l) => acc + l.quantidade_vendas, 0)
+    const somaValor = linhas.reduce((acc, l) => acc + l.valor_total, 0)
+    const somaDevolucoes = linhas.reduce((acc, l) => acc + l.valor_devolucoes, 0)
+    const somaLiquido = linhas.reduce((acc, l) => acc + l.valor_liquido, 0)
     return {
-      linhas: Array.from(mapa.values()).sort((a, b) => b.valor_total - a.valor_total),
+      linhas,
       totalGeral: {
-        valor_total: dadosPeriodo?.totais.valor_total || 0,
-        quantidade_vendas: dadosPeriodo?.totais.quantidade_vendas || 0,
-        valor_devolucoes: dadosPeriodo?.totais.valor_devolucoes || 0,
-        valor_liquido: dadosPeriodo?.totais.valor_liquido || 0,
+        valor_total: Number(somaValor.toFixed(2)),
+        quantidade_vendas: somaQuantidade,
+        valor_devolucoes: Number(somaDevolucoes.toFixed(2)),
+        valor_liquido: Number(somaLiquido.toFixed(2)),
       },
     }
-  }, [dadosPeriodo, dadosAbc])
+  }, [dadosPeriodo, empresasEfetivas])
 
   // Exportadores CSV
   const handleExportarCsvPeriodo = () => {
@@ -404,7 +414,7 @@ export const ConsultasVendasPage: React.FC = () => {
       </div>
 
       {/* Totais por Empresa (oculto quando "Ver só o total consolidado" está marcado) */}
-      {!verSoTotal && empresasEfetivas.length > 1 && quebraPorEmpresa.linhas.length > 0 && (
+      {!verSoTotal && quebraPorEmpresa.linhas.length > 0 && (
         <Card className="border-slate-200 shadow-xs">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -775,7 +785,7 @@ export const ConsultasVendasPage: React.FC = () => {
                       </tr>
                     ))}
                     <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
-                      <td className="py-2 px-3 text-slate-900">Total Geral</td>
+                      <td className="py-2 px-3 text-slate-900">Total consolidado</td>
                       <td className="py-2 px-3 text-right font-mono text-slate-900">
                         {dadosPeriodo.totais.quantidade_vendas}
                       </td>
@@ -840,7 +850,7 @@ export const ConsultasVendasPage: React.FC = () => {
                     </tr>
                   ))}
                   <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
-                    <td className="py-2 px-3 text-slate-900">Total Geral</td>
+                    <td className="py-2 px-3 text-slate-900">Total consolidado</td>
                     <td className="py-2 px-3 text-right font-mono text-slate-900">
                       {dadosAbc.total_geral_quantidade}
                     </td>
