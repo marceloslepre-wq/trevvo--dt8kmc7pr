@@ -1294,45 +1294,45 @@ export const PdvPage: React.FC = () => {
             )}
           </div>
 
-        {/* BOTÕES GRANDES DE FINALIZAR E CANCELAR — logo abaixo do campo de código, sempre visíveis */}
-        <div className="shrink-0 grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={handleCancelarVendaEmAndamento}
-                disabled={itens.length === 0}
-                className="col-span-1 h-12 bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 disabled:opacity-30 transition-all"
-              >
-                <XCircle size={16} />
-                <span>Cancelar (F12)</span>
-              </button>
+          {/* BOTÕES GRANDES DE FINALIZAR E CANCELAR — logo abaixo do campo de código, sempre visíveis */}
+          <div className="shrink-0 grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={handleCancelarVendaEmAndamento}
+              disabled={itens.length === 0}
+              className="col-span-1 h-12 bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 disabled:opacity-30 transition-all"
+            >
+              <XCircle size={16} />
+              <span>Cancelar (F12)</span>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (itens.length === 0) {
-                    toast({
-                      title: 'Venda vazia',
-                      description: 'Insira pelo menos um produto antes de finalizar.',
-                      variant: 'destructive',
-                    })
-                    return
-                  }
-                  if (!sessaoCaixa) {
-                    setModalAbrirCaixaAberto(true)
-                    return
-                  }
-                  setModalPagamentoAberto(true)
-                }}
-                disabled={itens.length === 0 || !online}
-                className="col-span-2 h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 disabled:opacity-30 transition-all"
-              >
-                <DollarSign size={18} />
-                <span>FINALIZAR VENDA (F10)</span>
-              </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (itens.length === 0) {
+                  toast({
+                    title: 'Venda vazia',
+                    description: 'Insira pelo menos um produto antes de finalizar.',
+                    variant: 'destructive',
+                  })
+                  return
+                }
+                if (!sessaoCaixa) {
+                  setModalAbrirCaixaAberto(true)
+                  return
+                }
+                setModalPagamentoAberto(true)
+              }}
+              disabled={itens.length === 0 || !online}
+              className="col-span-2 h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 disabled:opacity-30 transition-all"
+            >
+              <DollarSign size={18} />
+              <span>FINALIZAR VENDA (F10)</span>
+            </button>
+          </div>
 
-        {/* PAINEL DE ATALHOS DE TECLADO (VISÍVEIS NA TELA) — fica no fundo e rola por dentro se faltar altura */}
-        <div className="flex-1 min-h-0 bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 flex flex-col overflow-y-auto">
+          {/* PAINEL DE ATALHOS DE TECLADO (VISÍVEIS NA TELA) — fica no fundo e rola por dentro se faltar altura */}
+          <div className="flex-1 min-h-0 bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 flex flex-col overflow-y-auto">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
               Atalhos de Operação (Teclado)
             </span>
@@ -1433,8 +1433,6 @@ export const PdvPage: React.FC = () => {
                 </span>
               </button>
             </div>
-
-        </div>
           </div>
         </section>
       </div>
