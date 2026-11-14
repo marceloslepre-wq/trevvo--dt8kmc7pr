@@ -89,7 +89,7 @@ interface PendenciaConfiguracao {
 
 export default function Index() {
   const { user } = useAuth()
-  const { pode } = usePermissoes()
+  const { pode, administrador } = usePermissoes()
   const { empresaAtiva } = useEmpresaAtiva()
   const { config } = useConfiguracoes()
 
@@ -189,6 +189,11 @@ export default function Index() {
   const podeVerFinanceiroBancos = pode('financeiro_bancos', 'ver')
   const podeVerVendas = pode('vendas', 'ver') || pode('pdv', 'ver')
 
+  // Cards gerenciais/cadastrais (Clientes/Fornecedores/Produtos/Usuários Ativos, Fiscal
+  // Incompleto, Últimos Cadastros e Pendências de Configuração): apenas administrador
+  // ou perfil com pode_ver no módulo configuracoes.
+  const podeVerCardsCadastro = administrador || pode('configuracoes', 'ver')
+
   const carregarDadosPainel = useCallback(async () => {
     try {
       setCarregando(true)
@@ -196,7 +201,7 @@ export default function Index() {
       // 1. Carregar contagens condicionadas a permissões
       const promisesContagens: Promise<void>[] = []
 
-      if (podeVerClientes) {
+      if (podeVerCardsCadastro && podeVerClientes) {
         promisesContagens.push(
           pb
             .collection('clientes')
@@ -206,7 +211,7 @@ export default function Index() {
         )
       }
 
-      if (podeVerFornecedores) {
+      if (podeVerCardsCadastro && podeVerFornecedores) {
         promisesContagens.push(
           pb
             .collection('fornecedores')
@@ -216,7 +221,7 @@ export default function Index() {
         )
       }
 
-      if (podeVerProdutos) {
+      if (podeVerCardsCadastro && podeVerProdutos) {
         promisesContagens.push(
           pb
             .collection('produtos')
@@ -235,7 +240,7 @@ export default function Index() {
         )
       }
 
-      if (podeVerUsuarios) {
+      if (podeVerCardsCadastro && podeVerUsuarios) {
         promisesContagens.push(
           pb
             .collection('usuarios')
@@ -884,7 +889,7 @@ export default function Index() {
         }[]
       >[] = []
 
-      if (podeVerClientes) {
+      if (podeVerCardsCadastro && podeVerClientes) {
         promisesUltimos.push(
           pb
             .collection('clientes')
@@ -905,7 +910,7 @@ export default function Index() {
         )
       }
 
-      if (podeVerFornecedores) {
+      if (podeVerCardsCadastro && podeVerFornecedores) {
         promisesUltimos.push(
           pb
             .collection('fornecedores')
@@ -926,7 +931,7 @@ export default function Index() {
         )
       }
 
-      if (podeVerProdutos) {
+      if (podeVerCardsCadastro && podeVerProdutos) {
         promisesUltimos.push(
           pb
             .collection('produtos')
@@ -947,8 +952,16 @@ export default function Index() {
         )
       }
 
-      // 3. Verificar Pendências de Configuração
+      // 3. Verificar Pendências de Configuração (só para quem vê os cards de gestão)
       const peds: PendenciaConfiguracao[] = []
+
+      if (!podeVerCardsCadastro) {
+        setPendencias([])
+        // Aguarda contagens e encerra: sem cards de gestão, nada mais a carregar aqui
+        await Promise.all(promisesContagens)
+        setUltimosCadastros([])
+        return
+      }
 
       // Checagem de Empresas (Contador e IE)
       if (podeVerEmpresas) {
@@ -1060,6 +1073,7 @@ export default function Index() {
       setCarregando(false)
     }
   }, [
+    podeVerCardsCadastro,
     podeVerClientes,
     podeVerFornecedores,
     podeVerProdutos,
@@ -1158,143 +1172,148 @@ export default function Index() {
         </div>
       </div>
 
-      {/* Cartões de Indicadores Principais */}
-      {temAlgumaVisualizacao ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* Total Clientes Ativos */}
-          {podeVerClientes && (
-            <Link to="/cadastros/clientes" className="group block focus:outline-none">
-              <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
-                <CardContent className="p-4 flex flex-col justify-between h-full">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">Clientes Ativos</span>
-                    <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                      <UserCheck size={18} />
+      {/* Cartões de Indicadores Principais — apenas administrador ou pode_ver configuracoes */}
+      {podeVerCardsCadastro &&
+        (temAlgumaVisualizacao ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Total Clientes Ativos */}
+            {podeVerClientes && (
+              <Link to="/cadastros/clientes" className="group block focus:outline-none">
+                <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">Clientes Ativos</span>
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <UserCheck size={18} />
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors">
-                      {carregando ? '—' : totalClientesAtivos}
+                    <div className="mt-3">
+                      <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors">
+                        {carregando ? '—' : totalClientesAtivos}
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        cadastros ativos no sistema
+                      </span>
                     </div>
-                    <span className="text-[11px] text-slate-400">cadastros ativos no sistema</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          )}
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
 
-          {/* Total Fornecedores Ativos */}
-          {podeVerFornecedores && (
-            <Link to="/cadastros/fornecedores" className="group block focus:outline-none">
-              <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
-                <CardContent className="p-4 flex flex-col justify-between h-full">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">Fornecedores Ativos</span>
-                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                      <Truck size={18} />
+            {/* Total Fornecedores Ativos */}
+            {podeVerFornecedores && (
+              <Link to="/cadastros/fornecedores" className="group block focus:outline-none">
+                <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">
+                        Fornecedores Ativos
+                      </span>
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <Truck size={18} />
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors">
-                      {carregando ? '—' : totalFornecedoresAtivos}
+                    <div className="mt-3">
+                      <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors">
+                        {carregando ? '—' : totalFornecedoresAtivos}
+                      </div>
+                      <span className="text-[11px] text-slate-400">parceiros comerciais</span>
                     </div>
-                    <span className="text-[11px] text-slate-400">parceiros comerciais</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          )}
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
 
-          {/* Total Produtos Ativos */}
-          {podeVerProdutos && (
-            <Link to="/cadastros/produtos" className="group block focus:outline-none">
-              <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
-                <CardContent className="p-4 flex flex-col justify-between h-full">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">Produtos Ativos</span>
-                    <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-                      <Box size={18} />
+            {/* Total Produtos Ativos */}
+            {podeVerProdutos && (
+              <Link to="/cadastros/produtos" className="group block focus:outline-none">
+                <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">Produtos Ativos</span>
+                      <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+                        <Box size={18} />
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors">
-                      {carregando ? '—' : totalProdutosAtivos}
+                    <div className="mt-3">
+                      <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors">
+                        {carregando ? '—' : totalProdutosAtivos}
+                      </div>
+                      <span className="text-[11px] text-slate-400">itens no catálogo</span>
                     </div>
-                    <span className="text-[11px] text-slate-400">itens no catálogo</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          )}
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
 
-          {/* Produtos com Fiscal Incompleto (Clicável -> /cadastros/produtos/conferencia) */}
-          {podeVerProdutos && (
-            <Link
-              to="/cadastros/produtos/conferencia"
-              className="group block focus:outline-none"
-              title="Clique para abrir a tela de Conferência Fiscal de Produtos"
-            >
-              <Card
-                className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
-                  totalProdutosFiscalIncompleto > 0
-                    ? 'border-amber-200 bg-amber-50/20'
-                    : 'hover:border-slate-300'
-                }`}
+            {/* Produtos com Fiscal Incompleto (Clicável -> /cadastros/produtos/conferencia) */}
+            {podeVerProdutos && (
+              <Link
+                to="/cadastros/produtos/conferencia"
+                className="group block focus:outline-none"
+                title="Clique para abrir a tela de Conferência Fiscal de Produtos"
               >
-                <CardContent className="p-4 flex flex-col justify-between h-full">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-amber-800">Fiscal Incompleto</span>
-                    <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-                      <FileCheck size={18} />
+                <Card
+                  className={`border-slate-200 shadow-xs hover:shadow-sm transition-all h-full ${
+                    totalProdutosFiscalIncompleto > 0
+                      ? 'border-amber-200 bg-amber-50/20'
+                      : 'hover:border-slate-300'
+                  }`}
+                >
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-amber-800">Fiscal Incompleto</span>
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                        <FileCheck size={18} />
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-2xl font-bold tracking-tight text-amber-700 group-hover:text-amber-900 transition-colors flex items-center gap-2">
-                      {carregando ? '—' : totalProdutosFiscalIncompleto}
-                      {totalProdutosFiscalIncompleto > 0 && (
-                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
-                          Revisar
-                        </span>
-                      )}
+                    <div className="mt-3">
+                      <div className="text-2xl font-bold tracking-tight text-amber-700 group-hover:text-amber-900 transition-colors flex items-center gap-2">
+                        {carregando ? '—' : totalProdutosFiscalIncompleto}
+                        {totalProdutosFiscalIncompleto > 0 && (
+                          <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
+                            Revisar
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-amber-700/80 underline decoration-amber-300">
+                        Abrir conferência fiscal →
+                      </span>
                     </div>
-                    <span className="text-[11px] text-amber-700/80 underline decoration-amber-300">
-                      Abrir conferência fiscal →
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          )}
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
 
-          {/* Total Usuários Ativos */}
-          {podeVerUsuarios && (
-            <Link to="/cadastros/usuarios" className="group block focus:outline-none">
-              <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
-                <CardContent className="p-4 flex flex-col justify-between h-full">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">Usuários Ativos</span>
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                      <Users size={18} />
+            {/* Total Usuários Ativos */}
+            {podeVerUsuarios && (
+              <Link to="/cadastros/usuarios" className="group block focus:outline-none">
+                <Card className="border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all h-full">
+                  <CardContent className="p-4 flex flex-col justify-between h-full">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">Usuários Ativos</span>
+                      <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                        <Users size={18} />
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-3">
-                    <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors">
-                      {carregando ? '—' : totalUsuariosAtivos}
+                    <div className="mt-3">
+                      <div className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-primary transition-colors">
+                        {carregando ? '—' : totalUsuariosAtivos}
+                      </div>
+                      <span className="text-[11px] text-slate-400">operadores do sistema</span>
                     </div>
-                    <span className="text-[11px] text-slate-400">operadores do sistema</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          )}
-        </div>
-      ) : (
-        <Card className="border-slate-200 bg-white">
-          <CardContent className="p-6 text-center text-slate-500 text-sm">
-            Você não possui permissão para visualizar os indicadores gerais do painel.
-          </CardContent>
-        </Card>
-      )}
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+          </div>
+        ) : (
+          <Card className="border-slate-200 bg-white">
+            <CardContent className="p-6 text-center text-slate-500 text-sm">
+              Você não possui permissão para visualizar os indicadores gerais do painel.
+            </CardContent>
+          </Card>
+        ))}
 
       {/* SEÇÃO ESTOQUE (Etapa 2) — Respeita permissão de estoque */}
       {podeVerEstoque && (
@@ -2893,168 +2912,172 @@ export default function Index() {
         </Card>
       )}
 
-      {/* Grid: Últimos Cadastros e Pendências de Configuração */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Lista: Últimos Cadastros (10 mais recentes intercalados) */}
-        <div className="lg:col-span-7">
-          <Card className="border-slate-200 shadow-xs h-full flex flex-col">
-            <CardHeader className="pb-3 border-b border-slate-100">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-slate-500" />
-                  <CardTitle className="text-base font-semibold text-slate-900">
-                    Últimos Cadastros
-                  </CardTitle>
+      {/* Grid: Últimos Cadastros e Pendências de Configuração — apenas admin/configuracoes */}
+      {podeVerCardsCadastro && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Lista: Últimos Cadastros (10 mais recentes intercalados) */}
+          <div className="lg:col-span-7">
+            <Card className="border-slate-200 shadow-xs h-full flex flex-col">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-slate-500" />
+                    <CardTitle className="text-base font-semibold text-slate-900">
+                      Últimos Cadastros
+                    </CardTitle>
+                  </div>
+                  <span className="text-xs text-slate-400">10 mais recentes</span>
                 </div>
-                <span className="text-xs text-slate-400">10 mais recentes</span>
-              </div>
-              <CardDescription className="text-xs text-slate-500">
-                Últimos registros incluídos em clientes, fornecedores e produtos.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0 flex-1 flex flex-col">
-              {carregando ? (
-                <div className="p-8 text-center text-xs text-slate-400">
-                  <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-primary" />
-                  Carregando registros...
-                </div>
-              ) : ultimosCadastros.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-500 my-auto">
-                  Nenhum cadastro recente encontrado ou você não possui permissão para
-                  visualizá-los.
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {ultimosCadastros.map((item) => (
-                    <Link
-                      key={`${item.tipo}-${item.id}`}
-                      to={item.urlDetalhe}
-                      className="flex items-center justify-between p-3.5 hover:bg-slate-50/80 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span
-                          className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full flex-shrink-0 ${
-                            item.tipo === 'cliente'
-                              ? 'bg-blue-100 text-blue-800'
-                              : item.tipo === 'fornecedor'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-purple-100 text-purple-800'
-                          }`}
-                        >
-                          {item.tipoLabel}
-                        </span>
+                <CardDescription className="text-xs text-slate-500">
+                  Últimos registros incluídos em clientes, fornecedores e produtos.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0 flex-1 flex flex-col">
+                {carregando ? (
+                  <div className="p-8 text-center text-xs text-slate-400">
+                    <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-primary" />
+                    Carregando registros...
+                  </div>
+                ) : ultimosCadastros.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-500 my-auto">
+                    Nenhum cadastro recente encontrado ou você não possui permissão para
+                    visualizá-los.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {ultimosCadastros.map((item) => (
+                      <Link
+                        key={`${item.tipo}-${item.id}`}
+                        to={item.urlDetalhe}
+                        className="flex items-center justify-between p-3.5 hover:bg-slate-50/80 transition-colors group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span
+                            className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full flex-shrink-0 ${
+                              item.tipo === 'cliente'
+                                ? 'bg-blue-100 text-blue-800'
+                                : item.tipo === 'fornecedor'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-purple-100 text-purple-800'
+                            }`}
+                          >
+                            {item.tipoLabel}
+                          </span>
 
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-mono font-semibold text-slate-500">
-                              #{item.codigo}
-                            </span>
-                            <span className="text-xs font-medium text-slate-900 truncate group-hover:text-primary transition-colors">
-                              {item.identificacao}
-                            </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-mono font-semibold text-slate-500">
+                                #{item.codigo}
+                              </span>
+                              <span className="text-xs font-medium text-slate-900 truncate group-hover:text-primary transition-colors">
+                                {item.identificacao}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-400">
+                              Incluído em {formatarDataHora(item.criadoEm)}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-slate-400">
-                            Incluído em {formatarDataHora(item.criadoEm)}
-                          </p>
                         </div>
-                      </div>
 
-                      <ArrowRight
-                        size={14}
-                        className="text-slate-400 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0 ml-2"
-                      />
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Lista: Pendências de Configuração */}
-        <div className="lg:col-span-5">
-          <Card className="border-slate-200 shadow-xs h-full flex flex-col">
-            <CardHeader className="pb-3 border-b border-slate-100">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  <CardTitle className="text-base font-semibold text-slate-900">
-                    Pendências de Configuração
-                  </CardTitle>
-                </div>
-                {pendencias.length > 0 && (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 font-bold"
-                  >
-                    {pendencias.length} {pendencias.length === 1 ? 'item' : 'itens'}
-                  </Badge>
+                        <ArrowRight
+                          size={14}
+                          className="text-slate-400 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0 ml-2"
+                        />
+                      </Link>
+                    ))}
+                  </div>
                 )}
-              </div>
-              <CardDescription className="text-xs text-slate-500">
-                Itens fiscais e cadastrais recomendados antes de iniciar emissões e vendas.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0 flex-1 flex flex-col">
-              {carregando ? (
-                <div className="p-8 text-center text-xs text-slate-400">
-                  <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-primary" />
-                  Verificando pendências...
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Lista: Pendências de Configuração */}
+          <div className="lg:col-span-5">
+            <Card className="border-slate-200 shadow-xs h-full flex flex-col">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <CardTitle className="text-base font-semibold text-slate-900">
+                      Pendências de Configuração
+                    </CardTitle>
+                  </div>
+                  {pendencias.length > 0 && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 font-bold"
+                    >
+                      {pendencias.length} {pendencias.length === 1 ? 'item' : 'itens'}
+                    </Badge>
+                  )}
                 </div>
-              ) : pendencias.length === 0 ? (
-                <div className="p-8 text-center text-xs text-emerald-700 bg-emerald-50/40 rounded-b-xl my-auto flex flex-col items-center gap-2">
-                  <Sparkles className="w-6 h-6 text-emerald-600" />
-                  <p className="font-semibold">Nenhuma pendência crítica!</p>
-                  <p className="text-slate-500 max-w-xs text-center text-[11px]">
-                    As configurações de empresa, tabelas fiscais e perfis tributários essenciais
-                    estão preenchidas.
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {pendencias.map((pend) => (
-                    <div key={pend.id} className="p-3.5 hover:bg-slate-50/60 transition-colors">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-slate-900">
-                              {pend.titulo}
-                            </span>
-                            {pend.gravidade === 'alta' ? (
-                              <span className="text-[10px] font-bold text-red-700 bg-red-100 px-1.5 py-0.2 rounded">
-                                Urgente
+                <CardDescription className="text-xs text-slate-500">
+                  Itens fiscais e cadastrais recomendados antes de iniciar emissões e vendas.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0 flex-1 flex flex-col">
+                {carregando ? (
+                  <div className="p-8 text-center text-xs text-slate-400">
+                    <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-primary" />
+                    Verificando pendências...
+                  </div>
+                ) : pendencias.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-emerald-700 bg-emerald-50/40 rounded-b-xl my-auto flex flex-col items-center gap-2">
+                    <Sparkles className="w-6 h-6 text-emerald-600" />
+                    <p className="font-semibold">Nenhuma pendência crítica!</p>
+                    <p className="text-slate-500 max-w-xs text-center text-[11px]">
+                      As configurações de empresa, tabelas fiscais e perfis tributários essenciais
+                      estão preenchidas.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {pendencias.map((pend) => (
+                      <div key={pend.id} className="p-3.5 hover:bg-slate-50/60 transition-colors">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-slate-900">
+                                {pend.titulo}
                               </span>
-                            ) : (
-                              <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">
-                                Importante
-                              </span>
-                            )}
+                              {pend.gravidade === 'alta' ? (
+                                <span className="text-[10px] font-bold text-red-700 bg-red-100 px-1.5 py-0.2 rounded">
+                                  Urgente
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">
+                                  Importante
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              {pend.descricao}
+                            </p>
                           </div>
-                          <p className="text-xs text-slate-500 leading-relaxed">{pend.descricao}</p>
+                        </div>
+
+                        <div className="mt-2.5 pt-2 border-t border-slate-100/80 flex justify-end">
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs font-medium text-primary hover:text-primary hover:bg-primary/10 gap-1.5 px-2"
+                          >
+                            <Link to={pend.link}>
+                              Configurar agora
+                              <ArrowRight size={12} />
+                            </Link>
+                          </Button>
                         </div>
                       </div>
-
-                      <div className="mt-2.5 pt-2 border-t border-slate-100/80 flex justify-end">
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs font-medium text-primary hover:text-primary hover:bg-primary/10 gap-1.5 px-2"
-                        >
-                          <Link to={pend.link}>
-                            Configurar agora
-                            <ArrowRight size={12} />
-                          </Link>
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
