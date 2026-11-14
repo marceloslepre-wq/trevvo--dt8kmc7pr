@@ -257,7 +257,7 @@ export const ClienteCadastroRapido: React.FC<ClienteCadastroRapidoProps> = ({
         onOpenChange(abertoAgora)
       }}
     >
-      <DialogContent className="sm:max-w-md w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="sm:max-w-md w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white text-slate-900 border-slate-200">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold text-slate-900">
             Cadastro Rápido de Cliente
@@ -269,8 +269,11 @@ export const ClienteCadastroRapido: React.FC<ClienteCadastroRapidoProps> = ({
 
         <form onSubmit={handleSalvar} className="space-y-4 py-2">
           {erroValidacao && (
-            <Alert variant="destructive" className="py-2 text-xs">
-              <AlertCircle className="h-4 w-4" />
+            <Alert
+              variant="destructive"
+              className="py-2 text-xs bg-red-50 border-red-200 text-red-700"
+            >
+              <AlertCircle className="h-4 w-4 text-red-600" />
               <AlertDescription>{erroValidacao}</AlertDescription>
             </Alert>
           )}
@@ -310,12 +313,12 @@ export const ClienteCadastroRapido: React.FC<ClienteCadastroRapidoProps> = ({
 
           {/* Tipo de Pessoa */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Tipo de Pessoa *</Label>
+            <Label className="text-xs font-medium text-slate-700">Tipo de Pessoa *</Label>
             <Select
               value={tipoPessoa}
               onValueChange={(val) => handleMudarTipo(val as TipoPessoaCliente)}
             >
-              <SelectTrigger className="h-9 text-xs">
+              <SelectTrigger className="h-9 text-xs bg-white border-slate-300 text-slate-900">
                 <SelectValue placeholder="Selecione o tipo..." />
               </SelectTrigger>
               <SelectContent>
@@ -327,7 +330,7 @@ export const ClienteCadastroRapido: React.FC<ClienteCadastroRapidoProps> = ({
 
           {/* Nome / Razão Social */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">
+            <Label className="text-xs font-medium text-slate-700">
               {tipoPessoa === 'Jurídica' ? 'Razão Social *' : 'Nome Completo *'}
             </Label>
             <Input
@@ -339,7 +342,7 @@ export const ClienteCadastroRapido: React.FC<ClienteCadastroRapidoProps> = ({
                   ? 'Ex.: Distribuidora Exemplo LTDA'
                   : 'Ex.: Carlos Eduardo Pereira'
               }
-              className="h-9 text-xs"
+              className="h-9 text-xs bg-white border-slate-300 text-slate-900"
               autoFocus
             />
             <p className="text-[10px] text-slate-400 text-right">{nome.length}/60</p>
@@ -347,32 +350,32 @@ export const ClienteCadastroRapido: React.FC<ClienteCadastroRapidoProps> = ({
 
           {/* CPF / CNPJ */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">
+            <Label className="text-xs font-medium text-slate-700">
               {tipoPessoa === 'Jurídica' ? 'CNPJ *' : 'CPF *'}
             </Label>
             <Input
               value={cpfCnpj}
               onChange={(e) => handleDocChange(e.target.value)}
               placeholder={tipoPessoa === 'Jurídica' ? '00.000.000/0000-00' : '000.000.000-00'}
-              className="h-9 text-xs"
+              className="h-9 text-xs bg-white border-slate-300 text-slate-900"
             />
           </div>
 
           {/* Telefone */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Telefone / Celular</Label>
+            <Label className="text-xs font-medium text-slate-700">Telefone / Celular</Label>
             <Input
               value={telefone}
               onChange={(e) => setTelefone(formatarTelefone(e.target.value))}
               placeholder="(00) 00000-0000"
-              className="h-9 text-xs"
+              className="h-9 text-xs bg-white border-slate-300 text-slate-900"
             />
           </div>
 
           {/* CEP */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium">CEP</Label>
+              <Label className="text-xs font-medium text-slate-700">CEP</Label>
               {buscandoCep && (
                 <span className="text-[10px] text-blue-600 flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" /> Buscando endereço...
@@ -383,7 +386,7 @@ export const ClienteCadastroRapido: React.FC<ClienteCadastroRapidoProps> = ({
               value={cep}
               onChange={(e) => handleCepChange(e.target.value)}
               placeholder="00000-000"
-              className="h-9 text-xs"
+              className="h-9 text-xs bg-white border-slate-300 text-slate-900"
             />
             {enderecoAuto && (
               <p className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
