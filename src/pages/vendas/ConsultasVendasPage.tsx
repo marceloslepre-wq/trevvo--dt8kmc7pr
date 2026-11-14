@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   BarChart3,
   Calendar,
@@ -81,14 +81,15 @@ export const ConsultasVendasPage: React.FC = () => {
     () => (filtros.empresas_ids || []).filter(Boolean).slice().sort().join(','),
     [filtros.empresas_ids],
   )
+  // Chave ESTÁVEL (string) que governa toda a consulta: ids marcados no filtro,
+  // ou a empresa ativa do cabeçalho quando nada está marcado. É a única
+  // dependência de dados do carregarDados — quando a empresa ativa do seletor
+  // do cabeçalho muda, o FiltrosRelatorio realinha empresas_ids, a chave muda
+  // e a consulta (cards + abas + painel por empresa) recarrega junta.
+  const chaveEmpresasEfetivas = chaveEmpresasFiltro || empresaAtiva?.id || ''
   const empresasEfetivas = useMemo<string[]>(
-    () =>
-      chaveEmpresasFiltro
-        ? chaveEmpresasFiltro.split(',')
-        : empresaAtiva?.id
-          ? [empresaAtiva.id]
-          : [],
-    [chaveEmpresasFiltro, empresaAtiva?.id],
+    () => (chaveEmpresasEfetivas ? chaveEmpresasEfetivas.split(',') : []),
+    [chaveEmpresasEfetivas],
   )
   // "Ver só o total consolidado": oculta o painel de quebra por empresa
   const verSoTotal = filtros.ver_so_total === true
@@ -107,34 +108,46 @@ export const ConsultasVendasPage: React.FC = () => {
   const [dadosMargem, setDadosMargem] = useState<MargemVendaItem[]>([])
   const [carregando, setCarregando] = useState(false)
 
-  // Carregar dados de acordo com a aba ativa
+  // Consulta em voo: se a chave de empresas mudar enquanto a resposta viaja
+  // (troca de empresa no cabeçalho), o resultado antigo é DESCARTADO —
+  // evita a corrida em que a resposta da empresa anterior chega por último
+  // e sobrescreve cards/abas com dados da loja antiga.
+  const refChaveConsulta = useRef<string>('')
+
+  // Carregar dados de acordo com a aba ativa (chaveada pela string estável)
   const carregarDados = useCallback(async () => {
-    if (empresasEfetivas.length === 0) return
+    const chave = chaveEmpresasEfetivas
+    if (!chave) return
+    refChaveConsulta.current = chave
     setCarregando(true)
 
+    const idsEmpresas = chave.split(',')
     try {
       if (abaAtiva === 'periodo') {
         const res = await consultarVendasPorPeriodo({
-          empresa_ids: empresasEfetivas,
+          empresa_ids: idsEmpresas,
           data_inicio: dataInicioEfetiva,
           data_fim: dataFimEfetiva,
         })
+        if (refChaveConsulta.current !== chave) return
         setDadosPeriodo(res)
       } else if (abaAtiva === 'abc') {
         const res = await consultarCurvaAbcProdutos({
-          empresa_ids: empresasEfetivas,
+          empresa_ids: idsEmpresas,
           data_inicio: dataInicioEfetiva,
           data_fim: dataFimEfetiva,
           criterio: criterioAbc,
         })
+        if (refChaveConsulta.current !== chave) return
         setDadosAbc(res)
       } else if (abaAtiva === 'margem') {
         if (!podeVerMargem) return
         const res = await consultarMargemVendas({
-          empresa_ids: empresasEfetivas,
+          empresa_ids: idsEmpresas,
           data_inicio: dataInicioEfetiva,
           data_fim: dataFimEfetiva,
         })
+        if (refChaveConsulta.current !== chave) return
         setDadosMargem(res)
       }
     } catch (err: any) {
@@ -148,10 +161,10 @@ export const ConsultasVendasPage: React.FC = () => {
         variant: 'destructive',
       })
     } finally {
-      setCarregando(false)
+      if (refChaveConsulta.current === chave) setCarregando(false)
     }
   }, [
-    empresasEfetivas,
+    chaveEmpresasEfetivas,
     abaAtiva,
     dataInicioEfetiva,
     dataFimEfetiva,
