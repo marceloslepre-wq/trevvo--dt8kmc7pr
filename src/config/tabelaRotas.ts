@@ -48,6 +48,7 @@ import {
   FileCheck2,
   ClipboardList,
   Globe,
+  Smartphone,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -238,6 +239,24 @@ export const ROTAS: ItemRota[] = [
     acaoMinima: 'ver',
     ordem: 11,
     icone: Percent,
+  },
+  {
+    rota: '/movel',
+    rotulo: 'Trevvo Móvel',
+    grupo: 'Vendas e PDV',
+    modulo: 'produtos',
+    acaoMinima: 'ver',
+    ordem: 12,
+    icone: Smartphone,
+  },
+  {
+    rota: '/movel/consulta',
+    rotulo: 'Consulta de produto (celular)',
+    grupo: 'Vendas e PDV',
+    modulo: 'produtos',
+    acaoMinima: 'ver',
+    ordem: 13,
+    ocultoNoMenu: true,
   },
 
   // ---------- Estoque ----------
