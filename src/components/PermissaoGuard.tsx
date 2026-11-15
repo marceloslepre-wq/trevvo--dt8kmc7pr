@@ -34,4 +34,6 @@ const PermissaoGuard: React.FC<{
   return <>{children}</>
 }
 
+export { PermissaoGuard }
+
 export default PermissaoGuard
