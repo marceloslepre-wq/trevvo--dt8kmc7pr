@@ -22,6 +22,8 @@ interface EmpresaContextType {
   assinanteId: string | null
   assinante: AssinanteTenancy | null
   carregando: boolean
+  /** true quando a ÚLTIMA carga de empresas terminou em erro/timeout (retry no guard). */
+  erroCarga: boolean
   isMaster: boolean
   modoMaster: boolean
   selecionarEmpresa: (empresaId: string) => void
@@ -47,6 +49,19 @@ export const useEmpresasAcessiveis = () => {
   return { empresasAcessiveis: ctx.empresas }
 }
 
+/** LIMITE DE TEMPO POR CHAMADA DE REDE (celular, internet lenta/instável): rejeita
+ * após 15 s para que a carga de empresas SEMPRE termine (sucesso ou erro) — nunca
+ * fica presa em "Carregando empresas..." no cabeçalho. */
+const LIMITE_REDE_MS = 15000
+function comLimiteRede<T>(promessa: Promise<T>): Promise<T> {
+  return Promise.race([
+    promessa,
+    new Promise<never>((_, rejeitar) =>
+      setTimeout(() => rejeitar(new Error('Tempo limite ao carregar empresas')), LIMITE_REDE_MS),
+    ),
+  ])
+}
+
 export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth()
   const [empresas, setEmpresas] = useState<Empresa[]>([])
@@ -57,6 +72,7 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
   })
   const [modoMaster, setModoMaster] = useState<boolean>(false)
   const [carregando, setCarregando] = useState(false)
+  const [erroCarga, setErroCarga] = useState(false)
   const [bloqueioTrocaEmpresa, setBloqueioTrocaEmpresa] = useState<string | null>(null)
 
   const definirBloqueioTrocaEmpresa = useCallback((motivo: string | null) => {
@@ -78,10 +94,13 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     try {
       setCarregando(true)
+      setErroCarga(false)
 
       // Obter dados de tenancy se ainda não carregados
       try {
-        const respTenancy = await pb.send('/backend/v1/tenancy/me', { method: 'GET' })
+        const respTenancy = await comLimiteRede(
+          pb.send('/backend/v1/tenancy/me', { method: 'GET' }),
+        )
         if (respTenancy) {
           if (respTenancy.assinante) {
             setAssinante(respTenancy.assinante)

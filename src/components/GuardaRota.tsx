@@ -2,8 +2,12 @@ import React from 'react'
 import { useLocation, Navigate } from 'react-router-dom'
 import PermissaoGuard from '@/components/PermissaoGuard'
 import AcessoNegado from '@/components/AcessoNegado'
+import CarregandoGuarda from '@/components/CarregandoGuarda'
 import { exigenciaDaRota } from '@/config/tabelaRotas'
 import { useDestinoInicial } from '@/components/destinoInicial'
+import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { useAuth } from '@/contexts/AuthContext'
 
 /**
  * GUARDA DE ROTA PELA TABELA ÚNICA (src/config/tabelaRotas.ts)
@@ -26,6 +30,31 @@ export const GuardaRota: React.FC<{ children: React.ReactNode }> = ({ children }
   const location = useLocation()
   const exigencia = exigenciaDaRota(location.pathname)
   const destino = useDestinoInicial()
+  const { carregando: carregandoPerms, recarregarPermissoes } = usePermissoes()
+  const { carregando: carregandoEmpresas, recarregarEmpresas } = useEmpresaAtiva()
+  const { isLoading: carregandoSessao } = useAuth()
+  const [falhaCarga, setFalhaCarga] = React.useState(false)
+
+  // A carga de sessão/perfil/permissões/empresas falhou? (erro da última tentativa)
+  // O retry das permissões e das empresas é exposto pelos contexts; o estado
+  // local marca que a última tentativa terminou em erro para trocar o spinner
+  // pela mensagem com "Tentar de novo".
+  const tentarNovamente = React.useCallback(async () => {
+    setFalhaCarga(false)
+    try {
+      await Promise.all([recarregarPermissoes(), recarregarEmpresas()])
+    } catch {
+      setFalhaCarga(true)
+    }
+  }, [recarregarPermissoes, recarregarEmpresas])
+
+  // Sessão/perfil/permissões/empresas ainda carregando: NUNCA negar acesso
+  // durante a carga (evita "Acesso Negado" falso) — mostra indicador; se passar
+  // de 15 s ou falhar, mostra erro com "Tentar de novo" (CarregandoGuarda).
+  const carregandoDados = carregandoSessao || carregandoPerms || carregandoEmpresas
+  if (carregandoDados) {
+    return <CarregandoGuarda onTentarNovamente={tentarNovamente} falhou={falhaCarga} />
+  }
 
   // /painel sem pode_ver no módulo painel: redireciona (Navigate replace) para
   // o destino inicial do perfil (/vendas/pdv ou primeira rota permitida do
