@@ -96,6 +96,8 @@ import PdvPage from '@/pages/vendas/pdv/PdvPage'
 import { TrocasDevolucoesPage } from '@/pages/vendas/TrocasDevolucoesPage'
 import { ComissoesPage } from '@/pages/vendas/ComissoesPage'
 import { ConsultasVendasPage } from '@/pages/vendas/ConsultasVendasPage'
+import MovelHomePage from '@/pages/movel/MovelHomePage'
+import MovelConsultaPage from '@/pages/movel/MovelConsultaPage'
 
 // Páginas Fiscais (Etapa 6)
 import ConfiguracaoEmissaoFiscalPage from '@/pages/fiscal/ConfiguracaoEmissaoFiscalPage'
@@ -359,6 +361,9 @@ const App = () => (
                   <Route path="/vendas/comissoes" element={<ComissoesPage />} />
                   <Route path="/vendas/consultas" element={<ConsultasVendasPage />} />
                   <Route path="/vendas/configuracoes" element={<ConfigVendasPage />} />
+                  {/* Trevvo Móvel (consulta de produtos pelo celular) */}
+                  <Route path="/movel" element={<MovelHomePage />} />
+                  <Route path="/movel/consulta" element={<MovelConsultaPage />} />
                   {/* Módulo Fiscal (Etapa 6) */}
                   <Route path="/fiscal" element={<Navigate to="/fiscal/configuracoes" replace />} />
                   <Route path="/fiscal/configuracoes" element={<ConfiguracaoEmissaoFiscalPage />} />

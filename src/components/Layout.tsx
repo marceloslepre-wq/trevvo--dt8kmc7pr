@@ -1,13 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Smartphone } from 'lucide-react'
 import { Sidebar } from './layout/Sidebar'
 import { Header } from './layout/Header'
 import GuardaRota from './GuardaRota'
+import { Button } from '@/components/ui/button'
+import { usePermissoes } from '@/contexts/PermissoesContext'
+
+const CHAVE_BANNER_MOVEL = 'erp_banner_movel_dispensado'
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
+  const { pode } = usePermissoes()
+
+  // Aviso pós-login em tela pequena: sugere a versão celular (Trevvo Móvel),
+  // sem redirecionamento forçado. Dispensável por sessão (sessionStorage).
+  const [bannerDispensado, setBannerDispensado] = useState(
+    () => sessionStorage.getItem(CHAVE_BANNER_MOVEL) === '1',
+  )
+  const ehMovel = location.pathname.startsWith('/movel')
+  const telaPequena = typeof window !== 'undefined' && window.innerWidth < 768
+  const mostrarBannerMovel = telaPequena && pode('produtos', 'ver') && !bannerDispensado && !ehMovel
+
+  const dispensarBannerMovel = () => {
+    sessionStorage.setItem(CHAVE_BANNER_MOVEL, '1')
+    setBannerDispensado(true)
+  }
 
   // PDV em modo tela cheia: recolhe o menu lateral ao montar o PDV e restaura
   // ao sair (o próprio PDV tem o botão "Sair do PDV" que volta ao ERP).
@@ -46,6 +67,34 @@ export default function Layout() {
       }`}
     >
       {/* Sidebar Retrátil / Drawer */}
+      {mostrarBannerMovel && (
+        <div className="flex items-center gap-3 border-b border-sky-200 bg-sky-50 px-4 py-2 text-sky-900">
+          <Smartphone className="h-4 w-4 shrink-0" />
+          <p className="min-w-0 flex-1 truncate text-xs">
+            Você está em uma tela pequena. Use o Trevvo Móvel para consultar produtos no balcão.
+          </p>
+          <Button
+            size="sm"
+            className="h-8 shrink-0 bg-sky-600 hover:bg-sky-700"
+            onClick={() => {
+              dispensarBannerMovel()
+              navigate('/movel')
+            }}
+          >
+            Abrir versão celular
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 shrink-0 px-2 text-sky-700"
+            onClick={dispensarBannerMovel}
+            aria-label="Dispensar aviso"
+          >
+            ✕
+          </Button>
+        </div>
+      )}
+
       <Sidebar
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((prev) => !prev)}
