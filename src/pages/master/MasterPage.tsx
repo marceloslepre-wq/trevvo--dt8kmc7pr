@@ -36,6 +36,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import LimpezaDadosTeste from '@/components/master/LimpezaDadosTeste'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
@@ -138,7 +139,7 @@ export const MasterPage: React.FC = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
 
-  const [abaAtiva, setAbaAtiva] = useState<'licencas' | 'planos'>('licencas')
+  const [abaAtiva, setAbaAtiva] = useState<'licencas' | 'planos' | 'limpeza'>('licencas')
   const [atualizando, setAtualizando] = useState(false)
   const [carregandoDados, setCarregandoDados] = useState(true)
 
@@ -1278,7 +1279,7 @@ export const MasterPage: React.FC = () => {
         {/* TABS INFERIORES: Licenças de Clientes (9.7b) e Catálogo de Planos (N) (9.7a2) */}
         <Tabs
           value={abaAtiva}
-          onValueChange={(val) => setAbaAtiva(val as 'licencas' | 'planos')}
+          onValueChange={(val) => setAbaAtiva(val as 'licencas' | 'planos' | 'limpeza')}
           className="w-full space-y-4"
         >
           {/* Cabeçalho das Abas */}
@@ -1300,6 +1301,14 @@ export const MasterPage: React.FC = () => {
               >
                 <Layers size={15} className="text-blue-600" />
                 Catálogo de planos ({planos.length})
+              </TabsTrigger>
+
+              {/* Limpeza dos dados de teste (uso único antes da carga real) */}
+              <TabsTrigger
+                value="limpeza"
+                className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs px-4 py-2"
+              >
+                Limpeza de testes
               </TabsTrigger>
             </TabsList>
 
@@ -2049,6 +2058,10 @@ export const MasterPage: React.FC = () => {
                 })}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="limpeza" className="mt-0 space-y-4">
+            <LimpezaDadosTeste />
           </TabsContent>
         </Tabs>
       </main>
