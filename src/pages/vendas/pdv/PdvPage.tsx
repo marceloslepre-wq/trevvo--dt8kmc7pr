@@ -83,6 +83,8 @@ import {
 } from 'lucide-react'
 import { obterConfigFiscalEmpresa, ConfigEmissaoFiscal } from '@/services/configEmissaoFiscal'
 import { emitirNFCeVenda, imprimirDanfeUrl } from '@/services/fiscalIntegracao'
+import { salvarCliente } from '@/services/clientes'
+import { EnviarDocumentoFiscal } from '@/components/fiscal/EnviarDocumentoFiscal'
 
 const MENSAGEM_BLOQUEIO_TROCA_EMPRESA = 'Feche o caixa (ou saia do PDV) para trocar de empresa'
 
@@ -155,6 +157,39 @@ export const PdvPage: React.FC = () => {
   const [modalCancelarItemAberto, setModalCancelarItemAberto] = useState(false)
   const [modalPerguntaRascunhoAberto, setModalPerguntaRascunhoAberto] = useState(false)
   const [rascunhoPendente, setRascunhoPendente] = useState<VendaRascunhoPDV | null>(null)
+
+  // Modal de Envio do Cupom (NFC-e Autorizada): estado por venda concluída.
+  const [dadosEnvioCupom, setDadosEnvioCupom] = useState<{
+    numero: number
+    serie: string
+    chave: string
+    valorTotal: number
+    formasPagamentoTexto: string
+    celularCliente: string
+    emailCliente: string
+    caminhoDanfe?: string
+    focusBaseUrl?: string
+    urlConsulta?: string
+    urlImpressao?: string
+  } | null>(null)
+  const [modalEnvioCupomAberto, setModalEnvioCupomAberto] = useState(false)
+  const [clienteParaSalvarContato, setClienteParaSalvarContato] = useState<Cliente | null>(null)
+  const [clienteAtualizadoParaContato, setClienteAtualizadoParaContato] = useState<Cliente | null>(
+    null,
+  )
+  // Esc dentro do modal de envio: fecha e devolve o foco ao campo de código
+  useEffect(() => {
+    if (!modalEnvioCupomAberto) return
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        fecharModalEnvioCupom()
+      }
+    }
+    window.addEventListener('keydown', handleEsc, true)
+    return () => window.removeEventListener('keydown', handleEsc, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalEnvioCupomAberto])
 
   // Lista com auto-scroll
   const itensFimRef = useRef<HTMLDivElement>(null)
@@ -928,6 +963,17 @@ export const PdvPage: React.FC = () => {
 
     let nfceAutorizada = false
     let nfceDanfeUrl = ''
+    // Guarda o retorno da emissão para o modal de envio do cupom (imutável durante o fluxo)
+    const respNfceRef: {
+      current: {
+        numero?: number
+        serie?: string
+        chave?: string
+        caminho_danfe?: string
+        url_consulta?: string
+        danfe_url?: string
+      } | null
+    } = { current: null }
 
     if (podeEmitirNfce) {
       if (!configFiscal.csc_configurado) {
@@ -945,6 +991,14 @@ export const PdvPage: React.FC = () => {
           if (respNfce.sucesso && respNfce.status === 'Autorizada') {
             nfceAutorizada = true
             nfceDanfeUrl = respNfce.danfe_url || ''
+            respNfceRef.current = {
+              numero: respNfce.numero,
+              serie: respNfce.serie,
+              chave: respNfce.chave,
+              caminho_danfe: respNfce.danfe_url,
+              url_consulta: respNfce.url_consulta,
+              danfe_url: respNfce.danfe_url,
+            }
             toast({
               title: respNfce.contingencia ? 'NFC-e Emitida em Contingência!' : 'NFC-e Autorizada!',
               description: `Nota nº ${respNfce.numero || ''} autorizada com sucesso na SEFAZ.`,
@@ -1087,12 +1141,49 @@ export const PdvPage: React.FC = () => {
     )
     setTipoMensagemStatus('sucesso')
 
-    toast({
-      title: `Venda #${vendaFinalizada.numero} Finalizada!`,
-      description: troco > 0 ? `Troco: R$ ${troco.toFixed(2)}` : 'Venda processada com sucesso.',
-    })
+    // Abre o modal de envio do cupom quando a NFC-e saiu autorizada
+    if (nfceAutorizada && respNfceRef.current) {
+      const info = respNfceRef.current
+      const formasTexto = pagamentos
+        .map((p) => {
+          const f = formasPagamento.find((x) => x.id === p.forma_pagamento_id)
+          return f?.descricao || 'Forma'
+        })
+        .filter((v, i, arr) => arr.indexOf(v) === i)
+        .join(' + ')
+      setDadosEnvioCupom({
+        numero: info.numero || vendaFinalizada.numero || 0,
+        serie: info.serie || '',
+        chave: info.chave || '',
+        valorTotal: vendaFinalizada.valor_total ?? totalVendaFinal,
+        formasPagamentoTexto: formasTexto || '—',
+        celularCliente: cliente?.celular || '',
+        emailCliente: cliente?.email || '',
+        // danfe_url já sai do backend com a URL base da Focus composta
+        caminhoDanfe: info.danfe_url || '',
+        urlConsulta: info.url_consulta || '',
+        urlImpressao: info.danfe_url || nfceDanfeUrl,
+      })
+      setClienteParaSalvarContato(
+        cliente && cliente.id !== (configVendas?.cliente_padrao_id || '') ? cliente : null,
+      )
+      setClienteAtualizadoParaContato(null)
+      setModalEnvioCupomAberto(true)
+    } else {
+      // Sem modal (sem NFC-e autorizada): foco volta ao campo de código imediatamente
+      focarLeitor()
+    }
+  }
 
-    focarLeitor()
+  /** Fecha o modal de envio do cupom e devolve o foco ao campo de código (F10 volta a funcionar) */
+  const fecharModalEnvioCupom = () => {
+    setModalEnvioCupomAberto(false)
+    setDadosEnvioCupom(null)
+    setClienteParaSalvarContato(null)
+    setClienteAtualizadoParaContato(null)
+    setTimeout(() => {
+      inputLeitorRef.current?.focus()
+    }, 80)
   }
 
   return (
@@ -1739,6 +1830,110 @@ export const PdvPage: React.FC = () => {
           totalItens={itens.length}
           onConfirmar={handleConfirmarCancelarItem}
         />
+      )}
+
+      {/* MODAL ENVIO DO CUPOM (NFC-e AUTORIZADA) */}
+      {modalEnvioCupomAberto && dadosEnvioCupom && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-5 text-slate-800 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-200">
+                  <CheckCircle size={24} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">NFC-e Autorizada!</h3>
+                  <p className="text-xs text-slate-500">
+                    Envie o cupom ao cliente ou imprima de novo.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs grid grid-cols-2 gap-y-1.5">
+              <span className="text-slate-500 font-semibold">Loja:</span>
+              <span
+                className="text-slate-800 font-bold truncate"
+                title={empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || ''}
+              >
+                {empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || '—'}
+              </span>
+              <span className="text-slate-500 font-semibold">Total:</span>
+              <span className="text-slate-800 font-bold font-mono">
+                R${' '}
+                {dadosEnvioCupom.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+              <span className="text-slate-500 font-semibold">Pagamento:</span>
+              <span
+                className="text-slate-800 font-bold truncate"
+                title={dadosEnvioCupom.formasPagamentoTexto}
+              >
+                {dadosEnvioCupom.formasPagamentoTexto}
+              </span>
+              {dadosEnvioCupom.chave && (
+                <>
+                  <span className="text-slate-500 font-semibold">Chave:</span>
+                  <span
+                    className="text-slate-700 font-mono col-span-1 break-all text-[10px]"
+                    title={dadosEnvioCupom.chave}
+                  >
+                    {dadosEnvioCupom.chave}
+                  </span>
+                </>
+              )}
+            </div>
+
+            <EnviarDocumentoFiscal
+              nomeLoja={empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || 'Loja'}
+              numero={dadosEnvioCupom.numero}
+              serie={dadosEnvioCupom.serie}
+              chave={dadosEnvioCupom.chave}
+              valor={dadosEnvioCupom.valorTotal}
+              formaPagamento={dadosEnvioCupom.formasPagamentoTexto}
+              caminhoDanfe={dadosEnvioCupom.caminhoDanfe}
+              focusBaseUrl={dadosEnvioCupom.focusBaseUrl}
+              urlConsulta={dadosEnvioCupom.urlConsulta}
+              celularCliente={dadosEnvioCupom.celularCliente}
+              emailCliente={dadosEnvioCupom.emailCliente}
+              permitirSalvarNoCliente={Boolean(clienteParaSalvarContato)}
+              onSalvarContato={async (celular, email) => {
+                const alvo = clienteAtualizadoParaContato || clienteParaSalvarContato
+                if (!alvo) return
+                try {
+                  const atualizado = await salvarCliente({
+                    ...alvo,
+                    celular,
+                    email,
+                  })
+                  setClienteAtualizadoParaContato(atualizado)
+                  toast({ title: 'Contato salvo no cadastro do cliente' })
+                } catch (err) {
+                  console.error('Erro ao salvar contato no cliente:', err)
+                  toast({
+                    title: 'Não foi possível salvar o contato',
+                    description: err instanceof Error ? err.message : 'Erro ao salvar cliente.',
+                    variant: 'destructive',
+                  })
+                }
+              }}
+              onImprimir={() => {
+                if (dadosEnvioCupom.urlImpressao) {
+                  imprimirDanfeUrl(dadosEnvioCupom.urlImpressao)
+                }
+              }}
+            />
+
+            <div className="flex justify-end pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={fecharModalEnvioCupom}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold"
+              >
+                Nova venda
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* MODAL ABRIR CAIXA */}
