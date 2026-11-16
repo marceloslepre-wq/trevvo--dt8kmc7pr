@@ -39,9 +39,11 @@ export default function MovelHomePage() {
             >
               <Barcode className="h-5 w-5" /> Consultar produto
             </Button>
-            <Button className="h-14 w-full justify-start gap-3 text-base" disabled>
+            <Button
+              className="h-14 w-full justify-start gap-3 text-base"
+              onClick={() => navigate('/movel/venda')}
+            >
               <ShoppingCart className="h-5 w-5" /> Nova venda
-              <span className="ml-auto text-xs font-normal text-slate-400">em breve</span>
             </Button>
           </CardContent>
         </Card>

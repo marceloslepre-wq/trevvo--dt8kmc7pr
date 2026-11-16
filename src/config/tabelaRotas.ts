@@ -258,6 +258,15 @@ export const ROTAS: ItemRota[] = [
     ordem: 13,
     ocultoNoMenu: true,
   },
+  {
+    rota: '/movel/venda',
+    rotulo: 'Venda pelo celular',
+    grupo: 'Vendas e PDV',
+    modulo: 'pdv',
+    acaoMinima: 'criar',
+    ordem: 14,
+    ocultoNoMenu: true,
+  },
 
   // ---------- Estoque ----------
   {

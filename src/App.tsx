@@ -100,6 +100,7 @@ import { ComissoesPage } from '@/pages/vendas/ComissoesPage'
 import { ConsultasVendasPage } from '@/pages/vendas/ConsultasVendasPage'
 import MovelHomePage from '@/pages/movel/MovelHomePage'
 import MovelConsultaPage from '@/pages/movel/MovelConsultaPage'
+import MovelVendaPage from '@/pages/movel/MovelVendaPage'
 
 // Páginas Fiscais (Etapa 6)
 import ConfiguracaoEmissaoFiscalPage from '@/pages/fiscal/ConfiguracaoEmissaoFiscalPage'
@@ -382,6 +383,7 @@ const App = () => (
                     {/* Trevvo Móvel (consulta de produtos pelo celular) */}
                     <Route path="/movel" element={<MovelHomePage />} />
                     <Route path="/movel/consulta" element={<MovelConsultaPage />} />
+                    <Route path="/movel/venda" element={<MovelVendaPage />} />
                     {/* Módulo Fiscal (Etapa 6) */}
                     <Route
                       path="/fiscal"
