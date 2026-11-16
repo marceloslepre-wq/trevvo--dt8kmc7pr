@@ -2,7 +2,7 @@
 /**
  * Limpeza dos dados de teste do assinante do usuário Master (uso único, antes da carga real).
  *
- * POST /backend/v1/master/limpeza-testes
+ * POST /backend/v1/master/limpeza-testes-v2
  *   body { acao: 'previa' }                         -> contagem do que será apagado/ajustado
  *   body { acao: 'backup' }                         -> JSON com todos os registros que serão apagados
  *   body { acao: 'executar', confirmacao: 'LIMPAR' } -> apaga tudo numa transação
@@ -19,7 +19,7 @@
  */
 routerAdd(
   'POST',
-  '/backend/v1/master/limpeza-testes',
+  '/backend/v1/master/limpeza-testes-v2',
   (c) => {
     function exigirMaster(auth) {
       if (!auth || !auth.id) {
@@ -379,6 +379,7 @@ routerAdd(
 
         return c.json(200, {
           sucesso: true,
+          versao_hook: 'limpeza-v2',
           assinante: { id: ass.id, nome: ass.getString('nome') },
           empresas: empresas,
           cliente_mantido: plano.consumidor
