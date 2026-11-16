@@ -16,6 +16,7 @@ import {
   Building2,
   User,
   Globe2,
+  FileUp,
 } from 'lucide-react'
 import {
   Fornecedor,
@@ -46,6 +47,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import ImportarFornecedoresDialog from '@/components/fornecedores/ImportarFornecedoresDialog'
 
 const UFS_BRASIL = [
   'AC',
@@ -125,6 +127,7 @@ export const FornecedoresLista: React.FC = () => {
   const [fornecedorAlvo, setFornecedorAlvo] = useState<Fornecedor | null>(null)
   const [dialogAberto, setDialogAberto] = useState(false)
   const [processandoAcao, setProcessandoAcao] = useState(false)
+  const [importarAberto, setImportarAberto] = useState(false)
 
   const [, startTransition] = useTransition()
 
@@ -365,6 +368,18 @@ export const FornecedoresLista: React.FC = () => {
             <Download size={14} className="mr-1.5" />
             Exportar CSV
           </Button>
+
+          {podeCriar && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportarAberto(true)}
+              className="text-xs h-9 border-slate-200 text-slate-700 hover:bg-slate-100"
+            >
+              <FileUp size={14} className="mr-1.5" />
+              Importar CSV
+            </Button>
+          )}
 
           {podeCriar && (
             <Button
@@ -813,6 +828,11 @@ export const FornecedoresLista: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ImportarFornecedoresDialog
+        aberto={importarAberto}
+        onFechar={() => setImportarAberto(false)}
+        onConcluido={carregarDados}
+      />
     </div>
   )
 }
