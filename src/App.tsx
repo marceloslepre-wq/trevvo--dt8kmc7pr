@@ -7,6 +7,8 @@ import { ConfiguracoesProvider } from '@/contexts/ConfiguracoesContext'
 import { PermissoesProvider } from '@/contexts/PermissoesContext'
 import { EmpresaProvider } from '@/contexts/EmpresaContext'
 import { ProtectedRoute, PublicOnlyRoute, MasterRoute } from '@/components/RouteGuards'
+import ErrorBoundaryGlobal from '@/components/ErrorBoundaryGlobal'
+import FaixaErroGlobal from '@/components/FaixaErroGlobal'
 import MasterPage from '@/pages/master/MasterPage'
 import Layout from '@/components/Layout'
 import RedirecionarRaiz from '@/components/destinoInicial'
@@ -139,281 +141,307 @@ const App = () => (
             <TooltipProvider>
               <Toaster />
               <Sonner />
-              <Routes>
-                {/* Rotas Públicas de Autenticação */}
-                <Route
-                  path="/login"
-                  element={
-                    <PublicOnlyRoute>
-                      <LoginScreen />
-                    </PublicOnlyRoute>
-                  }
-                />
-                <Route
-                  path="/cadastro"
-                  element={
-                    <PublicOnlyRoute>
-                      <CadastroPublicoPage />
-                    </PublicOnlyRoute>
-                  }
-                />
-                <Route
-                  path="/esqueci-senha"
-                  element={
-                    <PublicOnlyRoute>
-                      <ForgotPasswordScreen />
-                    </PublicOnlyRoute>
-                  }
-                />
-                <Route
-                  path="/redefinir-senha"
-                  element={
-                    <PublicOnlyRoute>
-                      <ResetPasswordScreen />
-                    </PublicOnlyRoute>
-                  }
-                />
-                {/* Rota Protegida Exclusiva do Painel Master (Prompt 9.7a) */}
-                <Route
-                  path="/master"
-                  element={
-                    <MasterRoute>
-                      <MasterPage />
-                    </MasterRoute>
-                  }
-                />
+              {/* Faixa vermelha no rodapé para erros NÃO capturados por boundary
+                  (promises/callbacks fora do React) — diagnóstico no celular. */}
+              <FaixaErroGlobal />
+              {/* Boundary global: envolve TODAS as rotas (Layout incluído). Se uma
+                  página quebrar em runtime, mostra mensagem pt-BR + "Tentar de novo"
+                  — nunca a tela branca em branco puro. */}
+              <ErrorBoundaryGlobal>
+                <Routes>
+                  {/* Rotas Públicas de Autenticação */}
+                  <Route
+                    path="/login"
+                    element={
+                      <PublicOnlyRoute>
+                        <LoginScreen />
+                      </PublicOnlyRoute>
+                    }
+                  />
+                  <Route
+                    path="/cadastro"
+                    element={
+                      <PublicOnlyRoute>
+                        <CadastroPublicoPage />
+                      </PublicOnlyRoute>
+                    }
+                  />
+                  <Route
+                    path="/esqueci-senha"
+                    element={
+                      <PublicOnlyRoute>
+                        <ForgotPasswordScreen />
+                      </PublicOnlyRoute>
+                    }
+                  />
+                  <Route
+                    path="/redefinir-senha"
+                    element={
+                      <PublicOnlyRoute>
+                        <ResetPasswordScreen />
+                      </PublicOnlyRoute>
+                    }
+                  />
+                  {/* Rota Protegida Exclusiva do Painel Master (Prompt 9.7a) */}
+                  <Route
+                    path="/master"
+                    element={
+                      <MasterRoute>
+                        <MasterPage />
+                      </MasterRoute>
+                    }
+                  />
 
-                {/* Compatibilidade com rota inglesa caso chegue por links legados */}
-                <Route path="/forgot-password" element={<Navigate to="/esqueci-senha" replace />} />
-                <Route
-                  path="/reset-password"
-                  element={<Navigate to="/redefinir-senha" replace />}
-                />
-                <Route path="/verify-email" element={<VerifyEmailScreen />} />
-                <Route path="/confirm-email-change" element={<ConfirmEmailChangeScreen />} />
+                  {/* Compatibilidade com rota inglesa caso chegue por links legados */}
+                  <Route
+                    path="/forgot-password"
+                    element={<Navigate to="/esqueci-senha" replace />}
+                  />
+                  <Route
+                    path="/reset-password"
+                    element={<Navigate to="/redefinir-senha" replace />}
+                  />
+                  <Route path="/verify-email" element={<VerifyEmailScreen />} />
+                  <Route path="/confirm-email-change" element={<ConfirmEmailChangeScreen />} />
 
-                {/* Rotas Protegidas dentro do Layout — guard único pelo GuardaRota */}
-                <Route
-                  element={
-                    <ProtectedRoute>
-                      <Layout />
-                    </ProtectedRoute>
-                  }
-                >
-                  {/* Rota raiz: NUNCA passa pela exigência de módulo — resolve o
+                  {/* Rotas Protegidas dentro do Layout — guard único pelo GuardaRota */}
+                  <Route
+                    element={
+                      <ProtectedRoute>
+                        <Layout />
+                      </ProtectedRoute>
+                    }
+                  >
+                    {/* Rota raiz: NUNCA passa pela exigência de módulo — resolve o
                       destino pelo perfil (admin/painel -> /painel; senão PDV; senão
                       primeira rota permitida do menu, ver destinoInicial.tsx) */}
-                  <Route path="/" element={<RedirecionarRaiz />} />
-                  <Route path="/painel" element={<Index />} />
-                  <Route path="/painel-grupo" element={<PainelGrupoPage />} />
-                  {/* Cadastros */}
-                  <Route path="/cadastros/empresas" element={<EmpresasLista />} />
-                  <Route path="/cadastros/empresas/novo" element={<EmpresaForm />} />
-                  <Route path="/cadastros/empresas/:id/editar" element={<EmpresaForm />} />
-                  {/* Usuários */}
-                  <Route path="/cadastros/usuarios" element={<UsuariosLista />} />
-                  <Route path="/cadastros/usuarios/novo" element={<UsuarioForm />} />
-                  <Route path="/cadastros/usuarios/:id/editar" element={<UsuarioForm />} />
-                  {/* Perfis de Acesso */}
-                  <Route path="/cadastros/perfis-acesso" element={<PerfisAcessoLista />} />
-                  <Route path="/cadastros/perfis-acesso/novo" element={<PerfilAcessoForm />} />
-                  <Route
-                    path="/cadastros/perfis-acesso/:id/editar"
-                    element={<PerfilAcessoForm />}
-                  />
-                  <Route path="/cadastros/clientes" element={<ClientesLista />} />
-                  <Route path="/cadastros/clientes/novo" element={<ClienteForm />} />
-                  <Route path="/cadastros/clientes/:id/editar" element={<ClienteForm />} />
-                  <Route path="/cadastros/fornecedores" element={<FornecedoresLista />} />
-                  <Route path="/cadastros/fornecedores/novo" element={<FornecedorForm />} />
-                  <Route path="/cadastros/fornecedores/:id/editar" element={<FornecedorForm />} />
-                  <Route path="/cadastros/produtos" element={<ProdutosLista />} />
-                  <Route
-                    path="/cadastros/produtos/conferencia"
-                    element={<ConferenciaFiscalPage />}
-                  />
-                  <Route path="/cadastros/produtos/novo" element={<ProdutoForm />} />
-                  <Route path="/cadastros/produtos/:id/editar" element={<ProdutoForm />} />
-                  <Route path="/cadastros/marcas" element={<MarcasPage />} />
-                  <Route path="/cadastros/grupos-categorias" element={<GruposCategoriasPage />} />
-                  <Route path="/cadastros/unidades-medida" element={<UnidadesMedidaPage />} />
-                  <Route
-                    path="/cadastros/condicoes-pagamento"
-                    element={<CondicoesPagamentoPage />}
-                  />
-                  <Route path="/cadastros/tabelas-fiscais" element={<TabelasFiscaisHubPage />} />
-                  <Route
-                    path="/cadastros/tabelas-fiscais/codigos"
-                    element={<CodigosFiscaisPage />}
-                  />
-                  <Route path="/cadastros/tabelas-fiscais/ncm" element={<NcmPage />} />
-                  <Route path="/cadastros/tabelas-fiscais/cest" element={<CestPage />} />
-                  <Route path="/cadastros/tabelas-fiscais/cfop" element={<CfopPage />} />
-                  <Route
-                    path="/cadastros/tabelas-fiscais/conversao-cfop"
-                    element={<CfopConversaoPage />}
-                  />
-                  <Route
-                    path="/cadastros/tabelas-fiscais/perfis"
-                    element={<PerfisTributariosPage />}
-                  />
-                  <Route
-                    path="/cadastros/tabelas-fiscais/regras-ncm"
-                    element={<RegrasFiscaisNcmPage />}
-                  />
-                  <Route
-                    path="/cadastros/tabelas-fiscais/matriz-icms"
-                    element={<MatrizIcmsPage />}
-                  />
-                  {/* Financeiro: Contas a Pagar, Contas a Receber e Cadastros */}
-                  <Route
-                    path="/financeiro"
-                    element={<Navigate to="/financeiro/contas-pagar" replace />}
-                  />
-                  <Route path="/financeiro/contas-pagar" element={<ContasPagarPage />} />
-                  <Route path="/financeiro/receber" element={<ContasReceberPage />} />
-                  <Route
-                    path="/financeiro/contas-receber"
-                    element={<Navigate to="/financeiro/receber" replace />}
-                  />
-                  <Route path="/financeiro/dre" element={<DrePage />} />
-                  <Route path="/financeiro/fluxo-caixa" element={<FluxoCaixaPage />} />
-                  <Route path="/financeiro/inadimplencia" element={<InadimplenciaPage />} />
-                  <Route path="/financeiro/bancos" element={<ExtratoBancarioPage />} />
-                  <Route
-                    path="/financeiro/extrato"
-                    element={<Navigate to="/financeiro/bancos" replace />}
-                  />
-                  <Route path="/financeiro/conciliacao" element={<ConciliacaoBancariaPage />} />
-                  <Route
-                    path="/financeiro/cadastros"
-                    element={<Navigate to="/financeiro/cadastros/plano-contas" replace />}
-                  />
-                  <Route path="/financeiro/cadastros/plano-contas" element={<PlanoContasPage />} />
-                  <Route
-                    path="/financeiro/cadastros/centros-custo"
-                    element={<CentrosCustoPage />}
-                  />
-                  <Route
-                    path="/financeiro/cadastros/contas-bancarias"
-                    element={<ContasFinanceirasPage />}
-                  />
-                  <Route
-                    path="/financeiro/cadastros/formas-pagamento"
-                    element={<FormasPagamentoPage />}
-                  />
-                  <Route
-                    path="/financeiro/cadastros/configuracoes"
-                    element={<ConfiguracaoFinanceiraPage />}
-                  />
-                  {/* Estoque */}
-                  <Route path="/estoque" element={<Navigate to="/estoque/posicao" replace />} />
-                  <Route path="/estoque/posicao" element={<PosicaoEstoquePage />} />
-                  {/* Etapa 3: Compras */}
-                  <Route path="/compras" element={<Navigate to="/compras/pedidos" replace />} />
-                  <Route path="/compras/pedidos" element={<PedidosCompraListaPage />} />
-                  <Route path="/compras/pedidos/novo" element={<PedidoCompraFormPage />} />
-                  <Route path="/compras/pedidos/:id" element={<PedidoCompraFormPage />} />
-                  <Route path="/compras/pedidos/:id/editar" element={<PedidoCompraFormPage />} />
-                  {/* Notas Fiscais de Entrada */}
-                  <Route path="/compras/notas-entrada" element={<NotasEntradaListaPage />} />
-                  <Route
-                    path="/compras/notas-entrada/digitar"
-                    element={<NotaEntradaDigitacaoPage />}
-                  />
-                  <Route
-                    path="/compras/notas-entrada/novo"
-                    element={<NotaEntradaDigitacaoPage />}
-                  />
-                  <Route
-                    path="/compras/notas-entrada/:id"
-                    element={<NotaEntradaConferenciaPage />}
-                  />
-                  <Route
-                    path="/compras/notas-entrada/:id/conferencia"
-                    element={<NotaEntradaConferenciaPage />}
-                  />
-                  <Route path="/compras/itens-comprados" element={<ItensCompradosPage />} />
-                  <Route path="/compras/livro-entradas" element={<LivroEntradasPage />} />
-                  <Route path="/estoque/sugestao-compra" element={<SugestaoCompraPage />} />
-                  <Route path="/estoque/inventarios" element={<InventariosListaPage />} />
-                  <Route path="/estoque/inventarios/novo" element={<InventarioNovoPage />} />
-                  <Route path="/estoque/inventarios/:id" element={<InventarioDetalhePage />} />
-                  <Route path="/estoque/kardex" element={<KardexPage />} />
-                  <Route path="/estoque/lancamentos" element={<LancamentosEstoquePage />} />
-                  <Route path="/estoque/transferencias" element={<TransferenciasListaPage />} />
-                  <Route path="/estoque/transferencias/novo" element={<TransferenciaFormPage />} />
-                  <Route path="/estoque/transferencias/:id" element={<TransferenciaFormPage />} />
-                  <Route path="/estoque/lotes" element={<LotesValidadePage />} />
-                  {/* Vendas e PDV (Etapa 5) */}
-                  <Route path="/vendas" element={<Navigate to="/vendas/pedidos" replace />} />
-                  <Route path="/vendas/pedidos" element={<VendasListaPage />} />
-                  <Route path="/vendas/pedidos/novo" element={<VendaFormPage />} />
-                  <Route path="/vendas/pedidos/:id" element={<VendaFormPage />} />
-                  <Route path="/vendas/pdv" element={<PdvPage />} />
-                  <Route path="/vendas/caixa" element={<CaixaPage />} />
-                  <Route path="/vendas/terminais" element={<TerminaisPage />} />
-                  <Route path="/vendas/trocas" element={<TrocasDevolucoesPage />} />
-                  <Route
-                    path="/vendas/devolucoes"
-                    element={<Navigate to="/vendas/trocas" replace />}
-                  />
-                  <Route path="/vendas/comissoes" element={<ComissoesPage />} />
-                  <Route path="/vendas/consultas" element={<ConsultasVendasPage />} />
-                  <Route path="/vendas/configuracoes" element={<ConfigVendasPage />} />
-                  {/* Trevvo Móvel (consulta de produtos pelo celular) */}
-                  <Route path="/movel" element={<MovelHomePage />} />
-                  <Route path="/movel/consulta" element={<MovelConsultaPage />} />
-                  {/* Módulo Fiscal (Etapa 6) */}
-                  <Route path="/fiscal" element={<Navigate to="/fiscal/configuracoes" replace />} />
-                  <Route path="/fiscal/configuracoes" element={<ConfiguracaoEmissaoFiscalPage />} />
-                  <Route path="/fiscal/documentos" element={<DocumentosFiscaisPage />} />
-                  <Route path="/fiscal/intermediadores" element={<IntermediadoresPage />} />
-                  <Route path="/fiscal/inutilizacao" element={<InutilizacaoPage />} />
-                  <Route path="/fiscal/exportar-xmls" element={<ExportarXmlsPage />} />
-                  <Route path="/fiscal/sped" element={<SpedFiscalPage />} />
-                  <Route path="/fiscal/sped/configuracoes" element={<ConfiguracaoSpedPage />} />
-                  <Route
-                    path="/fiscal/sped/:id/relatorio"
-                    element={<SpedRelatorioConferenciaPage />}
-                  />
-                  <Route path="/fiscal/livro-saidas" element={<LivroSaidasPage />} />
-                  <Route path="/fiscal/resumo-icms" element={<ResumoIcmsPage />} />
-                  {/* Relatórios (Etapa 8) */}
-                  <Route path="/relatorios" element={<CentralRelatoriosPage />} />
-                  <Route path="/relatorios/vendas-canais" element={<VendasCanaisPage />} />
-                  <Route path="/relatorios/estoque-gerencial" element={<EstoqueGerencialPage />} />
-                  <Route
-                    path="/relatorios/contas-pagar"
-                    element={<ContasPagarPorVencimentoPage />}
-                  />
-                  <Route
-                    path="/relatorios/personalizado"
-                    element={<RelatorioPersonalizadoPage />}
-                  />
-                  {/* Configurações */}
-                  <Route
-                    path="/configuracoes"
-                    element={<Navigate to="/configuracoes/geral" replace />}
-                  />
-                  <Route path="/configuracoes/geral" element={<ConfiguracoesGeralPage />} />
-                  <Route path="/configuracoes/fiscal" element={<ConfiguracaoFiscalPage />} />
-                  <Route path="/configuracoes/tray" element={<TrayPage />} />
-                  <Route path="/configuracoes/mercado-livre" element={<MercadoLivrePage />} />
-                  <Route path="/configuracoes/auditoria" element={<LogAuditoriaPage />} />
-                  <Route
-                    path="/configuracoes/integridade-estoque"
-                    element={<IntegridadeEstoquePage />}
-                  />
-                  <Route
-                    path="/configuracoes/integridade-financeiro"
-                    element={<IntegridadeFinanceiroPage />}
-                  />
-                </Route>
+                    <Route path="/" element={<RedirecionarRaiz />} />
+                    <Route path="/painel" element={<Index />} />
+                    <Route path="/painel-grupo" element={<PainelGrupoPage />} />
+                    {/* Cadastros */}
+                    <Route path="/cadastros/empresas" element={<EmpresasLista />} />
+                    <Route path="/cadastros/empresas/novo" element={<EmpresaForm />} />
+                    <Route path="/cadastros/empresas/:id/editar" element={<EmpresaForm />} />
+                    {/* Usuários */}
+                    <Route path="/cadastros/usuarios" element={<UsuariosLista />} />
+                    <Route path="/cadastros/usuarios/novo" element={<UsuarioForm />} />
+                    <Route path="/cadastros/usuarios/:id/editar" element={<UsuarioForm />} />
+                    {/* Perfis de Acesso */}
+                    <Route path="/cadastros/perfis-acesso" element={<PerfisAcessoLista />} />
+                    <Route path="/cadastros/perfis-acesso/novo" element={<PerfilAcessoForm />} />
+                    <Route
+                      path="/cadastros/perfis-acesso/:id/editar"
+                      element={<PerfilAcessoForm />}
+                    />
+                    <Route path="/cadastros/clientes" element={<ClientesLista />} />
+                    <Route path="/cadastros/clientes/novo" element={<ClienteForm />} />
+                    <Route path="/cadastros/clientes/:id/editar" element={<ClienteForm />} />
+                    <Route path="/cadastros/fornecedores" element={<FornecedoresLista />} />
+                    <Route path="/cadastros/fornecedores/novo" element={<FornecedorForm />} />
+                    <Route path="/cadastros/fornecedores/:id/editar" element={<FornecedorForm />} />
+                    <Route path="/cadastros/produtos" element={<ProdutosLista />} />
+                    <Route
+                      path="/cadastros/produtos/conferencia"
+                      element={<ConferenciaFiscalPage />}
+                    />
+                    <Route path="/cadastros/produtos/novo" element={<ProdutoForm />} />
+                    <Route path="/cadastros/produtos/:id/editar" element={<ProdutoForm />} />
+                    <Route path="/cadastros/marcas" element={<MarcasPage />} />
+                    <Route path="/cadastros/grupos-categorias" element={<GruposCategoriasPage />} />
+                    <Route path="/cadastros/unidades-medida" element={<UnidadesMedidaPage />} />
+                    <Route
+                      path="/cadastros/condicoes-pagamento"
+                      element={<CondicoesPagamentoPage />}
+                    />
+                    <Route path="/cadastros/tabelas-fiscais" element={<TabelasFiscaisHubPage />} />
+                    <Route
+                      path="/cadastros/tabelas-fiscais/codigos"
+                      element={<CodigosFiscaisPage />}
+                    />
+                    <Route path="/cadastros/tabelas-fiscais/ncm" element={<NcmPage />} />
+                    <Route path="/cadastros/tabelas-fiscais/cest" element={<CestPage />} />
+                    <Route path="/cadastros/tabelas-fiscais/cfop" element={<CfopPage />} />
+                    <Route
+                      path="/cadastros/tabelas-fiscais/conversao-cfop"
+                      element={<CfopConversaoPage />}
+                    />
+                    <Route
+                      path="/cadastros/tabelas-fiscais/perfis"
+                      element={<PerfisTributariosPage />}
+                    />
+                    <Route
+                      path="/cadastros/tabelas-fiscais/regras-ncm"
+                      element={<RegrasFiscaisNcmPage />}
+                    />
+                    <Route
+                      path="/cadastros/tabelas-fiscais/matriz-icms"
+                      element={<MatrizIcmsPage />}
+                    />
+                    {/* Financeiro: Contas a Pagar, Contas a Receber e Cadastros */}
+                    <Route
+                      path="/financeiro"
+                      element={<Navigate to="/financeiro/contas-pagar" replace />}
+                    />
+                    <Route path="/financeiro/contas-pagar" element={<ContasPagarPage />} />
+                    <Route path="/financeiro/receber" element={<ContasReceberPage />} />
+                    <Route
+                      path="/financeiro/contas-receber"
+                      element={<Navigate to="/financeiro/receber" replace />}
+                    />
+                    <Route path="/financeiro/dre" element={<DrePage />} />
+                    <Route path="/financeiro/fluxo-caixa" element={<FluxoCaixaPage />} />
+                    <Route path="/financeiro/inadimplencia" element={<InadimplenciaPage />} />
+                    <Route path="/financeiro/bancos" element={<ExtratoBancarioPage />} />
+                    <Route
+                      path="/financeiro/extrato"
+                      element={<Navigate to="/financeiro/bancos" replace />}
+                    />
+                    <Route path="/financeiro/conciliacao" element={<ConciliacaoBancariaPage />} />
+                    <Route
+                      path="/financeiro/cadastros"
+                      element={<Navigate to="/financeiro/cadastros/plano-contas" replace />}
+                    />
+                    <Route
+                      path="/financeiro/cadastros/plano-contas"
+                      element={<PlanoContasPage />}
+                    />
+                    <Route
+                      path="/financeiro/cadastros/centros-custo"
+                      element={<CentrosCustoPage />}
+                    />
+                    <Route
+                      path="/financeiro/cadastros/contas-bancarias"
+                      element={<ContasFinanceirasPage />}
+                    />
+                    <Route
+                      path="/financeiro/cadastros/formas-pagamento"
+                      element={<FormasPagamentoPage />}
+                    />
+                    <Route
+                      path="/financeiro/cadastros/configuracoes"
+                      element={<ConfiguracaoFinanceiraPage />}
+                    />
+                    {/* Estoque */}
+                    <Route path="/estoque" element={<Navigate to="/estoque/posicao" replace />} />
+                    <Route path="/estoque/posicao" element={<PosicaoEstoquePage />} />
+                    {/* Etapa 3: Compras */}
+                    <Route path="/compras" element={<Navigate to="/compras/pedidos" replace />} />
+                    <Route path="/compras/pedidos" element={<PedidosCompraListaPage />} />
+                    <Route path="/compras/pedidos/novo" element={<PedidoCompraFormPage />} />
+                    <Route path="/compras/pedidos/:id" element={<PedidoCompraFormPage />} />
+                    <Route path="/compras/pedidos/:id/editar" element={<PedidoCompraFormPage />} />
+                    {/* Notas Fiscais de Entrada */}
+                    <Route path="/compras/notas-entrada" element={<NotasEntradaListaPage />} />
+                    <Route
+                      path="/compras/notas-entrada/digitar"
+                      element={<NotaEntradaDigitacaoPage />}
+                    />
+                    <Route
+                      path="/compras/notas-entrada/novo"
+                      element={<NotaEntradaDigitacaoPage />}
+                    />
+                    <Route
+                      path="/compras/notas-entrada/:id"
+                      element={<NotaEntradaConferenciaPage />}
+                    />
+                    <Route
+                      path="/compras/notas-entrada/:id/conferencia"
+                      element={<NotaEntradaConferenciaPage />}
+                    />
+                    <Route path="/compras/itens-comprados" element={<ItensCompradosPage />} />
+                    <Route path="/compras/livro-entradas" element={<LivroEntradasPage />} />
+                    <Route path="/estoque/sugestao-compra" element={<SugestaoCompraPage />} />
+                    <Route path="/estoque/inventarios" element={<InventariosListaPage />} />
+                    <Route path="/estoque/inventarios/novo" element={<InventarioNovoPage />} />
+                    <Route path="/estoque/inventarios/:id" element={<InventarioDetalhePage />} />
+                    <Route path="/estoque/kardex" element={<KardexPage />} />
+                    <Route path="/estoque/lancamentos" element={<LancamentosEstoquePage />} />
+                    <Route path="/estoque/transferencias" element={<TransferenciasListaPage />} />
+                    <Route
+                      path="/estoque/transferencias/novo"
+                      element={<TransferenciaFormPage />}
+                    />
+                    <Route path="/estoque/transferencias/:id" element={<TransferenciaFormPage />} />
+                    <Route path="/estoque/lotes" element={<LotesValidadePage />} />
+                    {/* Vendas e PDV (Etapa 5) */}
+                    <Route path="/vendas" element={<Navigate to="/vendas/pedidos" replace />} />
+                    <Route path="/vendas/pedidos" element={<VendasListaPage />} />
+                    <Route path="/vendas/pedidos/novo" element={<VendaFormPage />} />
+                    <Route path="/vendas/pedidos/:id" element={<VendaFormPage />} />
+                    <Route path="/vendas/pdv" element={<PdvPage />} />
+                    <Route path="/vendas/caixa" element={<CaixaPage />} />
+                    <Route path="/vendas/terminais" element={<TerminaisPage />} />
+                    <Route path="/vendas/trocas" element={<TrocasDevolucoesPage />} />
+                    <Route
+                      path="/vendas/devolucoes"
+                      element={<Navigate to="/vendas/trocas" replace />}
+                    />
+                    <Route path="/vendas/comissoes" element={<ComissoesPage />} />
+                    <Route path="/vendas/consultas" element={<ConsultasVendasPage />} />
+                    <Route path="/vendas/configuracoes" element={<ConfigVendasPage />} />
+                    {/* Trevvo Móvel (consulta de produtos pelo celular) */}
+                    <Route path="/movel" element={<MovelHomePage />} />
+                    <Route path="/movel/consulta" element={<MovelConsultaPage />} />
+                    {/* Módulo Fiscal (Etapa 6) */}
+                    <Route
+                      path="/fiscal"
+                      element={<Navigate to="/fiscal/configuracoes" replace />}
+                    />
+                    <Route
+                      path="/fiscal/configuracoes"
+                      element={<ConfiguracaoEmissaoFiscalPage />}
+                    />
+                    <Route path="/fiscal/documentos" element={<DocumentosFiscaisPage />} />
+                    <Route path="/fiscal/intermediadores" element={<IntermediadoresPage />} />
+                    <Route path="/fiscal/inutilizacao" element={<InutilizacaoPage />} />
+                    <Route path="/fiscal/exportar-xmls" element={<ExportarXmlsPage />} />
+                    <Route path="/fiscal/sped" element={<SpedFiscalPage />} />
+                    <Route path="/fiscal/sped/configuracoes" element={<ConfiguracaoSpedPage />} />
+                    <Route
+                      path="/fiscal/sped/:id/relatorio"
+                      element={<SpedRelatorioConferenciaPage />}
+                    />
+                    <Route path="/fiscal/livro-saidas" element={<LivroSaidasPage />} />
+                    <Route path="/fiscal/resumo-icms" element={<ResumoIcmsPage />} />
+                    {/* Relatórios (Etapa 8) */}
+                    <Route path="/relatorios" element={<CentralRelatoriosPage />} />
+                    <Route path="/relatorios/vendas-canais" element={<VendasCanaisPage />} />
+                    <Route
+                      path="/relatorios/estoque-gerencial"
+                      element={<EstoqueGerencialPage />}
+                    />
+                    <Route
+                      path="/relatorios/contas-pagar"
+                      element={<ContasPagarPorVencimentoPage />}
+                    />
+                    <Route
+                      path="/relatorios/personalizado"
+                      element={<RelatorioPersonalizadoPage />}
+                    />
+                    {/* Configurações */}
+                    <Route
+                      path="/configuracoes"
+                      element={<Navigate to="/configuracoes/geral" replace />}
+                    />
+                    <Route path="/configuracoes/geral" element={<ConfiguracoesGeralPage />} />
+                    <Route path="/configuracoes/fiscal" element={<ConfiguracaoFiscalPage />} />
+                    <Route path="/configuracoes/tray" element={<TrayPage />} />
+                    <Route path="/configuracoes/mercado-livre" element={<MercadoLivrePage />} />
+                    <Route path="/configuracoes/auditoria" element={<LogAuditoriaPage />} />
+                    <Route
+                      path="/configuracoes/integridade-estoque"
+                      element={<IntegridadeEstoquePage />}
+                    />
+                    <Route
+                      path="/configuracoes/integridade-financeiro"
+                      element={<IntegridadeFinanceiroPage />}
+                    />
+                  </Route>
 
-                {/* Rota desconhecida redireciona para /painel */}
-                <Route path="*" element={<Navigate to="/painel" replace />} />
-              </Routes>
+                  {/* Rota desconhecida redireciona para /painel */}
+                  <Route path="*" element={<Navigate to="/painel" replace />} />
+                </Routes>
+              </ErrorBoundaryGlobal>
             </TooltipProvider>
           </EmpresaProvider>
         </PermissoesProvider>
