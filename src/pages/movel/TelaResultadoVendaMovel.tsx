@@ -80,6 +80,18 @@ export default function TelaResultadoVendaMovel({ resultado, aoNovaVenda, classN
             </p>
           )}
         </div>
+
+        {/* NFC-e não autorizada: mensagem real já está acima; aviso de reemissão pelo monitor fiscal */}
+        {resultado.statusNfce === 'Rejeitada' && (
+          <div className="w-full max-w-[300px] rounded-lg border border-amber-200 bg-amber-50 p-3 text-left">
+            <p className="text-xs font-semibold text-amber-900">
+              A venda foi salva; tente emitir de novo pelo monitor fiscal
+            </p>
+            <p className="mt-0.5 text-[11px] leading-snug text-amber-800">
+              Vendas &gt; Documentos fiscais — a nota pode ser reemitida sem refazer a venda.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Rodapé fixo com o botão principal */}

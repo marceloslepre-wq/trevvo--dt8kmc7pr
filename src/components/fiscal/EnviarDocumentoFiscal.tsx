@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Copy, Mail, MessageCircle, Printer } from 'lucide-react'
+import { Copy, Mail, MessageCircle, Printer, Share2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
+import { cn } from '@/lib/utils'
 
 export interface DadosEnviarDocumentoFiscal {
   /** Nome fantasia da loja (assunto / texto do WhatsApp) */
@@ -30,6 +31,8 @@ export interface DadosEnviarDocumentoFiscal {
   emailCliente?: string
   /** Bônus: quando a venda tem cliente identificado, permite salvar contato no cadastro */
   permitirSalvarNoCliente?: boolean
+  /** Trevvo Móvel: botões empilhados, largura total, altura ≥48px (sem rolagem horizontal) */
+  empilhado?: boolean
   /** Chamado quando o usuário marca para salvar contato no cadastro do cliente */
   onSalvarContato?: (celular: string, email: string) => Promise<void> | void
   /** Impressão do cupom — usa a impressão que o PDV já usa */
@@ -65,6 +68,7 @@ export const EnviarDocumentoFiscal: React.FC<DadosEnviarDocumentoFiscal> = ({
   celularCliente,
   emailCliente,
   permitirSalvarNoCliente,
+  empilhado,
   onSalvarContato,
   onImprimir,
 }) => {
@@ -91,6 +95,31 @@ export const EnviarDocumentoFiscal: React.FC<DadosEnviarDocumentoFiscal> = ({
   const [celular, setCelular] = useState(celularCliente || '')
   const [email, setEmail] = useState(emailCliente || '')
   const [salvarNoCliente, setSalvarNoCliente] = useState(false)
+
+  // Compartilhar nativo: só existe em celular — no desktop o botão nem aparece
+  const podeCompartilhar = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+
+  const handleCompartilhar = async () => {
+    if (!linkCupom || !navigator.share) return
+    try {
+      await navigator.share({
+        title: `NFC-e nº ${numero} - ${nomeLoja}`,
+        text: `${nomeLoja} - NFC-e nº ${numero}, valor R$ ${valorFormatado}`,
+        url: linkCupom,
+      })
+    } catch (err) {
+      if ((err as DOMException)?.name !== 'AbortError') {
+        toast({ title: 'Não foi possível compartilhar o cupom', variant: 'destructive' })
+      }
+    }
+  }
+
+  // Trevvo Móvel: botões empilhados, largura total, ≥48px
+  const classeBotaoAcao = empilhado
+    ? 'h-12 w-full text-sm font-semibold'
+    : 'h-9 text-xs font-semibold flex-1'
+  const classeContainerBotoes = empilhado ? 'flex flex-col gap-2' : 'flex items-center gap-2'
+  const classeCampos = empilhado ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-2 gap-2'
 
   const valorFormatado = useMemo(
     () => valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
@@ -171,21 +200,33 @@ export const EnviarDocumentoFiscal: React.FC<DadosEnviarDocumentoFiscal> = ({
               : 'Link não disponível'}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className={classeContainerBotoes}>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="h-9 text-xs font-semibold flex-1"
+            className={classeBotaoAcao}
             onClick={handleCopiar}
             disabled={!linkCupom}
           >
             <Copy size={14} className="mr-1.5" /> Copiar link
           </Button>
+          {podeCompartilhar && (
+            <Button
+              type="button"
+              size="sm"
+              className={cn(classeBotaoAcao, 'bg-violet-600 hover:bg-violet-700 text-white')}
+              onClick={() => void handleCompartilhar()}
+              disabled={!linkCupom}
+              title="Compartilha o link do cupom pelo sistema do celular"
+            >
+              <Share2 size={14} className="mr-1.5" /> Compartilhar
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
-            className="h-9 text-xs font-semibold flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+            className={cn(classeBotaoAcao, 'bg-emerald-600 hover:bg-emerald-700 text-white')}
             onClick={handleWhatsApp}
             disabled={!linkCupom}
           >
@@ -194,7 +235,7 @@ export const EnviarDocumentoFiscal: React.FC<DadosEnviarDocumentoFiscal> = ({
           <Button
             type="button"
             size="sm"
-            className="h-9 text-xs font-semibold flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+            className={cn(classeBotaoAcao, 'bg-blue-600 hover:bg-blue-700 text-white')}
             onClick={handleEmail}
             disabled={!linkCupom}
             title="Abre o app de e-mail com o link no corpo"
@@ -204,7 +245,7 @@ export const EnviarDocumentoFiscal: React.FC<DadosEnviarDocumentoFiscal> = ({
           <Button
             type="button"
             size="sm"
-            className="h-9 text-xs font-semibold flex-1 bg-slate-700 hover:bg-slate-800 text-white"
+            className={cn(classeBotaoAcao, 'bg-slate-700 hover:bg-slate-800 text-white')}
             onClick={onImprimir}
           >
             <Printer size={14} className="mr-1.5" /> Imprimir
@@ -213,7 +254,7 @@ export const EnviarDocumentoFiscal: React.FC<DadosEnviarDocumentoFiscal> = ({
       </div>
 
       {/* Campos de celular/e-mail */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className={classeCampos}>
         <div className="space-y-1">
           <Label htmlFor="pdv-enviar-celular" className="text-[11px] text-slate-600 font-semibold">
             Celular do cliente (com DDD)

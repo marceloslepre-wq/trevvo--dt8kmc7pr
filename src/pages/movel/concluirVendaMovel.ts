@@ -27,6 +27,13 @@ export type ResultadoConclusao = {
   statusNfce: 'Autorizada' | 'Rejeitada' | 'Processando' | 'NaoEmitida'
   mensagemNfce: string
   contingencia?: boolean
+  /** Dados do cupom quando a NFC-e ficou Autorizada (mesmos campos da resposta do backend) */
+  numeroNfce?: number
+  serie?: string
+  chave?: string
+  /** danfe_url do backend (URL base Focus já composta lá) */
+  danfeUrl?: string
+  urlConsulta?: string
 }
 
 /**
@@ -151,6 +158,11 @@ export async function concluirVendaMovel(params: {
           ? 'NFC-e emitida em CONTINGÊNCIA (offline).'
           : 'NFC-e autorizada na SEFAZ.',
         contingencia: respNfce.contingencia,
+        numeroNfce: respNfce.numero,
+        serie: respNfce.serie,
+        chave: respNfce.chave,
+        danfeUrl: respNfce.danfe_url,
+        urlConsulta: respNfce.url_consulta,
       }
     }
 
