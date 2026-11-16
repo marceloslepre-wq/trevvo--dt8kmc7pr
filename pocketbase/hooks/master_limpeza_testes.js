@@ -212,7 +212,11 @@ routerAdd(
         [
           'Cadastros',
           'produtos_kit_itens',
-          'produto_id IN (SELECT id FROM produtos WHERE assinante_id = ' + A + ')',
+          'produto_kit_id IN (SELECT id FROM produtos WHERE assinante_id = ' +
+            A +
+            ') OR produto_item_id IN (SELECT id FROM produtos WHERE assinante_id = ' +
+            A +
+            ')',
         ],
         [
           'Cadastros',
