@@ -25,15 +25,23 @@ import { useCameraLeitor } from '@/pages/movel/useCameraLeitor'
 import { listarProdutos, type Produto } from '@/services/produtos'
 import { obterSessaoAbertaOperador, type CaixaSessao } from '@/services/caixa'
 import { resolverOperadorErpId } from '@/services/operadorErp'
+import { listarFormasPagamento } from '@/services/formasPagamento'
+import { listarContasFinanceiras } from '@/services/contasFinanceiras'
+import { obterConfigFiscalEmpresa } from '@/services/configEmissaoFiscal'
+import type { FormaPagamento } from '@/services/formasPagamento'
+import type { ContaFinanceira } from '@/services/contasFinanceiras'
+import type { ConfigEmissaoFiscal } from '@/services/configEmissaoFiscal'
+import type { PagamentoVendaInput } from '@/services/vendas'
+import {
+  concluirVendaMovel,
+  type ItemCarrinhoMovel,
+  type ResultadoConclusao,
+} from './concluirVendaMovel'
+import TelaPagamentoMovel from './TelaPagamentoMovel'
+import TelaResultadoVendaMovel from './TelaResultadoVendaMovel'
 
-/** Item do carrinho: mínimos para a parte 1 (sem pagamento). */
-type ItemCarrinho = {
-  produtoId: string
-  descricao: string
-  unidade: string
-  quantidade: number
-  precoUnitario: number
-}
+/** Item do carrinho do Móvel (mesma forma da parte 1). */
+type ItemCarrinho = ItemCarrinhoMovel
 
 const formatarMoeda = (v: unknown) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
@@ -52,7 +60,7 @@ const urlFoto = (p: Produto): string | null => {
 const precoVendaProduto = (p: Produto) =>
   p.preco_promocional && p.preco_promocional > 0 ? p.preco_promocional : p.preco_venda || 0
 
-/** Venda pelo celular (Trevvo Móvel, parte 1): carrinho SEM pagamento. */
+/** Venda pelo celular (Trevvo Móvel, parte 2): pagamento + NFC-e como no PDV. */
 export default function MovelVendaPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -80,6 +88,17 @@ export default function MovelVendaPage() {
   // ---- Carrinho: um único useState ----
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([])
 
+  // ---- Pagamento / conclusão (parte 2) ----
+  const [telaPagamento, setTelaPagamento] = useState(false)
+  const [formasPagamento, setFormasPagamento] = useState<FormaPagamento[]>([])
+  const [contasFinanceiras, setContasFinanceiras] = useState<ContaFinanceira[]>([])
+  const [configFiscal, setConfigFiscal] = useState<ConfigEmissaoFiscal | null>(null)
+  const [carregandoFormas, setCarregandoFormas] = useState(false)
+  const [formasCarregadas, setFormasCarregadas] = useState(false)
+  const [concluindo, setConcluindo] = useState(false)
+  const [resultadoVenda, setResultadoVenda] = useState<ResultadoConclusao | null>(null)
+  const [erroConclusao, setErroConclusao] = useState<string | null>(null)
+
   const permitido = pode('pdv', 'criar')
 
   useEffect(() => {
@@ -98,6 +117,20 @@ export default function MovelVendaPage() {
     [carrinho],
   )
   const totalItens = useMemo(() => carrinho.reduce((acc, it) => acc + it.quantidade, 0), [carrinho])
+  const podeFinalizar = useMemo(
+    () => !concluindo && !resultadoVenda && carrinho.length > 0 && subtotal > 0,
+    [concluindo, resultadoVenda, carrinho.length, subtotal],
+  )
+  const emitirNfceLoja = useMemo(
+    () =>
+      Boolean(
+        configFiscal &&
+        configFiscal.emite_documentos_fiscais &&
+        configFiscal.emite_nfce &&
+        configFiscal.csc_configurado,
+      ),
+    [configFiscal],
+  )
 
   // ---- Busca a sessão de caixa aberta do operador (mesma função do PDV) ----
   useEffect(() => {
@@ -231,6 +264,91 @@ export default function MovelVendaPage() {
   const { ativa: cameraAtiva, iniciar: abrirCamera, aviso: avisoCameraHook } = camera
 
   const nomeEmpresa = empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || 'Empresa'
+
+  // ---- Pagamento: carrega formas/contas/config fiscal na 1ª abertura (lazy, como o PDV) ----
+  const aoAbrirPagamento = useCallback(async () => {
+    if (!empresaAtiva?.id || !assinanteId) return
+    setTelaPagamento(true)
+    if (formasCarregadas) return
+    setCarregandoFormas(true)
+    try {
+      const [formas, contas, cfgF] = await Promise.all([
+        listarFormasPagamento({ assinante_id: assinanteId, situacao: 'ativos' }),
+        listarContasFinanceiras({ empresa_id: empresaAtiva.id, situacao: 'ativos' }),
+        obterConfigFiscalEmpresa(empresaAtiva.id).catch(() => null),
+      ])
+      if (!montadoRef.current) return
+      setFormasPagamento(formas)
+      setContasFinanceiras(contas)
+      setConfigFiscal(cfgF)
+      setFormasCarregadas(true)
+    } catch (err) {
+      console.error('Erro ao carregar formas de pagamento:', err)
+      if (montadoRef.current) setErroConclusao('Erro ao carregar formas de pagamento.')
+    } finally {
+      if (montadoRef.current) setCarregandoFormas(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaAtiva?.id, assinanteId, formasCarregadas])
+
+  // ---- Concluir: MESMA sequência do PDV (salvarVenda → finalizarVenda → emitirNFCeVenda) ----
+  const aoConcluirPagamento = useCallback(
+    async (params: {
+      pagamentos: PagamentoVendaInput[]
+      troco: number
+      cpfCnpjConsumidor: string
+    }) => {
+      if (!empresaAtiva?.id || !sessaoCaixa?.id || concluindo || resultadoVenda) return
+      setConcluindo(true) // trava o botão até chegar a resposta (sem duplo toque)
+      setErroConclusao(null)
+      try {
+        const res = await concluirVendaMovel({
+          empresaId: empresaAtiva.id,
+          sessaoCaixa,
+          operadorId: usuarioERP?.id,
+          assinanteId: assinanteId || undefined,
+          carrinho,
+          totalVenda: subtotal,
+          pagamentos: params.pagamentos,
+          troco: params.troco,
+          cpfCnpjConsumidor: params.cpfCnpjConsumidor,
+          configFiscal,
+        })
+        if (!montadoRef.current) return
+        setResultadoVenda(res)
+        setTelaPagamento(false)
+      } catch (err: any) {
+        console.error('Erro ao concluir venda no Móvel:', err)
+        if (montadoRef.current)
+          setErroConclusao(err?.message || 'Não foi possível concluir a venda.')
+      } finally {
+        if (montadoRef.current) setConcluindo(false)
+      }
+    },
+    [
+      empresaAtiva?.id,
+      sessaoCaixa,
+      concluindo,
+      resultadoVenda,
+      carrinho,
+      subtotal,
+      configFiscal,
+      assinanteId,
+      usuarioERP?.id,
+    ],
+  )
+
+  // ---- Nova venda: limpa carrinho e volta para a venda (formas já carregadas) ----
+  const aoNovaVenda = useCallback(() => {
+    setCarrinho([])
+    setTermo('')
+    setResultados([])
+    setErroBusca(null)
+    setErroConclusao(null)
+    setResultadoVenda(null)
+    setTelaPagamento(false)
+    window.setTimeout(() => inputRef.current?.focus(), 50)
+  }, [])
 
   if (!permitido) return <AcessoNegado />
 
@@ -496,10 +614,12 @@ export default function MovelVendaPage() {
         </ErrorBoundaryGlobal>
       </main>
 
-      {/* Rodapé fixo: total + FINALIZAR (desabilitado na parte 1) */}
+      {/* Rodapé fixo: total + FINALIZAR (abre a tela de pagamento) */}
       <footer className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white">
         <div className="mx-auto w-full max-w-xl px-3 py-3">
-          <p className="mb-1 text-center text-[11px] text-slate-500">Pagamento na próxima versão</p>
+          {erroConclusao && (
+            <p className="mb-2 text-center text-xs text-red-600">{erroConclusao}</p>
+          )}
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -509,12 +629,33 @@ export default function MovelVendaPage() {
                 {formatarMoeda(subtotal)}
               </p>
             </div>
-            <Button className="h-14 w-40 shrink-0 text-base font-extrabold" disabled>
-              FINALIZAR
+            <Button
+              className="h-14 w-40 shrink-0 text-base font-extrabold"
+              disabled={!podeFinalizar}
+              onClick={() => void aoAbrirPagamento()}
+            >
+              {concluindo ? <Loader2 className="h-5 w-5 animate-spin" /> : 'FINALIZAR'}
             </Button>
           </div>
         </div>
       </footer>
+
+      {/* Tela de pagamento em tela cheia (lógica do ModalPagamentoPDV) */}
+      <TelaPagamentoMovel
+        aberto={telaPagamento && !resultadoVenda}
+        total={subtotal}
+        formas={formasPagamento}
+        contas={contasFinanceiras}
+        emitirNfce={emitirNfceLoja}
+        carregandoFormas={carregandoFormas}
+        aoVoltar={() => setTelaPagamento(false)}
+        aoConcluir={aoConcluirPagamento}
+      />
+
+      {/* Tela de resultado: venda concluída + status da NFC-e */}
+      {resultadoVenda && (
+        <TelaResultadoVendaMovel resultado={resultadoVenda} aoNovaVenda={aoNovaVenda} />
+      )}
     </div>
   )
 }
