@@ -11,6 +11,7 @@ import {
   Store,
   Trash2,
   User,
+  Wallet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -39,6 +40,9 @@ import {
 } from './concluirVendaMovel'
 import TelaPagamentoMovel from './TelaPagamentoMovel'
 import TelaResultadoVendaMovel from './TelaResultadoVendaMovel'
+import TelaEnvioCupomMovel from './TelaEnvioCupomMovel'
+import TelaFecharCaixaMovel from './TelaFecharCaixaMovel'
+import { imprimirDanfeUrl } from '@/services/fiscalIntegracao'
 
 /** Item do carrinho do Móvel (mesma forma da parte 1). */
 type ItemCarrinho = ItemCarrinhoMovel
@@ -98,6 +102,7 @@ export default function MovelVendaPage() {
   const [concluindo, setConcluindo] = useState(false)
   const [resultadoVenda, setResultadoVenda] = useState<ResultadoConclusao | null>(null)
   const [erroConclusao, setErroConclusao] = useState<string | null>(null)
+  const [telaFecharCaixa, setTelaFecharCaixa] = useState(false)
 
   const permitido = pode('pdv', 'criar')
 
@@ -121,6 +126,7 @@ export default function MovelVendaPage() {
     () => !concluindo && !resultadoVenda && carrinho.length > 0 && subtotal > 0,
     [concluindo, resultadoVenda, carrinho.length, subtotal],
   )
+  const cupomVisivel = useMemo(() => resultadoVenda?.statusNfce === 'Autorizada', [resultadoVenda])
   const emitirNfceLoja = useMemo(
     () =>
       Boolean(
@@ -350,6 +356,30 @@ export default function MovelVendaPage() {
     window.setTimeout(() => inputRef.current?.focus(), 50)
   }, [])
 
+  // ---- Fechar caixa: MESMOS serviços do PDV; após fechar, volta ao estado "carregando"
+  // da sessão (recarrega) e sai da tela. ----
+  const aoFecharCaixaSucesso = useCallback(async () => {
+    setTelaFecharCaixa(false)
+    setFaseCaixa('carregando')
+    setSessaoCaixa(null)
+    if (!empresaAtiva?.id) return
+    try {
+      const operadorErpId = usuarioERP?.id || (await resolverOperadorErpId()) || ''
+      if (!operadorErpId) {
+        setFaseCaixa('semCaixa')
+        return
+      }
+      const sessao = await obterSessaoAbertaOperador(empresaAtiva.id, operadorErpId)
+      if (!montadoRef.current) return
+      setSessaoCaixa(sessao)
+      setFaseCaixa(sessao ? 'pronto' : 'semCaixa')
+    } catch (err) {
+      console.error('Erro ao recarregar caixa aberto:', err)
+      if (montadoRef.current) setFaseCaixa('semCaixa')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaAtiva?.id, usuarioERP?.id])
+
   if (!permitido) return <AcessoNegado />
 
   // ---------- Sem caixa aberto ----------
@@ -425,6 +455,17 @@ export default function MovelVendaPage() {
             <User className="h-3 w-3 shrink-0" /> {nomeOperador}
           </p>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-12 w-12 shrink-0"
+          onClick={() => setTelaFecharCaixa(true)}
+          aria-label="Fechar caixa"
+          title="Fechar caixa"
+        >
+          <Wallet className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* Conteúdo com rolagem própria */}
@@ -652,6 +693,35 @@ export default function MovelVendaPage() {
           className="absolute inset-0 z-40"
           resultado={resultadoVenda}
           aoNovaVenda={aoNovaVenda}
+        />
+      )}
+
+      {/* Cupom da NFC-e autorizada, em tela cheia sobre o resultado */}
+      {resultadoVenda && cupomVisivel && (
+        <TelaEnvioCupomMovel
+          className="absolute inset-0 z-50"
+          numero={resultadoVenda.numeroNfce ?? resultadoVenda.numeroVenda}
+          serie={resultadoVenda.serie}
+          chave={resultadoVenda.chave}
+          valor={resultadoVenda.valorTotal}
+          nomeLoja={empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || 'Loja'}
+          // danfe_url do backend já sai com a URL base da Focus composta
+          caminhoDanfe={resultadoVenda.danfeUrl}
+          urlConsulta={resultadoVenda.urlConsulta}
+          onImprimir={() => {
+            if (resultadoVenda.danfeUrl) imprimirDanfeUrl(resultadoVenda.danfeUrl)
+          }}
+          aoFechar={aoNovaVenda}
+        />
+      )}
+
+      {/* Fechamento de caixa, em tela cheia (mesmos serviços do PDV) */}
+      {telaFecharCaixa && sessaoCaixa && (
+        <TelaFecharCaixaMovel
+          className="absolute inset-0 z-50"
+          sessao={sessaoCaixa}
+          aoFechar={() => setTelaFecharCaixa(false)}
+          aoSucesso={() => void aoFecharCaixaSucesso()}
         />
       )}
     </div>

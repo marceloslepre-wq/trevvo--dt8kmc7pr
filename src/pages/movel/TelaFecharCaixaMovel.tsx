@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
 import {
   fecharSessaoCaixa,
   apurarDadosFechamento,
@@ -15,6 +16,8 @@ type Props = {
   aoFechar: () => void
   /** Chamado após o fechamento bem-sucedido, com a diferença apurada. */
   aoSucesso: (diferencaDinheiro: number) => void
+  /** Classes extras do container raiz (o MovelVendaPage posiciona em tela cheia). */
+  className?: string
 }
 
 function parseValor(str: string): number {
@@ -26,7 +29,7 @@ function parseValor(str: string): number {
  * Usa as MESMAS funções do PDV (apurarDadosFechamento + fecharSessaoCaixa),
  * apenas adaptando a apresentação à estrutura do MovelLayout.
  */
-export default function TelaFecharCaixaMovel({ sessao, aoFechar, aoSucesso }: Props) {
+export default function TelaFecharCaixaMovel({ sessao, aoFechar, aoSucesso, className }: Props) {
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -126,7 +129,7 @@ export default function TelaFecharCaixaMovel({ sessao, aoFechar, aoSucesso }: Pr
   }
 
   return (
-    <div className="flex min-h-0 w-full min-w-0 flex-col overflow-hidden bg-white">
+    <div className={cn('flex min-h-0 w-full min-w-0 flex-col overflow-hidden bg-white', className)}>
       {/* Cabeçalho fino */}
       <div className="flex h-14 shrink-0 items-center justify-between border-b bg-white px-3">
         <div className="min-w-0">
