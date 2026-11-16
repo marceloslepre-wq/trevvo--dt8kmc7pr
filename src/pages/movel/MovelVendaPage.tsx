@@ -355,25 +355,22 @@ export default function MovelVendaPage() {
   // ---------- Sem caixa aberto ----------
   if (faseCaixa === 'semCaixa') {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
-          <div className="mx-auto flex h-14 max-w-xl items-center gap-2 px-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-12 w-12 shrink-0"
-              onClick={() => navigate('/movel')}
-              aria-label="Voltar"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-900">Nova venda</p>
-              <p className="truncate text-xs text-slate-500">{nomeEmpresa}</p>
-            </div>
+      <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-slate-50">
+        <header className="flex h-12 max-h-12 min-h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 shrink-0"
+            onClick={() => navigate('/movel')}
+            aria-label="Voltar"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-slate-900">Nova venda</p>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-xl flex-1 px-4 py-6">
+        <main className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto px-4 py-6">
           <ErrorBoundaryGlobal titulo="Não foi possível exibir esta tela">
             <Card>
               <CardContent className="space-y-4 p-4 text-center">
@@ -396,7 +393,7 @@ export default function MovelVendaPage() {
   // ---------- Carregando ----------
   if (faseCaixa === 'carregando' || !sessaoCaixa) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="flex h-full min-h-0 w-full min-w-0 items-center justify-center bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
       </div>
     )
@@ -409,33 +406,33 @@ export default function MovelVendaPage() {
   const avisoCameraFinal = avisoCamera || avisoCameraHook
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-xl items-center gap-2 px-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-12 w-12 shrink-0"
-            onClick={() => navigate('/movel')}
-            aria-label="Voltar"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-900">Nova venda</p>
-            <p className="flex items-center gap-1 truncate text-xs text-slate-500">
-              <Store className="h-3 w-3" /> {nomeTerminal} · <User className="h-3 w-3" />{' '}
-              {nomeOperador}
-            </p>
-          </div>
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-slate-50">
+      {/* Sub-cabeçalho da tela (o cabeçalho do sistema vem do MovelLayout) */}
+      <div className="flex h-12 max-h-12 min-h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          onClick={() => navigate('/movel')}
+          aria-label="Voltar"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-900">Nova venda</p>
+          <p className="flex items-center gap-1 truncate text-xs text-slate-500">
+            <Store className="h-3 w-3 shrink-0" /> {nomeTerminal} ·{' '}
+            <User className="h-3 w-3 shrink-0" /> {nomeOperador}
+          </p>
         </div>
-      </header>
+      </div>
 
-      <main className="mx-auto w-full max-w-xl flex-1 px-3 pb-36 pt-3">
+      {/* Conteúdo com rolagem própria */}
+      <main className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-3">
         <ErrorBoundaryGlobal titulo="Não foi possível exibir a venda">
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="relative min-w-0 flex-1">
                 <ScanLine className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   ref={inputRef}
@@ -614,34 +611,31 @@ export default function MovelVendaPage() {
         </ErrorBoundaryGlobal>
       </main>
 
-      {/* Rodapé fixo: total + FINALIZAR (abre a tela de pagamento) */}
-      <footer className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white">
-        <div className="mx-auto w-full max-w-xl px-3 py-3">
-          {erroConclusao && (
-            <p className="mb-2 text-center text-xs text-red-600">{erroConclusao}</p>
-          )}
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Total ({totalItens} un)
-              </p>
-              <p className="truncate text-2xl font-black text-emerald-700">
-                {formatarMoeda(subtotal)}
-              </p>
-            </div>
-            <Button
-              className="h-14 w-40 shrink-0 text-base font-extrabold"
-              disabled={!podeFinalizar}
-              onClick={() => void aoAbrirPagamento()}
-            >
-              {concluindo ? <Loader2 className="h-5 w-5 animate-spin" /> : 'FINALIZAR'}
-            </Button>
+      {/* Rodapé fixo: total à esquerda + FINALIZAR à direita (≥45% da largura) */}
+      <footer className="shrink-0 border-t border-slate-200 bg-white px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {erroConclusao && <p className="mb-1 text-center text-xs text-red-600">{erroConclusao}</p>}
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Total ({totalItens} un)
+            </p>
+            <p className="truncate text-2xl font-black text-emerald-700">
+              {formatarMoeda(subtotal)}
+            </p>
           </div>
+          <Button
+            className="h-14 w-[45%] min-w-[160px] max-w-[220px] shrink-0 text-base font-extrabold"
+            disabled={!podeFinalizar}
+            onClick={() => void aoAbrirPagamento()}
+          >
+            {concluindo ? <Loader2 className="h-5 w-5 animate-spin" /> : 'FINALIZAR'}
+          </Button>
         </div>
       </footer>
 
       {/* Tela de pagamento em tela cheia (lógica do ModalPagamentoPDV) */}
       <TelaPagamentoMovel
+        className="absolute inset-0 z-40"
         aberto={telaPagamento && !resultadoVenda}
         total={subtotal}
         formas={formasPagamento}
@@ -652,9 +646,13 @@ export default function MovelVendaPage() {
         aoConcluir={aoConcluirPagamento}
       />
 
-      {/* Tela de resultado: venda concluída + status da NFC-e */}
+      {/* Tela de resultado: venda concluída + status da NFC-e (tela cheia) */}
       {resultadoVenda && (
-        <TelaResultadoVendaMovel resultado={resultadoVenda} aoNovaVenda={aoNovaVenda} />
+        <TelaResultadoVendaMovel
+          className="absolute inset-0 z-40"
+          resultado={resultadoVenda}
+          aoNovaVenda={aoNovaVenda}
+        />
       )}
     </div>
   )

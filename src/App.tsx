@@ -11,6 +11,7 @@ import ErrorBoundaryGlobal from '@/components/ErrorBoundaryGlobal'
 import FaixaErroGlobal from '@/components/FaixaErroGlobal'
 import MasterPage from '@/pages/master/MasterPage'
 import Layout from '@/components/Layout'
+import MovelLayout from '@/components/MovelLayout'
 import RedirecionarRaiz from '@/components/destinoInicial'
 
 // Páginas de Autenticação
@@ -98,9 +99,6 @@ import PdvPage from '@/pages/vendas/pdv/PdvPage'
 import { TrocasDevolucoesPage } from '@/pages/vendas/TrocasDevolucoesPage'
 import { ComissoesPage } from '@/pages/vendas/ComissoesPage'
 import { ConsultasVendasPage } from '@/pages/vendas/ConsultasVendasPage'
-import MovelHomePage from '@/pages/movel/MovelHomePage'
-import MovelConsultaPage from '@/pages/movel/MovelConsultaPage'
-import MovelVendaPage from '@/pages/movel/MovelVendaPage'
 
 // Páginas Fiscais (Etapa 6)
 import ConfiguracaoEmissaoFiscalPage from '@/pages/fiscal/ConfiguracaoEmissaoFiscalPage'
@@ -121,6 +119,11 @@ import VendasCanaisPage from '@/pages/relatorios/VendasCanaisPage'
 import EstoqueGerencialPage from '@/pages/relatorios/EstoqueGerencialPage'
 import ContasPagarPorVencimentoPage from '@/pages/relatorios/ContasPagarVencimentoPage'
 import RelatorioPersonalizadoPage from '@/pages/relatorios/RelatorioPersonalizadoPage'
+
+// Trevvo Móvel (layout próprio, fora do Layout desktop)
+import MovelHomePage from '@/pages/movel/MovelHomePage'
+import MovelConsultaPage from '@/pages/movel/MovelConsultaPage'
+import MovelVendaPage from '@/pages/movel/MovelVendaPage'
 
 /**
  * PERMISSÕES DE ROTAS (fonte única: src/config/tabelaRotas.ts)
@@ -380,10 +383,6 @@ const App = () => (
                     <Route path="/vendas/comissoes" element={<ComissoesPage />} />
                     <Route path="/vendas/consultas" element={<ConsultasVendasPage />} />
                     <Route path="/vendas/configuracoes" element={<ConfigVendasPage />} />
-                    {/* Trevvo Móvel (consulta de produtos pelo celular) */}
-                    <Route path="/movel" element={<MovelHomePage />} />
-                    <Route path="/movel/consulta" element={<MovelConsultaPage />} />
-                    <Route path="/movel/venda" element={<MovelVendaPage />} />
                     {/* Módulo Fiscal (Etapa 6) */}
                     <Route
                       path="/fiscal"
@@ -438,6 +437,20 @@ const App = () => (
                       path="/configuracoes/integridade-financeiro"
                       element={<IntegridadeFinanceiroPage />}
                     />
+                  </Route>
+
+                  {/* Trevvo Móvel: layout próprio (sem Sidebar/Header do ERP),
+                      guardado pelo MESMO GuardaRota (tabela de rotas). */}
+                  <Route
+                    element={
+                      <ProtectedRoute>
+                        <MovelLayout />
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route path="/movel" element={<MovelHomePage />} />
+                    <Route path="/movel/consulta" element={<MovelConsultaPage />} />
+                    <Route path="/movel/venda" element={<MovelVendaPage />} />
                   </Route>
 
                   {/* Rota desconhecida redireciona para /painel */}

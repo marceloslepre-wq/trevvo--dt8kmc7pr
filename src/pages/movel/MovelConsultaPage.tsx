@@ -6,7 +6,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { AcessoNegado } from '@/components/AcessoNegado'
 import ErrorBoundaryGlobal from '@/components/ErrorBoundaryGlobal'
-import { useAuth } from '@/contexts/AuthContext'
 import { useEmpresaAtiva, useEmpresasAcessiveis } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { listarProdutos, type Produto } from '@/services/produtos'
@@ -57,7 +56,6 @@ const urlFoto = (p: Produto): string | null => {
 /** Consulta rápida de produtos pelo celular (Trevvo Móvel, parte 1). */
 export default function MovelConsultaPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
   const { pode } = usePermissoes()
   const { empresaAtiva, assinanteId } = useEmpresaAtiva()
   const { empresasAcessiveis } = useEmpresasAcessiveis()
@@ -294,31 +292,27 @@ export default function MovelConsultaPage() {
   const avisoCameraFinal = avisoCamera || avisoCameraHook
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Cabeçalho fino */}
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-xl items-center gap-2 px-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 shrink-0"
-            onClick={() => (detalhe ? setDetalhe(null) : navigate('/movel'))}
-            aria-label="Voltar"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-900">
-              {detalhe ? 'Produto' : 'Consultar produto'}
-            </p>
-            <p className="truncate text-xs text-slate-500">
-              {nomeEmpresaAtiva || 'Empresa'} · {textoSeguro(user?.name, 'Usuário')}
-            </p>
-          </div>
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-slate-50">
+      {/* Sub-cabeçalho da tela (o cabeçalho do sistema vem do MovelLayout) */}
+      <div className="flex h-12 max-h-12 min-h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          onClick={() => (detalhe ? setDetalhe(null) : navigate('/movel'))}
+          aria-label="Voltar"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {detalhe ? 'Produto' : 'Consultar produto'}
+          </p>
         </div>
-      </header>
+      </div>
 
-      <main className="mx-auto w-full max-w-xl flex-1 px-3 py-3">
+      {/* Conteúdo com rolagem própria */}
+      <div className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overscroll-contain">
         {detalhe ? (
           /* ---------- Detalhe do produto (com boundary próprio) ---------- */
           <ErrorBoundaryGlobal
@@ -329,11 +323,11 @@ export default function MovelConsultaPage() {
               if (detalhe) abrirDetalhe(detalhe)
             }}
           >
-            <div className="space-y-3">
+            <div className="w-full min-w-0 space-y-3 p-3">
               <Card>
-                <CardContent className="p-4 space-y-1">
+                <CardContent className="space-y-1 p-4">
                   <h2 className="text-base font-semibold text-slate-900">{detalhe.descricao}</h2>
-                  <p className="text-sm text-slate-500">
+                  <p className="truncate text-sm text-slate-500">
                     Ref.: {textoSeguro(detalhe.referencia)} · EAN: {textoSeguro(detalhe.gtin)}
                   </p>
                   <p className="pt-1 text-2xl font-bold text-slate-900">
@@ -345,11 +339,15 @@ export default function MovelConsultaPage() {
                     </p>
                   )}
                   {(detalhe.localizacao || detalhe.observacoes) && (
-                    <div className="rounded-md bg-slate-100 p-2 text-xs text-slate-600">
+                    <div className="min-w-0 rounded-md bg-slate-100 p-2 text-xs text-slate-600">
                       {detalhe.localizacao && (
-                        <p>Localização: {textoSeguro(detalhe.localizacao)}</p>
+                        <p className="break-words">
+                          Localização: {textoSeguro(detalhe.localizacao)}
+                        </p>
                       )}
-                      {detalhe.observacoes && <p>Obs.: {textoSeguro(detalhe.observacoes)}</p>}
+                      {detalhe.observacoes && (
+                        <p className="break-words">Obs.: {textoSeguro(detalhe.observacoes)}</p>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -361,16 +359,18 @@ export default function MovelConsultaPage() {
                 </p>
                 {linhasSaldoDetalhe.map((linha) => (
                   <Card key={linha.id}>
-                    <CardContent className="flex items-center justify-between p-3">
-                      <span className="truncate text-sm text-slate-700">{linha.nome}</span>
+                    <CardContent className="flex min-w-0 items-center justify-between gap-2 p-3">
+                      <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
+                        {linha.nome}
+                      </span>
                       {linha.carregando ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
                       ) : linha.texto ? (
-                        <span className={`text-sm font-semibold ${linha.classe}`}>
+                        <span className={`shrink-0 text-sm font-semibold ${linha.classe}`}>
                           {linha.texto}
                         </span>
                       ) : (
-                        <span className="text-sm text-slate-500">Sem estoque</span>
+                        <span className="shrink-0 text-sm text-slate-500">Sem estoque</span>
                       )}
                     </CardContent>
                   </Card>
@@ -390,9 +390,9 @@ export default function MovelConsultaPage() {
               void buscar(termo)
             }}
           >
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
+            <div className="w-full min-w-0 space-y-3 p-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="relative min-w-0 flex-1">
                   <ScanLine className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     ref={inputRef}
@@ -416,7 +416,7 @@ export default function MovelConsultaPage() {
               </div>
 
               {avisoCamera && (
-                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <p className="min-w-0 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   {avisoCamera}
                 </p>
               )}
@@ -452,7 +452,7 @@ export default function MovelConsultaPage() {
               )}
 
               {erro && (
-                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                <p className="min-w-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                   {erro}
                 </p>
               )}
@@ -464,11 +464,13 @@ export default function MovelConsultaPage() {
               )}
 
               {!carregando && semResultados && !erro && (
-                <p className="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
-                  <PackageSearch className="h-4 w-4" />
-                  {codigoLido && termo.trim() === codigoLido
-                    ? `Produto não encontrado para o código ${codigoLido}`
-                    : 'Nenhum produto encontrado'}
+                <p className="flex items-center justify-center gap-2 px-2 py-6 text-center text-sm text-slate-500">
+                  <PackageSearch className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 break-words">
+                    {codigoLido && termo.trim() === codigoLido
+                      ? `Produto não encontrado para o código ${codigoLido}`
+                      : 'Nenhum produto encontrado'}
+                  </span>
                 </p>
               )}
 
@@ -490,7 +492,7 @@ export default function MovelConsultaPage() {
                       }
                     }}
                   >
-                    <CardContent className="flex items-center gap-3 p-3">
+                    <CardContent className="flex min-w-0 items-center gap-3 p-3">
                       {c.fotoUrl ? (
                         <img
                           src={c.fotoUrl}
@@ -518,7 +520,7 @@ export default function MovelConsultaPage() {
                             </span>
                           )}
                         </p>
-                        <p className={`text-xs ${c.saldoClasse}`}>{c.saldoTexto}</p>
+                        <p className={`truncate text-xs ${c.saldoClasse}`}>{c.saldoTexto}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -527,7 +529,7 @@ export default function MovelConsultaPage() {
             </div>
           </ErrorBoundaryGlobal>
         )}
-      </main>
+      </div>
     </div>
   )
 }

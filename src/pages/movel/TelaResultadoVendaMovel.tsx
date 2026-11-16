@@ -6,6 +6,8 @@ import type { ResultadoConclusao } from './concluirVendaMovel'
 type Props = {
   resultado: ResultadoConclusao
   aoNovaVenda: () => void
+  /** Classes extras do container raiz (o MovelVendaPage posiciona em tela cheia). */
+  className?: string
 }
 
 function formatarMoeda(v: number): string {
@@ -42,10 +44,11 @@ function BadgeStatus({ status }: { status: ResultadoConclusao['statusNfce'] }) {
   }
 }
 
-export default function TelaResultadoVendaMovel({ resultado, aoNovaVenda }: Props) {
+export default function TelaResultadoVendaMovel({ resultado, aoNovaVenda, className }: Props) {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+    <div className={cn('flex min-h-0 w-full min-w-0 flex-col overflow-hidden bg-white', className)}>
+      {/* Conteúdo com rolagem própria (nada fora da tela em 360px) */}
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 overflow-y-auto overscroll-contain p-6 text-center">
         {resultado.statusNfce === 'Autorizada' ? (
           <CheckCircle2 className="h-16 w-16 text-emerald-600" />
         ) : resultado.statusNfce === 'Rejeitada' ? (
@@ -79,7 +82,8 @@ export default function TelaResultadoVendaMovel({ resultado, aoNovaVenda }: Prop
         </div>
       </div>
 
-      <div className="border-t bg-white p-3">
+      {/* Rodapé fixo com o botão principal */}
+      <div className="shrink-0 border-t bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <Button className="h-12 w-full text-base font-semibold" onClick={aoNovaVenda}>
           Nova venda
         </Button>

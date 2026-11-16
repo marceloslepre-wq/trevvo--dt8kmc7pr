@@ -15,6 +15,8 @@ type Props = {
   contas: ContaFinanceira[]
   emitirNfce: boolean
   carregandoFormas: boolean
+  /** Classes extras do container raiz (o MovelVendaPage posiciona em tela cheia). */
+  className?: string
   aoVoltar: () => void
   aoConcluir: (params: {
     pagamentos: PagamentoVendaInput[]
@@ -86,6 +88,7 @@ export default function TelaPagamentoMovel({
   contas,
   emitirNfce,
   carregandoFormas,
+  className,
   aoVoltar,
   aoConcluir,
 }: Props) {
@@ -163,13 +166,13 @@ export default function TelaPagamentoMovel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
-      {/* Cabeçalho */}
-      <div className="flex items-center gap-2 border-b px-3 py-3">
+    <div className={cn('flex min-h-0 w-full min-w-0 flex-col overflow-hidden bg-white', className)}>
+      {/* Cabeçalho fino de uma linha (máx. 56px) */}
+      <div className="flex h-14 max-h-14 min-h-14 shrink-0 items-center gap-2 border-b px-3">
         <Button
           variant="ghost"
           size="sm"
-          className="h-10 min-h-[48px] w-10 px-2"
+          className="h-9 w-9 shrink-0 px-2"
           onClick={() => {
             limparTudo()
             aoVoltar()
@@ -178,18 +181,19 @@ export default function TelaPagamentoMovel({
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div className="flex-1">
-          <h2 className="text-base font-semibold leading-tight">Pagamento</h2>
-          <p className="text-xs text-muted-foreground">Total {formatarMoeda(total)}</p>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-base font-semibold leading-tight">Pagamento</h2>
+          <p className="truncate text-xs text-muted-foreground">Total {formatarMoeda(total)}</p>
         </div>
         {emitirNfce && (
-          <span className="rounded bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
+          <span className="shrink-0 rounded bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
             NFC-e
           </span>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 pb-4">
+      {/* Conteúdo com rolagem própria (o teclado aberto não esconde o rodapé) */}
+      <div className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-4">
         {carregandoFormas ? (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Carregando formas de pagamento…
@@ -304,8 +308,11 @@ export default function TelaPagamentoMovel({
         )}
       </div>
 
-      {/* Rodapé fixo */}
-      <div className="border-t bg-white p-3">
+      {/* Rodapé fixo com o botão principal */}
+      <div className="shrink-0 border-t bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {erroPagamento && (
+          <p className="mb-1 text-center text-xs text-destructive">{erroPagamento}</p>
+        )}
         <Button
           className="h-12 w-full text-base font-semibold"
           disabled={!podeConcluir || enviando || carregandoFormas || formas.length === 0}
