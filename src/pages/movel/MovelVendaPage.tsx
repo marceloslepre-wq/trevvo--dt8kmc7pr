@@ -498,22 +498,21 @@ export default function MovelVendaPage() {
 
       {/* Rodapé fixo: total + FINALIZAR (desabilitado na parte 1) */}
       <footer className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white">
-        <div className="mx-auto flex w-full max-w-xl items-center gap-3 px-3 py-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Total ({totalItens} un)
-            </p>
-            <p className="truncate text-2xl font-black text-emerald-700">
-              {formatarMoeda(subtotal)}
-            </p>
+        <div className="mx-auto w-full max-w-xl px-3 py-3">
+          <p className="mb-1 text-center text-[11px] text-slate-500">Pagamento na próxima versão</p>
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Total ({totalItens} un)
+              </p>
+              <p className="truncate text-2xl font-black text-emerald-700">
+                {formatarMoeda(subtotal)}
+              </p>
+            </div>
+            <Button className="h-14 w-40 shrink-0 text-base font-extrabold" disabled>
+              FINALIZAR
+            </Button>
           </div>
-          <Button
-            className="h-14 w-40 shrink-0 text-base font-extrabold"
-            disabled
-            title="Pagamento na próxima versão"
-          >
-            FINALIZAR
-          </Button>
         </div>
       </footer>
     </div>
