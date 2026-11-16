@@ -40,6 +40,8 @@ import {
   limparRascunhoPDV,
   carregarCatalogoProdutosPDV,
   interpretarEntradaPDV,
+  consultarProdutoPorCodigoNoServidorPDV,
+  atualizarProdutoNoCachePDV,
 } from '@/services/pdv'
 
 import { ModalAbrirCaixa } from '@/pages/vendas/caixa/ModalAbrirCaixa'
@@ -320,6 +322,26 @@ export const PdvPage: React.FC = () => {
     return () => clearInterval(interval)
   }, [recarregarProdutos])
 
+  // Atualiza a lista de produtos sozinha quando o foco volta para a aba do PDV
+  // (troca de aba/janela), no máximo a cada 5 minutos, sem interferir na digitação
+  // nem tocar no carrinho/rascunho.
+  const ultimaAtualizacaoFocoRef = useRef(0)
+  useEffect(() => {
+    const atualizarAoVoltarFoco = () => {
+      if (document.visibilityState !== 'visible') return
+      const agora = Date.now()
+      if (agora - ultimaAtualizacaoFocoRef.current < 5 * 60 * 1000) return
+      ultimaAtualizacaoFocoRef.current = agora
+      recarregarProdutos(true)
+    }
+    document.addEventListener('visibilitychange', atualizarAoVoltarFoco)
+    window.addEventListener('focus', atualizarAoVoltarFoco)
+    return () => {
+      document.removeEventListener('visibilitychange', atualizarAoVoltarFoco)
+      window.removeEventListener('focus', atualizarAoVoltarFoco)
+    }
+  }, [recarregarProdutos])
+
   // Checa se há rascunho salvo no localStorage
   useEffect(() => {
     if (empresaAtiva?.id) {
@@ -445,8 +467,10 @@ export const PdvPage: React.FC = () => {
     [itens.length, focarLeitor, sessaoCaixa],
   )
 
-  // Leitura do campo principal (Enter)
-  const handleProcessarLeitura = (e: React.FormEvent) => {
+  // Leitura do campo principal (Enter) — busca na lista em memória e, se não achar,
+  // consulta o servidor antes de reportar "não localizado" (cobrindo produto
+  // criado/alterado depois da abertura do PDV).
+  const handleProcessarLeitura = async (e: React.FormEvent) => {
     e.preventDefault()
     const entrada = entradaLeitor.trim()
     if (!entrada) return
@@ -456,6 +480,46 @@ export const PdvPage: React.FC = () => {
     const res = interpretarEntradaPDV(entrada, produtosCatalogo, configVendas)
 
     if (!res.sucesso || !res.produto) {
+      // Extrai o código puro da entrada (remove "quantidade*" de "3*7891000000014").
+      // Em erro de etiqueta de balança, consulta pelo código de produto da etiqueta.
+      let termoConsulta = entrada
+      if (entrada.includes('*')) {
+        const partes = entrada.split('*')
+        if (partes.length === 2) termoConsulta = partes[1].trim()
+      }
+      if (res.balanca?.ehEtiquetaBalanca) {
+        termoConsulta = res.balanca.codigoProduto || ''
+      }
+      let produtoServidor: Produto | null = null
+      if (termoConsulta) {
+        setCarregandoCatalogo(true)
+        produtoServidor = await consultarProdutoPorCodigoNoServidorPDV(termoConsulta)
+        setCarregandoCatalogo(false)
+      }
+      if (produtoServidor) {
+        atualizarProdutoNoCachePDV(produtoServidor, empresaAtiva?.id)
+        setProdutosCatalogo((prev) => {
+          const idx = prev.findIndex((p) => p.id === produtoServidor!.id)
+          if (idx >= 0) {
+            const copia = [...prev]
+            copia[idx] = produtoServidor!
+            return copia
+          }
+          return [produtoServidor!, ...prev]
+        })
+        const res2 = interpretarEntradaPDV(entrada, [produtoServidor], configVendas)
+        if (res2.sucesso && res2.produto) {
+          const ehBalanca2 = Boolean(res2.balanca?.ehEtiquetaBalanca)
+          adicionarProdutoAoCarrinho(
+            res2.produto,
+            res2.quantidade,
+            res2.precoUnitario,
+            ehBalanca2,
+            res2.balanca?.pesoKg,
+          )
+          return
+        }
+      }
       setMensagemStatus(res.mensagemErro || 'Código não identificado.')
       setTipoMensagemStatus('erro')
       focarLeitor()

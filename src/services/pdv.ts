@@ -282,8 +282,12 @@ export function interpretarEntradaPDV(
   const isNum = !isNaN(Number(termoCodigo))
   const numCodigo = isNum ? Number(termoCodigo) : null
 
-  // 3a. GTIN exato
-  let achado = produtos.find((p) => p.gtin && p.gtin.trim().toUpperCase() === termoUpper)
+  // 3a. GTIN exato (GTIN ou GTIN tributável)
+  let achado = produtos.find(
+    (p) =>
+      (p.gtin && p.gtin.trim().toUpperCase() === termoUpper) ||
+      (p.gtin_tributavel && p.gtin_tributavel.trim().toUpperCase() === termoUpper),
+  )
 
   // 3b. Código interno
   if (!achado && numCodigo !== null) {
@@ -314,5 +318,70 @@ export function interpretarEntradaPDV(
     quantidade,
     produto: null,
     mensagemErro: `Produto não localizado pelo código "${termoCodigo}". Pressione F2 para buscar.`,
+  }
+}
+
+/**
+ * Consulta o produto por código diretamente no servidor (EAN/GTIN, GTIN tributável,
+ * código interno ou referência), usando o mesmo filtro de produto ativo da lista
+ * em memória. Usado quando o catálogo carregado na abertura do PDV ainda não
+ * contém um produto criado/alterado recentemente (ex.: EAN cadastrado em outra aba).
+ */
+export async function consultarProdutoPorCodigoNoServidorPDV(
+  termoCodigo: string,
+): Promise<Produto | null> {
+  const t = (termoCodigo || '').trim().replace(/['"]/g, '')
+  if (!t) return null
+
+  const isNum = !isNaN(Number(t))
+  const filtroCodigo = isNum
+    ? `(gtin = '${t}' || gtin_tributavel = '${t}' || referencia = '${t}' || codigo = ${Number(t)})`
+    : `(gtin = '${t}' || gtin_tributavel = '${t}' || referencia = '${t}')`
+
+  try {
+    const res = await pb.collection('produtos').getList<Produto>(1, 1, {
+      filter: `ativo = true && ${filtroCodigo}`,
+      sort: '-created',
+      expand: 'unidade_id,marca_id',
+      requestKey: null,
+    })
+    return res.items[0] || null
+  } catch (err) {
+    console.error('Erro ao consultar produto por código no servidor (PDV):', err)
+    return null
+  }
+}
+
+/**
+ * Inclui/atualiza um produto na lista em memória (e no cache localStorage) do PDV,
+ * para que as próximas bipagens encontrem o produto sem recarregar a página.
+ */
+export function atualizarProdutoNoCachePDV(produto: Produto, empresaId?: string): void {
+  try {
+    if (produtosMemoriaCache) {
+      const idx = produtosMemoriaCache.findIndex((p) => p.id === produto.id)
+      if (idx >= 0) {
+        produtosMemoriaCache[idx] = produto
+      } else {
+        produtosMemoriaCache = [produto, ...produtosMemoriaCache]
+      }
+      timestampMemoria = Date.now()
+    }
+    if (empresaId) {
+      const chave = `${STORAGE_KEY_PRODUTOS}_${empresaId}`
+      const raw = localStorage.getItem(chave)
+      if (raw) {
+        const parsed: CacheProdutosPDV = JSON.parse(raw)
+        const idx = parsed.produtos.findIndex((p) => p.id === produto.id)
+        if (idx >= 0) {
+          parsed.produtos[idx] = produto
+        } else {
+          parsed.produtos.unshift(produto)
+        }
+        localStorage.setItem(chave, JSON.stringify(parsed))
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao atualizar cache de produtos do PDV:', err)
   }
 }
