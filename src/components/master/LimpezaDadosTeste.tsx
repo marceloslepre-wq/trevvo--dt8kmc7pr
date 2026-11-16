@@ -149,6 +149,10 @@ export default function LimpezaDadosTeste() {
               <span>Assinante: </span>
               <strong>{previa.assinante.nome}</strong>
               <span> · Empresas: {previa.empresas.map((e) => e.nome).join(', ')}</span>
+              <span className="text-muted-foreground">
+                {' '}
+                · Versão do servidor: {previa.versao_hook || 'antiga'}
+              </span>
             </p>
             <p>
               <span>Cliente que fica: </span>
