@@ -12,6 +12,7 @@ import { usePermissoes } from '@/contexts/PermissoesContext'
 import { listarProdutos, type Produto } from '@/services/produtos'
 import { obterSaldoAtual, type EstoqueSaldo } from '@/services/estoque'
 import pb from '@/lib/pocketbase/client'
+import { useCameraLeitor } from '@/pages/movel/useCameraLeitor'
 
 /** Saldo de um produto: o registro, null (sem estoque), 'carregando' ou 'erro'. */
 type EstadoSaldo = EstoqueSaldo | null | 'carregando' | 'erro'
@@ -70,6 +71,7 @@ export default function MovelConsultaPage() {
   const [detalhe, setDetalhe] = useState<Produto | null>(null)
   const [saldosDetalhe, setSaldosDetalhe] = useState<Record<string, EstadoSaldo>>({})
   const [avisoCamera, setAvisoCamera] = useState<string | null>(null)
+  const [codigoLido, setCodigoLido] = useState<string | null>(null)
   const [versaoLista, setVersaoLista] = useState(0)
   const [versaoDetalhe, setVersaoDetalhe] = useState(0)
 
@@ -78,10 +80,7 @@ export default function MovelConsultaPage() {
   const seqBuscaRef = useRef(0)
   const seqDetalheRef = useRef(0)
   const montadoRef = useRef(true)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const [cameraAtiva, setCameraAtiva] = useState(false)
-  const lerCancRef = useRef(false)
+  const timerDetalheRef = useRef<number | null>(null)
   const resultadosRef = useRef<Produto[]>([])
   resultadosRef.current = resultados
 
@@ -94,9 +93,7 @@ export default function MovelConsultaPage() {
     return () => {
       montadoRef.current = false
       if (timerBuscaRef.current) window.clearTimeout(timerBuscaRef.current)
-      lerCancRef.current = true
-      streamRef.current?.getTracks().forEach((t) => t.stop())
-      streamRef.current = null
+      if (timerDetalheRef.current) window.clearTimeout(timerDetalheRef.current)
     }
   }, [])
 
@@ -162,70 +159,43 @@ export default function MovelConsultaPage() {
 
   const aoDigitar = (texto: string) => {
     setTermo(texto)
+    setCodigoLido(null)
     if (timerBuscaRef.current) window.clearTimeout(timerBuscaRef.current)
     timerBuscaRef.current = window.setTimeout(() => buscar(texto), 300)
   }
 
-  // ---- Câmera (BarcodeDetector nativo; degrada com aviso quando indisponível) ----
-  const pararCamera = () => {
-    lerCancRef.current = true
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    streamRef.current = null
-    setCameraAtiva(false)
+  // ---- Câmera: delega TUDO (loop de 150 ms, motor nativo→ZXing, foco
+  // contínuo, debounce de 2 s e parada de tracks) ao hook useCameraLeitor ----
+  const camera = useCameraLeitor({
+    aoLer: (codigo) => {
+      setAvisoCamera(null)
+      setCodigoLido(codigo)
+      setTermo(codigo)
+      void buscar(codigo)
+      // Abre direto o detalhe se houver um só resultado
+      if (timerDetalheRef.current) window.clearTimeout(timerDetalheRef.current)
+      timerDetalheRef.current = window.setTimeout(() => {
+        if (montadoRef.current && resultadosRef.current.length === 1) {
+          setDetalhe(resultadosRef.current[0])
+        }
+      }, 900)
+    },
+  })
+  const {
+    ativa: cameraAtiva,
+    iniciar: abrirCamera,
+    parar: pararCamera,
+    aviso: avisoCameraHook,
+  } = camera
+
+  // Foco no campo (botão "Digitar código" e retorno pós-leitura sem produto).
+  const focarCampo = () => {
+    window.setTimeout(() => inputRef.current?.focus(), 50)
   }
 
-  const abrirCamera = async () => {
-    setAvisoCamera(null)
-    const Detector = (window as any).BarcodeDetector
-    if (!Detector) {
-      setAvisoCamera('Navegador sem leitura por câmera; digite o código')
-      return
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      })
-      streamRef.current = stream
-      lerCancRef.current = false
-      setCameraAtiva(true)
-      // Deixa o <video> montar antes de ligar o stream
-      setTimeout(() => {
-        if (lerCancRef.current || !montadoRef.current) return
-        const video = videoRef.current
-        if (!video) return
-        video.srcObject = stream
-        void video.play().catch(() => undefined)
-        const detector = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'code_128'] })
-        const loop = async () => {
-          if (lerCancRef.current || !montadoRef.current || !video.videoWidth) return
-          try {
-            const codigos = await detector.detect(video)
-            if (codigos.length > 0) {
-              const ean = String(codigos[0]?.rawValue || '').trim()
-              pararCamera()
-              if (ean) {
-                setTermo(ean)
-                void buscar(ean)
-                // Abre direto o detalhe se houver um só resultado
-                setTimeout(() => {
-                  if (montadoRef.current && resultadosRef.current.length === 1) {
-                    setDetalhe(resultadosRef.current[0])
-                  }
-                }, 900)
-              }
-              return
-            }
-          } catch {
-            /* frame inválido: segue o loop */
-          }
-          setTimeout(loop, 250)
-        }
-        void loop()
-      }, 50)
-    } catch {
-      setCameraAtiva(false)
-      setAvisoCamera('Acesso à câmera negado ou indisponível; digite o código do produto.')
-    }
+  const digitarCodigo = () => {
+    pararCamera()
+    focarCampo()
   }
 
   // ---- Detalhe: saldo por empresa acessível ----
@@ -320,6 +290,8 @@ export default function MovelConsultaPage() {
   if (!permitido) {
     return <AcessoNegado />
   }
+
+  const avisoCameraFinal = avisoCamera || avisoCameraHook
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -451,15 +423,29 @@ export default function MovelConsultaPage() {
 
               {cameraAtiva && (
                 <Card>
-                  <CardContent className="p-2">
-                    <video
-                      ref={videoRef}
-                      className="w-full rounded-md bg-black"
-                      playsInline
-                      muted
-                    />
-                    <Button variant="ghost" className="mt-1 h-9 w-full" onClick={pararCamera}>
-                      Fechar câmera
+                  <CardContent className="relative p-2">
+                    <div className="relative overflow-hidden rounded-md bg-black">
+                      <video
+                        ref={camera.videoRef}
+                        className="aspect-video w-full bg-black object-cover"
+                        playsInline
+                        muted
+                        autoPlay
+                      />
+                      {/* Guia horizontal no meio do vídeo */}
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <div className="w-full px-6">
+                          <div className="relative h-10 w-full rounded-md border-2 border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.25)]">
+                            <div className="absolute left-2 right-2 top-1/2 h-0.5 -translate-y-1/2 bg-red-500/80" />
+                          </div>
+                          <p className="mt-2 text-center text-xs font-medium text-white drop-shadow">
+                            Aponte para o código de barras
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <Button variant="ghost" className="mt-1 h-9 w-full" onClick={digitarCodigo}>
+                      Digitar código
                     </Button>
                   </CardContent>
                 </Card>
@@ -479,7 +465,10 @@ export default function MovelConsultaPage() {
 
               {!carregando && semResultados && !erro && (
                 <p className="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
-                  <PackageSearch className="h-4 w-4" /> Nenhum produto encontrado
+                  <PackageSearch className="h-4 w-4" />
+                  {codigoLido && termo.trim() === codigoLido
+                    ? `Produto não encontrado para o código ${codigoLido}`
+                    : 'Nenhum produto encontrado'}
                 </p>
               )}
 
