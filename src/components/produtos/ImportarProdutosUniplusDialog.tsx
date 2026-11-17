@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { FileUp, Loader2, Upload } from 'lucide-react'
+import { Download, FileUp, Loader2, Upload } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import {
   Produto,
@@ -122,8 +122,8 @@ async function comRepeticao<T>(fn: () => Promise<T>): Promise<T> {
       return await fn()
     } catch (err) {
       const status = (err as { status?: number })?.status
-      if (status === 429 && tentativa < 6) {
-        await esperar(1500 * tentativa)
+      if (status === 429 && tentativa < 10) {
+        await esperar(2000 * tentativa)
         continue
       }
       throw err
@@ -435,6 +435,7 @@ export default function ImportarProdutosUniplusDialog({ aberto, onFechar, onConc
           }
         }
         feitos++
+        await esperar(60)
         setProgresso(Math.round((feitos / aImportar.length) * 100))
         if (feitos % 10 === 0 || feitos === aImportar.length) setLinhas([...atualizadas])
       }
@@ -450,6 +451,60 @@ export default function ImportarProdutosUniplusDialog({ aberto, onFechar, onConc
       setEtapa('')
       setImportando(false)
     }
+  }
+
+  function baixarResultado() {
+    const cel = (v: string | number) => {
+      const t = String(v ?? '')
+      return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
+    }
+    const situacao = (l: LinhaProduto) =>
+      l.resultado === 'gravado'
+        ? 'Gravado'
+        : l.resultado === 'falhou'
+          ? `Falhou: ${l.erroGravacao || ''}`
+          : l.situacao === 'novo'
+            ? 'Novo (não importado)'
+            : l.motivo
+    const cabecalho = [
+      'codigo',
+      'descricao',
+      'grupo',
+      'categoria',
+      'subcategoria',
+      'perfil',
+      'preco_venda',
+      'status',
+      'situacao',
+      'avisos',
+    ]
+    const corpo = linhas.map((l) =>
+      [
+        l.codigo,
+        l.descricao,
+        l.grupo,
+        l.categoria,
+        l.subcategoria,
+        l.perfil,
+        l.precoVenda.toFixed(2).replace('.', ','),
+        l.ativo ? 'Ativo' : 'Suspenso',
+        situacao(l),
+        l.avisos.join('; '),
+      ]
+        .map(cel)
+        .join(';'),
+    )
+    const blob = new Blob(['\ufeff' + [cabecalho.join(';'), ...corpo].join('\r\n')], {
+      type: 'text/csv;charset=utf-8',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `resultado-importacao-produtos-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   const visiveis = linhas
@@ -643,6 +698,12 @@ export default function ImportarProdutosUniplusDialog({ aberto, onFechar, onConc
         </div>
 
         <DialogFooter>
+          {linhas.length > 0 && (
+            <Button variant="outline" onClick={baixarResultado} disabled={importando}>
+              <Download size={14} className="mr-1.5" />
+              Baixar resultado
+            </Button>
+          )}
           <Button variant="outline" onClick={fechar} disabled={importando}>
             {concluido ? 'Fechar' : 'Cancelar'}
           </Button>
