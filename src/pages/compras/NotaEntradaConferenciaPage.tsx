@@ -3321,6 +3321,7 @@ export const NotaEntradaConferenciaPage: React.FC = () => {
                 }
               }}
               placeholder="Digite código, descrição ou GTIN do produto..."
+              incluirInativos
             />
           </div>
 

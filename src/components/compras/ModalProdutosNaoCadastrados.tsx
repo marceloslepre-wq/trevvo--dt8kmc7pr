@@ -553,6 +553,9 @@ export function ModalProdutosNaoCadastrados({
                                     >
                                       <span className="truncate">
                                         {p.codigo} - {p.descricao}
+                                        {p.ativo === false && (
+                                          <span className="ml-1 text-amber-700">(suspenso)</span>
+                                        )}
                                       </span>
                                       <Badge variant="outline" className="text-[9px] h-4">
                                         NCM: {p.ncm || '—'}
