@@ -13,8 +13,10 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
+  FileUp,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import ImportarMarcasDialog from '@/components/marcas/ImportarMarcasDialog'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -81,6 +83,7 @@ export const MarcasPage: React.FC = () => {
   const [itemParaInativar, setItemParaInativar] = useState<Marca | null>(null)
   const [itemParaAtivar, setItemParaAtivar] = useState<Marca | null>(null)
   const [processandoAcao, setProcessandoAcao] = useState(false)
+  const [importarAberto, setImportarAberto] = useState(false)
 
   const carregarDados = useCallback(async () => {
     setCarregando(true)
@@ -294,6 +297,17 @@ export const MarcasPage: React.FC = () => {
             <Download className="mr-2 h-4 w-4 text-slate-500" />
             Exportar CSV
           </Button>
+
+          {podeCriar && (
+            <Button
+              variant="outline"
+              onClick={() => setImportarAberto(true)}
+              className="text-slate-700 border-slate-300 hover:bg-slate-50"
+            >
+              <FileUp className="mr-2 h-4 w-4 text-slate-500" />
+              Importar CSV
+            </Button>
+          )}
 
           {podeCriar && (
             <Button onClick={handleAbrirNovo} className="bg-blue-600 hover:bg-blue-700 text-white">
@@ -657,6 +671,11 @@ export const MarcasPage: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ImportarMarcasDialog
+        aberto={importarAberto}
+        onFechar={() => setImportarAberto(false)}
+        onConcluido={carregarDados}
+      />
     </div>
   )
 }
