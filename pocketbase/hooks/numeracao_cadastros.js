@@ -106,6 +106,23 @@ onRecordCreate((e) => {
     const assinanteId = record.getString('assinante_id') || 'wqxiw7olvkup3sm'
     const proximo = proximoNumeroLocal(assinanteId, null, 'codigo_produtos')
     record.set('codigo', proximo)
+  } else {
+    // Código digitado (ex.: carga do Uniplus): a sequência acompanha o maior código usado,
+    // para o próximo produto automático não repetir um código existente.
+    try {
+      const assinanteSeq = record.getString('assinante_id') || 'wqxiw7olvkup3sm'
+      const filtroSeq =
+        "assinante_id = '" +
+        assinanteSeq +
+        "' && tipo = 'codigo_produtos' && (empresa_id = '' || empresa_id = null)"
+      const seqs = $app.findRecordsByFilter('sequencias', filtroSeq, '', 1, 0)
+      if (seqs && seqs.length > 0 && (seqs[0].getInt('ultimo_numero') || 0) < codAtual) {
+        seqs[0].set('ultimo_numero', codAtual)
+        $app.save(seqs[0])
+      }
+    } catch (errSeq) {
+      console.log('[numeracao_cadastros] Aviso ao ajustar sequência de produtos: ' + errSeq.message)
+    }
   }
 
   return e.next()
