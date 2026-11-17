@@ -19,6 +19,8 @@ export interface SelectProdutoProps {
   id?: string
   required?: boolean
   'aria-label'?: string
+  /** Mostra também produtos suspensos (inativos), com selo "Suspenso" */
+  incluirInativos?: boolean
 }
 
 export const SelectProduto: React.FC<SelectProdutoProps> = ({
@@ -31,6 +33,7 @@ export const SelectProduto: React.FC<SelectProdutoProps> = ({
   id,
   required,
   'aria-label': ariaLabel,
+  incluirInativos = false,
 }) => {
   const [open, setOpen] = useState(false)
   const [busca, setBusca] = useState('')
@@ -46,7 +49,7 @@ export const SelectProduto: React.FC<SelectProdutoProps> = ({
         const res = await listarProdutos({
           busca: termo,
           tipo: filtroTipo || 'todos',
-          situacao: 'ativos',
+          situacao: incluirInativos ? 'todos' : 'ativos',
           itensPorPagina: 30,
           ordenacao: 'descricao',
           assinante_id: assinanteId || undefined,
@@ -58,7 +61,7 @@ export const SelectProduto: React.FC<SelectProdutoProps> = ({
         setCarregando(false)
       }
     },
-    [filtroTipo, assinanteId],
+    [filtroTipo, assinanteId, incluirInativos],
   )
 
   // Carrega produtos iniciais ao abrir o combobox ou quando o termo de busca mudar
@@ -268,6 +271,14 @@ export const SelectProduto: React.FC<SelectProdutoProps> = ({
                         #{item.codigo}
                       </span>
                       <span className="font-medium text-slate-900 truncate">{item.descricao}</span>
+                      {item.ativo === false && (
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] py-0 px-1 border-amber-300 bg-amber-50 text-amber-800 shrink-0"
+                        >
+                          Suspenso
+                        </Badge>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
