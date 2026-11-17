@@ -2,7 +2,7 @@ import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
 import { TipoEntradaNota, converterCfopEntrada } from '@/services/cfopConversao'
 import { Fornecedor, salvarFornecedor, normalizarCpfCnpj } from '@/services/fornecedores'
-import { TipoProduto } from '@/services/produtos'
+import { TipoProduto, ativarProduto } from '@/services/produtos'
 import { obterAssinanteIdAtivo, sanitizarPayloadUpdate } from '@/services/tenancyHelper'
 
 export type OrigemLancamentoNota = 'XML' | 'Digitação'
@@ -669,8 +669,11 @@ export async function tentarVincularItemAutomatico(
     try {
       const prod = await pb
         .collection('produtos')
-        .getFirstListItem<any>(`gtin = '${gtin}' && ativo = true`, {
+        // Inclui produtos suspensos (ativo = false): ativos vêm primeiro.
+        // O produto suspenso é reativado em vincularProdutoAoItemNota.
+        .getFirstListItem<any>(`gtin = '${gtin}'`, {
           expand: 'unidade_id',
+          sort: '-ativo',
         })
       if (prod) {
         let fator = 1
@@ -767,6 +770,12 @@ export async function vincularProdutoAoItemNota(
 ): Promise<NotaEntradaItem> {
   const item = await pb.collection('notas_entrada_itens').getOne<NotaEntradaItem>(itemId)
   const prod = await pb.collection('produtos').getOne<any>(produtoId)
+
+  // Produto suspenso (ex.: importado do Uniplus sem venda recente) voltou a ser comprado:
+  // reativa para aparecer de novo na busca e no PDV.
+  if (prod.ativo === false) {
+    await ativarProduto(produtoId)
+  }
 
   const fator = fatorConversao > 0 ? fatorConversao : 1
   const qtdEstoque = Number((item.quantidade_fornecedor * fator).toFixed(4))

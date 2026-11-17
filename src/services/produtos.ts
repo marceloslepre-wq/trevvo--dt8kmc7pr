@@ -426,7 +426,7 @@ export async function buscarProdutoPorCodigoOuGtin(
 }
 
 /**
- * Busca produtos ativos para o modal de vínculo de itens da nota de entrada (por termo: código, descrição, GTIN ou ref)
+ * Busca produtos (ativos e suspensos) para o modal de vínculo de itens da nota de entrada (por termo: código, descrição, GTIN ou ref)
  */
 export async function buscarProdutosParaVinculo(
   termo: string,
@@ -441,7 +441,8 @@ export async function buscarProdutosParaVinculo(
     ? `codigo = ${Number(t)} || gtin ~ '${t}' || referencia ~ '${t}' || descricao ~ '${t}'`
     : `gtin ~ '${t}' || referencia ~ '${t}' || descricao ~ '${t}'`
 
-  const conds = ['ativo = true', `(${filterBusca})`]
+  // Inclui suspensos: ao vincular, vincularProdutoAoItemNota reativa o produto
+  const conds = [`(${filterBusca})`]
   if (assinanteId) {
     conds.push(`assinante_id = '${assinanteId}'`)
   }
@@ -449,7 +450,7 @@ export async function buscarProdutosParaVinculo(
   try {
     const res = await pb.collection('produtos').getList<Produto>(1, limite, {
       filter: conds.join(' && '),
-      sort: 'descricao',
+      sort: '-ativo,descricao',
       expand: 'marca_id,grupo_id,categoria_id,unidade_id',
     })
     return res.items

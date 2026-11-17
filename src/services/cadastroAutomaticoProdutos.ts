@@ -206,10 +206,12 @@ export async function processarCadastroAutomaticoProdutos(params: {
         gtinTribValido = rawEanTrib
       }
 
-      // Se o GTIN já existir em outro produto, NÃO criar: vincular a esse produto e avisar
+      // Se o GTIN já existir em outro produto (mesmo suspenso), NÃO criar: vincular a esse
+      // produto e avisar. Suspenso é reativado em vincularProdutoAoItemNota.
       if (gtinValido && gtinValido !== 'SEM GTIN') {
         const produtosComGtin = await pb.collection('produtos').getList<Produto>(1, 1, {
-          filter: `gtin = '${gtinValido}' && ativo = true`,
+          filter: `gtin = '${gtinValido}'`,
+          sort: '-ativo',
         })
 
         if (produtosComGtin.totalItems > 0) {
