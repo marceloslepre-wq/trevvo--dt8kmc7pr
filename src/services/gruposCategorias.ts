@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import { registrarAuditoria } from '@/services/auditoria'
+import { obterAssinanteIdAtivo } from '@/services/tenancyHelper'
 
 export interface Grupo {
   id: string
@@ -175,6 +176,7 @@ export async function salvarGrupo(dados: {
     })
   } else {
     salvo = await pb.collection('grupos').create<Grupo>({
+      assinante_id: obterAssinanteIdAtivo() || undefined,
       codigo: codigoFormatado,
       nome: nomeFormatado,
       margem_padrao_percentual:
@@ -345,6 +347,7 @@ export async function salvarCategoria(dados: {
     })
   } else {
     salva = await pb.collection('categorias').create<Categoria>({
+      assinante_id: obterAssinanteIdAtivo() || undefined,
       grupo_id: grupoId,
       codigo: codigoFormatado,
       nome: nomeFormatado,
@@ -525,6 +528,7 @@ export async function salvarSubcategoria(dados: {
     })
   } else {
     salva = await pb.collection('subcategorias').create<Subcategoria>({
+      assinante_id: obterAssinanteIdAtivo() || undefined,
       categoria_id: categoriaId,
       codigo: codigoFormatado,
       nome: nomeFormatado,
