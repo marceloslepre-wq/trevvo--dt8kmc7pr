@@ -86,7 +86,7 @@ renovação do `access_token` e, para ERP, o consumo da API do **Multi CD**.
     `GET /auth?refresh_token=`, `GET /info`, `GET /products`, `GET /products/variants`,
     `GET /multicd/distribution-centers`, `GET /multicd/distribution-centers/{id}`,
     `GET /multicd/stock/detailed/product/{id}`, `GET /multicd/stock/detailed/variant/{id}`,
-    `PUT /multicd/distribution-centers/{id}/stock` (só com `gravar_estoque`, e sempre com o
+    `PUT /multicd/distribution-centers/{id}/stock` (corpo `{ product_id | variation_id, stock }`, só com `gravar_estoque`, e sempre com o
     mesmo saldo que o CD já tem), `GET /orders`, `GET /orders/{id}/complete` (ou `/full`).
     Devolve também o IP público de saída do servidor e a URL de callback.
   - `GET /backend/v1/tray/homologacao/evidencias?empresa_id=` — evidências da última execução
