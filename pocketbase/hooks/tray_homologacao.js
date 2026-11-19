@@ -212,7 +212,12 @@ routerAdd(
           }
           return
         }
-        if (no.id !== undefined && no.zip_code !== undefined && !vistos[String(no.id)]) {
+        // A API devolve { data: [ { id, name, main, status, postal_code, ... } ] }.
+        if (
+          no.id !== undefined &&
+          (no.zip_code !== undefined || no.postal_code !== undefined) &&
+          !vistos[String(no.id)]
+        ) {
           vistos[String(no.id)] = true
           achados.push(no)
           return
@@ -233,14 +238,19 @@ routerAdd(
           for (let i = 0; i < no.length; i++) andar(no[i], profundidade + 1)
           return
         }
-        const idCd =
-          no.distribution_center_id !== undefined
-            ? no.distribution_center_id
-            : no.DistributionCenter && no.DistributionCenter.id !== undefined
-              ? no.DistributionCenter.id
-              : undefined
-        if (idCd !== undefined && String(idCd) === String(cdId) && no.stock !== undefined) {
-          const n = parseInt(String(no.stock), 10)
+        let idCd = undefined
+        if (no.distribution_center_id !== undefined) idCd = no.distribution_center_id
+        else if (no.DistributionCenter && no.DistributionCenter.id !== undefined)
+          idCd = no.DistributionCenter.id
+        else if (no.distribution_center && no.distribution_center.id !== undefined)
+          idCd = no.distribution_center.id
+        else if (no.postal_code !== undefined && no.id !== undefined) idCd = no.id
+        let qtd = undefined
+        if (no.stock !== undefined && typeof no.stock !== 'object') qtd = no.stock
+        else if (no.quantity !== undefined) qtd = no.quantity
+        else if (no.stock_quantity !== undefined) qtd = no.stock_quantity
+        if (idCd !== undefined && String(idCd) === String(cdId) && qtd !== undefined) {
+          const n = parseInt(String(qtd), 10)
           if (!isNaN(n)) achado = n
           return
         }
@@ -554,7 +564,12 @@ routerAdd(
       }
 
       // ---- 5) Multi CD: lista de centros de distribuição ----
-      const rCds = chamarTray('GET', '/multicd/distribution-centers?limit=50&page=1', null, true)
+      const rCds = chamarTray(
+        'GET',
+        '/multicd/distribution-centers?limit=50&page=1&page%5Bsize%5D=50',
+        null,
+        true,
+      )
       const cds = rCds.status === 200 ? acharCds(rCds.dados) : []
       registrar(
         'Multi CD: listar centros de distribuição',
@@ -569,7 +584,14 @@ routerAdd(
       )
       let cd = null
       for (let i = 0; i < cds.length; i++) {
-        if (!cd || (String(cds[i].active) === '1' && String(cd.active) !== '1')) cd = cds[i]
+        // Prefere o CD principal e ativo (main/status na API atual; active nas versões antigas).
+        const pontos = function (x) {
+          let p = 0
+          if (x.main === true || String(x.main) === '1') p += 2
+          if (x.status === true || String(x.status) === '1' || String(x.active) === '1') p += 1
+          return p
+        }
+        if (!cd || pontos(cds[i]) > pontos(cd)) cd = cds[i]
       }
       const cdId = cd && /^[0-9]{1,20}$/.test(String(cd.id)) ? String(cd.id) : ''
 
