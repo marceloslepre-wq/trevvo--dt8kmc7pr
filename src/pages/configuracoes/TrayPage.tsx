@@ -19,6 +19,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import ConferenciaProdutosTray from '@/components/tray/ConferenciaProdutosTray'
+import HomologacaoTray from '@/components/tray/HomologacaoTray'
 import {
   StatusTray,
   desconectarTray,
@@ -320,6 +321,10 @@ export const TrayPage: React.FC = () => {
 
           {situacao === 'Conectada' && (
             <ConferenciaProdutosTray key={empresaId} empresaId={empresaId} />
+          )}
+
+          {situacao === 'Conectada' && podeGerenciar && (
+            <HomologacaoTray key={`homologacao-${empresaId}`} empresaId={empresaId} />
           )}
         </>
       )}

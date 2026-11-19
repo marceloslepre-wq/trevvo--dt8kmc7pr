@@ -72,3 +72,28 @@ do Skip, mantenha as rotas, coleções e nomes de Segredos descritos aqui.
 - A resposta inclui `campos_produto` e `campos_variacao` (nomes dos campos devolvidos pela Tray, sem valores) para conferir o formato.
 - Tela: `src/components/tray/ConferenciaProdutosTray.tsx`, exibida em Configurações > Tray quando a loja está conectada.
 - Chamadas à Tray enviam `User-Agent: Trevvo-ERP/1.0`.
+
+## Homologação do aplicativo (roteiro de evidências)
+
+A Tray pede, para homologar o aplicativo: o par requisição/resposta em texto de todas as rotas
+usadas, a lista de rotas e métodos, o código do limite de 180 requisições por minuto, o código da
+renovação do `access_token` e, para ERP, o consumo da API do **Multi CD**.
+
+- Migration `0136_create_tray_evidencias.js`: coleção `tray_evidencias` (regras = null).
+- Hook `pocketbase/hooks/tray_homologacao.js`:
+  - `POST /backend/v1/tray/homologacao/executar` (administrador), body
+    `{ empresa_id, produto_id?, variacao_id?, gravar_estoque? }`. Executa na loja conectada:
+    `GET /auth?refresh_token=`, `GET /info`, `GET /products`, `GET /products/variants`,
+    `GET /multicd/distribution-centers`, `GET /multicd/distribution-centers/{id}`,
+    `GET /multicd/stock/detailed/product/{id}`, `GET /multicd/stock/detailed/variant/{id}`,
+    `PUT /multicd/distribution-centers/{id}/stock` (só com `gravar_estoque`, e sempre com o
+    mesmo saldo que o CD já tem), `GET /orders`, `GET /orders/{id}/complete` (ou `/full`).
+    Devolve também o IP público de saída do servidor e a URL de callback.
+  - `GET /backend/v1/tray/homologacao/evidencias?empresa_id=` — evidências da última execução
+    mais a da última conexão (`POST /auth`, gravada pelo callback em `tray_conexao.js`).
+- Tokens, `code` e chaves nunca são gravados: viram `{access_token}`, `{refresh_token}` ou `***`.
+- Limite de 180/min: função `aguardarLimiteTray` (janela deslizante de 60 s por loja em
+  `$app.store()`, teto 170) usada em `tray_homologacao.js` e `tray_produtos.js`; HTTP 429 tenta
+  de novo após 1, 2, 4 e 8 segundos.
+- Tela: card "Homologação do aplicativo" em Configurações > Tray (administrador, loja conectada),
+  componente `src/components/tray/HomologacaoTray.tsx`, com botão "Baixar evidências (.txt)".
