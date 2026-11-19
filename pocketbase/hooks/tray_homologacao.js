@@ -633,11 +633,10 @@ routerAdd(
           )
           const saldo = rEp.status === 200 ? saldoNoCd(rEp.dados, cdId) : null
           if (gravarEstoque && saldo !== null) {
+            // A API valida os campos na raiz do corpo (product_id, variation_id ou reference).
             const corpo = {
-              DistributionCenterProduct: {
-                product_id: parseInt(produtoSimplesId, 10),
-                stock: saldo,
-              },
+              product_id: parseInt(produtoSimplesId, 10),
+              stock: saldo,
             }
             const rPut = chamarTray(
               'PUT',
@@ -687,10 +686,8 @@ routerAdd(
           const saldoV = rEv.status === 200 ? saldoNoCd(rEv.dados, cdId) : null
           if (gravarEstoque && saldoV !== null) {
             const corpoV = {
-              DistributionCenterVariant: {
-                variant_id: parseInt(variacaoId, 10),
-                stock: saldoV,
-              },
+              variation_id: parseInt(variacaoId, 10),
+              stock: saldoV,
             }
             const rPutV = chamarTray(
               'PUT',
