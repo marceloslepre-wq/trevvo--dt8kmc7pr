@@ -61,6 +61,7 @@ function montarTexto(
  */
 export const HomologacaoTray: React.FC<Props> = ({ empresaId }) => {
   const [produtoId, setProdutoId] = useState('')
+  const [produtoVariacaoId, setProdutoVariacaoId] = useState('')
   const [variacaoId, setVariacaoId] = useState('')
   const [gravarEstoque, setGravarEstoque] = useState(false)
   const [executando, setExecutando] = useState(false)
@@ -72,6 +73,7 @@ export const HomologacaoTray: React.FC<Props> = ({ empresaId }) => {
     try {
       const r = await executarHomologacaoTray(empresaId, {
         produtoId: produtoId.trim(),
+        produtoVariacaoId: produtoVariacaoId.trim(),
         variacaoId: variacaoId.trim(),
         gravarEstoque,
       })
@@ -137,13 +139,21 @@ export const HomologacaoTray: React.FC<Props> = ({ empresaId }) => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1">
             <label className="text-sm font-medium">Código do produto sem variação (opcional)</label>
             <Input
               value={produtoId}
               onChange={(e) => setProdutoId(e.target.value.replace(/\D/g, ''))}
               placeholder="Em branco: usa o primeiro da loja"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Código do produto com variação (opcional)</label>
+            <Input
+              value={produtoVariacaoId}
+              onChange={(e) => setProdutoVariacaoId(e.target.value.replace(/\D/g, ''))}
+              placeholder="Em branco: procura entre os primeiros"
             />
           </div>
           <div className="space-y-1">
