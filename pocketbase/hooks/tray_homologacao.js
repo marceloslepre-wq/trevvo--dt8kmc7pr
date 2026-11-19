@@ -239,7 +239,9 @@ routerAdd(
           return
         }
         let idCd = undefined
-        if (no.distribution_center_id !== undefined) idCd = no.distribution_center_id
+        // Formato real da Tray: { data: [ { dc_id, stock, handling_days } ] }.
+        if (no.dc_id !== undefined) idCd = no.dc_id
+        else if (no.distribution_center_id !== undefined) idCd = no.distribution_center_id
         else if (no.DistributionCenter && no.DistributionCenter.id !== undefined)
           idCd = no.DistributionCenter.id
         else if (no.distribution_center && no.distribution_center.id !== undefined)
