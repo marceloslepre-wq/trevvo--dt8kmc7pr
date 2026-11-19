@@ -304,6 +304,11 @@ routerAdd(
       const variacaoIdInformada = /^[0-9]{1,20}$/.test(String(body['variacao_id'] || ''))
         ? String(body['variacao_id'])
         : ''
+      const produtoComVariacaoInformado = /^[0-9]{1,20}$/.test(
+        String(body['produto_variacao_id'] || ''),
+      )
+        ? String(body['produto_variacao_id'])
+        : ''
       const gravarEstoque = body['gravar_estoque'] === true
 
       const api = conta.getString('api_address')
@@ -501,7 +506,7 @@ routerAdd(
         '',
       )
       let produtoSimplesId = produtoIdInformado
-      let produtoComVariacaoId = ''
+      let produtoComVariacaoId = produtoComVariacaoInformado
       const listaProd = (rProd.dados && (rProd.dados.Products || rProd.dados.products)) || []
       for (let i = 0; i < listaProd.length; i++) {
         const p = desembrulhar(listaProd[i], 'Product')
