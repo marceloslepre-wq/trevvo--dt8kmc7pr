@@ -636,6 +636,47 @@ routerAdd('GET', '/backend/v1/tray/oauth/callback', (c) => {
     gravarTokensTray(conta, r.dados)
     $app.save(conta)
 
+    // Evidência para a homologação da Tray (POST /auth), sem chaves, code nem tokens.
+    try {
+      if ($app.hasTable('tray_evidencias')) {
+        const ocultarTxt = function (t) {
+          let s = String(t || '')
+          const vals = [
+            seg.key,
+            seg.secret,
+            code,
+            String(r.dados.access_token || ''),
+            String(r.dados.refresh_token || ''),
+          ]
+          for (let i = 0; i < vals.length; i++) {
+            if (vals[i] && vals[i].length >= 6) s = s.split(vals[i]).join('***')
+          }
+          return s
+        }
+        let respTxt = ''
+        try {
+          respTxt = JSON.stringify(JSON.parse(String(res.raw || '{}')), null, 2)
+        } catch (_) {
+          respTxt = String(res.raw || '')
+        }
+        const ev = new Record($app.findCollectionByNameOrId('tray_evidencias'))
+        ev.set('empresa_id', empresaId)
+        ev.set('execucao_id', 'CONEXAO')
+        ev.set('ordem', 0)
+        ev.set('etapa', 'Geração do access_token (troca do code)')
+        ev.set('metodo', 'POST')
+        ev.set('rota', '/auth')
+        ev.set('url_exemplo', api + '/auth')
+        ev.set(
+          'request_json',
+          'consumer_key=***&consumer_secret=***&code=***  (application/x-www-form-urlencoded)',
+        )
+        ev.set('status_http', r.status)
+        ev.set('response_json', ocultarTxt(respTxt).slice(0, 60000))
+        $app.save(ev)
+      }
+    } catch (_) {}
+
     return responder(true, '', retornoUrl)
   } catch (err) {
     console.log('[tray] Erro no callback: ' + (err && err.message ? err.message : String(err)))
