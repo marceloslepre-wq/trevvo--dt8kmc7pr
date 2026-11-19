@@ -143,13 +143,19 @@ export interface EvidenciaTray {
 
 export async function executarHomologacaoTray(
   empresaId: string,
-  opcoes: { produtoId?: string; variacaoId?: string; gravarEstoque: boolean },
+  opcoes: {
+    produtoId?: string
+    produtoVariacaoId?: string
+    variacaoId?: string
+    gravarEstoque: boolean
+  },
 ): Promise<ResultadoHomologacaoTray> {
   return await pb.send<ResultadoHomologacaoTray>('/backend/v1/tray/homologacao/executar', {
     method: 'POST',
     body: {
       empresa_id: empresaId,
       produto_id: opcoes.produtoId || '',
+      produto_variacao_id: opcoes.produtoVariacaoId || '',
       variacao_id: opcoes.variacaoId || '',
       gravar_estoque: opcoes.gravarEstoque,
     },
