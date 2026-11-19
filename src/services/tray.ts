@@ -104,3 +104,65 @@ export async function conferirProdutosTray(
     { method: 'GET' },
   )
 }
+
+/** Homologação do aplicativo na Tray (pocketbase/hooks/tray_homologacao.js). */
+export interface PassoHomologacaoTray {
+  ordem: number
+  etapa: string
+  metodo: string
+  rota: string
+  status_http: number
+  observacao: string
+}
+
+export interface ResultadoHomologacaoTray {
+  sucesso: boolean
+  mensagem?: string
+  execucao_id: string
+  loja_host?: string
+  ip_publico_saida?: string
+  url_callback?: string
+  multicd_ativo?: boolean
+  centros_distribuicao?: number
+  passos: PassoHomologacaoTray[]
+}
+
+export interface EvidenciaTray {
+  ordem: number
+  etapa: string
+  metodo: string
+  rota: string
+  url_exemplo: string
+  request_json: string
+  status_http: number
+  response_json: string
+  duracao_ms: number
+  observacao: string
+  criado_em: string
+}
+
+export async function executarHomologacaoTray(
+  empresaId: string,
+  opcoes: { produtoId?: string; variacaoId?: string; gravarEstoque: boolean },
+): Promise<ResultadoHomologacaoTray> {
+  return await pb.send<ResultadoHomologacaoTray>('/backend/v1/tray/homologacao/executar', {
+    method: 'POST',
+    body: {
+      empresa_id: empresaId,
+      produto_id: opcoes.produtoId || '',
+      variacao_id: opcoes.variacaoId || '',
+      gravar_estoque: opcoes.gravarEstoque,
+    },
+  })
+}
+
+export async function obterEvidenciasTray(empresaId: string): Promise<{
+  sucesso: boolean
+  execucao_id: string
+  evidencias: EvidenciaTray[]
+}> {
+  return await pb.send(
+    `/backend/v1/tray/homologacao/evidencias?empresa_id=${encodeURIComponent(empresaId)}`,
+    { method: 'GET' },
+  )
+}

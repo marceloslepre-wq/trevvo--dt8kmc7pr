@@ -335,8 +335,67 @@ routerAdd(
       const api = conta.getString('api_address')
       const token = encodeURIComponent(conta.getString('access_token'))
 
+      // =====================================================================================
+      // LIMITE DA TRAY: 180 requisições por minuto por loja.
+      // Janela deslizante de 60 s guardada na memória compartilhada do servidor ($app.store()),
+      // por loja (api_address). Trabalhamos com 170 para ter margem. Quando a janela está cheia,
+      // a chamada espera até a requisição mais antiga sair da janela. Se a memória compartilhada
+      // não estiver disponível, cai num intervalo fixo de 350 ms entre chamadas (≈171 por minuto).
+      // =====================================================================================
+      function aguardarLimiteTray(chaveLoja) {
+        const LIMITE_POR_MINUTO = 170
+        const JANELA_MS = 60 * 1000
+        const chave = 'tray_limite_' + chaveLoja
+        for (let tentativa = 0; tentativa < 400; tentativa++) {
+          let marcas = []
+          let memoriaOk = true
+          try {
+            const bruto = $app.store().get(chave)
+            if (bruto) marcas = JSON.parse(String(bruto))
+          } catch (_) {
+            memoriaOk = false
+            marcas = []
+          }
+          const agora = Date.now()
+          const recentes = []
+          for (let i = 0; i < marcas.length; i++) {
+            if (agora - marcas[i] < JANELA_MS) recentes.push(marcas[i])
+          }
+          if (recentes.length < LIMITE_POR_MINUTO) {
+            recentes.push(agora)
+            try {
+              $app.store().set(chave, JSON.stringify(recentes))
+            } catch (_) {
+              memoriaOk = false
+            }
+            if (!memoriaOk) sleep(350)
+            return
+          }
+          // Janela cheia: espera a requisição mais antiga completar 60 s.
+          const espera = JANELA_MS - (agora - recentes[0]) + 50
+          sleep(Math.min(Math.max(espera, 100), 5000))
+        }
+      }
+
       // Somente GET. Nunca registrar a URL em log (contém o token).
+      // Respeita o limite de 180/min e tenta de novo em HTTP 429 (1 s, 2 s, 4 s, 8 s).
       function lerTray(caminho) {
+        const esperas429 = [1000, 2000, 4000, 8000]
+        for (let t = 0; t < esperas429.length; t++) {
+          aguardarLimiteTray(api)
+          const r0 = $http.send({
+            method: 'GET',
+            url: api + caminho + (caminho.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + token,
+            headers: {
+              Accept: 'application/json',
+              'User-Agent': 'Trevvo-ERP/1.0',
+            },
+            timeout: 25,
+          })
+          if (r0.statusCode !== 429) return { status: r0.statusCode, dados: lerJson(r0) }
+          sleep(esperas429[t])
+        }
+        aguardarLimiteTray(api)
         const res = $http.send({
           method: 'GET',
           url: api + caminho + (caminho.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + token,
