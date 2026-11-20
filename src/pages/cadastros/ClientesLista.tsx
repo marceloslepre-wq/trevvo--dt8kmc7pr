@@ -18,6 +18,7 @@ import {
   Building2,
   User,
   Globe2,
+  FileUp,
 } from 'lucide-react'
 import {
   Cliente,
@@ -28,6 +29,7 @@ import {
   listarVendedoresAtivos,
 } from '@/services/clientes'
 import { usePermissoes } from '@/contexts/PermissoesContext'
+import ImportarClientesDialog from '@/components/clientes/ImportarClientesDialog'
 import { formatarCNPJ, formatarCPF, formatarTelefone } from '@/lib/validacoes'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -94,6 +96,7 @@ export const ClientesLista: React.FC = () => {
   const [totalItems, setTotalItems] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [carregando, setCarregando] = useState(true)
+  const [importarAberto, setImportarAberto] = useState(false)
 
   // Filtros
   const [busca, setBusca] = useState('')
@@ -363,6 +366,16 @@ export const ClientesLista: React.FC = () => {
 
           {podeCriar && (
             <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImportarAberto(true)}
+                className="text-xs h-9 border-slate-200 text-slate-700 hover:bg-slate-100"
+              >
+                <FileUp size={14} className="mr-1.5" />
+                Importar CSV
+              </Button>
+
               <Button
                 variant="outline"
                 size="sm"
@@ -816,6 +829,12 @@ export const ClientesLista: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImportarClientesDialog
+        aberto={importarAberto}
+        onFechar={() => setImportarAberto(false)}
+        onConcluido={carregarDados}
+      />
 
       {/* Modal de Cadastro Rápido */}
       <ClienteCadastroRapido
