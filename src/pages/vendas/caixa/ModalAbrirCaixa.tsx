@@ -32,6 +32,10 @@ export function ModalAbrirCaixa({
   const { toast } = useToast()
   const [carregandoTerminais, setCarregandoTerminais] = useState(false)
   const [terminaisDisponiveis, setTerminaisDisponiveis] = useState<Terminal[]>([])
+  // Terminais ocupados (sessão aberta) com o nome de quem abriu, para o aviso
+  const [terminaisOcupados, setTerminaisOcupados] = useState<
+    { terminal: string; operador: string }[]
+  >([])
   const [terminalSelecionadoId, setTerminalSelecionadoId] = useState('')
   const [valorAberturaStr, setValorAberturaStr] = useState('0,00')
   const [realizarSuprimento, setRealizarSuprimento] = useState(false)
@@ -55,12 +59,26 @@ export function ModalAbrirCaixa({
         // Buscar sessões abertas da empresa
         const sessoesAbertas = await pb.collection('caixa_sessoes').getFullList<{
           pdv_terminal_id: string
+          expand?: { operador_id?: { nome?: string } }
         }>({
           filter: `empresa_id = '${empresaId}' && status = 'Aberto' && ativo = true`,
+          expand: 'operador_id',
         })
 
         const idsComSessaoAberta = new Set(sessoesAbertas.map((s) => s.pdv_terminal_id))
         const livres = ativos.filter((t) => !idsComSessaoAberta.has(t.id))
+        setTerminaisOcupados(
+          sessoesAbertas
+            .map((s) => {
+              const t = ativos.find((x) => x.id === s.pdv_terminal_id)
+              if (!t) return null
+              return {
+                terminal: t.nome,
+                operador: s.expand?.operador_id?.nome || 'outro usuário',
+              }
+            })
+            .filter((x): x is { terminal: string; operador: string } => x !== null),
+        )
 
         setTerminaisDisponiveis(livres)
         if (livres.length > 0) {
@@ -199,10 +217,23 @@ export function ModalAbrirCaixa({
                 <AlertCircle className="h-4 w-4 text-amber-600" />
                 Nenhum terminal disponível para abertura
               </p>
-              <p>
-                Todos os terminais desta filial já estão com sessões abertas ou não há terminais
-                cadastrados e ativos.
-              </p>
+              {terminaisOcupados.length > 0 ? (
+                <>
+                  {terminaisOcupados.map((o) => (
+                    <p key={o.terminal}>
+                      O terminal <strong>{o.terminal}</strong> está com o caixa aberto por{' '}
+                      <strong>{o.operador}</strong>.
+                    </p>
+                  ))}
+                  <p>
+                    Cada terminal aceita um caixa aberto por vez. Peça para fechar esse caixa
+                    (Vendas e PDV &gt; Controle de Caixa) ou cadastre outro terminal em Terminais
+                    PDV.
+                  </p>
+                </>
+              ) : (
+                <p>Não há terminais cadastrados e ativos nesta filial. Cadastre um em Terminais PDV.</p>
+              )}
             </div>
           ) : (
             <>
