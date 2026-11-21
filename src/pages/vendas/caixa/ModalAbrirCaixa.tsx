@@ -232,7 +232,9 @@ export function ModalAbrirCaixa({
                   </p>
                 </>
               ) : (
-                <p>Não há terminais cadastrados e ativos nesta filial. Cadastre um em Terminais PDV.</p>
+                <p>
+                  Não há terminais cadastrados e ativos nesta filial. Cadastre um em Terminais PDV.
+                </p>
               )}
             </div>
           ) : (

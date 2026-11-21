@@ -64,8 +64,17 @@ migrate(
           const res = app
             .db()
             .newQuery(
-              'UPDATE [' + tabela + '] SET [' + nome + "] = '' WHERE [" + nome + "] != '' AND [" +
-                nome + '] NOT IN (SELECT id FROM [' + destino + '])',
+              'UPDATE [' +
+                tabela +
+                '] SET [' +
+                nome +
+                "] = '' WHERE [" +
+                nome +
+                "] != '' AND [" +
+                nome +
+                '] NOT IN (SELECT id FROM [' +
+                destino +
+                '])',
             )
             .execute()
           let afetados = 0
@@ -74,7 +83,15 @@ migrate(
           } catch (_) {}
           if (afetados > 0) {
             totalZerados += afetados
-            console.log('[0137] ' + tabela + '.' + nome + ' -> ' + afetados + ' referência(s) órfã(s) zerada(s)')
+            console.log(
+              '[0137] ' +
+                tabela +
+                '.' +
+                nome +
+                ' -> ' +
+                afetados +
+                ' referência(s) órfã(s) zerada(s)',
+            )
           }
         } catch (errU) {
           console.log('[0137] erro em ' + tabela + '.' + nome + ': ' + errU)
@@ -83,7 +100,8 @@ migrate(
     }
 
     console.log('[0137] total de referências órfãs zeradas: ' + totalZerados)
-    if (avisos.length) console.log('[0137] campos ignorados (obrigatórios ou múltiplos): ' + avisos.join('; '))
+    if (avisos.length)
+      console.log('[0137] campos ignorados (obrigatórios ou múltiplos): ' + avisos.join('; '))
   },
   (app) => {
     // Down: no-op. Os ids apagados não existem mais para restaurar.
