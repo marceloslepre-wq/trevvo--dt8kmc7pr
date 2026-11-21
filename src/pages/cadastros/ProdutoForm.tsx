@@ -85,6 +85,7 @@ import { formatarCNPJ, formatarCPF } from '@/lib/validacoes'
 import { listarEntradasDoProduto, EntradaHistoricoProduto } from '@/services/consultasCompras'
 import { obterHistoricoSaidasProduto, SaidaVendaProduto } from '@/services/vendas'
 import { ShoppingCart } from 'lucide-react'
+import { MargemPorCanal } from '@/components/produtos/MargemPorCanal'
 
 export const ProdutoForm: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -1248,7 +1249,7 @@ export const ProdutoForm: React.FC = () => {
                   {/* Margem % */}
                   <div>
                     <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                      Margem Desejada (%)
+                      Markup sobre o custo (%)
                     </Label>
                     <div className="relative">
                       <Input
@@ -1264,7 +1265,7 @@ export const ProdutoForm: React.FC = () => {
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-500">
-                      Alterar a margem recalcula o preço de venda automaticamente.
+                      Quanto o preço fica acima do custo. Alterar recalcula o preço de venda.
                     </span>
                   </div>
 
@@ -1303,7 +1304,7 @@ export const ProdutoForm: React.FC = () => {
 
                   <div className="bg-white p-2.5 rounded-lg border border-blue-100">
                     <span className="text-[10px] text-slate-400 block uppercase font-medium">
-                      Margem s/ Venda
+                      Margem bruta s/ venda
                     </span>
                     <strong className="text-sm text-slate-800">
                       {margemSobreVenda.toFixed(2).replace('.', ',')}%
@@ -1336,6 +1337,14 @@ export const ProdutoForm: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Margem líquida por canal de venda (impostos, comissões e taxas) */}
+              <MargemPorCanal
+                custo={custoFinalTela}
+                preco={precoVendaTela}
+                perfilTributarioId={formData.perfil_tributario_id}
+                onAplicarPreco={(p) => handleCampoChange('preco_venda', p)}
+              />
 
               {/* Promoção e Descontos */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
