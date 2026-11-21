@@ -791,7 +791,7 @@ export const VendaFormPage: React.FC = () => {
   }
 
   // Emissão Manual de NFC-e no Detalhe da Venda
-  const handleEmitirNfceManual = async () => {
+  const handleEmitirNfceManual = async (contingencia = false) => {
     if (!vendaAtual?.id) return
     if (!configFiscal?.csc_configurado) {
       toast({
@@ -804,7 +804,7 @@ export const VendaFormPage: React.FC = () => {
 
     setEmitindoNfceManual(true)
     try {
-      const resp = await emitirNFCeVenda({ vendaId: vendaAtual.id })
+      const resp = await emitirNFCeVenda({ vendaId: vendaAtual.id, contingencia })
       if (resp.sucesso && resp.status === 'Autorizada') {
         toast({
           title: resp.contingencia
@@ -1108,7 +1108,7 @@ export const VendaFormPage: React.FC = () => {
                   type="button"
                   size="sm"
                   disabled={emitindoNfceManual}
-                  onClick={handleEmitirNfceManual}
+                  onClick={() => handleEmitirNfceManual(false)}
                   className="text-xs bg-purple-600 hover:bg-purple-700 text-white gap-1.5"
                 >
                   {emitindoNfceManual ? (
@@ -1122,6 +1122,20 @@ export const VendaFormPage: React.FC = () => {
                       <span>Emitir NFC-e</span>
                     </>
                   )}
+                </Button>
+              )}
+              {podeEmitirNfceManual && !temNfeAutorizada && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={emitindoNfceManual}
+                  onClick={() => handleEmitirNfceManual(true)}
+                  title="Use quando a SEFAZ estiver fora do ar: a nota sai na hora e a Focus transmite depois."
+                  className="text-xs text-amber-700 border-amber-300 hover:bg-amber-50 gap-1.5"
+                >
+                  <FileText size={14} />
+                  <span>Emitir em contingência</span>
                 </Button>
               )}
               {ehFinalizada && (
