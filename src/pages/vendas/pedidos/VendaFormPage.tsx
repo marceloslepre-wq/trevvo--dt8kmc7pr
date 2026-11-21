@@ -1790,16 +1790,11 @@ export const VendaFormPage: React.FC = () => {
           onSucesso={async (res) => {
             setStatus('Finalizada')
             try {
-              const { venda, itens: its, pagamentos } = await obterVendaCompleta(res.venda_id)
+              // Não abre mais a impressão automática do comprovante não fiscal:
+              // a janela de impressão travava a tela do pedido até ser fechada.
+              // O passo seguinte é emitir NF-e/NFC-e; o comprovante continua no botão Imprimir.
+              const { venda } = await obterVendaCompleta(res.venda_id)
               setVendaAtual(venda)
-              imprimirComprovanteNaoFiscal({
-                venda,
-                itens: its,
-                pagamentos,
-                empresa: empresaAtiva || {},
-                cliente: clienteSelecionado || undefined,
-                vendedorNome: vendedores.find((v) => v.id === vendedorId)?.nome,
-              })
             } catch {
               /* intentionally ignored */
             }
