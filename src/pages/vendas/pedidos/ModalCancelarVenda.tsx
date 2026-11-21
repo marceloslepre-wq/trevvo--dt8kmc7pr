@@ -114,6 +114,16 @@ export const ModalCancelarVenda: React.FC<ModalCancelarVendaProps> = ({
           throw new Error(respCancNfce.message || 'Falha ao cancelar a NFC-e na SEFAZ.')
         }
 
+        // O hook tenta cancelar a venda por uma chamada HTTP interna que pode falhar
+        // no servidor do Skip. Se a venda não foi cancelada lá, cancela daqui (a NFC-e
+        // já está Cancelada, então /vendas/cancelar aceita), igual ao fluxo da NF-e.
+        if (cancelarNfceJunto && !respCancNfce.venda_cancelada) {
+          await cancelarVenda({
+            venda_id: venda.id,
+            motivo: `Cancelamento de NFC-e: ${motivoLimpo}`,
+          })
+        }
+
         toast({
           title: 'NFC-e cancelada!',
           description: cancelarNfceJunto

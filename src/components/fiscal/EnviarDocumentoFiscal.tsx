@@ -117,8 +117,10 @@ export const EnviarDocumentoFiscal: React.FC<DadosEnviarDocumentoFiscal> = ({
   // Trevvo Móvel: botões empilhados, largura total, ≥48px
   const classeBotaoAcao = empilhado
     ? 'h-12 w-full text-sm font-semibold'
-    : 'h-9 text-xs font-semibold flex-1'
-  const classeContainerBotoes = empilhado ? 'flex flex-col gap-2' : 'flex items-center gap-2'
+    : 'h-9 text-xs font-semibold flex-1 min-w-[120px]'
+  const classeContainerBotoes = empilhado
+    ? 'flex flex-col gap-2'
+    : 'flex flex-wrap items-center gap-2'
   const classeCampos = empilhado ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-2 gap-2'
 
   const valorFormatado = useMemo(

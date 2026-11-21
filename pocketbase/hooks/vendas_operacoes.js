@@ -1047,7 +1047,8 @@ routerAdd(
             bRec.set('valor_juros', 0)
             bRec.set('valor_desconto', 0)
             bRec.set('valor_total_pago', valorEfetivoPg)
-            bRec.set('observacoes', `Baixa automática na venda #${docNumero} - ${descForma}`)
+            // O campo da coleção é 'observacao' (singular); 'observacoes' era descartado
+            bRec.set('observacao', `Baixa automática na venda #${docNumero} - ${descForma}`)
             bRec.set('estornado', false)
             bRec.set('ativo', true)
             bRec.set('created_by', userId)
@@ -1593,8 +1594,25 @@ routerAdd(
 
             for (let b = 0; b < baixas.length; b++) {
               const bx = baixas[b]
-              const obs = bx.getString('observacoes') || ''
-              const ehBaixaAutoAVista = obs.includes('Baixa automática na venda')
+              const obs = bx.getString('observacao') || bx.getString('observacoes') || ''
+              // Baixas antigas ficaram sem texto (campo errado). A baixa automática nasce
+              // na mesma transação do título, então também vale "criada até 2 min depois".
+              let criadaJuntoComTitulo = false
+              try {
+                const paraMs = (rec) => {
+                  try {
+                    const u = rec.getDateTime('created').unix()
+                    if (u) return Number(u) * 1000
+                  } catch (_) {}
+                  return new Date(String(rec.get('created')).replace(' ', 'T')).getTime()
+                }
+                const tBx = paraMs(bx)
+                const tTit = paraMs(tit)
+                criadaJuntoComTitulo =
+                  !isNaN(tBx) && !isNaN(tTit) && Math.abs(tBx - tTit) <= 120000
+              } catch (_) {}
+              const ehBaixaAutoAVista =
+                obs.includes('Baixa automática na venda') || criadaJuntoComTitulo
               if (!ehBaixaAutoAVista) {
                 pagamentosComBaixaPosterior.push({
                   titulo_id: tit.id,
