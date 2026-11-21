@@ -1031,6 +1031,15 @@ export const ROTAS: ItemRota[] = [
     icone: Settings,
   },
   {
+    rota: '/configuracoes/canais-margem',
+    rotulo: 'Canais de venda (margem)',
+    grupo: 'Configurações',
+    modulo: 'configuracoes',
+    acaoMinima: 'ver',
+    ordem: 20.5,
+    icone: Percent,
+  },
+  {
     rota: '/configuracoes/tray',
     rotulo: 'Integração Tray',
     grupo: 'Configurações',
