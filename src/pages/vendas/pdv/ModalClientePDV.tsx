@@ -201,9 +201,7 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
                   {selecionado === null && <Check size={16} className="text-white" />}
                 </div>
 
-                {carregando && (
-                  <div className="p-2 text-[11px] text-slate-500">Buscando...</div>
-                )}
+                {carregando && <div className="p-2 text-[11px] text-slate-500">Buscando...</div>}
                 {!carregando && erroBusca && (
                   <div className="p-2 text-[11px] text-red-600">{erroBusca}</div>
                 )}
