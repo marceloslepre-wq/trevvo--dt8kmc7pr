@@ -49,6 +49,7 @@ import ItensCompradosPage from '@/pages/compras/ItensCompradosPage'
 import LivroEntradasPage from '@/pages/compras/LivroEntradasPage'
 import GruposCategoriasPage from '@/pages/cadastros/GruposCategoriasPage'
 import ConfiguracoesGeralPage from '@/pages/configuracoes/ConfiguracoesGeralPage'
+import CanaisMargemPage from '@/pages/configuracoes/CanaisMargemPage'
 import ConfiguracaoFiscalPage from '@/pages/configuracoes/ConfiguracaoFiscalPage'
 import IntegridadeEstoquePage from '@/pages/configuracoes/IntegridadeEstoquePage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
@@ -426,6 +427,7 @@ const App = () => (
                     />
                     <Route path="/configuracoes/geral" element={<ConfiguracoesGeralPage />} />
                     <Route path="/configuracoes/fiscal" element={<ConfiguracaoFiscalPage />} />
+                    <Route path="/configuracoes/canais-margem" element={<CanaisMargemPage />} />
                     <Route path="/configuracoes/tray" element={<TrayPage />} />
                     <Route path="/configuracoes/mercado-livre" element={<MercadoLivrePage />} />
                     <Route path="/configuracoes/auditoria" element={<LogAuditoriaPage />} />
