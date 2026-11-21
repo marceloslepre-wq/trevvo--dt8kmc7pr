@@ -1608,8 +1608,7 @@ routerAdd(
                 }
                 const tBx = paraMs(bx)
                 const tTit = paraMs(tit)
-                criadaJuntoComTitulo =
-                  !isNaN(tBx) && !isNaN(tTit) && Math.abs(tBx - tTit) <= 120000
+                criadaJuntoComTitulo = !isNaN(tBx) && !isNaN(tTit) && Math.abs(tBx - tTit) <= 120000
               } catch (_) {}
               const ehBaixaAutoAVista =
                 obs.includes('Baixa automática na venda') || criadaJuntoComTitulo
