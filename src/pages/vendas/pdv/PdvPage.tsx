@@ -1227,9 +1227,7 @@ export const PdvPage: React.FC = () => {
       }
     } catch (errRetry: any) {
       const msg = errRetry?.data?.message || errRetry?.message || 'Falha na conexão.'
-      setDadosRejeicaoNfce((prev) =>
-        prev ? { ...prev, motivo: msg, erroInterno: true } : null,
-      )
+      setDadosRejeicaoNfce((prev) => (prev ? { ...prev, motivo: msg, erroInterno: true } : null))
       toast({
         title: 'Erro ao tentar de novo',
         description: msg,
