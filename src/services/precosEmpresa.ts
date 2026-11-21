@@ -31,9 +31,12 @@ export async function salvarPrecoEmpresa(
   try {
     existente = await pb
       .collection('produtos_precos_empresa')
-      .getFirstListItem<PrecoEmpresa>(`produto_id = '${produtoId}' && empresa_id = '${empresaId}'`, {
-        requestKey: null,
-      })
+      .getFirstListItem<PrecoEmpresa>(
+        `produto_id = '${produtoId}' && empresa_id = '${empresaId}'`,
+        {
+          requestKey: null,
+        },
+      )
   } catch {
     existente = null
   }
@@ -78,7 +81,10 @@ export async function mapaPrecosDaEmpresa(empresaId: string): Promise<Map<string
  * Devolve cópias dos produtos com preco_venda = preço da empresa (quando houver).
  * O preço geral fica em preco_venda_geral, para referência.
  */
-export function aplicarMapaPrecos<T extends Produto>(produtos: T[], mapa: Map<string, number>): T[] {
+export function aplicarMapaPrecos<T extends Produto>(
+  produtos: T[],
+  mapa: Map<string, number>,
+): T[] {
   if (!mapa.size) return produtos
   return produtos.map((p) => {
     const proprio = mapa.get(p.id)
@@ -163,8 +169,13 @@ export async function salvarPrecoCanal(
   if (existente?.id) {
     await pb.collection('produtos_precos_canal').update(existente.id, dados)
   } else {
-    await pb.collection('produtos_precos_canal').create(
-      Object.assign({ assinante_id: assinanteId || undefined, produto_id: produtoId, canal_id: canalId }, dados),
-    )
+    await pb
+      .collection('produtos_precos_canal')
+      .create(
+        Object.assign(
+          { assinante_id: assinanteId || undefined, produto_id: produtoId, canal_id: canalId },
+          dados,
+        ),
+      )
   }
 }

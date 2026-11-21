@@ -133,8 +133,8 @@ export default function CanaisMargemPage() {
             Cada canal define como calcular a margem líquida do produto (aba Preços). ICMS
             &quot;pelo perfil&quot; usa a alíquota de venda interna do perfil tributário do produto
             (zero para ST/isentos); &quot;fixo&quot; usa o percentual informado (ex.: 1,1% de carga
-            efetiva com COMPETE-ES). PIS/COFINS sempre vêm do perfil do produto. O preço no canal é o
-            preço da loja do canal mais o acréscimo (como a regra de precificação da Tray); cada
+            efetiva com COMPETE-ES). PIS/COFINS sempre vêm do perfil do produto. O preço no canal é
+            o preço da loja do canal mais o acréscimo (como a regra de precificação da Tray); cada
             produto pode ter preço próprio e valor recebido no canal, na aba Preços.
           </CardDescription>
         </CardHeader>
@@ -153,7 +153,10 @@ export default function CanaisMargemPage() {
                     <th className="py-2 px-2">Empresa</th>
                     <th className="py-2 px-2">ICMS</th>
                     <th className="py-2 px-2 w-20">ICMS fixo %</th>
-                    <th className="py-2 px-2 w-20" title="Preço no canal = preço da loja do canal + X%">
+                    <th
+                      className="py-2 px-2 w-20"
+                      title="Preço no canal = preço da loja do canal + X%"
+                    >
                       Acréscimo no preço %
                     </th>
                     <th className="py-2 px-2 w-20">Comissão %</th>

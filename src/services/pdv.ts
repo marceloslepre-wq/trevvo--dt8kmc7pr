@@ -1,4 +1,8 @@
-import { aplicarMapaPrecos, aplicarPrecosDaEmpresa, mapaPrecosDaEmpresa } from '@/services/precosEmpresa'
+import {
+  aplicarMapaPrecos,
+  aplicarPrecosDaEmpresa,
+  mapaPrecosDaEmpresa,
+} from '@/services/precosEmpresa'
 import pb from '@/lib/pocketbase/client'
 import type { Produto } from '@/services/produtos'
 import type { Cliente } from '@/services/clientes'
