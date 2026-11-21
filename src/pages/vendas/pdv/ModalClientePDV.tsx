@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Users, Search, Plus, Check } from 'lucide-react'
-import pb from '@/lib/pocketbase/client'
-import type { Cliente } from '@/services/clientes'
+import { listarClientes, type Cliente } from '@/services/clientes'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 import { ClienteCadastroRapido } from '@/components/ClienteCadastroRapido'
 
 interface ModalClientePDVProps {
@@ -34,6 +34,8 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [selecionado, setSelecionado] = useState<Cliente | null>(clienteAtual)
   const [carregando, setCarregando] = useState(false)
+  const [erroBusca, setErroBusca] = useState('')
+  const assinanteId = useAssinanteId()
   const [modalNovoClienteAberto, setModalNovoClienteAberto] = useState(false)
   const inputBuscaRef = useRef<HTMLInputElement>(null)
 
@@ -42,24 +44,35 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
       setBusca('')
       setCpfCnpjCupom(cpfCnpjAtual || '')
       setSelecionado(clienteAtual)
-      carregarClientes('')
       setTimeout(() => {
         inputBuscaRef.current?.focus()
       }, 100)
     }
   }, [aberto, clienteAtual, cpfCnpjAtual])
 
+  // Busca automática enquanto digita (sem precisar clicar em Buscar)
+  useEffect(() => {
+    if (!aberto) return
+    const timer = setTimeout(() => {
+      carregarClientes(busca)
+    }, 300)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busca, aberto, assinanteId])
+
   const carregarClientes = async (termo: string) => {
     setCarregando(true)
+    setErroBusca('')
     try {
-      const t = termo.trim().replace(/['"]/g, '')
-      let filter = 'ativo = true'
-      if (t) {
-        filter += ` && (nome_razao_social ~ '${t}' || nome_fantasia ~ '${t}' || cpf_cnpj ~ '${t}')`
-      }
-      const res = await pb.collection('clientes').getList<Cliente>(1, 30, {
-        filter,
-        sort: 'nome_razao_social',
+      // Busca no servidor por nome, fantasia, CPF/CNPJ (com ou sem pontuação), código,
+      // telefone, celular, e-mail e município
+      const res = await listarClientes({
+        situacao: 'ativos',
+        busca: termo.trim(),
+        porPagina: 30,
+        ordenarPor: 'nome_razao_social',
+        ordem: 'asc',
+        assinante_id: assinanteId || undefined,
       })
       // Esconde da lista o cadastro genérico "Consumidor Final" (sem documento):
       // ele já é representado pela opção "Consumidor Final (Padrão Balcão)" acima,
@@ -73,8 +86,14 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
             ),
         ),
       )
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Erro ao carregar clientes:', err)
+      setClientes([])
+      setErroBusca(
+        'Não foi possível buscar clientes' +
+          (err?.status ? ` (erro ${err.status})` : '') +
+          '. Tente de novo ou avise o administrador.',
+      )
     } finally {
       setCarregando(false)
     }
@@ -148,7 +167,7 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
                     ref={inputBuscaRef}
-                    placeholder="Buscar por nome, razão social ou CPF/CNPJ..."
+                    placeholder="Buscar por nome, CPF/CNPJ, código ou telefone..."
                     value={busca}
                     onChange={(e) => setBusca(e.target.value)}
                     className="h-9 pl-9 bg-white border-slate-300 text-slate-900 text-xs"
@@ -182,6 +201,17 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
                   {selecionado === null && <Check size={16} className="text-white" />}
                 </div>
 
+                {carregando && (
+                  <div className="p-2 text-[11px] text-slate-500">Buscando...</div>
+                )}
+                {!carregando && erroBusca && (
+                  <div className="p-2 text-[11px] text-red-600">{erroBusca}</div>
+                )}
+                {!carregando && !erroBusca && busca.trim() && clientes.length === 0 && (
+                  <div className="p-2 text-[11px] text-slate-500">
+                    Nenhum cliente encontrado para "{busca.trim()}".
+                  </div>
+                )}
                 {clientes.map((c) => {
                   const ativo = selecionado?.id === c.id
                   return (
@@ -200,7 +230,10 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
                       }`}
                     >
                       <div className="min-w-0">
-                        <div className="font-medium truncate">{c.nome_razao_social}</div>
+                        <div className="font-medium truncate">
+                          {c.codigo ? `#${c.codigo} ` : ''}
+                          {c.nome_razao_social}
+                        </div>
                         <div className="text-[10px] opacity-75">
                           {c.cpf_cnpj ? `Doc: ${c.cpf_cnpj}` : ''}{' '}
                           {c.telefone ? `| Fone: ${c.telefone}` : ''}
