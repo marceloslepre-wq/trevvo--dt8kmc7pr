@@ -1186,6 +1186,58 @@ export const PdvPage: React.FC = () => {
     }, 80)
   }
 
+  const tentarNfceNovamente = async (contingencia: boolean) => {
+    if (!dadosRejeicaoNfce?.vendaId) return
+    setReemitindoNfce(true)
+    try {
+      const resp = await emitirNFCeVenda({
+        vendaId: dadosRejeicaoNfce.vendaId,
+        contingencia,
+      })
+      if (resp.sucesso && resp.status === 'Autorizada') {
+        toast({
+          title: resp.contingencia ? 'NFC-e Emitida em Contingência!' : 'NFC-e Autorizada!',
+          description: resp.contingencia
+            ? 'A Focus vai transmitir a nota para a SEFAZ assim que ela voltar.'
+            : `Nota autorizada com sucesso na SEFAZ.`,
+        })
+        if (resp.danfe_url) {
+          imprimirDanfeUrl(resp.danfe_url)
+        }
+        setModalRejeicaoNfceAberto(false)
+        setDadosRejeicaoNfce(null)
+        focarLeitor()
+      } else {
+        setDadosRejeicaoNfce((prev) =>
+          prev
+            ? {
+                ...prev,
+                motivo: resp.message || 'Falha na reemissão',
+                erroInterno: resp.erro_interno === true,
+              }
+            : null,
+        )
+        toast({
+          title: resp.erro_interno ? 'Erro interno do ERP' : 'Tentativa Rejeitada',
+          description: resp.message || 'Verifique o cadastro fiscal.',
+          variant: 'destructive',
+        })
+      }
+    } catch (errRetry: any) {
+      const msg = errRetry?.data?.message || errRetry?.message || 'Falha na conexão.'
+      setDadosRejeicaoNfce((prev) =>
+        prev ? { ...prev, motivo: msg, erroInterno: true } : null,
+      )
+      toast({
+        title: 'Erro ao tentar de novo',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setReemitindoNfce(false)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full w-full bg-slate-100 text-slate-800 font-sans select-none overflow-hidden">
       {/* 1) TOPO: EMPRESA, TERMINAL, OPERADOR, SESSÃO DE CAIXA E RELÓGIO */}
@@ -2035,57 +2087,22 @@ export const PdvPage: React.FC = () => {
                 Seguir Vendendo (Fechar)
               </button>
 
+              {!dadosRejeicaoNfce.erroInterno && (
+                <button
+                  type="button"
+                  disabled={reemitindoNfce}
+                  onClick={() => tentarNfceNovamente(true)}
+                  title="Use quando a SEFAZ estiver fora do ar: a nota sai na hora e a Focus transmite depois."
+                  className="px-4 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-300 rounded-lg text-xs font-semibold disabled:opacity-50"
+                >
+                  Emitir em contingência
+                </button>
+              )}
+
               <button
                 type="button"
                 disabled={reemitindoNfce}
-                onClick={async () => {
-                  if (!dadosRejeicaoNfce?.vendaId) return
-                  setReemitindoNfce(true)
-                  try {
-                    const resp = await emitirNFCeVenda({
-                      vendaId: dadosRejeicaoNfce.vendaId,
-                    })
-                    if (resp.sucesso && resp.status === 'Autorizada') {
-                      toast({
-                        title: 'NFC-e Autorizada!',
-                        description: `Nota autorizada com sucesso na SEFAZ.`,
-                      })
-                      if (resp.danfe_url) {
-                        imprimirDanfeUrl(resp.danfe_url)
-                      }
-                      setModalRejeicaoNfceAberto(false)
-                      setDadosRejeicaoNfce(null)
-                      focarLeitor()
-                    } else {
-                      setDadosRejeicaoNfce((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              motivo: resp.message || 'Falha na reemissão',
-                              erroInterno: resp.erro_interno === true,
-                            }
-                          : null,
-                      )
-                      toast({
-                        title: resp.erro_interno ? 'Erro interno do ERP' : 'Tentativa Rejeitada',
-                        description: resp.message || 'Verifique o cadastro fiscal.',
-                        variant: 'destructive',
-                      })
-                    }
-                  } catch (errRetry: any) {
-                    const msg = errRetry?.data?.message || errRetry?.message || 'Falha na conexão.'
-                    setDadosRejeicaoNfce((prev) =>
-                      prev ? { ...prev, motivo: msg, erroInterno: true } : null,
-                    )
-                    toast({
-                      title: 'Erro ao tentar de novo',
-                      description: msg,
-                      variant: 'destructive',
-                    })
-                  } finally {
-                    setReemitindoNfce(false)
-                  }
-                }}
+                onClick={() => tentarNfceNovamente(false)}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
               >
                 <RefreshCw size={14} className={reemitindoNfce ? 'animate-spin' : ''} />
