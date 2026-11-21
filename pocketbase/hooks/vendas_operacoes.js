@@ -1599,8 +1599,15 @@ routerAdd(
               // na mesma transação do título, então também vale "criada até 2 min depois".
               let criadaJuntoComTitulo = false
               try {
-                const tBx = new Date(String(bx.get('created'))).getTime()
-                const tTit = new Date(String(tit.get('created'))).getTime()
+                const paraMs = (rec) => {
+                  try {
+                    const u = rec.getDateTime('created').unix()
+                    if (u) return Number(u) * 1000
+                  } catch (_) {}
+                  return new Date(String(rec.get('created')).replace(' ', 'T')).getTime()
+                }
+                const tBx = paraMs(bx)
+                const tTit = paraMs(tit)
                 criadaJuntoComTitulo =
                   !isNaN(tBx) && !isNaN(tTit) && Math.abs(tBx - tTit) <= 120000
               } catch (_) {}
