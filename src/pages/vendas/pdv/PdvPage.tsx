@@ -530,7 +530,10 @@ export const PdvPage: React.FC = () => {
       let produtoServidor: Produto | null = null
       if (termoConsulta) {
         setCarregandoCatalogo(true)
-        produtoServidor = await consultarProdutoPorCodigoNoServidorPDV(termoConsulta)
+        produtoServidor = await consultarProdutoPorCodigoNoServidorPDV(
+          termoConsulta,
+          empresaAtiva?.id,
+        )
         setCarregandoCatalogo(false)
       }
       if (produtoServidor) {

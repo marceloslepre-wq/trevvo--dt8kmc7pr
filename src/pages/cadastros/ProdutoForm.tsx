@@ -86,6 +86,9 @@ import { listarEntradasDoProduto, EntradaHistoricoProduto } from '@/services/con
 import { obterHistoricoSaidasProduto, SaidaVendaProduto } from '@/services/vendas'
 import { ShoppingCart } from 'lucide-react'
 import { MargemPorCanal } from '@/components/produtos/MargemPorCanal'
+import { PrecosPorLoja } from '@/components/produtos/PrecosPorLoja'
+import { listarPrecosDoProduto } from '@/services/precosEmpresa'
+import { useAssinanteId } from '@/hooks/useAssinanteId'
 
 export const ProdutoForm: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -107,6 +110,33 @@ export const ProdutoForm: React.FC = () => {
       : 'Simples Nacional'
 
   const podeSalvar = ehEdicao ? pode('produtos', 'editar') : pode('produtos', 'criar')
+  const assinanteId = useAssinanteId()
+
+  // Preço de venda próprio por loja (empresa_id -> preço)
+  const [precosLoja, setPrecosLoja] = useState<Record<string, number>>({})
+  useEffect(() => {
+    let ativo = true
+    if (!id) {
+      setPrecosLoja({})
+      return
+    }
+    listarPrecosDoProduto(id)
+      .then((linhas) => {
+        if (!ativo) return
+        const mapa: Record<string, number> = {}
+        for (const l of linhas) {
+          const v = Number(l.preco_venda)
+          if (v > 0) mapa[l.empresa_id] = v
+        }
+        setPrecosLoja(mapa)
+      })
+      .catch(() => {
+        /* coleção ainda não criada: segue só com o preço geral */
+      })
+    return () => {
+      ativo = false
+    }
+  }, [id])
 
   const [carregando, setCarregando] = useState(false)
   const [salvando, setSalvando] = useState(false)
@@ -1339,11 +1369,23 @@ export const ProdutoForm: React.FC = () => {
               </div>
 
               {/* Margem líquida por canal de venda (impostos, comissões e taxas) */}
+              {/* Preço de venda por loja (empresa) */}
+              <PrecosPorLoja
+                produtoId={id}
+                assinanteId={assinanteId}
+                precoGeral={precoVendaTela}
+                precos={precosLoja}
+                onChange={setPrecosLoja}
+                podeEditar={podeSalvar}
+              />
+
               <MargemPorCanal
+                produtoId={id}
                 custo={custoFinalTela}
                 preco={precoVendaTela}
+                precosLoja={precosLoja}
                 perfilTributarioId={formData.perfil_tributario_id}
-                onAplicarPreco={(p) => handleCampoChange('preco_venda', p)}
+                podeEditar={podeSalvar}
               />
 
               {/* Promoção e Descontos */}
