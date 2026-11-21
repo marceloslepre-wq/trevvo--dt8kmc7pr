@@ -108,6 +108,15 @@ migrate(
       { nome: 'Amazon', modo: 'fixo', icms: 1.1, obs: 'Preencha comissão e taxa fixa.' },
     ]
 
+    // Hospital Home: médias reais de outubro/2026 (relatório de repasses dos marketplaces).
+    // comissão = comissão + outros (descontos, reembolsos, taxas); despesas = frete.
+    const mediasHH = {
+      'Mercado Livre': { com: 16.89, desp: 17.0, obs: 'Média out/2026: frete 17,0%, comissão 13,5%, outros 3,6% (recebe 65,9%).' },
+      Amazon: { com: 13.73, desp: 14.25, obs: 'Média out/2026: frete 14,3%, comissão 13,9%, outros -0,2% (recebe 72,0%).' },
+      Shopee: { com: 32.6, desp: 0, obs: 'Média out/2026: comissão 24,8%, outros 7,8%, frete 0% (recebe 67,4%).' },
+    }
+    const assinanteHHId = 'wqxiw7olvkup3sm'
+
     for (let i = 0; i < assinantes.length; i++) {
       const a = assinantes[i]
       let existentes = []
@@ -126,12 +135,13 @@ migrate(
           r.set('nome', p.nome)
           r.set('modo_icms', p.modo)
           r.set('aliquota_icms_fixa', p.icms)
-          r.set('comissao_percentual', 0)
+          const media = a.id === assinanteHHId ? mediasHH[p.nome] : null
+          r.set('comissao_percentual', media ? media.com : 0)
           r.set('taxa_fixa', 0)
-          r.set('despesas_percentual', 0)
+          r.set('despesas_percentual', media ? media.desp : 0)
           r.set('ordem', j + 1)
           r.set('ativo', true)
-          r.set('observacao', p.obs)
+          r.set('observacao', media ? media.obs : p.obs)
           app.save(r)
         } catch (eSeed) {
           console.log('[0138] erro ao criar canal ' + p.nome + ' para assinante ' + a.id + ': ' + eSeed)
