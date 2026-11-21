@@ -1,3 +1,4 @@
+import { aplicarPrecosDaEmpresa } from '@/services/precosEmpresa'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -192,8 +193,9 @@ export default function MovelVendaPage() {
           ordenacao: 'descricao',
           assinante_id: assinanteId,
         })
+        const comPrecos = await aplicarPrecosDaEmpresa(res.items, empresaAtiva?.id)
         if (seq !== seqBuscaRef.current || !montadoRef.current) return
-        setResultados(res.items)
+        setResultados(comPrecos)
       } catch {
         if (seq === seqBuscaRef.current && montadoRef.current) {
           setResultados([])

@@ -1,3 +1,4 @@
+import { aplicarMapaPrecos, aplicarPrecosDaEmpresa, mapaPrecosDaEmpresa } from '@/services/precosEmpresa'
 import pb from '@/lib/pocketbase/client'
 import type { Produto } from '@/services/produtos'
 import type { Cliente } from '@/services/clientes'
@@ -48,7 +49,8 @@ export interface VendaRascunhoPDV {
 }
 
 const STORAGE_KEY_RASCUNHO = 'pdv_venda_em_andamento'
-const STORAGE_KEY_PRODUTOS = 'pdv_cache_produtos_v1'
+// v2: preço de venda por loja (produtos_precos_empresa) aplicado no catálogo
+const STORAGE_KEY_PRODUTOS = 'pdv_cache_produtos_v2'
 const CACHE_EXPIRACAO_MS = 5 * 60 * 1000 // 5 minutos
 
 /**
@@ -99,6 +101,7 @@ export interface CacheProdutosPDV {
 
 let produtosMemoriaCache: Produto[] | null = null
 let timestampMemoria = 0
+let empresaMemoria = ''
 
 export async function carregarCatalogoProdutosPDV(
   empresaId: string,
@@ -110,6 +113,7 @@ export async function carregarCatalogoProdutosPDV(
     !forcarAtualizacao &&
     produtosMemoriaCache &&
     produtosMemoriaCache.length > 0 &&
+    empresaMemoria === empresaId &&
     agora - timestampMemoria < CACHE_EXPIRACAO_MS
   ) {
     return produtosMemoriaCache
@@ -124,6 +128,7 @@ export async function carregarCatalogoProdutosPDV(
         if (agora - parsed.timestamp < CACHE_EXPIRACAO_MS && parsed.produtos.length > 0) {
           produtosMemoriaCache = parsed.produtos
           timestampMemoria = parsed.timestamp
+          empresaMemoria = empresaId
           return parsed.produtos
         }
       }
@@ -134,15 +139,19 @@ export async function carregarCatalogoProdutosPDV(
 
   // Busca lista de produtos ativos da base
   try {
-    const itens = await pb.collection('produtos').getFullList<Produto>({
+    const itensBase = await pb.collection('produtos').getFullList<Produto>({
       filter: 'ativo = true',
       sort: 'descricao',
       expand: 'unidade_id,marca_id',
       requestKey: null,
     })
+    // Preço próprio da loja (quando houver) substitui o preço geral
+    const mapaPrecos = await mapaPrecosDaEmpresa(empresaId)
+    const itens = aplicarMapaPrecos(itensBase, mapaPrecos)
 
     produtosMemoriaCache = itens
     timestampMemoria = agora
+    empresaMemoria = empresaId
 
     try {
       localStorage.setItem(
@@ -329,6 +338,7 @@ export function interpretarEntradaPDV(
  */
 export async function consultarProdutoPorCodigoNoServidorPDV(
   termoCodigo: string,
+  empresaId?: string,
 ): Promise<Produto | null> {
   const t = (termoCodigo || '').trim().replace(/['"]/g, '')
   if (!t) return null
@@ -345,7 +355,9 @@ export async function consultarProdutoPorCodigoNoServidorPDV(
       expand: 'unidade_id,marca_id',
       requestKey: null,
     })
-    return res.items[0] || null
+    if (!res.items[0]) return null
+    const [comPreco] = await aplicarPrecosDaEmpresa([res.items[0]], empresaId)
+    return comPreco
   } catch (err) {
     console.error('Erro ao consultar produto por código no servidor (PDV):', err)
     return null

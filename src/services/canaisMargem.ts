@@ -14,6 +14,8 @@ export interface CanalMargem {
   comissao_percentual?: number | null
   taxa_fixa?: number | null
   despesas_percentual?: number | null
+  /** Regra de preço do canal: preço da empresa do canal + X% (como na Tray). */
+  acrescimo_percentual?: number | null
   ordem?: number | null
   ativo?: boolean
   observacao?: string
@@ -44,6 +46,7 @@ export async function salvarCanalMargem(
     comissao_percentual: Number(canal.comissao_percentual) || 0,
     taxa_fixa: Number(canal.taxa_fixa) || 0,
     despesas_percentual: Number(canal.despesas_percentual) || 0,
+    acrescimo_percentual: Number(canal.acrescimo_percentual) || 0,
     ordem: Number(canal.ordem) || 0,
     ativo: canal.ativo !== false,
     observacao: canal.observacao || '',
@@ -126,6 +129,9 @@ export interface ResultadoMargemCanal {
   despesas: number
   lucro: number
   margem: number // % sobre o preço
+  margemSobreRecebido: number // % sobre o valor recebido (líquido)
+  recebido: number // valor líquido que entra (informado ou estimado)
+  recebidoInformado: boolean
   aliquotaIcmsUsada: number
 }
 
@@ -147,14 +153,26 @@ export function calcularMargemCanal(
   custo: number,
   canal: CanalMargem,
   impostos: ImpostosVendaPerfil,
+  valorRecebido?: number | null,
 ): ResultadoMargemCanal {
   const { aliqIcms, a, c, com, desp, taxa } = fatoresCanal(canal, impostos)
   const p = Number(preco) || 0
+  // Impostos sempre sobre o preço (valor da nota), nunca sobre o valor recebido
   const icms = p * a
   const pisCofins = (p - icms) * c
-  const comissao = p * com + (p > 0 ? taxa : 0)
-  const despesas = p * desp
-  const lucro = p - (Number(custo) || 0) - icms - pisCofins - comissao - despesas
+  const informado = Number(valorRecebido) > 0
+  let comissao: number
+  let despesas: number
+  if (informado) {
+    // Valor recebido do marketplace já desconta comissão, frete e taxas
+    comissao = Math.max(0, p - Number(valorRecebido))
+    despesas = 0
+  } else {
+    comissao = p * com + (p > 0 ? taxa : 0)
+    despesas = p * desp
+  }
+  const recebido = p - comissao - despesas
+  const lucro = recebido - (Number(custo) || 0) - icms - pisCofins
   return {
     preco: p,
     icms,
@@ -163,6 +181,9 @@ export function calcularMargemCanal(
     despesas,
     lucro,
     margem: p > 0 ? (lucro / p) * 100 : 0,
+    margemSobreRecebido: recebido > 0 ? (lucro / recebido) * 100 : 0,
+    recebido,
+    recebidoInformado: informado,
     aliquotaIcmsUsada: aliqIcms,
   }
 }
