@@ -2,6 +2,15 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-22 — Deploy-only: aplicação da migration 0138 (canais_margem)
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado.
+- Objetivo: reimplantar o backend para aplicar a migration `pocketbase/migrations/0138_create_canais_margem.js` (cria a coleção `canais_margem` e faz seeds dos 5 canais por assinante).
+- Verificação:
+  - `list_migrations`: `0138_create_canais_margem.js` aplicada.
+  - `db_query`: 5 canais seeded para o assinante Hospital Home (wqxiw7olvkup3sm).
+  - `list_logs` (hooks, min_level=error): sem erro de inicialização.
+
 ## 2026-11-21 — Deploy-only: recarga dos hooks do backend
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado.

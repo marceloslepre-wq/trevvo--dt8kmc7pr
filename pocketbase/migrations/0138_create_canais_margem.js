@@ -111,9 +111,21 @@ migrate(
     // Hospital Home: médias reais de outubro/2026 (relatório de repasses dos marketplaces).
     // comissão = comissão + outros (descontos, reembolsos, taxas); despesas = frete.
     const mediasHH = {
-      'Mercado Livre': { com: 16.89, desp: 17.0, obs: 'Média out/2026: frete 17,0%, comissão 13,5%, outros 3,6% (recebe 65,9%).' },
-      Amazon: { com: 13.73, desp: 14.25, obs: 'Média out/2026: frete 14,3%, comissão 13,9%, outros -0,2% (recebe 72,0%).' },
-      Shopee: { com: 32.6, desp: 0, obs: 'Média out/2026: comissão 24,8%, outros 7,8%, frete 0% (recebe 67,4%).' },
+      'Mercado Livre': {
+        com: 16.89,
+        desp: 17.0,
+        obs: 'Média out/2026: frete 17,0%, comissão 13,5%, outros 3,6% (recebe 65,9%).',
+      },
+      Amazon: {
+        com: 13.73,
+        desp: 14.25,
+        obs: 'Média out/2026: frete 14,3%, comissão 13,9%, outros -0,2% (recebe 72,0%).',
+      },
+      Shopee: {
+        com: 32.6,
+        desp: 0,
+        obs: 'Média out/2026: comissão 24,8%, outros 7,8%, frete 0% (recebe 67,4%).',
+      },
     }
     const assinanteHHId = 'wqxiw7olvkup3sm'
 
@@ -121,7 +133,13 @@ migrate(
       const a = assinantes[i]
       let existentes = []
       try {
-        existentes = app.findRecordsByFilter('canais_margem', "assinante_id = '" + a.id + "'", '', 1, 0)
+        existentes = app.findRecordsByFilter(
+          'canais_margem',
+          "assinante_id = '" + a.id + "'",
+          '',
+          1,
+          0,
+        )
       } catch (_) {
         existentes = []
       }
@@ -144,7 +162,9 @@ migrate(
           r.set('observacao', media ? media.obs : p.obs)
           app.save(r)
         } catch (eSeed) {
-          console.log('[0138] erro ao criar canal ' + p.nome + ' para assinante ' + a.id + ': ' + eSeed)
+          console.log(
+            '[0138] erro ao criar canal ' + p.nome + ' para assinante ' + a.id + ': ' + eSeed,
+          )
         }
       }
     }

@@ -156,7 +156,9 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                         {Number(canal.comissao_percentual) > 0
                           ? ` · comissão ${pct(Number(canal.comissao_percentual))}`
                           : ''}
-                        {Number(canal.taxa_fixa) > 0 ? ` · taxa ${brl(Number(canal.taxa_fixa))}` : ''}
+                        {Number(canal.taxa_fixa) > 0
+                          ? ` · taxa ${brl(Number(canal.taxa_fixa))}`
+                          : ''}
                       </div>
                     </td>
                     <td className="py-2 px-2 text-right">{brl(r.icms)}</td>
