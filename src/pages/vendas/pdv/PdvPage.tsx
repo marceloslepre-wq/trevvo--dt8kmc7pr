@@ -1470,7 +1470,7 @@ export const PdvPage: React.FC = () => {
         </section>
 
         {/* DIREITA: TOTAL, CLIENTE, VENDEDOR E PAINEL DE ATALHOS — flexível (min 340 / max 420) */}
-        <section className="w-[380px] min-w-[340px] max-w-[420px] flex flex-col bg-slate-100 p-4 gap-3 overflow-hidden shrink-0">
+        <section className="w-[32vw] min-w-[400px] max-w-[600px] flex flex-col bg-slate-100 p-4 gap-3 overflow-hidden shrink-0">
           {/* Quadro de Total Grande — fixo no topo da coluna, nunca cortado */}
           <div className="shrink-0 bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-wider">
@@ -1919,6 +1919,15 @@ export const PdvPage: React.FC = () => {
                   </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={fecharModalEnvioCupom}
+                title="Fechar (Esc)"
+                aria-label="Fechar"
+                className="p-1.5 -mr-1 -mt-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xl leading-none"
+              >
+                ×
+              </button>
             </div>
 
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs grid grid-cols-2 gap-y-1.5">
@@ -2000,7 +2009,7 @@ export const PdvPage: React.FC = () => {
                 onClick={fecharModalEnvioCupom}
                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold"
               >
-                Nova venda
+                Fechar e nova venda (Esc)
               </button>
             </div>
           </div>
