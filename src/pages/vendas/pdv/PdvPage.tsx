@@ -1472,7 +1472,7 @@ export const PdvPage: React.FC = () => {
         </section>
 
         {/* DIREITA: TOTAL, CLIENTE, VENDEDOR E PAINEL DE ATALHOS — flexível (min 340 / max 420) */}
-        <section className="w-[380px] min-w-[340px] max-w-[420px] flex flex-col bg-slate-100 p-4 gap-3 overflow-hidden shrink-0">
+        <section className="w-[32vw] min-w-[400px] max-w-[600px] flex flex-col bg-slate-100 p-4 gap-3 overflow-hidden shrink-0">
           {/* Quadro de Total Grande — fixo no topo da coluna, nunca cortado */}
           <div className="shrink-0 bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-wider">
