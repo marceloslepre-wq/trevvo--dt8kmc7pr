@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
-import { Cliente, listarClientes } from '@/services/clientes'
+import { Cliente, listarClientes, obterClientePorId } from '@/services/clientes'
 import { formatarCNPJ, formatarCPF } from '@/lib/validacoes'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
 
@@ -35,31 +35,83 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
   const [carregando, setCarregando] = useState(false)
   const assinanteId = useAssinanteId()
 
-  const carregarClientes = useCallback(async () => {
-    setCarregando(true)
-    try {
-      const resp = await listarClientes({
-        situacao: 'ativos',
-        porPagina: 100,
-        sort: 'razao_social',
-        assinante_id: assinanteId || undefined,
-      })
-      setClientes(resp.items)
-    } catch (err) {
-      console.error('Erro ao carregar clientes:', err)
-    } finally {
-      setCarregando(false)
-    }
-  }, [assinanteId])
+  // Cliente selecionado guardado à parte: com milhares de clientes ele pode não
+  // estar na lista da busca atual.
+  const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null)
+  const [buscando, setBuscando] = useState(false)
 
+  // Busca no servidor (antes carregava só 100 clientes e filtrava na tela, então a
+  // maioria dos 7 mil clientes importados nunca aparecia).
+  const carregarClientes = useCallback(
+    async (termo: string) => {
+      setBuscando(true)
+      try {
+        const resp = await listarClientes({
+          situacao: 'ativos',
+          porPagina: 50,
+          busca: termo,
+          ordenarPor: 'nome_razao_social',
+          ordem: 'asc',
+          assinante_id: assinanteId || undefined,
+        })
+        let itens = resp.items
+        // Sem termo: Consumidor Final sempre no topo
+        if (!termo.trim()) {
+          try {
+            const cf = await listarClientes({
+              situacao: 'ativos',
+              porPagina: 1,
+              busca: 'Consumidor Final',
+              assinante_id: assinanteId || undefined,
+            })
+            const consumidor = cf.items[0]
+            if (consumidor) itens = [consumidor, ...itens.filter((c) => c.id !== consumidor.id)]
+          } catch (_) {
+            /* sem consumidor final: segue a lista */
+          }
+        }
+        setClientes(itens)
+      } catch (err) {
+        console.error('Erro ao carregar clientes:', err)
+      } finally {
+        setBuscando(false)
+        setCarregando(false)
+      }
+    },
+    [assinanteId],
+  )
+
+  // Busca com espera de 300 ms após a digitação
   useEffect(() => {
-    carregarClientes()
-  }, [carregarClientes])
+    const t = setTimeout(() => carregarClientes(busca), busca.trim() ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [busca, carregarClientes])
 
-  const selecionado = useMemo(() => {
-    if (!value) return null
-    return clientes.find((c) => c.id === value) || null
-  }, [clientes, value])
+  // Garante os dados do cliente selecionado mesmo fora da lista
+  useEffect(() => {
+    if (!value) {
+      setClienteSelecionado(null)
+      return
+    }
+    const naLista = clientes.find((c) => c.id === value)
+    if (naLista) {
+      setClienteSelecionado(naLista)
+      return
+    }
+    if (clienteSelecionado?.id === value) return
+    let cancelado = false
+    obterClientePorId(value)
+      .then((c) => {
+        if (!cancelado && c) setClienteSelecionado(c as Cliente)
+      })
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, clientes])
+
+  const selecionado = clienteSelecionado
 
   const clientesFiltrados = useMemo(() => {
     if (!busca.trim()) return clientes
@@ -86,6 +138,7 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
 
   const handleSelect = (clienteId: string) => {
     const item = clientes.find((c) => c.id === clienteId)
+    if (item) setClienteSelecionado(item)
     if (onChange) {
       onChange(clienteId, item)
     }
@@ -187,7 +240,11 @@ export const SelectCliente: React.FC<SelectClienteProps> = ({
         </div>
 
         <div className="max-h-64 overflow-y-auto p-1 text-xs">
-          {clientesFiltrados.length === 0 ? (
+          {buscando && clientesFiltrados.length === 0 ? (
+            <div className="py-6 text-center text-slate-500 flex items-center justify-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando...
+            </div>
+          ) : clientesFiltrados.length === 0 ? (
             <div className="py-6 text-center text-slate-500">
               <p>Nenhum cliente encontrado</p>
               {busca && <p className="text-[11px] text-slate-400 mt-1">Tente outros termos.</p>}
