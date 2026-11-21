@@ -45,6 +45,7 @@ import {
 } from '@/services/pdv'
 
 import { ModalAbrirCaixa } from '@/pages/vendas/caixa/ModalAbrirCaixa'
+import { ModalFecharCaixa } from '@/pages/vendas/caixa/ModalFecharCaixa'
 import { ModalSangria } from '@/pages/vendas/caixa/ModalSangria'
 import { ModalSuprimento } from '@/pages/vendas/caixa/ModalSuprimento'
 import { ModalPagamentoPDV } from './ModalPagamentoPDV'
@@ -145,6 +146,7 @@ export const PdvPage: React.FC = () => {
 
   // Modais
   const [modalAbrirCaixaAberto, setModalAbrirCaixaAberto] = useState(false)
+  const [modalFecharCaixaAberto, setModalFecharCaixaAberto] = useState(false)
   const [modalSangriaAberto, setModalSangriaAberto] = useState(false)
   const [modalSuprimentoAberto, setModalSuprimentoAberto] = useState(false)
   const [modalPagamentoAberto, setModalPagamentoAberto] = useState(false)
@@ -1211,9 +1213,28 @@ export const PdvPage: React.FC = () => {
             <span title="Sessão de Caixa" className="flex items-center gap-1">
               Caixa:{' '}
               {sessaoCaixa ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[11px]">
-                  Aberto
-                </span>
+                <>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[11px]">
+                    Aberto
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (itens.length > 0) {
+                        toast({
+                          title: 'Venda em andamento',
+                          description: 'Finalize ou cancele a venda atual antes de fechar o caixa.',
+                          variant: 'destructive',
+                        })
+                        return
+                      }
+                      setModalFecharCaixaAberto(true)
+                    }}
+                    className="inline-flex items-center px-2 py-0.5 rounded-full bg-white border border-slate-300 text-slate-700 font-bold text-[11px] hover:bg-slate-100 cursor-pointer"
+                  >
+                    Fechar caixa
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"
@@ -1281,11 +1302,11 @@ export const PdvPage: React.FC = () => {
         {/* ESQUERDA: LISTA DE ITENS + ÚLTIMO ITEM EM DESTAQUE — ocupa todo o resto, lista rola por dentro */}
         <section className="flex-1 min-w-0 flex flex-col border-r border-slate-200 bg-white overflow-hidden">
           {/* Cabeçalho da Lista */}
-          <div className="grid grid-cols-12 px-4 py-2.5 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+          <div className="grid grid-cols-12 px-5 py-2 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
             <span className="col-span-1 text-center">Item</span>
-            <span className="col-span-5">Descrição</span>
+            <span className="col-span-6">Descrição</span>
             <span className="col-span-2 text-right">Qtd x Preço</span>
-            <span className="col-span-2 text-right">Desconto</span>
+            <span className="col-span-1 text-right">Desc.</span>
             <span className="col-span-2 text-right">Total (R$)</span>
           </div>
 
@@ -1309,20 +1330,20 @@ export const PdvPage: React.FC = () => {
                 return (
                   <div
                     key={it.tempId}
-                    className={`grid grid-cols-12 items-center px-3 py-2 rounded-lg text-xs transition-colors ${
+                    className={`grid grid-cols-12 items-center px-4 py-3 rounded-lg text-sm transition-colors ${
                       ehUltimo
                         ? 'bg-blue-50 border border-blue-300 shadow-sm text-slate-800 font-medium'
                         : 'bg-white border border-slate-200 hover:bg-slate-100 text-slate-700'
                     }`}
                   >
-                    <span className="col-span-1 text-center font-mono font-bold text-slate-500">
+                    <span className="col-span-1 text-center font-mono font-bold text-slate-500 text-base">
                       {String(it.item).padStart(2, '0')}
                     </span>
-                    <div className="col-span-5 min-w-0 pr-2">
-                      <div className="truncate font-semibold text-slate-800 text-[13px]">
+                    <div className="col-span-6 min-w-0 pr-3">
+                      <div className="truncate font-semibold text-slate-900 text-base leading-snug">
                         {it.descricao}
                       </div>
-                      <div className="text-[10px] text-slate-500 flex items-center gap-2">
+                      <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
                         <span>Cód: #{it.codigo}</span>
                         {it.eh_balanca && (
                           <span className="text-emerald-700 font-bold bg-emerald-50 px-1 rounded">
@@ -1333,15 +1354,15 @@ export const PdvPage: React.FC = () => {
                       </div>
                     </div>
                     <div className="col-span-2 text-right font-mono">
-                      <span>{it.quantidade}</span>
-                      <span className="text-[11px] text-slate-500 block">
+                      <span className="text-base font-bold text-slate-800">{it.quantidade}</span>
+                      <span className="text-xs text-slate-500 block">
                         x R$ {it.preco_unitario.toFixed(2)}
                       </span>
                     </div>
-                    <div className="col-span-2 text-right font-mono text-amber-600">
+                    <div className="col-span-1 text-right font-mono text-amber-600">
                       {it.desconto_valor > 0 ? `- R$ ${it.desconto_valor.toFixed(2)}` : '—'}
                     </div>
-                    <div className="col-span-2 text-right font-mono font-bold text-sm text-emerald-600">
+                    <div className="col-span-2 text-right font-mono font-bold text-lg text-emerald-600">
                       R$ {it.valor_total.toFixed(2)}
                     </div>
                   </div>
@@ -1946,6 +1967,22 @@ export const PdvPage: React.FC = () => {
             setModalAbrirCaixaAberto(false)
             carregarDadosIniciais()
             focarLeitor()
+          }}
+        />
+      )}
+
+      {/* MODAL FECHAR CAIXA (direto do PDV) */}
+      {modalFecharCaixaAberto && sessaoCaixa && empresaAtiva?.id && (
+        <ModalFecharCaixa
+          open={modalFecharCaixaAberto}
+          onOpenChange={setModalFecharCaixaAberto}
+          sessao={sessaoCaixa}
+          empresaId={empresaAtiva.id}
+          empresaNome={empresaAtiva.nome_fantasia || empresaAtiva.razao_social || ''}
+          onSucesso={() => {
+            setModalFecharCaixaAberto(false)
+            setSessaoCaixa(null)
+            carregarDadosIniciais()
           }}
         />
       )}
