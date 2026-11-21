@@ -1108,6 +1108,15 @@ routerAdd(
       const executarChamadaFocus = (formaEmissao) => {
         let url = `${ambiente === 'Produção' ? 'https://api.focusnfe.com.br/v2' : 'https://homologacao.focusnfe.com.br/v2'}/nfce?ref=${encodeURIComponent(refFocus)}`
         if (formaEmissao) url += `&forma_emissao=${encodeURIComponent(formaEmissao)}`
+        // Contingência offline: a Focus exige o codigo_unico (tag cNF) no corpo.
+        // Cópia via JSON (sem spread: o JSVM do PocketBase não aceita).
+        const corpoFocus = JSON.parse(JSON.stringify(jsonFocus))
+        if (formaEmissao === 'offline') {
+          let cnf = ''
+          for (let i = 0; i < 8; i++) cnf += String(Math.floor(Math.random() * 10))
+          if (cnf === '00000000') cnf = '10000001'
+          corpoFocus.codigo_unico = cnf
+        }
         const res = $http.send({
           method: 'POST',
           url,
@@ -1116,7 +1125,7 @@ routerAdd(
             Accept: 'application/json',
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(jsonFocus),
+          body: JSON.stringify(corpoFocus),
           timeout: 60,
         })
         const rawText = res.raw ? res.raw : ''
