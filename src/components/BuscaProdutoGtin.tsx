@@ -13,6 +13,8 @@ export interface BuscaProdutoGtinProps {
   autoFoco?: boolean
   placeholder?: string
   className?: string
+  /** Valor mostrado na lista de sugestões: custo (compras/estoque) ou preço de venda (vendas). */
+  mostrarPreco?: 'custo' | 'venda'
 }
 
 /**
@@ -26,11 +28,13 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
   autoFoco = false,
   placeholder = 'Bipe o código de barras (GTIN) ou digite código / descrição...',
   className = '',
+  mostrarPreco = 'custo',
 }) => {
   const [termo, setTermo] = useState('')
   const [carregando, setCarregando] = useState(false)
   const [sugestoes, setSugestoes] = useState<Produto[]>([])
   const [menuAberto, setMenuAberto] = useState(false)
+  const [aviso, setAviso] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const assinanteId = useAssinanteId()
@@ -55,6 +59,7 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
   // Busca sugestões em digitação com debounce
   useEffect(() => {
     const q = termo.trim()
+    setAviso('')
     if (q.length < 2) {
       setSugestoes([])
       setMenuAberto(false)
@@ -135,6 +140,32 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
           encontrado = sugestoes[0]
         }
 
+        // Não achou entre os ativos: verifica se existe INATIVO (ex.: suspenso na importação)
+        if (!encontrado) {
+          let msg = `Nenhum produto encontrado com "${codigoLimpo}".`
+          try {
+            const t = codigoLimpo.replace(/['"\\]/g, '')
+            const partes = [`gtin = '${t}'`, `gtin_tributavel = '${t}'`, `referencia = '${t}'`]
+            if (/^\d+$/.test(t) && t.length <= 9) partes.push(`codigo = ${parseInt(t, 10)}`)
+            const filtroInativo =
+              '(' +
+              partes.join(' || ') +
+              ') && ativo = false' +
+              (assinanteId ? ` && assinante_id = '${assinanteId}'` : '')
+            const inativo = await pb
+              .collection('produtos')
+              .getList<Produto>(1, 1, { filter: filtroInativo })
+            if (inativo.items.length > 0) {
+              const pi = inativo.items[0]
+              msg = `O produto #${pi.codigo} ${pi.descricao} está INATIVO. Ative-o no cadastro de produtos para poder usar.`
+            }
+          } catch {
+            /* intentionally ignored */
+          }
+          setAviso(msg)
+          setMenuAberto(false)
+        }
+
         if (encontrado) {
           if (filtroControlaEstoque && encontrado.controla_estoque === false) {
             alert(
@@ -201,6 +232,12 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
         </div>
       </div>
 
+      {aviso && (
+        <div className="absolute z-50 left-0 right-0 mt-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 shadow">
+          {aviso}
+        </div>
+      )}
+
       {menuAberto && sugestoes.length > 0 && (
         <div className="absolute z-50 left-0 right-0 mt-1 max-h-72 overflow-y-auto bg-white rounded-lg border border-slate-200 shadow-xl text-xs divide-y divide-slate-100">
           <div className="px-3 py-1.5 bg-slate-50 text-[11px] text-slate-500 font-medium flex items-center justify-between">
@@ -239,10 +276,12 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
               </div>
               <div className="shrink-0 flex items-center gap-2">
                 <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block">Custo Médio / Padrão</span>
+                  <span className="text-[10px] text-slate-400 block">
+                    {mostrarPreco === 'venda' ? 'Preço de venda' : 'Custo Médio / Padrão'}
+                  </span>
                   <span className="font-semibold text-slate-700">
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-                      prod.preco_custo || 0,
+                      (mostrarPreco === 'venda' ? prod.preco_venda : prod.preco_custo) || 0,
                     )}
                   </span>
                 </div>

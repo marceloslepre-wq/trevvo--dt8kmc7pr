@@ -1424,6 +1424,7 @@ export const VendaFormPage: React.FC = () => {
               <div className="w-56">
                 <BuscaProdutoGtin
                   placeholder="Bipe o código de barras (GTIN) ou digite descrição para adicionar item rápido..."
+                  mostrarPreco="venda"
                   onSelecionarProduto={(prod) => handleAdicionarProduto(prod)}
                 />{' '}
               </div>
