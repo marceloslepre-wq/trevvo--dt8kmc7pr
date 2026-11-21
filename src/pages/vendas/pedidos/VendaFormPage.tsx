@@ -1,3 +1,4 @@
+import { aplicarPrecosDaEmpresa } from '@/services/precosEmpresa'
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
@@ -399,7 +400,14 @@ export const VendaFormPage: React.FC = () => {
       /* intentionally ignored */
     }
 
-    const precoVenda = Number(prod.preco_venda || 0)
+    // Preço próprio da loja (produtos_precos_empresa), senão o preço geral
+    let precoVenda = Number(prod.preco_venda || 0)
+    try {
+      const [comPreco] = await aplicarPrecosDaEmpresa([prod], empresaAtiva?.id)
+      precoVenda = Number(comPreco.preco_venda || 0)
+    } catch {
+      /* mantém o preço geral */
+    }
     const novoItem: LinhaItemForm = {
       tempId: Math.random().toString(),
       item: itens.length + 1,

@@ -1,3 +1,4 @@
+import { aplicarPrecosDaEmpresa } from '@/services/precosEmpresa'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Barcode, Camera, Loader2, PackageSearch, ScanLine } from 'lucide-react'
@@ -140,10 +141,11 @@ export default function MovelConsultaPage() {
         ordenacao: 'descricao',
         assinante_id: assinanteId,
       })
+      const comPrecos = await aplicarPrecosDaEmpresa(res.items, empresaAtiva?.id)
       if (seq !== seqBuscaRef.current || !montadoRef.current) return
-      setResultados(res.items)
-      setSemResultados(res.items.length === 0)
-      void carregarSaldosLista(res.items, seq)
+      setResultados(comPrecos)
+      setSemResultados(comPrecos.length === 0)
+      void carregarSaldosLista(comPrecos, seq)
     } catch {
       if (seq === seqBuscaRef.current && montadoRef.current) {
         setResultados([])
