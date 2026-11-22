@@ -247,7 +247,6 @@ routerAdd(
       return partes.join(' / ')
     }
 
-
     try {
       const q = c.requestInfo().query || {}
       const ctx = contextoDoUsuario(auth)
@@ -270,7 +269,8 @@ routerAdd(
           sucesso: true,
           sku: '',
           anuncios: [],
-          mensagem: 'O produto não tem Referência. O SKU do anúncio no Mercado Livre deve ser igual à Referência do produto.',
+          mensagem:
+            'O produto não tem Referência. O SKU do anúncio no Mercado Livre deve ser igual à Referência do produto.',
         })
       }
       const seg = segredosML()
@@ -319,7 +319,12 @@ routerAdd(
       const filtros = ['seller_sku=', 'sku=']
       for (let f = 0; f < filtros.length && ids.length === 0; f++) {
         const busca = chamarML(
-          '/users/' + mlUserId + '/items/search?' + filtros[f] + encodeURIComponent(sku) + '&limit=20',
+          '/users/' +
+            mlUserId +
+            '/items/search?' +
+            filtros[f] +
+            encodeURIComponent(sku) +
+            '&limit=20',
           token,
         )
         if (busca.status === 200 && busca.dados && busca.dados.results) {
@@ -406,7 +411,8 @@ routerAdd(
             if (lp.status === 200 && d && d.sale_fee_amount !== undefined) {
               tarifa = Number(d.sale_fee_amount) || 0
               const det = d.sale_fee_details || {}
-              if (det.percentage_fee !== undefined) tarifaPercentual = Number(det.percentage_fee) || 0
+              if (det.percentage_fee !== undefined)
+                tarifaPercentual = Number(det.percentage_fee) || 0
               if (det.fixed_fee !== undefined) tarifaFixa = Number(det.fixed_fee) || 0
             }
           } catch (_) {}
