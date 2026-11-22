@@ -113,3 +113,40 @@ export async function auditarAnunciosMercadoLivre(
     { method: 'GET' },
   )
 }
+
+// ---- Preço e "você recebe" dos anúncios de um produto (somente leitura) ----
+
+export interface AnuncioPrecoML {
+  anuncio_id: string
+  titulo: string
+  status_anuncio: string
+  link: string
+  tipo_anuncio: string
+  variacao_id: string
+  variacao: string
+  preco: number
+  tarifa_venda: number | null
+  tarifa_percentual: number | null
+  tarifa_fixa: number | null
+  frete_gratis: boolean
+  custo_envio: number | null
+  valor_recebido: number | null
+}
+
+export interface RespostaPrecosProdutoML {
+  sucesso: boolean
+  sku: string
+  anuncios: AnuncioPrecoML[]
+  falhas?: { anuncio_id: string; erro: string }[]
+  mensagem?: string
+}
+
+export async function consultarPrecosProdutoMercadoLivre(
+  empresaId: string,
+  produtoId: string,
+): Promise<RespostaPrecosProdutoML> {
+  return await pb.send<RespostaPrecosProdutoML>(
+    `/backend/v1/mercadolivre/precos-produto?empresa_id=${encodeURIComponent(empresaId)}&produto_id=${encodeURIComponent(produtoId)}`,
+    { method: 'GET', requestKey: null },
+  )
+}
