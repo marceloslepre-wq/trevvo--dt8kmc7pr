@@ -212,6 +212,8 @@ export interface ProdutoHistorico {
 
 export interface ListarProdutosParams {
   busca?: string
+  /** Código, GTIN e referência iguais ao termo (não "contém"). */
+  busca_exata?: boolean
   grupo_id?: string
   categoria_id?: string
   subcategoria_id?: string
@@ -366,10 +368,19 @@ export async function listarProdutos(
   // Busca textual
   if (params.busca && params.busca.trim()) {
     const termo = params.busca.trim().replace(/['"]/g, '')
+    const ehNumero = /^\d+$/.test(termo)
     const buscaNumerica = !isNaN(Number(termo)) ? `codigo = ${Number(termo)} || ` : ''
-    condicoes.push(
-      `(${buscaNumerica}descricao ~ '${termo}' || gtin ~ '${termo}' || referencia ~ '${termo}')`,
-    )
+    if (params.busca_exata && ehNumero) {
+      // Número exato: código, GTIN ou referência iguais (não traz quem só "contém" o número)
+      condicoes.push(`(${buscaNumerica}gtin = '${termo}' || referencia = '${termo}')`)
+    } else if (params.busca_exata) {
+      // Texto: GTIN/referência iguais ou descrição que contém o texto
+      condicoes.push(`(gtin = '${termo}' || referencia = '${termo}' || descricao ~ '${termo}')`)
+    } else {
+      condicoes.push(
+        `(${buscaNumerica}descricao ~ '${termo}' || gtin ~ '${termo}' || referencia ~ '${termo}')`,
+      )
+    }
   }
 
   const filter = condicoes.length > 0 ? condicoes.join(' && ') : ''
