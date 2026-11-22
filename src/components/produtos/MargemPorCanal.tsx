@@ -86,6 +86,8 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
   const [salvoOk, setSalvoOk] = useState('')
   const [mlBuscando, setMlBuscando] = useState('')
   const [mlOpcoes, setMlOpcoes] = useState<Record<string, AnuncioPrecoML[]>>({})
+  /** Canal em que a busca pelo SKU falhou: mostra o campo para digitar anúncio ou SKU. */
+  const [mlManual, setMlManual] = useState<Record<string, string>>({})
 
   useEffect(() => {
     let ativo = true
@@ -241,20 +243,38 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
     })
   }
 
-  const puxarDoML = async (canal: CanalMargem, chave: string) => {
+  const puxarDoML = async (canal: CanalMargem, chave: string, manual?: string) => {
     if (!produtoId || !canal.empresa_id) return
+    const termo = (manual || '').trim()
+    const ehAnuncio = /^(MLB)?\d{6,}$/i.test(termo.replace(/[^A-Za-z0-9]/g, ''))
+    const opcoes = !termo
+      ? {}
+      : ehAnuncio
+        ? { anuncio: termo.replace(/[^A-Za-z0-9]/g, '') }
+        : { sku: termo }
     setMlBuscando(chave)
     try {
-      const r = await consultarPrecosProdutoMercadoLivre(canal.empresa_id, produtoId)
+      const r = await consultarPrecosProdutoMercadoLivre(canal.empresa_id, produtoId, opcoes)
       const lista = r.anuncios || []
       if (lista.length === 0) {
+        setMlManual((prev) => Object.assign({}, prev, { [chave]: prev[chave] || '' }))
         toast({
           title: 'Nenhum anúncio encontrado no Mercado Livre',
-          description:
-            r.mensagem ||
-            `Nenhum anúncio com SKU "${r.sku}" (a Referência do produto) na conta da loja do canal.`,
+          description: termo
+            ? `Nada encontrado para "${termo}" na conta da loja do canal.`
+            : r.mensagem ||
+              `Nenhum anúncio com SKU "${r.sku}" (a Referência do produto). Digite o número do anúncio (MLB...) ou o SKU usado no Mercado Livre.`,
           variant: 'destructive',
         })
+      } else {
+        setMlManual((prev) => {
+          const novo = Object.assign({}, prev)
+          delete novo[chave]
+          return novo
+        })
+      }
+      if (lista.length === 0) {
+        /* nada */
       } else if (lista.length === 1) {
         await usarAnuncioML(chave, lista[0])
       } else {
@@ -362,6 +382,36 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                           Puxar do Mercado Livre
                         </button>
                       )}
+                      {mlManual[chave] !== undefined && (
+                        <div className="mt-1 flex items-center gap-1">
+                          <Input
+                            value={mlManual[chave]}
+                            onChange={(e) =>
+                              setMlManual((prev) =>
+                                Object.assign({}, prev, { [chave]: e.target.value }),
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                void puxarDoML(canal, chave, mlManual[chave])
+                              }
+                            }}
+                            placeholder="Anúncio MLB... ou SKU"
+                            className="h-6 w-40 text-[10px]"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            disabled={!mlManual[chave]?.trim() || mlBuscando === chave}
+                            onClick={() => void puxarDoML(canal, chave, mlManual[chave])}
+                          >
+                            Buscar
+                          </Button>
+                        </div>
+                      )}
                       {(mlOpcoes[chave] || []).length > 0 && (
                         <div className="mt-1 space-y-1 rounded border border-blue-100 bg-blue-50 p-1.5">
                           <div className="text-[10px] text-slate-600">
@@ -375,6 +425,7 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                               className="block w-full text-left text-[10px] text-blue-700 hover:underline"
                             >
                               {a.anuncio_id}
+                              {a.sku_anuncio ? ` SKU ${a.sku_anuncio}` : ''}
                               {a.variacao ? ` (${a.variacao})` : ''} · {a.tipo_anuncio} ·{' '}
                               {a.status_anuncio}: {detalheML(a)}
                             </button>

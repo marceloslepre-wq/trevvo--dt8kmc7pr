@@ -11,7 +11,8 @@
  * ATENÇÃO JSVM (Goja): nenhuma função declarada no topo do arquivo; sem spread de objetos.
  *
  * Rota:
- *   GET /backend/v1/mercadolivre/precos-produto?empresa_id=&produto_id=   (autenticada)
+ *   GET /backend/v1/mercadolivre/precos-produto?empresa_id=&produto_id=[&sku=][&anuncio=MLB...]   (autenticada)
+ *   sku = SKU a procurar no lugar da Referência (ex.: código da Tray); anuncio = lê direto esse anúncio.
  */
 routerAdd(
   'GET',
@@ -263,8 +264,15 @@ routerAdd(
       if (!produto || produto.getString('assinante_id') !== ctx.assinanteId) {
         throw new BadRequestError('Produto não encontrado.')
       }
-      const sku = produto.getString('referencia').trim()
-      if (!sku) {
+      const skuInformado = String(q['sku'] || '').trim()
+      const anuncioInformado = String(q['anuncio'] || '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+      if (skuInformado && !/^[A-Za-z0-9._\-\/ ]{1,60}$/.test(skuInformado)) {
+        throw new BadRequestError('SKU inválido.')
+      }
+      const sku = skuInformado || produto.getString('referencia').trim()
+      if (!sku && !anuncioInformado) {
         return c.json(200, {
           sucesso: true,
           sku: '',
@@ -316,7 +324,8 @@ routerAdd(
 
       // Anúncios com este SKU (o filtro seller_sku pega SKU do anúncio e das variações).
       const ids = []
-      const filtros = ['seller_sku=', 'sku=']
+      if (anuncioInformado) ids.push(anuncioInformado.indexOf('MLB') === 0 ? anuncioInformado : 'MLB' + anuncioInformado)
+      const filtros = anuncioInformado || !sku ? [] : ['seller_sku=', 'sku=']
       for (let f = 0; f < filtros.length && ids.length === 0; f++) {
         const busca = chamarML(
           '/users/' +
@@ -375,6 +384,14 @@ routerAdd(
         // Variações cujo SKU bate; sem variações = o próprio anúncio
         const variacoes = item.variations || []
         const alvos = []
+        // Com anúncio informado: só filtra variações se alguma tiver o SKU procurado.
+        let algumaBate = false
+        for (let v = 0; v < variacoes.length; v++) {
+          const va0 = variacoes[v] || {}
+          const s0 = skuDosAtributos(va0.attributes) || String(va0.seller_custom_field || '').trim()
+          if (sku && s0 === sku) algumaBate = true
+        }
+        const filtrarVariacao = !anuncioInformado || algumaBate
         if (variacoes.length === 0) {
           alvos.push({ variacao_id: '', variacao: '', preco: Number(item.price) || 0 })
         } else {
@@ -382,7 +399,7 @@ routerAdd(
             const va = variacoes[v] || {}
             const skuVa =
               skuDosAtributos(va.attributes) || String(va.seller_custom_field || '').trim()
-            if (skuVa && skuVa !== sku) continue
+            if (filtrarVariacao && skuVa && skuVa !== sku) continue
             alvos.push({
               variacao_id: String(va.id || ''),
               variacao: descreverVariacao(va),
@@ -428,6 +445,8 @@ routerAdd(
             status_anuncio: String(item.status || ''),
             link: String(item.permalink || ''),
             tipo_anuncio: listingType,
+            sku_anuncio:
+              skuDosAtributos(item.attributes) || String(item.seller_custom_field || '').trim(),
             variacao_id: alvo.variacao_id,
             variacao: alvo.variacao,
             preco: Number(preco.toFixed(2)),
