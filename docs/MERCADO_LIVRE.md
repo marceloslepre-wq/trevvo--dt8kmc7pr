@@ -60,7 +60,7 @@ rotas, coleções e nomes de Segredos descritos aqui.
 ## Parte 10.5a — Auditoria de anúncios (somente leitura)
 
 - `pocketbase/hooks/mercadolivre_auditoria.js`: `GET /backend/v1/mercadolivre/anuncios/auditoria?empresa_id=&offset=&limite=`
-- `pocketbase/hooks/mercadolivre_precos.js`: `GET /backend/v1/mercadolivre/precos-produto?empresa_id=&produto_id=` (somente leitura: preço, tarifa de venda, custo de envio e valor recebido dos anúncios cujo SKU é a Referência do produto; usado no botão "Puxar do Mercado Livre" da margem por canal)
+- `pocketbase/hooks/mercadolivre_precos.js`: `GET /backend/v1/mercadolivre/precos-produto?empresa_id=&produto_id=` (somente leitura: preço, tarifa de venda, custo de envio e valor recebido dos anúncios cujo SKU é a Referência do produto; usado no botão "Puxar do Mercado Livre" da margem por canal. Também traz os anúncios vinculados ao produto em `produtos_vinculos_anuncios` (migration 0140); ao informar `&anuncio=MLB...` de um anúncio da própria conta, grava esse vínculo. O vínculo pode ser removido na tela ("desvincular") sem alterar o anúncio)
   (autenticada). Lê os anúncios da conta conectada, abre cada variação e compara o SKU gravado
   (atributo `SELLER_SKU` ou `seller_custom_field`) com `produtos.referencia` do assinante.
   Situações: OK, SKU vazio, SKU repetido no anúncio, Sem produto no Trevvo,
