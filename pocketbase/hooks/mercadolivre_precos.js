@@ -272,6 +272,16 @@ routerAdd(
         throw new BadRequestError('SKU inválido.')
       }
       const sku = skuInformado || produto.getString('referencia').trim()
+      // SKUs a procurar: o informado; senão a Referência (código da Tray) E o código do produto
+      // (matrícula do Uniplus) — há anúncios com um e com outro.
+      const skus = []
+      if (skuInformado) skus.push(skuInformado)
+      else {
+        const ref0 = produto.getString('referencia').trim()
+        const cod0 = String(produto.get('codigo') || '').trim()
+        if (ref0) skus.push(ref0)
+        if (cod0 && /^[0-9]+$/.test(cod0) && skus.indexOf(cod0) < 0) skus.push(cod0)
+      }
       if (!sku && !anuncioInformado) {
         return c.json(200, {
           sucesso: true,
@@ -328,21 +338,25 @@ routerAdd(
         ids.push(
           anuncioInformado.indexOf('MLB') === 0 ? anuncioInformado : 'MLB' + anuncioInformado,
         )
-      const filtros = anuncioInformado || !sku ? [] : ['seller_sku=', 'sku=']
-      for (let f = 0; f < filtros.length && ids.length === 0; f++) {
-        const busca = chamarML(
-          '/users/' +
-            mlUserId +
-            '/items/search?' +
-            filtros[f] +
-            encodeURIComponent(sku) +
-            '&limit=20',
-          token,
-        )
-        if (busca.status === 200 && busca.dados && busca.dados.results) {
-          for (let i = 0; i < busca.dados.results.length; i++) {
-            const id = String(busca.dados.results[i]).replace(/[^A-Za-z0-9]/g, '')
-            if (id && ids.indexOf(id) < 0) ids.push(id)
+      const filtros = ['seller_sku=', 'sku=']
+      for (let k = 0; k < skus.length && !anuncioInformado; k++) {
+        let achouNesteSku = false
+        for (let f = 0; f < filtros.length && !achouNesteSku; f++) {
+          const busca = chamarML(
+            '/users/' +
+              mlUserId +
+              '/items/search?' +
+              filtros[f] +
+              encodeURIComponent(skus[k]) +
+              '&limit=20',
+            token,
+          )
+          if (busca.status === 200 && busca.dados && busca.dados.results) {
+            for (let i = 0; i < busca.dados.results.length; i++) {
+              const id = String(busca.dados.results[i]).replace(/[^A-Za-z0-9]/g, '')
+              if (id) achouNesteSku = true
+              if (id && ids.indexOf(id) < 0) ids.push(id)
+            }
           }
         }
       }
@@ -416,7 +430,7 @@ routerAdd(
         for (let v = 0; v < variacoes.length; v++) {
           const va0 = variacoes[v] || {}
           const s0 = skuDosAtributos(va0.attributes) || String(va0.seller_custom_field || '').trim()
-          if (sku && s0 === sku) algumaBate = true
+          if (s0 && skus.indexOf(s0) >= 0) algumaBate = true
         }
         const filtrarVariacao = !anuncioInformado || algumaBate
         if (variacoes.length === 0) {
@@ -426,7 +440,7 @@ routerAdd(
             const va = variacoes[v] || {}
             const skuVa =
               skuDosAtributos(va.attributes) || String(va.seller_custom_field || '').trim()
-            if (filtrarVariacao && skuVa && skuVa !== sku) continue
+            if (filtrarVariacao && skuVa && skus.indexOf(skuVa) < 0) continue
             alvos.push({
               variacao_id: String(va.id || ''),
               variacao: descreverVariacao(va),
@@ -493,7 +507,7 @@ routerAdd(
       return c.json(200, {
         sucesso: true,
         somente_leitura: true,
-        sku: sku,
+        sku: skus.join(' ou ') || sku,
         anuncios: anuncios,
         falhas: falhas,
       })
