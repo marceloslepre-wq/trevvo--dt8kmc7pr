@@ -132,6 +132,8 @@ export interface AnuncioPrecoML {
   frete_gratis: boolean
   custo_envio: number | null
   valor_recebido: number | null
+  /** Resumo das respostas do Mercado Livre (para conferir de onde veio cada número). */
+  diagnostico?: Record<string, unknown>
 }
 
 export interface RespostaPrecosProdutoML {
