@@ -272,9 +272,11 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
     try {
       const r = await consultarPrecosProdutoMercadoLivre(canal.empresa_id, produtoId, opcoes)
       // Ativos primeiro
-      const lista = (r.anuncios || []).slice().sort(
-        (x, y) => Number(y.status_anuncio === 'active') - Number(x.status_anuncio === 'active'),
-      )
+      const lista = (r.anuncios || [])
+        .slice()
+        .sort(
+          (x, y) => Number(y.status_anuncio === 'active') - Number(x.status_anuncio === 'active'),
+        )
       if (lista.length === 0) {
         setMlManual((prev) => Object.assign({}, prev, { [chave]: prev[chave] || '' }))
         toast({
