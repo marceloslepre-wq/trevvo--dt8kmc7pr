@@ -25,7 +25,7 @@ import {
  * Importação da carga inicial de produtos vinda do Uniplus, com prévia.
  * Colunas (separadas por ";"): codigo; descricao; gtin; unidade; ncm; preco_custo; preco_venda;
  * marca; fornecedor_cnpj; grupo; categoria; subcategoria; perfil; ativo; avisos.
- * - O código do Uniplus vira o código e a referência do produto no Trevvo.
+ * - O código do Uniplus vira o código do produto no Trevvo (a Referência guarda o código da Tray).
  * - Grupo, categoria e subcategoria que não existirem são criados (busca pelo nome dentro do pai).
  * - O perfil (ex.: HH01) é procurado pelo início do nome do perfil tributário e aplicado como no cadastro.
  * - Produtos entram com "fiscal não revisado". Produto com o mesmo código ou referência é pulado.
@@ -274,7 +274,6 @@ export default function ImportarProdutosUniplusDialog({ aberto, onFechar, onConc
           batch: 1000,
         })
       const codigosBanco = new Set(existentesBanco.map((p) => String(p.codigo)))
-      const referenciasBanco = new Set(existentesBanco.map((p) => (p.referencia || '').trim()))
       const vistos = new Set<string>()
       const num = (v: string) => Number((v || '0').replace(',', '.')) || 0
 
@@ -314,7 +313,7 @@ export default function ImportarProdutosUniplusDialog({ aberto, onFechar, onConc
         } else if (!referencias.unidades.has(l.unidade)) {
           l.situacao = 'erro'
           l.motivo = `Unidade ${l.unidade || '(vazia)'} não cadastrada`
-        } else if (codigosBanco.has(l.codigo) || referenciasBanco.has(l.codigo)) {
+        } else if (codigosBanco.has(l.codigo)) {
           l.situacao = 'existe'
           l.motivo = 'Já cadastrado (será pulado)'
         } else if (vistos.has(l.codigo)) {
@@ -398,7 +397,7 @@ export default function ImportarProdutosUniplusDialog({ aberto, onFechar, onConc
               ...fiscal,
               tipo: 'Produto',
               codigo: Number(l.codigo),
-              referencia: l.codigo,
+              referencia: '', // Referência = código da Tray (importado à parte)
               descricao: l.descricao.slice(0, 120),
               gtin: l.gtin,
               unidade_id: ref.unidades.get(l.unidade),

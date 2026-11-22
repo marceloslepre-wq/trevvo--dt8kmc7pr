@@ -82,6 +82,7 @@ import {
 } from '@/services/gruposCategorias'
 import { listarTodasMarcasAtivas, Marca } from '@/services/marcas'
 import ImportarProdutosUniplusDialog from '@/components/produtos/ImportarProdutosUniplusDialog'
+import ImportarCodigosTrayDialog from '@/components/produtos/ImportarCodigosTrayDialog'
 import { listarTodosFornecedoresAtivos, Fornecedor } from '@/services/fornecedores'
 
 export const ProdutosLista: React.FC = () => {
@@ -159,6 +160,7 @@ export const ProdutosLista: React.FC = () => {
   // Modal Importação CSV
   const [modalImportacaoAberto, setModalImportacaoAberto] = useState(false)
   const [importarUniplusAberto, setImportarUniplusAberto] = useState(false)
+  const [importarTrayAberto, setImportarTrayAberto] = useState(false)
   const [arquivoCSV, setArquivoCSV] = useState<File | null>(null)
   const [validandoCSV, setValidandoCSV] = useState(false)
   const [resumoImportacao, setResumoImportacao] = useState<ResumoValidacaoImportacao | null>(null)
@@ -658,6 +660,17 @@ export const ProdutosLista: React.FC = () => {
               >
                 <Upload size={14} className="mr-1.5" />
                 Importar do Uniplus
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImportarTrayAberto(true)}
+                className="text-xs h-9 border-slate-200 text-slate-700 hover:bg-slate-100"
+                title="Grava o código da Tray (SKU do Mercado Livre) na Referência dos produtos"
+              >
+                <Upload size={14} className="mr-1.5" />
+                Códigos da Tray
               </Button>
 
               <Button
@@ -1666,6 +1679,12 @@ export const ProdutosLista: React.FC = () => {
       <ImportarProdutosUniplusDialog
         aberto={importarUniplusAberto}
         onFechar={() => setImportarUniplusAberto(false)}
+        onConcluido={carregarDados}
+      />
+
+      <ImportarCodigosTrayDialog
+        aberto={importarTrayAberto}
+        onFechar={() => setImportarTrayAberto(false)}
         onConcluido={carregarDados}
       />
     </div>
