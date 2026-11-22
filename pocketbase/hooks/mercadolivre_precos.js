@@ -363,9 +363,32 @@ routerAdd(
         const freteGratis = !!shipping.free_shipping
 
         // Preço de venda atual (promoção, se houver); senão o preço do anúncio
+        // Diagnóstico (só leitura): o que o Mercado Livre devolveu em cada consulta, resumido.
+        function resumo(obj, max) {
+          let t = ''
+          try {
+            t = JSON.stringify(obj)
+          } catch (_) {
+            t = ''
+          }
+          return t.length > max ? t.slice(0, max) + '…' : t
+        }
+        const diagnostico = {
+          item_price: Number(item.price) || 0,
+          item_original_price: Number(item.original_price) || 0,
+          item_base_price: Number(item.base_price) || 0,
+          shipping_mode: String(shipping.mode || ''),
+          logistic_type: String(shipping.logistic_type || ''),
+          free_shipping: freteGratis,
+          sale_price: '',
+          shipping_free: '',
+          listing_prices: '',
+        }
+
         let precoAtual = 0
         try {
           const sp = chamarML('/items/' + itemId + '/sale_price?context=channel_marketplace', token)
+          diagnostico.sale_price = 'HTTP ' + sp.status + ' ' + resumo(sp.dados, 400)
           if (sp.status === 200 && sp.dados && Number(sp.dados.amount) > 0) {
             precoAtual = Number(sp.dados.amount)
           }
@@ -378,6 +401,7 @@ routerAdd(
             '/users/' + mlUserId + '/shipping_options/free?item_id=' + itemId,
             token,
           )
+          diagnostico.shipping_free = 'HTTP ' + fr.status + ' ' + resumo(fr.dados, 600)
           const cov = fr.dados && fr.dados.coverage && fr.dados.coverage.all_country
           if (fr.status === 200 && cov && cov.list_cost !== undefined && cov.list_cost !== null) {
             custoEnvio = Number(cov.list_cost) || 0
@@ -413,7 +437,8 @@ routerAdd(
 
         for (let a = 0; a < alvos.length; a++) {
           const alvo = alvos[a]
-          const preco = alvos.length === 1 && precoAtual > 0 ? precoAtual : alvo.preco
+          // Sem variações: vale o preço de venda atual (promoção); com variação, o preço dela.
+          const preco = !alvo.variacao_id && precoAtual > 0 ? precoAtual : alvo.preco
           let tarifa = null
           let tarifaPercentual = null
           let tarifaFixa = null
@@ -426,6 +451,7 @@ routerAdd(
                 (categoria ? '&category_id=' + encodeURIComponent(categoria) : ''),
               token,
             )
+            diagnostico.listing_prices = 'HTTP ' + lp.status + ' ' + resumo(lp.dados, 600)
             let d = lp.dados
             if (d && d.length !== undefined) d = d[0]
             if (lp.status === 200 && d && d.sale_fee_amount !== undefined) {
@@ -459,6 +485,7 @@ routerAdd(
             frete_gratis: freteGratis,
             custo_envio: custoEnvio,
             valor_recebido: recebido,
+            diagnostico: diagnostico,
           })
         }
       }

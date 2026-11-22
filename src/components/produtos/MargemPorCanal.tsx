@@ -88,6 +88,8 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
   const [mlOpcoes, setMlOpcoes] = useState<Record<string, AnuncioPrecoML[]>>({})
   /** Canal em que a busca pelo SKU falhou: mostra o campo para digitar anúncio ou SKU. */
   const [mlManual, setMlManual] = useState<Record<string, string>>({})
+  /** Última consulta ao Mercado Livre por canal, para conferir os números. */
+  const [mlUltimo, setMlUltimo] = useState<Record<string, AnuncioPrecoML>>({})
 
   useEffect(() => {
     let ativo = true
@@ -231,6 +233,7 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
       delete novo[chave]
       return novo
     })
+    setMlUltimo((prev) => Object.assign({}, prev, { [chave]: a }))
     await gravar(chave, {
       preco: a.preco > 0 ? Number(a.preco.toFixed(2)) : null,
       recebido: a.valor_recebido !== null && a.valor_recebido > 0 ? a.valor_recebido : null,
@@ -411,6 +414,32 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                             Buscar
                           </Button>
                         </div>
+                      )}
+                      {mlUltimo[chave] && (
+                        <details className="mt-1 max-w-[260px] text-[10px] text-slate-500">
+                          <summary className="cursor-pointer text-blue-600">
+                            Detalhes da consulta ({mlUltimo[chave].anuncio_id})
+                          </summary>
+                          <div className="mt-1 space-y-0.5 break-all">
+                            <div>{detalheML(mlUltimo[chave])}</div>
+                            {Object.entries(mlUltimo[chave].diagnostico || {}).map(([k, v]) => (
+                              <div key={k}>
+                                <b>{k}:</b> {String(v)}
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              className="text-blue-600 hover:underline"
+                              onClick={() =>
+                                void navigator.clipboard?.writeText(
+                                  JSON.stringify(mlUltimo[chave], null, 1),
+                                )
+                              }
+                            >
+                              Copiar detalhes
+                            </button>
+                          </div>
+                        </details>
                       )}
                       {(mlOpcoes[chave] || []).length > 0 && (
                         <div className="mt-1 space-y-1 rounded border border-blue-100 bg-blue-50 p-1.5">
