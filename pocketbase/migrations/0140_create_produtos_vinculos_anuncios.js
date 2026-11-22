@@ -16,68 +16,66 @@
 migrate(
   (app) => {
     try {
-      app.findCollectionByNameOrId("produtos_vinculos_anuncios");
-      return;
+      app.findCollectionByNameOrId('produtos_vinculos_anuncios')
+      return
     } catch (_) {}
 
-    const regraAssinante =
-      "@request.auth.id != '' && assinante_id = @request.auth.assinante_id";
-    const assinantesCol = app.findCollectionByNameOrId("assinantes");
-    const produtosCol = app.findCollectionByNameOrId("produtos");
-    const empresasCol = app.findCollectionByNameOrId("empresas");
+    const regraAssinante = "@request.auth.id != '' && assinante_id = @request.auth.assinante_id"
+    const assinantesCol = app.findCollectionByNameOrId('assinantes')
+    const produtosCol = app.findCollectionByNameOrId('produtos')
+    const empresasCol = app.findCollectionByNameOrId('empresas')
 
     const col = new Collection({
-      name: "produtos_vinculos_anuncios",
-      type: "base",
+      name: 'produtos_vinculos_anuncios',
+      type: 'base',
       listRule: regraAssinante,
       viewRule: regraAssinante,
       createRule: regraAssinante,
-      updateRule:
-        regraAssinante + " && @request.body.assinante_id:isset = false",
+      updateRule: regraAssinante + ' && @request.body.assinante_id:isset = false',
       deleteRule: regraAssinante,
       fields: [
         {
-          name: "assinante_id",
-          type: "relation",
+          name: 'assinante_id',
+          type: 'relation',
           required: true,
           collectionId: assinantesCol.id,
           cascadeDelete: true,
           maxSelect: 1,
         },
         {
-          name: "produto_id",
-          type: "relation",
+          name: 'produto_id',
+          type: 'relation',
           required: true,
           collectionId: produtosCol.id,
           cascadeDelete: true,
           maxSelect: 1,
         },
         {
-          name: "empresa_id",
-          type: "relation",
+          name: 'empresa_id',
+          type: 'relation',
           required: true,
           collectionId: empresasCol.id,
           cascadeDelete: true,
           maxSelect: 1,
         },
-        { name: "marketplace", type: "text", required: true, max: 30 },
-        { name: "anuncio_id", type: "text", required: true, max: 40 },
-        { name: "variacao_id", type: "text", required: false, max: 40 },
-        { name: "titulo", type: "text", required: false, max: 300 },
-        { name: "unidades", type: "number", required: false },
-        { name: "created", type: "autodate", onCreate: true, onUpdate: false },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: 'marketplace', type: 'text', required: true, max: 30 },
+        { name: 'anuncio_id', type: 'text', required: true, max: 40 },
+        { name: 'variacao_id', type: 'text', required: false, max: 40 },
+        { name: 'titulo', type: 'text', required: false, max: 300 },
+        { name: 'unidades', type: 'number', required: false },
+        { name: 'created', type: 'autodate', onCreate: true, onUpdate: false },
+        { name: 'updated', type: 'autodate', onCreate: true, onUpdate: true },
       ],
       indexes: [
-        "CREATE UNIQUE INDEX idx_pva_unico ON produtos_vinculos_anuncios (produto_id, empresa_id, marketplace, anuncio_id, variacao_id)",
-        "CREATE INDEX idx_pva_anuncio ON produtos_vinculos_anuncios (marketplace, anuncio_id)",
+        'CREATE UNIQUE INDEX idx_pva_unico ON produtos_vinculos_anuncios (produto_id, empresa_id, marketplace, anuncio_id, variacao_id)',
+        'CREATE INDEX idx_pva_anuncio ON produtos_vinculos_anuncios (marketplace, anuncio_id)',
       ],
-    });
-    app.save(col);
+    })
+    app.save(col)
   },
   (app) => {
     try {
-      app.delete(app.findCollectionByNameOrId("produtos_vinculos_anuncios"));
+      app.delete(app.findCollectionByNameOrId('produtos_vinculos_anuncios'))
     } catch (_) {}
   },
-);
+)
