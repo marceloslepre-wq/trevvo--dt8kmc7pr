@@ -67,6 +67,8 @@ export interface ImpostosVendaPerfil {
   aliquotaIcms: number // % (já somando FCP)
   reducaoBcIcms: number // %
   aliquotaPisCofins: number // % (PIS + COFINS)
+  /** false = produto sem ICMS próprio na venda (ST, isento, não tributado): ICMS 0 em todo canal. */
+  tributaIcms: boolean
   origem: 'perfil' | 'padrao'
 }
 
@@ -75,6 +77,7 @@ export const IMPOSTOS_PADRAO: ImpostosVendaPerfil = {
   aliquotaIcms: 17,
   reducaoBcIcms: 0,
   aliquotaPisCofins: 9.25,
+  tributaIcms: true,
   origem: 'padrao',
 }
 
@@ -114,6 +117,7 @@ export async function obterImpostosVendaDoPerfil(
       aliquotaIcms,
       reducaoBcIcms: tributaIcms ? Number(regra.reducao_bc_icms_percentual) || 0 : 0,
       aliquotaPisCofins: (Number(regra.aliquota_pis) || 0) + (Number(regra.aliquota_cofins) || 0),
+      tributaIcms,
       origem: 'perfil',
     }
   } catch {
@@ -136,8 +140,13 @@ export interface ResultadoMargemCanal {
 }
 
 function fatoresCanal(canal: CanalMargem, impostos: ImpostosVendaPerfil) {
-  const aliqIcms =
-    canal.modo_icms === 'perfil' ? impostos.aliquotaIcms : Number(canal.aliquota_icms_fixa) || 0
+  // ICMS fixo do canal (ex.: 1,1% COMPETE) só vale para produto que paga ICMS na venda;
+  // ST, isento ou não tributado ficam com ICMS 0 em qualquer canal.
+  const aliqIcms = !impostos.tributaIcms
+    ? 0
+    : canal.modo_icms === 'perfil'
+      ? impostos.aliquotaIcms
+      : Number(canal.aliquota_icms_fixa) || 0
   const reducao = canal.modo_icms === 'perfil' ? impostos.reducaoBcIcms : 0
   const a = ((1 - reducao / 100) * aliqIcms) / 100 // ICMS como fração do preço
   const c = impostos.aliquotaPisCofins / 100 // PIS/COFINS sobre (preço − ICMS)

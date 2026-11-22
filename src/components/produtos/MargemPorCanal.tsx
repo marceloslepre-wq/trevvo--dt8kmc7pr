@@ -229,7 +229,9 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
           digitado). Informando o valor recebido (ex.: &quot;Você recebe&quot; do Mercado Livre), a
           comissão/taxas passa a ser preço − recebido. Impostos sempre sobre o preço da nota.{' '}
           {impostos.origem === 'perfil'
-            ? `Perfil do produto: ICMS venda interna ${pct(impostos.aliquotaIcms)}, PIS/COFINS ${pct(impostos.aliquotaPisCofins)}.`
+            ? impostos.tributaIcms
+              ? `Perfil do produto: ICMS venda interna ${pct(impostos.aliquotaIcms)}, PIS/COFINS ${pct(impostos.aliquotaPisCofins)}.`
+              : `Perfil do produto: sem ICMS na venda (ST, isento ou não tributado), ICMS 0 em todos os canais; PIS/COFINS ${pct(impostos.aliquotaPisCofins)}.`
             : 'Produto sem perfil tributário: usando ICMS 17% e PIS/COFINS 9,25%.'}
           {!produtoId && ' Salve o produto para gravar preço e valor recebido por canal.'}
         </span>
