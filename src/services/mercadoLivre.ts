@@ -122,6 +122,7 @@ export interface AnuncioPrecoML {
   status_anuncio: string
   link: string
   tipo_anuncio: string
+  sku_anuncio?: string
   variacao_id: string
   variacao: string
   preco: number
@@ -144,9 +145,13 @@ export interface RespostaPrecosProdutoML {
 export async function consultarPrecosProdutoMercadoLivre(
   empresaId: string,
   produtoId: string,
+  opcoes: { sku?: string; anuncio?: string } = {},
 ): Promise<RespostaPrecosProdutoML> {
+  let extra = ''
+  if (opcoes.sku) extra += `&sku=${encodeURIComponent(opcoes.sku)}`
+  if (opcoes.anuncio) extra += `&anuncio=${encodeURIComponent(opcoes.anuncio)}`
   return await pb.send<RespostaPrecosProdutoML>(
-    `/backend/v1/mercadolivre/precos-produto?empresa_id=${encodeURIComponent(empresaId)}&produto_id=${encodeURIComponent(produtoId)}`,
+    `/backend/v1/mercadolivre/precos-produto?empresa_id=${encodeURIComponent(empresaId)}&produto_id=${encodeURIComponent(produtoId)}${extra}`,
     { method: 'GET', requestKey: null },
   )
 }
