@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useParams, Link } from 'react-router-dom'
+import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   Package,
   ArrowLeft,
@@ -18,35 +18,35 @@ import {
   Image as ImageIcon,
   CheckCircle2,
   RefreshCw,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Card, CardContent } from '@/components/ui/card'
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
-import { useToast } from '@/hooks/use-toast'
-import { usePermissoes } from '@/contexts/PermissoesContext'
-import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
-import pb from '@/lib/pocketbase/client'
-import { ProdutoAbaFiscal } from '@/components/ProdutoAbaFiscal'
-import { ProdutoAbaEstoque } from '@/components/ProdutoAbaEstoque'
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { usePermissoes } from "@/contexts/PermissoesContext";
+import { useEmpresaAtiva } from "@/contexts/EmpresaContext";
+import pb from "@/lib/pocketbase/client";
+import { ProdutoAbaFiscal } from "@/components/ProdutoAbaFiscal";
+import { ProdutoAbaEstoque } from "@/components/ProdutoAbaEstoque";
 
 import {
   Produto,
@@ -74,92 +74,104 @@ import {
   inativarItemKit,
   ProdutoHistorico,
   listarHistoricoDoProduto,
-} from '@/services/produtos'
+} from "@/services/produtos";
 
-import { SelectMarca } from '@/components/SelectMarca'
-import { SelectGrupoCategoria } from '@/components/SelectGrupoCategoria'
-import { SelectFornecedor } from '@/components/SelectFornecedor'
-import { SelectProduto } from '@/components/SelectProduto'
-import { listarTodasUnidadesMedidaAtivas, UnidadeMedida } from '@/services/unidadesMedida'
-import { formatarCNPJ, formatarCPF } from '@/lib/validacoes'
-import { listarEntradasDoProduto, EntradaHistoricoProduto } from '@/services/consultasCompras'
-import { obterHistoricoSaidasProduto, SaidaVendaProduto } from '@/services/vendas'
-import { ShoppingCart } from 'lucide-react'
-import { MargemPorCanal } from '@/components/produtos/MargemPorCanal'
-import { PrecosPorLoja } from '@/components/produtos/PrecosPorLoja'
-import { listarPrecosDoProduto } from '@/services/precosEmpresa'
-import { useAssinanteId } from '@/hooks/useAssinanteId'
+import { SelectMarca } from "@/components/SelectMarca";
+import { SelectGrupoCategoria } from "@/components/SelectGrupoCategoria";
+import { SelectFornecedor } from "@/components/SelectFornecedor";
+import { SelectProduto } from "@/components/SelectProduto";
+import {
+  listarTodasUnidadesMedidaAtivas,
+  UnidadeMedida,
+} from "@/services/unidadesMedida";
+import { formatarCNPJ, formatarCPF } from "@/lib/validacoes";
+import {
+  listarEntradasDoProduto,
+  EntradaHistoricoProduto,
+} from "@/services/consultasCompras";
+import {
+  obterHistoricoSaidasProduto,
+  SaidaVendaProduto,
+} from "@/services/vendas";
+import { ShoppingCart } from "lucide-react";
+import { MargemPorCanal } from "@/components/produtos/MargemPorCanal";
+import { PrecosPorLoja } from "@/components/produtos/PrecosPorLoja";
+import { listarPrecosDoProduto } from "@/services/precosEmpresa";
+import { useAssinanteId } from "@/hooks/useAssinanteId";
 
 export const ProdutoForm: React.FC = () => {
-  const { id } = useParams<{ id: string }>()
-  const ehEdicao = Boolean(id)
-  const navigate = useNavigate()
-  const { toast } = useToast()
-  const { pode } = usePermissoes()
-  const { empresaAtiva } = useEmpresaAtiva()
+  const { id } = useParams<{ id: string }>();
+  const ehEdicao = Boolean(id);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const { pode } = usePermissoes();
+  const { empresaAtiva } = useEmpresaAtiva();
 
   // Determinar regime da empresa ativa
-  const crtEmpresaAtiva = empresaAtiva?.crt
-  const regimeEmpresaAtiva: 'Simples Nacional' | 'Regime Normal' = empresaAtiva?.regime_apuracao
-    ? empresaAtiva.regime_apuracao === 'Lucro Real' ||
-      empresaAtiva.regime_apuracao === 'Lucro Presumido'
-      ? 'Regime Normal'
-      : 'Simples Nacional'
-    : crtEmpresaAtiva === 3 || crtEmpresaAtiva === '3'
-      ? 'Regime Normal'
-      : 'Simples Nacional'
+  const crtEmpresaAtiva = empresaAtiva?.crt;
+  const regimeEmpresaAtiva: "Simples Nacional" | "Regime Normal" =
+    empresaAtiva?.regime_apuracao
+      ? empresaAtiva.regime_apuracao === "Lucro Real" ||
+        empresaAtiva.regime_apuracao === "Lucro Presumido"
+        ? "Regime Normal"
+        : "Simples Nacional"
+      : crtEmpresaAtiva === 3 || crtEmpresaAtiva === "3"
+        ? "Regime Normal"
+        : "Simples Nacional";
 
-  const podeSalvar = ehEdicao ? pode('produtos', 'editar') : pode('produtos', 'criar')
-  const assinanteId = useAssinanteId()
+  const podeSalvar = ehEdicao
+    ? pode("produtos", "editar")
+    : pode("produtos", "criar");
+  const assinanteId = useAssinanteId();
 
   // Preço de venda próprio por loja (empresa_id -> preço)
-  const [precosLoja, setPrecosLoja] = useState<Record<string, number>>({})
+  const [precosLoja, setPrecosLoja] = useState<Record<string, number>>({});
   useEffect(() => {
-    let ativo = true
+    let ativo = true;
     if (!id) {
-      setPrecosLoja({})
-      return
+      setPrecosLoja({});
+      return;
     }
     listarPrecosDoProduto(id)
       .then((linhas) => {
-        if (!ativo) return
-        const mapa: Record<string, number> = {}
+        if (!ativo) return;
+        const mapa: Record<string, number> = {};
         for (const l of linhas) {
-          const v = Number(l.preco_venda)
-          if (v > 0) mapa[l.empresa_id] = v
+          const v = Number(l.preco_venda);
+          if (v > 0) mapa[l.empresa_id] = v;
         }
-        setPrecosLoja(mapa)
+        setPrecosLoja(mapa);
       })
       .catch(() => {
         /* coleção ainda não criada: segue só com o preço geral */
-      })
+      });
     return () => {
-      ativo = false
-    }
-  }, [id])
+      ativo = false;
+    };
+  }, [id]);
 
-  const [carregando, setCarregando] = useState(false)
-  const [salvando, setSalvando] = useState(false)
-  const [abaAtiva, setAbaAtiva] = useState('geral')
+  const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [abaAtiva, setAbaAtiva] = useState("geral");
 
   // Unidades de medida disponíveis
-  const [unidadesMedida, setUnidadesMedida] = useState<UnidadeMedida[]>([])
+  const [unidadesMedida, setUnidadesMedida] = useState<UnidadeMedida[]>([]);
 
   // Formulário Principal
   const [formData, setFormData] = useState<Partial<Produto>>({
     ativo: true,
-    tipo: 'Produto',
-    descricao: '',
-    descricao_reduzida: '',
-    gtin: '',
-    gtin_tributavel: '',
-    referencia: '',
+    tipo: "Produto",
+    descricao: "",
+    descricao_reduzida: "",
+    gtin: "",
+    gtin_tributavel: "",
+    referencia: "",
     marca_id: undefined,
     grupo_id: undefined,
     categoria_id: undefined,
     subcategoria_id: undefined,
     fornecedor_principal_id: undefined,
-    observacoes: '',
+    observacoes: "",
 
     // Unidades
     unidade_id: undefined,
@@ -173,8 +185,8 @@ export const ProdutoForm: React.FC = () => {
     margem_percentual: 0,
     preco_venda: 0,
     preco_promocional: undefined,
-    promocao_inicio: '',
-    promocao_fim: '',
+    promocao_inicio: "",
+    promocao_fim: "",
     permite_desconto: true,
     desconto_maximo_percentual: 0,
 
@@ -182,7 +194,7 @@ export const ProdutoForm: React.FC = () => {
     controla_estoque: true,
     estoque_minimo: 0,
     estoque_maximo: 0,
-    localizacao: '',
+    localizacao: "",
     controla_lote_validade: false,
     dias_validade: undefined,
     vende_fracionado: false,
@@ -194,372 +206,413 @@ export const ProdutoForm: React.FC = () => {
     comprimento_cm: undefined,
 
     // Fiscais (armazenados sem edição direta nesta etapa)
-    ncm: '',
-    cest: '',
-    origem: '0',
+    ncm: "",
+    cest: "",
+    origem: "0",
     fiscal_revisado: false,
-  })
+  });
 
   // Imagens
-  const [fotoArquivo, setFotoArquivo] = useState<File | null>(null)
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null)
-  const [fotosAdicionais, setFotosAdicionais] = useState<File[]>([])
-  const [fotosAdicionaisExistentes, setFotosAdicionaisExistentes] = useState<string[]>([])
+  const [fotoArquivo, setFotoArquivo] = useState<File | null>(null);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [fotosAdicionais, setFotosAdicionais] = useState<File[]>([]);
+  const [fotosAdicionaisExistentes, setFotosAdicionaisExistentes] = useState<
+    string[]
+  >([]);
 
   // Tabelas auxiliares
-  const [fornecedoresDoProduto, setFornecedoresDoProduto] = useState<ProdutoFornecedor[]>([])
-  const [conversoesDoProduto, setConversoesDoProduto] = useState<ProdutoConversaoUnidade[]>([])
-  const [itensDoKit, setItensDoKit] = useState<ProdutoKitItem[]>([])
-  const [historicoSPED, setHistoricoSPED] = useState<ProdutoHistorico[]>([])
-  const [entradasCompras, setEntradasCompras] = useState<EntradaHistoricoProduto[]>([])
-  const [carregandoEntradas, setCarregandoEntradas] = useState<boolean>(false)
-  const [saidasVendas, setSaidasVendas] = useState<SaidaVendaProduto[]>([])
-  const [carregandoSaidas, setCarregandoSaidas] = useState<boolean>(false)
+  const [fornecedoresDoProduto, setFornecedoresDoProduto] = useState<
+    ProdutoFornecedor[]
+  >([]);
+  const [conversoesDoProduto, setConversoesDoProduto] = useState<
+    ProdutoConversaoUnidade[]
+  >([]);
+  const [itensDoKit, setItensDoKit] = useState<ProdutoKitItem[]>([]);
+  const [historicoSPED, setHistoricoSPED] = useState<ProdutoHistorico[]>([]);
+  const [entradasCompras, setEntradasCompras] = useState<
+    EntradaHistoricoProduto[]
+  >([]);
+  const [carregandoEntradas, setCarregandoEntradas] = useState<boolean>(false);
+  const [saidasVendas, setSaidasVendas] = useState<SaidaVendaProduto[]>([]);
+  const [carregandoSaidas, setCarregandoSaidas] = useState<boolean>(false);
 
   // Modais de CRUD auxiliares
-  const [modalFornecedorAberto, setModalFornecedorAberto] = useState(false)
+  const [modalFornecedorAberto, setModalFornecedorAberto] = useState(false);
   const [fornItem, setFornItem] = useState<{
-    id?: string
-    fornecedor_id: string
-    codigo_no_fornecedor: string
-    descricao_no_fornecedor: string
-    unidade_fornecedor: string
-    fator_conversao: number
-    ultimo_preco_compra?: number
+    id?: string;
+    fornecedor_id: string;
+    codigo_no_fornecedor: string;
+    descricao_no_fornecedor: string;
+    unidade_fornecedor: string;
+    fator_conversao: number;
+    ultimo_preco_compra?: number;
   }>({
-    fornecedor_id: '',
-    codigo_no_fornecedor: '',
-    descricao_no_fornecedor: '',
-    unidade_fornecedor: '',
+    fornecedor_id: "",
+    codigo_no_fornecedor: "",
+    descricao_no_fornecedor: "",
+    unidade_fornecedor: "",
     fator_conversao: 1,
-  })
+  });
 
-  const [modalConversaoAberto, setModalConversaoAberto] = useState(false)
+  const [modalConversaoAberto, setModalConversaoAberto] = useState(false);
   const [convItem, setConvItem] = useState<{
-    id?: string
-    unidade_id: string
-    fator_conversao: number
-    gtin_unidade: string
+    id?: string;
+    unidade_id: string;
+    fator_conversao: number;
+    gtin_unidade: string;
   }>({
-    unidade_id: '',
+    unidade_id: "",
     fator_conversao: 1,
-    gtin_unidade: '',
-  })
+    gtin_unidade: "",
+  });
 
-  const [modalKitAberto, setModalKitAberto] = useState(false)
+  const [modalKitAberto, setModalKitAberto] = useState(false);
   const [kitItem, setKitItem] = useState<{
-    id?: string
-    produto_item_id: string
-    quantidade: number
+    id?: string;
+    produto_item_id: string;
+    quantidade: number;
   }>({
-    produto_item_id: '',
+    produto_item_id: "",
     quantidade: 1,
-  })
+  });
 
   // Erros de validação
-  const [erros, setErros] = useState<Record<string, string>>({})
+  const [erros, setErros] = useState<Record<string, string>>({});
 
   // Carregar dados de inicialização
   useEffect(() => {
     listarTodasUnidadesMedidaAtivas()
       .then((unidades) => {
-        setUnidadesMedida(unidades)
+        setUnidadesMedida(unidades);
         if (!ehEdicao && unidades.length > 0 && !formData.unidade_id) {
           // Define a primeira unidade como padrão
-          const padrao = unidades.find((u) => u.sigla.toUpperCase() === 'UN') || unidades[0]
+          const padrao =
+            unidades.find((u) => u.sigla.toUpperCase() === "UN") || unidades[0];
           setFormData((prev) => ({
             ...prev,
             unidade_id: padrao.id,
             unidade_tributavel_id: padrao.id,
             vende_fracionado: padrao.aceita_fracionado,
-          }))
+          }));
         }
       })
-      .catch(console.error)
-  }, [ehEdicao])
+      .catch(console.error);
+  }, [ehEdicao]);
 
   // Carregar dados do produto em edição
   const carregarProduto = useCallback(
     async (produtoId: string) => {
-      setCarregando(true)
+      setCarregando(true);
       try {
-        const prod = await obterProdutoPorId(produtoId)
-        setFormData(prod)
+        const prod = await obterProdutoPorId(produtoId);
+        setFormData(prod);
 
         if (prod.foto) {
-          setFotoPreview(pb.files.getURL(prod, prod.foto))
+          setFotoPreview(pb.files.getURL(prod, prod.foto));
         }
         if (prod.fotos_adicionais && prod.fotos_adicionais.length > 0) {
-          setFotosAdicionaisExistentes(prod.fotos_adicionais.map((f) => pb.files.getURL(prod, f)))
+          setFotosAdicionaisExistentes(
+            prod.fotos_adicionais.map((f) => pb.files.getURL(prod, f)),
+          );
         }
 
         // Carregar auxiliares em paralelo
         const [forns, convs, kits, hist] = await Promise.all([
           listarFornecedoresDoProduto(produtoId),
           listarConversoesDoProduto(produtoId),
-          prod.tipo === 'Kit' ? listarItensDoKit(produtoId) : Promise.resolve([]),
+          prod.tipo === "Kit"
+            ? listarItensDoKit(produtoId)
+            : Promise.resolve([]),
           listarHistoricoDoProduto(produtoId),
-        ])
+        ]);
 
-        setFornecedoresDoProduto(forns)
-        setConversoesDoProduto(convs)
-        setItensDoKit(kits)
-        setHistoricoSPED(hist)
+        setFornecedoresDoProduto(forns);
+        setConversoesDoProduto(convs);
+        setItensDoKit(kits);
+        setHistoricoSPED(hist);
 
         // Carregar últimas 20 entradas de compras
-        setCarregandoEntradas(true)
+        setCarregandoEntradas(true);
         listarEntradasDoProduto(produtoId, empresaAtiva?.id)
           .then((ent) => setEntradasCompras(ent))
-          .catch((e) => console.warn('Erro ao carregar entradas de compras:', e))
-          .finally(() => setCarregandoEntradas(false))
+          .catch((e) =>
+            console.warn("Erro ao carregar entradas de compras:", e),
+          )
+          .finally(() => setCarregandoEntradas(false));
 
         // Carregar histórico de saídas por vendas
-        setCarregandoSaidas(true)
+        setCarregandoSaidas(true);
         obterHistoricoSaidasProduto(produtoId, empresaAtiva?.id)
           .then((sai) => setSaidasVendas(sai))
-          .catch((e) => console.warn('Erro ao carregar saídas de vendas:', e))
-          .finally(() => setCarregandoSaidas(false))
+          .catch((e) => console.warn("Erro ao carregar saídas de vendas:", e))
+          .finally(() => setCarregandoSaidas(false));
       } catch (err: unknown) {
         toast({
-          title: 'Erro ao carregar produto',
-          description: err instanceof Error ? err.message : 'Falha ao buscar dados',
-          variant: 'destructive',
-        })
-        navigate('/cadastros/produtos')
+          title: "Erro ao carregar produto",
+          description:
+            err instanceof Error ? err.message : "Falha ao buscar dados",
+          variant: "destructive",
+        });
+        navigate("/cadastros/produtos");
       } finally {
-        setCarregando(false)
+        setCarregando(false);
       }
     },
     [navigate, toast],
-  )
+  );
 
   useEffect(() => {
     if (ehEdicao && id) {
-      carregarProduto(id)
+      carregarProduto(id);
     }
-  }, [ehEdicao, id, carregarProduto])
+  }, [ehEdicao, id, carregarProduto]);
 
   // Alteração em lote de campos (usado pela aba fiscal ao aplicar perfil)
   const handleMudarCamposEmLote = (novosCampos: Partial<Produto>) => {
     setFormData((prev) => ({
       ...prev,
       ...novosCampos,
-    }))
+    }));
     // Limpa erros dos campos alterados
     setErros((prev) => {
-      const copy = { ...prev }
-      Object.keys(novosCampos).forEach((k) => delete copy[k])
-      return copy
-    })
-  }
+      const copy = { ...prev };
+      Object.keys(novosCampos).forEach((k) => delete copy[k]);
+      return copy;
+    });
+  };
 
   // Lógica de alteração de campos
   const handleCampoChange = (campo: keyof Produto, valor: any) => {
     setFormData((prev) => {
-      const novo = { ...prev, [campo]: valor }
+      const novo = { ...prev, [campo]: valor };
 
       // Se mudar o tipo para Serviço, desmarca controla_estoque por padrão
-      if (campo === 'tipo') {
-        if (valor === 'Serviço') {
-          novo.controla_estoque = false
-        } else if (prev.tipo === 'Serviço') {
-          novo.controla_estoque = true
+      if (campo === "tipo") {
+        if (valor === "Serviço") {
+          novo.controla_estoque = false;
+        } else if (prev.tipo === "Serviço") {
+          novo.controla_estoque = true;
         }
       }
 
       // Se mudar a unidade comercial, herdar aceita_fracionado
-      if (campo === 'unidade_id') {
-        const u = unidadesMedida.find((item) => item.id === valor)
+      if (campo === "unidade_id") {
+        const u = unidadesMedida.find((item) => item.id === valor);
         if (u) {
-          novo.vende_fracionado = u.aceita_fracionado
+          novo.vende_fracionado = u.aceita_fracionado;
           if (!prev.unidade_tributavel_id) {
-            novo.unidade_tributavel_id = u.id
+            novo.unidade_tributavel_id = u.id;
           }
         }
       }
 
       // Cálculos bidirecionais de preços
-      if (campo === 'preco_custo' || campo === 'outras_despesas_percentual') {
-        const custo = campo === 'preco_custo' ? Number(valor) : Number(prev.preco_custo || 0)
-        const desp =
-          campo === 'outras_despesas_percentual'
+      if (campo === "preco_custo" || campo === "outras_despesas_percentual") {
+        const custo =
+          campo === "preco_custo"
             ? Number(valor)
-            : Number(prev.outras_despesas_percentual || 0)
-        const cFinal = calcularCustoFinal(custo, desp)
-        novo.custo_final = cFinal
+            : Number(prev.preco_custo || 0);
+        const desp =
+          campo === "outras_despesas_percentual"
+            ? Number(valor)
+            : Number(prev.outras_despesas_percentual || 0);
+        const cFinal = calcularCustoFinal(custo, desp);
+        novo.custo_final = cFinal;
 
         // Se houver margem definida, sugere o preço de venda
-        if (prev.margem_percentual !== undefined && prev.margem_percentual !== null) {
-          novo.preco_venda = sugerirPrecoVenda(cFinal, Number(prev.margem_percentual))
+        if (
+          prev.margem_percentual !== undefined &&
+          prev.margem_percentual !== null
+        ) {
+          novo.preco_venda = sugerirPrecoVenda(
+            cFinal,
+            Number(prev.margem_percentual),
+          );
         }
-      } else if (campo === 'margem_percentual') {
-        const margem = Number(valor)
+      } else if (campo === "margem_percentual") {
+        const margem = Number(valor);
         const cFinal =
           novo.custo_final ||
-          calcularCustoFinal(novo.preco_custo || 0, novo.outras_despesas_percentual || 0)
-        novo.preco_venda = sugerirPrecoVenda(cFinal, margem)
-      } else if (campo === 'preco_venda') {
-        const pVenda = Number(valor)
+          calcularCustoFinal(
+            novo.preco_custo || 0,
+            novo.outras_despesas_percentual || 0,
+          );
+        novo.preco_venda = sugerirPrecoVenda(cFinal, margem);
+      } else if (campo === "preco_venda") {
+        const pVenda = Number(valor);
         const cFinal =
           novo.custo_final ||
-          calcularCustoFinal(novo.preco_custo || 0, novo.outras_despesas_percentual || 0)
-        novo.margem_percentual = recalcularMargem(pVenda, cFinal)
+          calcularCustoFinal(
+            novo.preco_custo || 0,
+            novo.outras_despesas_percentual || 0,
+          );
+        novo.margem_percentual = recalcularMargem(pVenda, cFinal);
       }
 
-      return novo
-    })
+      return novo;
+    });
 
     if (erros[campo]) {
       setErros((prev) => {
-        const copy = { ...prev }
-        delete copy[campo]
-        return copy
-      })
+        const copy = { ...prev };
+        delete copy[campo];
+        return copy;
+      });
     }
-  }
+  };
 
   // Tratamento da imagem
   const handleFotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const file = e.target.files?.[0];
+    if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
       toast({
-        title: 'Arquivo muito grande',
-        description: 'A foto principal deve ter até 2 MB.',
-        variant: 'destructive',
-      })
-      return
+        title: "Arquivo muito grande",
+        description: "A foto principal deve ter até 2 MB.",
+        variant: "destructive",
+      });
+      return;
     }
 
-    setFotoArquivo(file)
-    const reader = new FileReader()
+    setFotoArquivo(file);
+    const reader = new FileReader();
     reader.onloadend = () => {
-      setFotoPreview(reader.result as string)
-    }
-    reader.readAsDataURL(file)
-  }
+      setFotoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
 
-  const handleFotosAdicionaisChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files ? Array.from(e.target.files) : []
-    if (files.length === 0) return
+  const handleFotosAdicionaisChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length === 0) return;
 
-    if (files.length + fotosAdicionais.length + fotosAdicionaisExistentes.length > 5) {
+    if (
+      files.length + fotosAdicionais.length + fotosAdicionaisExistentes.length >
+      5
+    ) {
       toast({
-        title: 'Limite excedido',
-        description: 'Você pode adicionar no máximo 5 fotos adicionais.',
-        variant: 'destructive',
-      })
-      return
+        title: "Limite excedido",
+        description: "Você pode adicionar no máximo 5 fotos adicionais.",
+        variant: "destructive",
+      });
+      return;
     }
 
-    const arquivosValidos = files.filter((f) => f.size <= 2 * 1024 * 1024)
+    const arquivosValidos = files.filter((f) => f.size <= 2 * 1024 * 1024);
     if (arquivosValidos.length < files.length) {
       toast({
-        title: 'Aviso',
-        description: 'Algumas fotos ultrapassaram o limite de 2 MB e foram ignoradas.',
-      })
+        title: "Aviso",
+        description:
+          "Algumas fotos ultrapassaram o limite de 2 MB e foram ignoradas.",
+      });
     }
 
-    setFotosAdicionais((prev) => [...prev, ...arquivosValidos])
-  }
+    setFotosAdicionais((prev) => [...prev, ...arquivosValidos]);
+  };
 
   // Salvar Produto (completo com validações fiscais ou rascunho)
   const executarSalvar = async (ignorarValidacoesFiscais = false) => {
     const validacao = await validarDadosProduto(formData, id, {
       ignorarValidacoesFiscais,
       regimeEmpresa: regimeEmpresaAtiva,
-    })
+    });
 
     if (!validacao.valido) {
-      setErros(validacao.erros)
+      setErros(validacao.erros);
       if (validacao.temErroFiscal) {
-        setAbaAtiva('fiscal')
+        setAbaAtiva("fiscal");
       }
       toast({
-        title: 'Verifique os campos obrigatórios',
+        title: "Verifique os campos obrigatórios",
         description: Object.values(validacao.erros)[0],
-        variant: 'destructive',
-      })
-      return
+        variant: "destructive",
+      });
+      return;
     }
 
-    setSalvando(true)
+    setSalvando(true);
     try {
       const salvo = await salvarProduto({
         ...formData,
         fotoArquivo,
         fotosAdicionaisArquivos: fotosAdicionais,
-      })
+      });
 
       toast({
         title: ignorarValidacoesFiscais
-          ? 'Salvo como rascunho fiscal'
+          ? "Salvo como rascunho fiscal"
           : ehEdicao
-            ? 'Produto atualizado'
-            : 'Produto cadastrado',
+            ? "Produto atualizado"
+            : "Produto cadastrado",
         description: ignorarValidacoesFiscais
           ? `O produto "${salvo.descricao}" foi salvo como rascunho com o selo "Fiscal incompleto".`
           : `O produto "${salvo.descricao}" (Código #${salvo.codigo}) foi salvo com sucesso.`,
-      })
+      });
 
       if (!ehEdicao) {
-        navigate(`/cadastros/produtos/${salvo.id}/editar`)
+        navigate(`/cadastros/produtos/${salvo.id}/editar`);
       } else {
-        carregarProduto(salvo.id)
+        carregarProduto(salvo.id);
       }
     } catch (err: unknown) {
       toast({
-        title: 'Erro ao salvar produto',
-        description: err instanceof Error ? err.message : 'Falha ao gravar no banco',
-        variant: 'destructive',
-      })
+        title: "Erro ao salvar produto",
+        description:
+          err instanceof Error ? err.message : "Falha ao gravar no banco",
+        variant: "destructive",
+      });
     } finally {
-      setSalvando(false)
+      setSalvando(false);
     }
-  }
+  };
 
   const handleSalvar = async (e: React.FormEvent) => {
-    e.preventDefault()
-    await executarSalvar(false)
-  }
+    e.preventDefault();
+    await executarSalvar(false);
+  };
 
   const handleSalvarComoRascunho = async () => {
-    await executarSalvar(true)
-  }
+    await executarSalvar(true);
+  };
 
   // Duplicar produto
   const handleDuplicar = async () => {
-    if (!id) return
-    setSalvando(true)
+    if (!id) return;
+    setSalvando(true);
     try {
-      const novo = await duplicarProduto(id)
+      const novo = await duplicarProduto(id);
       toast({
-        title: 'Produto duplicado',
+        title: "Produto duplicado",
         description: `Novo produto gerado com código #${novo.codigo}.`,
-      })
-      navigate(`/cadastros/produtos/${novo.id}/editar`)
+      });
+      navigate(`/cadastros/produtos/${novo.id}/editar`);
     } catch (err: unknown) {
       toast({
-        title: 'Erro ao duplicar produto',
-        description: err instanceof Error ? err.message : 'Falha na duplicação',
-        variant: 'destructive',
-      })
+        title: "Erro ao duplicar produto",
+        description: err instanceof Error ? err.message : "Falha na duplicação",
+        variant: "destructive",
+      });
     } finally {
-      setSalvando(false)
+      setSalvando(false);
     }
-  }
+  };
 
   // Auxiliares: Fornecedores
   const handleSalvarFornecedorAux = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!id) {
-      toast({ title: 'Salve o produto antes de vincular fornecedores.', variant: 'destructive' })
-      return
+      toast({
+        title: "Salve o produto antes de vincular fornecedores.",
+        variant: "destructive",
+      });
+      return;
     }
     if (!fornItem.fornecedor_id) {
-      toast({ title: 'Selecione um fornecedor.', variant: 'destructive' })
-      return
+      toast({ title: "Selecione um fornecedor.", variant: "destructive" });
+      return;
     }
 
     try {
@@ -572,43 +625,46 @@ export const ProdutoForm: React.FC = () => {
         unidade_fornecedor: fornItem.unidade_fornecedor,
         fator_conversao: fornItem.fator_conversao,
         ultimo_preco_compra: fornItem.ultimo_preco_compra,
-      })
+      });
 
-      toast({ title: 'Fornecedor vinculado com sucesso.' })
-      setModalFornecedorAberto(false)
-      listarFornecedoresDoProduto(id).then(setFornecedoresDoProduto)
+      toast({ title: "Fornecedor vinculado com sucesso." });
+      setModalFornecedorAberto(false);
+      listarFornecedoresDoProduto(id).then(setFornecedoresDoProduto);
     } catch (err: unknown) {
       toast({
-        title: 'Erro ao vincular fornecedor',
-        description: err instanceof Error ? err.message : '',
-      })
+        title: "Erro ao vincular fornecedor",
+        description: err instanceof Error ? err.message : "",
+      });
     }
-  }
+  };
 
   const handleRemoverFornecedorAux = async (fornId: string) => {
-    if (!id) return
+    if (!id) return;
     try {
-      await inativarProdutoFornecedor(fornId)
-      toast({ title: 'Vínculo com fornecedor removido.' })
-      listarFornecedoresDoProduto(id).then(setFornecedoresDoProduto)
+      await inativarProdutoFornecedor(fornId);
+      toast({ title: "Vínculo com fornecedor removido." });
+      listarFornecedoresDoProduto(id).then(setFornecedoresDoProduto);
     } catch (err: unknown) {
       toast({
-        title: 'Erro ao remover vínculo',
-        description: err instanceof Error ? err.message : '',
-      })
+        title: "Erro ao remover vínculo",
+        description: err instanceof Error ? err.message : "",
+      });
     }
-  }
+  };
 
   // Auxiliares: Conversões de Unidade
   const handleSalvarConversaoAux = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!id) {
-      toast({ title: 'Salve o produto antes de cadastrar conversões.', variant: 'destructive' })
-      return
+      toast({
+        title: "Salve o produto antes de cadastrar conversões.",
+        variant: "destructive",
+      });
+      return;
     }
     if (!convItem.unidade_id) {
-      toast({ title: 'Selecione a unidade.', variant: 'destructive' })
-      return
+      toast({ title: "Selecione a unidade.", variant: "destructive" });
+      return;
     }
 
     try {
@@ -618,43 +674,49 @@ export const ProdutoForm: React.FC = () => {
         unidade_id: convItem.unidade_id,
         fator_conversao: convItem.fator_conversao,
         gtin_unidade: convItem.gtin_unidade,
-      })
+      });
 
-      toast({ title: 'Conversão de unidade salva com sucesso.' })
-      setModalConversaoAberto(false)
-      listarConversoesDoProduto(id).then(setConversoesDoProduto)
+      toast({ title: "Conversão de unidade salva com sucesso." });
+      setModalConversaoAberto(false);
+      listarConversoesDoProduto(id).then(setConversoesDoProduto);
     } catch (err: unknown) {
       toast({
-        title: 'Erro ao salvar conversão',
-        description: err instanceof Error ? err.message : '',
-      })
+        title: "Erro ao salvar conversão",
+        description: err instanceof Error ? err.message : "",
+      });
     }
-  }
+  };
 
   const handleRemoverConversaoAux = async (convId: string) => {
-    if (!id) return
+    if (!id) return;
     try {
-      await inativarProdutoConversao(convId)
-      toast({ title: 'Conversão removida.' })
-      listarConversoesDoProduto(id).then(setConversoesDoProduto)
+      await inativarProdutoConversao(convId);
+      toast({ title: "Conversão removida." });
+      listarConversoesDoProduto(id).then(setConversoesDoProduto);
     } catch (err: unknown) {
       toast({
-        title: 'Erro ao remover conversão',
-        description: err instanceof Error ? err.message : '',
-      })
+        title: "Erro ao remover conversão",
+        description: err instanceof Error ? err.message : "",
+      });
     }
-  }
+  };
 
   // Auxiliares: Composição de Kit
   const handleSalvarKitAux = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!id) {
-      toast({ title: 'Salve o produto antes de adicionar componentes.', variant: 'destructive' })
-      return
+      toast({
+        title: "Salve o produto antes de adicionar componentes.",
+        variant: "destructive",
+      });
+      return;
     }
     if (!kitItem.produto_item_id) {
-      toast({ title: 'Selecione o produto componente.', variant: 'destructive' })
-      return
+      toast({
+        title: "Selecione o produto componente.",
+        variant: "destructive",
+      });
+      return;
     }
 
     try {
@@ -663,37 +725,46 @@ export const ProdutoForm: React.FC = () => {
         produto_kit_id: id,
         produto_item_id: kitItem.produto_item_id,
         quantidade: kitItem.quantidade,
-      })
+      });
 
-      toast({ title: 'Item adicionado à composição do kit.' })
-      setModalKitAberto(false)
-      listarItensDoKit(id).then(setItensDoKit)
+      toast({ title: "Item adicionado à composição do kit." });
+      setModalKitAberto(false);
+      listarItensDoKit(id).then(setItensDoKit);
     } catch (err: unknown) {
       toast({
-        title: 'Erro ao adicionar item ao kit',
-        description: err instanceof Error ? err.message : '',
-      })
+        title: "Erro ao adicionar item ao kit",
+        description: err instanceof Error ? err.message : "",
+      });
     }
-  }
+  };
 
   const handleRemoverKitAux = async (kitItemId: string) => {
-    if (!id) return
+    if (!id) return;
     try {
-      await inativarItemKit(kitItemId)
-      toast({ title: 'Item removido da composição.' })
-      listarItensDoKit(id).then(setItensDoKit)
+      await inativarItemKit(kitItemId);
+      toast({ title: "Item removido da composição." });
+      listarItensDoKit(id).then(setItensDoKit);
     } catch (err: unknown) {
-      toast({ title: 'Erro ao remover item', description: err instanceof Error ? err.message : '' })
+      toast({
+        title: "Erro ao remover item",
+        description: err instanceof Error ? err.message : "",
+      });
     }
-  }
+  };
 
   // Cálculos de margem e markup em tela
   const custoFinalTela =
     formData.custo_final ||
-    calcularCustoFinal(formData.preco_custo || 0, formData.outras_despesas_percentual || 0)
-  const precoVendaTela = formData.preco_venda || 0
-  const markupCalculado = calcularMarkup(precoVendaTela, custoFinalTela)
-  const margemSobreVenda = calcularMargemSobreVenda(precoVendaTela, custoFinalTela)
+    calcularCustoFinal(
+      formData.preco_custo || 0,
+      formData.outras_despesas_percentual || 0,
+    );
+  const precoVendaTela = formData.preco_venda || 0;
+  const markupCalculado = calcularMarkup(precoVendaTela, custoFinalTela);
+  const margemSobreVenda = calcularMargemSobreVenda(
+    precoVendaTela,
+    custoFinalTela,
+  );
 
   if (carregando) {
     return (
@@ -701,7 +772,7 @@ export const ProdutoForm: React.FC = () => {
         <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600 mb-2" />
         <p className="text-sm font-medium">Carregando dados do produto...</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -713,7 +784,7 @@ export const ProdutoForm: React.FC = () => {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/cadastros/produtos')}
+            onClick={() => navigate("/cadastros/produtos")}
             className="h-9 w-9 p-0 text-slate-500 hover:text-slate-800"
             title="Voltar para a listagem"
           >
@@ -724,31 +795,33 @@ export const ProdutoForm: React.FC = () => {
             <div className="flex items-center gap-2">
               <Package className="h-6 w-6 text-blue-600" />
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                {ehEdicao ? `Editar Produto #${formData.codigo}` : 'Novo Produto'}
+                {ehEdicao
+                  ? `Editar Produto #${formData.codigo}`
+                  : "Novo Produto"}
               </h1>
               {ehEdicao && (
                 <Badge
-                  variant={formData.ativo ? 'default' : 'secondary'}
+                  variant={formData.ativo ? "default" : "secondary"}
                   className={`text-[10px] font-normal py-0 px-2 ${
                     formData.ativo
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-slate-100 text-slate-500'
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : "bg-slate-100 text-slate-500"
                   }`}
                 >
-                  {formData.ativo ? 'Ativo' : 'Inativo'}
+                  {formData.ativo ? "Ativo" : "Inativo"}
                 </Badge>
               )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {ehEdicao
-                ? formData.descricao || 'Preencha os dados do produto'
-                : 'Cadastre um novo item, serviço ou kit no catálogo'}
+                ? formData.descricao || "Preencha os dados do produto"
+                : "Cadastre um novo item, serviço ou kit no catálogo"}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {ehEdicao && pode('produtos', 'criar') && (
+          {ehEdicao && pode("produtos", "criar") && (
             <Button
               type="button"
               variant="outline"
@@ -812,12 +885,16 @@ export const ProdutoForm: React.FC = () => {
             Estoque
           </TabsTrigger>
           <TabsTrigger value="fornecedores" className="text-xs">
-            Fornecedores {fornecedoresDoProduto.length > 0 && `(${fornecedoresDoProduto.length})`}
+            Fornecedores{" "}
+            {fornecedoresDoProduto.length > 0 &&
+              `(${fornecedoresDoProduto.length})`}
           </TabsTrigger>
           <TabsTrigger value="conversoes" className="text-xs">
-            Conversões {conversoesDoProduto.length > 0 && `(${conversoesDoProduto.length})`}
+            Conversões{" "}
+            {conversoesDoProduto.length > 0 &&
+              `(${conversoesDoProduto.length})`}
           </TabsTrigger>
-          {formData.tipo === 'Kit' && (
+          {formData.tipo === "Kit" && (
             <TabsTrigger value="composicao" className="text-xs">
               Composição ({itensDoKit.length})
             </TabsTrigger>
@@ -827,7 +904,8 @@ export const ProdutoForm: React.FC = () => {
           </TabsTrigger>
           {ehEdicao && (
             <TabsTrigger value="compras" className="text-xs">
-              Compras {entradasCompras.length > 0 && `(${entradasCompras.length})`}
+              Compras{" "}
+              {entradasCompras.length > 0 && `(${entradasCompras.length})`}
             </TabsTrigger>
           )}
           {ehEdicao && (
@@ -854,7 +932,7 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Input
                     type="text"
-                    value={formData.codigo || ''}
+                    value={formData.codigo || ""}
                     disabled
                     readOnly
                     placeholder="será gerado ao salvar"
@@ -872,7 +950,7 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Select
                     value={formData.tipo}
-                    onValueChange={(val: any) => handleCampoChange('tipo', val)}
+                    onValueChange={(val: any) => handleCampoChange("tipo", val)}
                   >
                     <SelectTrigger className="h-9 text-xs">
                       <SelectValue />
@@ -883,7 +961,11 @@ export const ProdutoForm: React.FC = () => {
                       <SelectItem value="Kit">Kit</SelectItem>
                     </SelectContent>
                   </Select>
-                  {erros.tipo && <span className="text-[11px] text-rose-600">{erros.tipo}</span>}
+                  {erros.tipo && (
+                    <span className="text-[11px] text-rose-600">
+                      {erros.tipo}
+                    </span>
+                  )}
                 </div>
 
                 {/* Referência */}
@@ -893,8 +975,10 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Input
                     type="text"
-                    value={formData.referencia || ''}
-                    onChange={(e) => handleCampoChange('referencia', e.target.value)}
+                    value={formData.referencia || ""}
+                    onChange={(e) =>
+                      handleCampoChange("referencia", e.target.value)
+                    }
                     placeholder="Ex: REF-9842"
                     className="h-9 text-xs"
                     maxLength={60}
@@ -906,12 +990,15 @@ export const ProdutoForm: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-2">
                   <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Descrição Completa (sai na Nota Fiscal) <span className="text-rose-600">*</span>
+                    Descrição Completa (sai na Nota Fiscal){" "}
+                    <span className="text-rose-600">*</span>
                   </Label>
                   <Input
                     type="text"
-                    value={formData.descricao || ''}
-                    onChange={(e) => handleCampoChange('descricao', e.target.value)}
+                    value={formData.descricao || ""}
+                    onChange={(e) =>
+                      handleCampoChange("descricao", e.target.value)
+                    }
                     placeholder="Descrição oficial do produto para NF-e/NFC-e"
                     className="h-9 text-xs"
                     maxLength={120}
@@ -921,7 +1008,9 @@ export const ProdutoForm: React.FC = () => {
                     <span>{formData.descricao?.length || 0}/120</span>
                   </div>
                   {erros.descricao && (
-                    <span className="text-[11px] text-rose-600">{erros.descricao}</span>
+                    <span className="text-[11px] text-rose-600">
+                      {erros.descricao}
+                    </span>
                   )}
                 </div>
 
@@ -931,8 +1020,10 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Input
                     type="text"
-                    value={formData.descricao_reduzida || ''}
-                    onChange={(e) => handleCampoChange('descricao_reduzida', e.target.value)}
+                    value={formData.descricao_reduzida || ""}
+                    onChange={(e) =>
+                      handleCampoChange("descricao_reduzida", e.target.value)
+                    }
                     placeholder="Para impressoras térmicas"
                     className="h-9 text-xs"
                     maxLength={40}
@@ -952,8 +1043,10 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Input
                     type="text"
-                    value={formData.gtin || ''}
-                    onChange={(e) => handleCampoChange('gtin', e.target.value.toUpperCase())}
+                    value={formData.gtin || ""}
+                    onChange={(e) =>
+                      handleCampoChange("gtin", e.target.value.toUpperCase())
+                    }
                     placeholder="8, 12, 13 ou 14 dígitos ou SEM GTIN"
                     className="h-9 text-xs font-mono uppercase"
                     maxLength={14}
@@ -962,7 +1055,9 @@ export const ProdutoForm: React.FC = () => {
                     Validação do dígito verificador GS1. Aceita "SEM GTIN".
                   </span>
                   {erros.gtin && (
-                    <span className="text-[11px] text-rose-600 block">{erros.gtin}</span>
+                    <span className="text-[11px] text-rose-600 block">
+                      {erros.gtin}
+                    </span>
                   )}
                 </div>
 
@@ -972,16 +1067,83 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Input
                     type="text"
-                    value={formData.gtin_tributavel || ''}
+                    value={formData.gtin_tributavel || ""}
                     onChange={(e) =>
-                      handleCampoChange('gtin_tributavel', e.target.value.toUpperCase())
+                      handleCampoChange(
+                        "gtin_tributavel",
+                        e.target.value.toUpperCase(),
+                      )
                     }
                     placeholder="Embalagem tributável"
                     className="h-9 text-xs font-mono uppercase"
                     maxLength={14}
                   />
                   {erros.gtin_tributavel && (
-                    <span className="text-[11px] text-rose-600 block">{erros.gtin_tributavel}</span>
+                    <span className="text-[11px] text-rose-600 block">
+                      {erros.gtin_tributavel}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* ANVISA */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700 block mb-1">
+                    ANVISA
+                  </Label>
+                  <Select
+                    value={formData.anvisa_tipo || "nao_informado"}
+                    onValueChange={(val) =>
+                      handleCampoChange(
+                        "anvisa_tipo",
+                        val === "nao_informado" ? "" : val,
+                      )
+                    }
+                  >
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="nao_informado">
+                        Não informado
+                      </SelectItem>
+                      <SelectItem value="Registro">Registro</SelectItem>
+                      <SelectItem value="Notificação">Notificação</SelectItem>
+                      <SelectItem value="Isento">
+                        Isento (não regulado)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-[10px] text-slate-400">
+                    Exigido pelo Mercado Livre e marketplaces para produtos para
+                    saúde, cosméticos e saneantes.
+                  </span>
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Nº de registro / notificação na ANVISA
+                  </Label>
+                  <Input
+                    type="text"
+                    value={formData.anvisa_numero || ""}
+                    onChange={(e) =>
+                      handleCampoChange("anvisa_numero", e.target.value)
+                    }
+                    placeholder="Ex.: 80246910003 (está na embalagem)"
+                    className="h-9 text-xs font-mono"
+                    maxLength={40}
+                    disabled={formData.anvisa_tipo === "Isento"}
+                  />
+                  {formData.anvisa_numero && (
+                    <a
+                      href={`https://consultas.anvisa.gov.br/#/saude/q/?numeroRegistro=${encodeURIComponent(formData.anvisa_numero.replace(/[^0-9]/g, ""))}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-blue-600 hover:underline"
+                    >
+                      Conferir no site da ANVISA
+                    </a>
                   )}
                 </div>
               </div>
@@ -990,11 +1152,14 @@ export const ProdutoForm: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
                 <div>
                   <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Unidade Comercial (uCom) <span className="text-rose-600">*</span>
+                    Unidade Comercial (uCom){" "}
+                    <span className="text-rose-600">*</span>
                   </Label>
                   <Select
                     value={formData.unidade_id}
-                    onValueChange={(val) => handleCampoChange('unidade_id', val)}
+                    onValueChange={(val) =>
+                      handleCampoChange("unidade_id", val)
+                    }
                   >
                     <SelectTrigger className="h-9 text-xs">
                       <SelectValue placeholder="Selecione a unidade..." />
@@ -1008,7 +1173,9 @@ export const ProdutoForm: React.FC = () => {
                     </SelectContent>
                   </Select>
                   {erros.unidade_id && (
-                    <span className="text-[11px] text-rose-600">{erros.unidade_id}</span>
+                    <span className="text-[11px] text-rose-600">
+                      {erros.unidade_id}
+                    </span>
                   )}
                 </div>
 
@@ -1017,8 +1184,12 @@ export const ProdutoForm: React.FC = () => {
                     Unidade Tributável (uTrib)
                   </Label>
                   <Select
-                    value={formData.unidade_tributavel_id || formData.unidade_id}
-                    onValueChange={(val) => handleCampoChange('unidade_tributavel_id', val)}
+                    value={
+                      formData.unidade_tributavel_id || formData.unidade_id
+                    }
+                    onValueChange={(val) =>
+                      handleCampoChange("unidade_tributavel_id", val)
+                    }
                   >
                     <SelectTrigger className="h-9 text-xs">
                       <SelectValue placeholder="Padrão = uCom" />
@@ -1042,7 +1213,10 @@ export const ProdutoForm: React.FC = () => {
                     step="0.0001"
                     value={formData.fator_conversao_tributavel ?? 1}
                     onChange={(e) =>
-                      handleCampoChange('fator_conversao_tributavel', e.target.value)
+                      handleCampoChange(
+                        "fator_conversao_tributavel",
+                        e.target.value,
+                      )
                     }
                     placeholder="Padrão: 1"
                     className="h-9 text-xs"
@@ -1056,10 +1230,12 @@ export const ProdutoForm: React.FC = () => {
               {/* Classificação: Marca, Grupo, Categoria e Fornecedor */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700 block mb-1">Marca</Label>
+                  <Label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Marca
+                  </Label>
                   <SelectMarca
                     value={formData.marca_id}
-                    onChange={(val) => handleCampoChange('marca_id', val)}
+                    onChange={(val) => handleCampoChange("marca_id", val)}
                     placeholder="Selecione ou busque a marca..."
                   />
                 </div>
@@ -1070,7 +1246,9 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <SelectFornecedor
                     value={formData.fornecedor_principal_id}
-                    onChange={(val) => handleCampoChange('fornecedor_principal_id', val)}
+                    onChange={(val) =>
+                      handleCampoChange("fornecedor_principal_id", val)
+                    }
                     placeholder="Selecione o fornecedor padrão..."
                   />
                 </div>
@@ -1078,37 +1256,49 @@ export const ProdutoForm: React.FC = () => {
 
               <div>
                 <SelectGrupoCategoria
-                  grupoId={formData.grupo_id || ''}
-                  categoriaId={formData.categoria_id || ''}
-                  subcategoriaId={formData.subcategoria_id || ''}
+                  grupoId={formData.grupo_id || ""}
+                  categoriaId={formData.categoria_id || ""}
+                  subcategoriaId={formData.subcategoria_id || ""}
                   onGrupoChange={(gid, grupo) => {
-                    handleCampoChange('grupo_id', gid || undefined)
-                    handleCampoChange('categoria_id', undefined)
-                    handleCampoChange('subcategoria_id', undefined)
+                    handleCampoChange("grupo_id", gid || undefined);
+                    handleCampoChange("categoria_id", undefined);
+                    handleCampoChange("subcategoria_id", undefined);
                     if (
                       grupo?.margem_padrao_percentual &&
-                      (!formData.margem_percentual || formData.margem_percentual === 0)
+                      (!formData.margem_percentual ||
+                        formData.margem_percentual === 0)
                     ) {
-                      handleCampoChange('margem_percentual', grupo.margem_padrao_percentual)
+                      handleCampoChange(
+                        "margem_percentual",
+                        grupo.margem_padrao_percentual,
+                      );
                     }
                   }}
                   onCategoriaChange={(cid, categoria) => {
-                    handleCampoChange('categoria_id', cid || undefined)
-                    handleCampoChange('subcategoria_id', undefined)
+                    handleCampoChange("categoria_id", cid || undefined);
+                    handleCampoChange("subcategoria_id", undefined);
                     if (
                       categoria?.margem_padrao_percentual &&
-                      (!formData.margem_percentual || formData.margem_percentual === 0)
+                      (!formData.margem_percentual ||
+                        formData.margem_percentual === 0)
                     ) {
-                      handleCampoChange('margem_percentual', categoria.margem_padrao_percentual)
+                      handleCampoChange(
+                        "margem_percentual",
+                        categoria.margem_padrao_percentual,
+                      );
                     }
                   }}
                   onSubcategoriaChange={(sid, subcategoria) => {
-                    handleCampoChange('subcategoria_id', sid || undefined)
+                    handleCampoChange("subcategoria_id", sid || undefined);
                     if (
                       subcategoria?.margem_padrao_percentual &&
-                      (!formData.margem_percentual || formData.margem_percentual === 0)
+                      (!formData.margem_percentual ||
+                        formData.margem_percentual === 0)
                     ) {
-                      handleCampoChange('margem_percentual', subcategoria.margem_padrao_percentual)
+                      handleCampoChange(
+                        "margem_percentual",
+                        subcategoria.margem_padrao_percentual,
+                      );
                     }
                   }}
                 />
@@ -1152,7 +1342,9 @@ export const ProdutoForm: React.FC = () => {
                           asChild
                         >
                           <span>
-                            {fotoPreview ? 'Trocar Foto Principal' : 'Adicionar Foto Principal'}
+                            {fotoPreview
+                              ? "Trocar Foto Principal"
+                              : "Adicionar Foto Principal"}
                           </span>
                         </Button>
                       </label>
@@ -1184,7 +1376,9 @@ export const ProdutoForm: React.FC = () => {
                       </Button>
                     </label>
                     <span className="text-[10px] text-slate-400 block">
-                      {fotosAdicionais.length + fotosAdicionaisExistentes.length} de 5 selecionadas
+                      {fotosAdicionais.length +
+                        fotosAdicionaisExistentes.length}{" "}
+                      de 5 selecionadas
                     </span>
                   </div>
                 </div>
@@ -1196,8 +1390,10 @@ export const ProdutoForm: React.FC = () => {
                   Observações Internas
                 </Label>
                 <Textarea
-                  value={formData.observacoes || ''}
-                  onChange={(e) => handleCampoChange('observacoes', e.target.value)}
+                  value={formData.observacoes || ""}
+                  onChange={(e) =>
+                    handleCampoChange("observacoes", e.target.value)
+                  }
                   placeholder="Anotações comerciais, detalhes técnicos ou observações internas..."
                   rows={2}
                   className="text-xs"
@@ -1222,12 +1418,16 @@ export const ProdutoForm: React.FC = () => {
                   <Input
                     type="number"
                     step="0.0001"
-                    value={formData.preco_custo ?? ''}
-                    onChange={(e) => handleCampoChange('preco_custo', e.target.value)}
+                    value={formData.preco_custo ?? ""}
+                    onChange={(e) =>
+                      handleCampoChange("preco_custo", e.target.value)
+                    }
                     placeholder="0,0000"
                     className="h-9 text-xs"
                   />
-                  <span className="text-[10px] text-slate-400">Até 4 casas decimais</span>
+                  <span className="text-[10px] text-slate-400">
+                    Até 4 casas decimais
+                  </span>
                 </div>
 
                 {/* Outras despesas */}
@@ -1239,9 +1439,12 @@ export const ProdutoForm: React.FC = () => {
                     <Input
                       type="number"
                       step="0.01"
-                      value={formData.outras_despesas_percentual ?? ''}
+                      value={formData.outras_despesas_percentual ?? ""}
                       onChange={(e) =>
-                        handleCampoChange('outras_despesas_percentual', e.target.value)
+                        handleCampoChange(
+                          "outras_despesas_percentual",
+                          e.target.value,
+                        )
                       }
                       placeholder="0,00"
                       className="h-9 text-xs pr-8"
@@ -1250,7 +1453,9 @@ export const ProdutoForm: React.FC = () => {
                       %
                     </span>
                   </div>
-                  <span className="text-[10px] text-slate-400">Frete, seguro e encargos</span>
+                  <span className="text-[10px] text-slate-400">
+                    Frete, seguro e encargos
+                  </span>
                 </div>
 
                 {/* Custo Final */}
@@ -1260,11 +1465,13 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Input
                     type="text"
-                    value={`R$ ${custoFinalTela.toFixed(4).replace('.', ',')}`}
+                    value={`R$ ${custoFinalTela.toFixed(4).replace(".", ",")}`}
                     disabled
                     className="h-9 text-xs bg-slate-50 font-bold text-slate-800"
                   />
-                  <span className="text-[10px] text-slate-400">Custo + Custo × Despesas %</span>
+                  <span className="text-[10px] text-slate-400">
+                    Custo + Custo × Despesas %
+                  </span>
                 </div>
               </div>
 
@@ -1272,7 +1479,9 @@ export const ProdutoForm: React.FC = () => {
               <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-200 space-y-4">
                 <div className="flex items-center gap-2 text-blue-900 font-semibold text-xs">
                   <DollarSign className="h-4 w-4 text-blue-600" />
-                  <span>Formação de Preço de Venda & Margem (Cálculo Bidirecional)</span>
+                  <span>
+                    Formação de Preço de Venda & Margem (Cálculo Bidirecional)
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1285,8 +1494,10 @@ export const ProdutoForm: React.FC = () => {
                       <Input
                         type="number"
                         step="0.01"
-                        value={formData.margem_percentual ?? ''}
-                        onChange={(e) => handleCampoChange('margem_percentual', e.target.value)}
+                        value={formData.margem_percentual ?? ""}
+                        onChange={(e) =>
+                          handleCampoChange("margem_percentual", e.target.value)
+                        }
                         placeholder="Ex: 50,00"
                         className="h-9 text-xs pr-8 bg-white"
                       />
@@ -1295,28 +1506,35 @@ export const ProdutoForm: React.FC = () => {
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-500">
-                      Quanto o preço fica acima do custo. Alterar recalcula o preço de venda.
+                      Quanto o preço fica acima do custo. Alterar recalcula o
+                      preço de venda.
                     </span>
                   </div>
 
                   {/* Preço de Venda */}
                   <div>
                     <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                      Preço de Venda (R$) <span className="text-rose-600">*</span>
+                      Preço de Venda (R$){" "}
+                      <span className="text-rose-600">*</span>
                     </Label>
                     <Input
                       type="number"
                       step="0.01"
-                      value={formData.preco_venda ?? ''}
-                      onChange={(e) => handleCampoChange('preco_venda', e.target.value)}
+                      value={formData.preco_venda ?? ""}
+                      onChange={(e) =>
+                        handleCampoChange("preco_venda", e.target.value)
+                      }
                       placeholder="0,00"
                       className="h-9 text-xs font-bold text-emerald-700 bg-white"
                     />
                     <span className="text-[10px] text-slate-500">
-                      Alterar o preço de venda recalcula a margem instantaneamente.
+                      Alterar o preço de venda recalcula a margem
+                      instantaneamente.
                     </span>
                     {erros.preco_venda && (
-                      <span className="text-[11px] text-rose-600 block">{erros.preco_venda}</span>
+                      <span className="text-[11px] text-rose-600 block">
+                        {erros.preco_venda}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1328,7 +1546,7 @@ export const ProdutoForm: React.FC = () => {
                       Markup
                     </span>
                     <strong className="text-sm text-slate-800">
-                      {markupCalculado.toFixed(2).replace('.', ',')}%
+                      {markupCalculado.toFixed(2).replace(".", ",")}%
                     </strong>
                   </div>
 
@@ -1337,7 +1555,7 @@ export const ProdutoForm: React.FC = () => {
                       Margem bruta s/ venda
                     </span>
                     <strong className="text-sm text-slate-800">
-                      {margemSobreVenda.toFixed(2).replace('.', ',')}%
+                      {margemSobreVenda.toFixed(2).replace(".", ",")}%
                     </strong>
                   </div>
 
@@ -1346,10 +1564,10 @@ export const ProdutoForm: React.FC = () => {
                       Lucro Bruto Unitário
                     </span>
                     <strong className="text-sm text-emerald-700">
-                      R${' '}
+                      R${" "}
                       {Math.max(0, precoVendaTela - custoFinalTela)
                         .toFixed(2)
-                        .replace('.', ',')}
+                        .replace(".", ",")}
                     </strong>
                   </div>
 
@@ -1359,10 +1577,14 @@ export const ProdutoForm: React.FC = () => {
                     </span>
                     <strong
                       className={`text-sm ${
-                        precoVendaTela >= custoFinalTela ? 'text-emerald-700' : 'text-rose-600'
+                        precoVendaTela >= custoFinalTela
+                          ? "text-emerald-700"
+                          : "text-rose-600"
                       }`}
                     >
-                      {precoVendaTela >= custoFinalTela ? 'Positivo' : 'Prejuízo!'}
+                      {precoVendaTela >= custoFinalTela
+                        ? "Positivo"
+                        : "Prejuízo!"}
                     </strong>
                   </div>
                 </div>
@@ -1397,8 +1619,10 @@ export const ProdutoForm: React.FC = () => {
                   <Input
                     type="number"
                     step="0.01"
-                    value={formData.preco_promocional ?? ''}
-                    onChange={(e) => handleCampoChange('preco_promocional', e.target.value)}
+                    value={formData.preco_promocional ?? ""}
+                    onChange={(e) =>
+                      handleCampoChange("preco_promocional", e.target.value)
+                    }
                     placeholder="Opcional"
                     className="h-9 text-xs"
                   />
@@ -1410,8 +1634,10 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Input
                     type="date"
-                    value={formData.promocao_inicio || ''}
-                    onChange={(e) => handleCampoChange('promocao_inicio', e.target.value)}
+                    value={formData.promocao_inicio || ""}
+                    onChange={(e) =>
+                      handleCampoChange("promocao_inicio", e.target.value)
+                    }
                     className="h-9 text-xs"
                   />
                 </div>
@@ -1422,8 +1648,10 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Input
                     type="date"
-                    value={formData.promocao_fim || ''}
-                    onChange={(e) => handleCampoChange('promocao_fim', e.target.value)}
+                    value={formData.promocao_fim || ""}
+                    onChange={(e) =>
+                      handleCampoChange("promocao_fim", e.target.value)
+                    }
                     className="h-9 text-xs"
                   />
                 </div>
@@ -1434,7 +1662,9 @@ export const ProdutoForm: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <Switch
                     checked={formData.permite_desconto ?? true}
-                    onCheckedChange={(checked) => handleCampoChange('permite_desconto', checked)}
+                    onCheckedChange={(checked) =>
+                      handleCampoChange("permite_desconto", checked)
+                    }
                     id="permite-desconto"
                   />
                   <Label
@@ -1454,9 +1684,12 @@ export const ProdutoForm: React.FC = () => {
                       <Input
                         type="number"
                         step="0.01"
-                        value={formData.desconto_maximo_percentual ?? ''}
+                        value={formData.desconto_maximo_percentual ?? ""}
                         onChange={(e) =>
-                          handleCampoChange('desconto_maximo_percentual', e.target.value)
+                          handleCampoChange(
+                            "desconto_maximo_percentual",
+                            e.target.value,
+                          )
                         }
                         placeholder="0,00"
                         className="h-9 text-xs pr-8"
@@ -1483,7 +1716,9 @@ export const ProdutoForm: React.FC = () => {
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-slate-200">
                   <Switch
                     checked={formData.controla_estoque ?? true}
-                    onCheckedChange={(checked) => handleCampoChange('controla_estoque', checked)}
+                    onCheckedChange={(checked) =>
+                      handleCampoChange("controla_estoque", checked)
+                    }
                     id="controla-estoque"
                   />
                   <Label
@@ -1497,7 +1732,9 @@ export const ProdutoForm: React.FC = () => {
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-slate-200">
                   <Switch
                     checked={formData.vende_no_pdv ?? true}
-                    onCheckedChange={(checked) => handleCampoChange('vende_no_pdv', checked)}
+                    onCheckedChange={(checked) =>
+                      handleCampoChange("vende_no_pdv", checked)
+                    }
                     id="vende-pdv"
                   />
                   <Label
@@ -1511,7 +1748,9 @@ export const ProdutoForm: React.FC = () => {
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-slate-200">
                   <Switch
                     checked={formData.vende_fracionado ?? false}
-                    onCheckedChange={(checked) => handleCampoChange('vende_fracionado', checked)}
+                    onCheckedChange={(checked) =>
+                      handleCampoChange("vende_fracionado", checked)
+                    }
                     id="vende-fracionado"
                   />
                   <Label
@@ -1532,12 +1771,16 @@ export const ProdutoForm: React.FC = () => {
                   <Input
                     type="number"
                     step="0.001"
-                    value={formData.estoque_minimo ?? ''}
-                    onChange={(e) => handleCampoChange('estoque_minimo', e.target.value)}
+                    value={formData.estoque_minimo ?? ""}
+                    onChange={(e) =>
+                      handleCampoChange("estoque_minimo", e.target.value)
+                    }
                     placeholder="0"
                     className="h-9 text-xs"
                   />
-                  <span className="text-[10px] text-slate-400">Ponto de reposição</span>
+                  <span className="text-[10px] text-slate-400">
+                    Ponto de reposição
+                  </span>
                 </div>
 
                 <div>
@@ -1547,8 +1790,10 @@ export const ProdutoForm: React.FC = () => {
                   <Input
                     type="number"
                     step="0.001"
-                    value={formData.estoque_maximo ?? ''}
-                    onChange={(e) => handleCampoChange('estoque_maximo', e.target.value)}
+                    value={formData.estoque_maximo ?? ""}
+                    onChange={(e) =>
+                      handleCampoChange("estoque_maximo", e.target.value)
+                    }
                     placeholder="0"
                     className="h-9 text-xs"
                   />
@@ -1560,8 +1805,10 @@ export const ProdutoForm: React.FC = () => {
                   </Label>
                   <Input
                     type="text"
-                    value={formData.localizacao || ''}
-                    onChange={(e) => handleCampoChange('localizacao', e.target.value)}
+                    value={formData.localizacao || ""}
+                    onChange={(e) =>
+                      handleCampoChange("localizacao", e.target.value)
+                    }
                     placeholder="Ex: Corredor B - Prateleira 3"
                     className="h-9 text-xs"
                     maxLength={60}
@@ -1575,7 +1822,7 @@ export const ProdutoForm: React.FC = () => {
                   <Switch
                     checked={formData.controla_lote_validade ?? false}
                     onCheckedChange={(checked) =>
-                      handleCampoChange('controla_lote_validade', checked)
+                      handleCampoChange("controla_lote_validade", checked)
                     }
                     id="lote-validade"
                   />
@@ -1594,8 +1841,10 @@ export const ProdutoForm: React.FC = () => {
                     </Label>
                     <Input
                       type="number"
-                      value={formData.dias_validade ?? ''}
-                      onChange={(e) => handleCampoChange('dias_validade', e.target.value)}
+                      value={formData.dias_validade ?? ""}
+                      onChange={(e) =>
+                        handleCampoChange("dias_validade", e.target.value)
+                      }
                       placeholder="Ex: 180"
                       className="h-9 text-xs"
                     />
@@ -1617,44 +1866,58 @@ export const ProdutoForm: React.FC = () => {
                     <Input
                       type="number"
                       step="0.001"
-                      value={formData.peso_liquido_kg ?? ''}
-                      onChange={(e) => handleCampoChange('peso_liquido_kg', e.target.value)}
+                      value={formData.peso_liquido_kg ?? ""}
+                      onChange={(e) =>
+                        handleCampoChange("peso_liquido_kg", e.target.value)
+                      }
                       placeholder="0,000"
                       className="h-9 text-xs"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-[11px] text-slate-500 block mb-1">Peso Bruto (kg)</Label>
+                    <Label className="text-[11px] text-slate-500 block mb-1">
+                      Peso Bruto (kg)
+                    </Label>
                     <Input
                       type="number"
                       step="0.001"
-                      value={formData.peso_bruto_kg ?? ''}
-                      onChange={(e) => handleCampoChange('peso_bruto_kg', e.target.value)}
+                      value={formData.peso_bruto_kg ?? ""}
+                      onChange={(e) =>
+                        handleCampoChange("peso_bruto_kg", e.target.value)
+                      }
                       placeholder="0,000"
                       className="h-9 text-xs"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-[11px] text-slate-500 block mb-1">Altura (cm)</Label>
+                    <Label className="text-[11px] text-slate-500 block mb-1">
+                      Altura (cm)
+                    </Label>
                     <Input
                       type="number"
                       step="0.1"
-                      value={formData.altura_cm ?? ''}
-                      onChange={(e) => handleCampoChange('altura_cm', e.target.value)}
+                      value={formData.altura_cm ?? ""}
+                      onChange={(e) =>
+                        handleCampoChange("altura_cm", e.target.value)
+                      }
                       placeholder="0,0"
                       className="h-9 text-xs"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-[11px] text-slate-500 block mb-1">Largura (cm)</Label>
+                    <Label className="text-[11px] text-slate-500 block mb-1">
+                      Largura (cm)
+                    </Label>
                     <Input
                       type="number"
                       step="0.1"
-                      value={formData.largura_cm ?? ''}
-                      onChange={(e) => handleCampoChange('largura_cm', e.target.value)}
+                      value={formData.largura_cm ?? ""}
+                      onChange={(e) =>
+                        handleCampoChange("largura_cm", e.target.value)
+                      }
                       placeholder="0,0"
                       className="h-9 text-xs"
                     />
@@ -1667,8 +1930,10 @@ export const ProdutoForm: React.FC = () => {
                     <Input
                       type="number"
                       step="0.1"
-                      value={formData.comprimento_cm ?? ''}
-                      onChange={(e) => handleCampoChange('comprimento_cm', e.target.value)}
+                      value={formData.comprimento_cm ?? ""}
+                      onChange={(e) =>
+                        handleCampoChange("comprimento_cm", e.target.value)
+                      }
                       placeholder="0,0"
                       className="h-9 text-xs"
                     />
@@ -1681,7 +1946,10 @@ export const ProdutoForm: React.FC = () => {
           {/* Seção Físico-Financeira: Saldo em Todas as Filiais e Últimos 10 Movimentos da Filial Ativa */}
           <ProdutoAbaEstoque
             produtoId={ehEdicao ? id : undefined}
-            unidadeSigla={unidadesMedida.find((u) => u.id === formData.unidade_id)?.sigla || 'UN'}
+            unidadeSigla={
+              unidadesMedida.find((u) => u.id === formData.unidade_id)?.sigla ||
+              "UN"
+            }
             controlaEstoque={formData.controla_estoque}
             controlaLote={formData.controla_lote_validade}
           />
@@ -1699,8 +1967,8 @@ export const ProdutoForm: React.FC = () => {
                     Fornecedores do Produto (De-Para de XML de Compra)
                   </h3>
                   <p className="text-slate-500 text-[11px]">
-                    Vincula códigos e unidades do fornecedor para conversão automática ao importar
-                    XML.
+                    Vincula códigos e unidades do fornecedor para conversão
+                    automática ao importar XML.
                   </p>
                 </div>
 
@@ -1710,19 +1978,20 @@ export const ProdutoForm: React.FC = () => {
                   onClick={() => {
                     if (!ehEdicao) {
                       toast({
-                        title: 'Salve o produto antes de vincular fornecedores.',
-                        variant: 'destructive',
-                      })
-                      return
+                        title:
+                          "Salve o produto antes de vincular fornecedores.",
+                        variant: "destructive",
+                      });
+                      return;
                     }
                     setFornItem({
-                      fornecedor_id: '',
-                      codigo_no_fornecedor: '',
-                      descricao_no_fornecedor: '',
-                      unidade_fornecedor: '',
+                      fornecedor_id: "",
+                      codigo_no_fornecedor: "",
+                      descricao_no_fornecedor: "",
+                      unidade_fornecedor: "",
                       fator_conversao: 1,
-                    })
-                    setModalFornecedorAberto(true)
+                    });
+                    setModalFornecedorAberto(true);
                   }}
                   className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
                 >
@@ -1734,8 +2003,12 @@ export const ProdutoForm: React.FC = () => {
               {fornecedoresDoProduto.length === 0 ? (
                 <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg">
                   <Truck className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                  <p className="font-medium text-slate-600">Nenhum fornecedor vinculado</p>
-                  <p className="text-[11px]">Clique em "Vincular Fornecedor" para cadastrar.</p>
+                  <p className="font-medium text-slate-600">
+                    Nenhum fornecedor vinculado
+                  </p>
+                  <p className="text-[11px]">
+                    Clique em "Vincular Fornecedor" para cadastrar.
+                  </p>
                 </div>
               ) : (
                 <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -1755,20 +2028,25 @@ export const ProdutoForm: React.FC = () => {
                       {fornecedoresDoProduto.map((f) => (
                         <tr key={f.id} className="hover:bg-slate-50">
                           <td className="p-2.5 font-medium text-slate-900">
-                            {f.expand?.fornecedor_id?.razao_social || 'Fornecedor'}
+                            {f.expand?.fornecedor_id?.razao_social ||
+                              "Fornecedor"}
                           </td>
-                          <td className="p-2.5 font-mono">{f.codigo_no_fornecedor || '—'}</td>
+                          <td className="p-2.5 font-mono">
+                            {f.codigo_no_fornecedor || "—"}
+                          </td>
                           <td className="p-2.5 text-slate-600">
-                            {f.descricao_no_fornecedor || '—'}
+                            {f.descricao_no_fornecedor || "—"}
                           </td>
                           <td className="p-2.5 text-center font-semibold">
-                            {f.unidade_fornecedor || '—'}
+                            {f.unidade_fornecedor || "—"}
                           </td>
                           <td className="p-2.5 text-center font-bold text-blue-700">
                             {f.fator_conversao || 1}
                           </td>
                           <td className="p-2.5 text-right">
-                            {f.ultimo_preco_compra ? `R$ ${f.ultimo_preco_compra.toFixed(2)}` : '—'}
+                            {f.ultimo_preco_compra
+                              ? `R$ ${f.ultimo_preco_compra.toFixed(2)}`
+                              : "—"}
                           </td>
                           <td className="p-2.5 text-right">
                             <Button
@@ -1804,8 +2082,8 @@ export const ProdutoForm: React.FC = () => {
                     Conversões de Unidade de Medida (Registro 0220 do SPED)
                   </h3>
                   <p className="text-slate-500 text-[11px]">
-                    Cadastre outras unidades com seus respectivos fatores em relação à unidade de
-                    estoque.
+                    Cadastre outras unidades com seus respectivos fatores em
+                    relação à unidade de estoque.
                   </p>
                 </div>
 
@@ -1815,17 +2093,17 @@ export const ProdutoForm: React.FC = () => {
                   onClick={() => {
                     if (!ehEdicao) {
                       toast({
-                        title: 'Salve o produto antes de cadastrar conversões.',
-                        variant: 'destructive',
-                      })
-                      return
+                        title: "Salve o produto antes de cadastrar conversões.",
+                        variant: "destructive",
+                      });
+                      return;
                     }
                     setConvItem({
-                      unidade_id: '',
+                      unidade_id: "",
                       fator_conversao: 1,
-                      gtin_unidade: '',
-                    })
-                    setModalConversaoAberto(true)
+                      gtin_unidade: "",
+                    });
+                    setModalConversaoAberto(true);
                   }}
                   className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
                 >
@@ -1837,8 +2115,12 @@ export const ProdutoForm: React.FC = () => {
               {conversoesDoProduto.length === 0 ? (
                 <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg">
                   <Repeat className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                  <p className="font-medium text-slate-600">Nenhuma conversão cadastrada</p>
-                  <p className="text-[11px]">Exemplo: Caixa com 12 unidades (Fator: 12).</p>
+                  <p className="font-medium text-slate-600">
+                    Nenhuma conversão cadastrada
+                  </p>
+                  <p className="text-[11px]">
+                    Exemplo: Caixa com 12 unidades (Fator: 12).
+                  </p>
                 </div>
               ) : (
                 <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -1846,7 +2128,9 @@ export const ProdutoForm: React.FC = () => {
                     <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[10px]">
                       <tr>
                         <th className="p-2.5">Unidade Convertida</th>
-                        <th className="p-2.5 text-center">Fator de Conversão</th>
+                        <th className="p-2.5 text-center">
+                          Fator de Conversão
+                        </th>
                         <th className="p-2.5">GTIN da Unidade</th>
                         <th className="p-2.5 text-right">Ações</th>
                       </tr>
@@ -1855,12 +2139,15 @@ export const ProdutoForm: React.FC = () => {
                       {conversoesDoProduto.map((c) => (
                         <tr key={c.id} className="hover:bg-slate-50">
                           <td className="p-2.5 font-medium text-slate-900">
-                            {c.expand?.unidade_id?.sigla} — {c.expand?.unidade_id?.descricao}
+                            {c.expand?.unidade_id?.sigla} —{" "}
+                            {c.expand?.unidade_id?.descricao}
                           </td>
                           <td className="p-2.5 text-center font-bold text-blue-700">
                             {c.fator_conversao}
                           </td>
-                          <td className="p-2.5 font-mono">{c.gtin_unidade || '—'}</td>
+                          <td className="p-2.5 font-mono">
+                            {c.gtin_unidade || "—"}
+                          </td>
                           <td className="p-2.5 text-right">
                             <Button
                               type="button"
@@ -1885,7 +2172,7 @@ export const ProdutoForm: React.FC = () => {
         {/* ======================================================== */}
         {/* ABA 6: COMPOSIÇÃO DE KIT (só quando tipo = Kit) */}
         {/* ======================================================== */}
-        {formData.tipo === 'Kit' && (
+        {formData.tipo === "Kit" && (
           <TabsContent value="composicao" className="space-y-4">
             <Card>
               <CardContent className="pt-6 space-y-4 text-xs">
@@ -1895,8 +2182,9 @@ export const ProdutoForm: React.FC = () => {
                       Composição do Kit (Itens que compõem este kit)
                     </h3>
                     <p className="text-slate-500 text-[11px]">
-                      O kit não possui saldo de estoque individual: a cada venda do kit, o sistema
-                      baixa automaticamente os estoques dos itens componentes.
+                      O kit não possui saldo de estoque individual: a cada venda
+                      do kit, o sistema baixa automaticamente os estoques dos
+                      itens componentes.
                     </p>
                   </div>
 
@@ -1906,16 +2194,16 @@ export const ProdutoForm: React.FC = () => {
                     onClick={() => {
                       if (!ehEdicao) {
                         toast({
-                          title: 'Salve o produto antes de compor o kit.',
-                          variant: 'destructive',
-                        })
-                        return
+                          title: "Salve o produto antes de compor o kit.",
+                          variant: "destructive",
+                        });
+                        return;
                       }
                       setKitItem({
-                        produto_item_id: '',
+                        produto_item_id: "",
                         quantidade: 1,
-                      })
-                      setModalKitAberto(true)
+                      });
+                      setModalKitAberto(true);
                     }}
                     className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
                   >
@@ -1941,7 +2229,9 @@ export const ProdutoForm: React.FC = () => {
                         <tr>
                           <th className="p-2.5">Código</th>
                           <th className="p-2.5">Produto Componente</th>
-                          <th className="p-2.5 text-center">Quantidade no Kit</th>
+                          <th className="p-2.5 text-center">
+                            Quantidade no Kit
+                          </th>
                           <th className="p-2.5 text-right">Ações</th>
                         </tr>
                       </thead>
@@ -1949,10 +2239,11 @@ export const ProdutoForm: React.FC = () => {
                         {itensDoKit.map((item) => (
                           <tr key={item.id} className="hover:bg-slate-50">
                             <td className="p-2.5 font-mono font-bold text-slate-700">
-                              #{item.expand?.produto_item_id?.codigo || '—'}
+                              #{item.expand?.produto_item_id?.codigo || "—"}
                             </td>
                             <td className="p-2.5 font-medium text-slate-900">
-                              {item.expand?.produto_item_id?.descricao || 'Produto'}
+                              {item.expand?.produto_item_id?.descricao ||
+                                "Produto"}
                             </td>
                             <td className="p-2.5 text-center font-bold text-blue-700">
                               {item.quantidade}
@@ -1989,7 +2280,7 @@ export const ProdutoForm: React.FC = () => {
             onMudarCamposEmLote={handleMudarCamposEmLote}
             regimeEmpresaAtiva={regimeEmpresaAtiva}
             crtEmpresaAtiva={crtEmpresaAtiva}
-            tipoItemProduto={formData.tipo || 'Produto'}
+            tipoItemProduto={formData.tipo || "Produto"}
             grupoId={formData.grupo_id}
             erros={erros}
             empresaAtiva={empresaAtiva}
@@ -2011,7 +2302,8 @@ export const ProdutoForm: React.FC = () => {
                       Últimas 20 Entradas do Produto
                     </h3>
                     <p className="text-slate-500 text-[11px] mt-0.5">
-                      Histórico de aquisição em notas fiscais de entrada lançadas no ERP.
+                      Histórico de aquisição em notas fiscais de entrada
+                      lançadas no ERP.
                     </p>
                   </div>
                   <Button
@@ -2020,16 +2312,16 @@ export const ProdutoForm: React.FC = () => {
                     size="sm"
                     onClick={() => {
                       if (id) {
-                        setCarregandoEntradas(true)
+                        setCarregandoEntradas(true);
                         listarEntradasDoProduto(id, empresaAtiva?.id)
                           .then(setEntradasCompras)
-                          .finally(() => setCarregandoEntradas(false))
+                          .finally(() => setCarregandoEntradas(false));
                       }
                     }}
                     className="h-7 text-xs text-blue-600"
                   >
                     <RefreshCw
-                      className={`h-3.5 w-3.5 mr-1 ${carregandoEntradas ? 'animate-spin' : ''}`}
+                      className={`h-3.5 w-3.5 mr-1 ${carregandoEntradas ? "animate-spin" : ""}`}
                     />
                     Atualizar
                   </Button>
@@ -2047,8 +2339,8 @@ export const ProdutoForm: React.FC = () => {
                       Nenhuma entrada por nota fiscal lançada
                     </p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      As entradas aparecerão aqui automaticamente quando uma nota de compra deste
-                      produto for lançada.
+                      As entradas aparecerão aqui automaticamente quando uma
+                      nota de compra deste produto for lançada.
                     </p>
                   </div>
                 ) : (
@@ -2070,8 +2362,10 @@ export const ProdutoForm: React.FC = () => {
                           <tr key={ent.id} className="hover:bg-slate-50">
                             <td className="p-2.5 font-mono text-slate-700 whitespace-nowrap">
                               {ent.data_entrada
-                                ? new Date(ent.data_entrada).toLocaleDateString('pt-BR')
-                                : '—'}
+                                ? new Date(ent.data_entrada).toLocaleDateString(
+                                    "pt-BR",
+                                  )
+                                : "—"}
                             </td>
                             <td
                               className="p-2.5 font-medium text-slate-900 max-w-[200px] truncate"
@@ -2084,29 +2378,29 @@ export const ProdutoForm: React.FC = () => {
                                 Nº {ent.numero_nota}
                               </span>
                               <span className="text-[10px] text-slate-400 font-mono ml-1">
-                                (Mod {ent.modelo || '55'}
-                                {ent.serie ? `/${ent.serie}` : ''})
+                                (Mod {ent.modelo || "55"}
+                                {ent.serie ? `/${ent.serie}` : ""})
                               </span>
                             </td>
                             <td className="p-2.5 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
-                              {ent.quantidade_estoque.toLocaleString('pt-BR', {
+                              {ent.quantidade_estoque.toLocaleString("pt-BR", {
                                 minimumFractionDigits: 0,
                                 maximumFractionDigits: 4,
-                              })}{' '}
+                              })}{" "}
                               <span className="text-[10px] text-slate-400 font-normal">
-                                {ent.unidade_sigla || ''}
+                                {ent.unidade_sigla || ""}
                               </span>
                             </td>
                             <td className="p-2.5 text-right font-mono text-slate-700 whitespace-nowrap">
-                              R${' '}
-                              {ent.custo_unitario.toLocaleString('pt-BR', {
+                              R${" "}
+                              {ent.custo_unitario.toLocaleString("pt-BR", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 4,
                               })}
                             </td>
                             <td className="p-2.5 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
-                              R${' '}
-                              {ent.valor_total.toLocaleString('pt-BR', {
+                              R${" "}
+                              {ent.valor_total.toLocaleString("pt-BR", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
@@ -2118,7 +2412,9 @@ export const ProdutoForm: React.FC = () => {
                                 size="sm"
                                 className="h-6 text-[11px] text-blue-600 hover:text-blue-800 p-1"
                               >
-                                <Link to={`/compras/notas-entrada/${ent.nota_id}/conferencia`}>
+                                <Link
+                                  to={`/compras/notas-entrada/${ent.nota_id}/conferencia`}
+                                >
                                   Ver Nota
                                 </Link>
                               </Button>
@@ -2148,8 +2444,9 @@ export const ProdutoForm: React.FC = () => {
                       Últimas Saídas do Produto por Venda
                     </h3>
                     <p className="text-slate-500 text-[11px] mt-0.5">
-                      Histórico das últimas vendas finalizadas que continham este produto (data,
-                      cliente, quantidade e preços praticados).
+                      Histórico das últimas vendas finalizadas que continham
+                      este produto (data, cliente, quantidade e preços
+                      praticados).
                     </p>
                   </div>
                   <Button
@@ -2158,16 +2455,16 @@ export const ProdutoForm: React.FC = () => {
                     size="sm"
                     onClick={() => {
                       if (id) {
-                        setCarregandoSaidas(true)
+                        setCarregandoSaidas(true);
                         obterHistoricoSaidasProduto(id, empresaAtiva?.id)
                           .then(setSaidasVendas)
-                          .finally(() => setCarregandoSaidas(false))
+                          .finally(() => setCarregandoSaidas(false));
                       }
                     }}
                     className="h-7 text-xs text-blue-600"
                   >
                     <RefreshCw
-                      className={`h-3.5 w-3.5 mr-1 ${carregandoSaidas ? 'animate-spin' : ''}`}
+                      className={`h-3.5 w-3.5 mr-1 ${carregandoSaidas ? "animate-spin" : ""}`}
                     />
                     Atualizar
                   </Button>
@@ -2185,8 +2482,8 @@ export const ProdutoForm: React.FC = () => {
                       Nenhuma saída registrada em vendas finalizadas
                     </p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      As saídas aparecerão aqui automaticamente quando orçamentos/pedidos deste
-                      produto forem finalizados.
+                      As saídas aparecerão aqui automaticamente quando
+                      orçamentos/pedidos deste produto forem finalizados.
                     </p>
                   </div>
                 ) : (
@@ -2209,12 +2506,14 @@ export const ProdutoForm: React.FC = () => {
                             <td className="p-2.5 font-mono text-slate-700 whitespace-nowrap">
                               {s.data
                                 ? new Date(
-                                    s.data.includes('T') ? s.data : s.data + 'T00:00:00',
-                                  ).toLocaleDateString('pt-BR')
-                                : '—'}
+                                    s.data.includes("T")
+                                      ? s.data
+                                      : s.data + "T00:00:00",
+                                  ).toLocaleDateString("pt-BR")
+                                : "—"}
                             </td>
                             <td className="p-2.5 whitespace-nowrap font-mono font-semibold text-slate-800">
-                              #{String(s.venda_numero).padStart(6, '0')}
+                              #{String(s.venda_numero).padStart(6, "0")}
                             </td>
                             <td
                               className="p-2.5 font-medium text-slate-900 max-w-[200px] truncate"
@@ -2223,24 +2522,24 @@ export const ProdutoForm: React.FC = () => {
                               {s.cliente_nome}
                             </td>
                             <td className="p-2.5 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
-                              {s.quantidade.toLocaleString('pt-BR', {
+                              {s.quantidade.toLocaleString("pt-BR", {
                                 minimumFractionDigits: 0,
                                 maximumFractionDigits: 3,
-                              })}{' '}
+                              })}{" "}
                               <span className="text-[10px] text-slate-400 font-normal">
-                                {s.unidade || 'UN'}
+                                {s.unidade || "UN"}
                               </span>
                             </td>
                             <td className="p-2.5 text-right font-mono text-slate-700 whitespace-nowrap">
-                              R${' '}
-                              {s.preco_unitario.toLocaleString('pt-BR', {
+                              R${" "}
+                              {s.preco_unitario.toLocaleString("pt-BR", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
                             </td>
                             <td className="p-2.5 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
-                              R${' '}
-                              {s.valor_total.toLocaleString('pt-BR', {
+                              R${" "}
+                              {s.valor_total.toLocaleString("pt-BR", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
@@ -2252,7 +2551,9 @@ export const ProdutoForm: React.FC = () => {
                                 size="sm"
                                 className="h-6 text-[11px] text-blue-600 hover:text-blue-800 p-1"
                               >
-                                <Link to={`/vendas/pedidos/${s.venda_id}`}>Ver Venda</Link>
+                                <Link to={`/vendas/pedidos/${s.venda_id}`}>
+                                  Ver Venda
+                                </Link>
                               </Button>
                             </td>
                           </tr>
@@ -2277,8 +2578,9 @@ export const ProdutoForm: React.FC = () => {
                   Histórico de Alterações de Descrição (SPED 0205)
                 </h3>
                 <p className="text-slate-500 text-[11px]">
-                  Toda alteração na descrição ou no código do produto é salva automaticamente para
-                  atender às exigências fiscais do registro 0205 do SPED Fiscal.
+                  Toda alteração na descrição ou no código do produto é salva
+                  automaticamente para atender às exigências fiscais do registro
+                  0205 do SPED Fiscal.
                 </p>
               </div>
 
@@ -2289,7 +2591,8 @@ export const ProdutoForm: React.FC = () => {
                     Nenhuma alteração de descrição registrada
                   </p>
                   <p className="text-[11px]">
-                    O histórico começará quando você alterar a descrição do produto.
+                    O histórico começará quando você alterar a descrição do
+                    produto.
                   </p>
                 </div>
               ) : (
@@ -2307,14 +2610,18 @@ export const ProdutoForm: React.FC = () => {
                       {historicoSPED.map((h) => (
                         <tr key={h.id} className="hover:bg-slate-50">
                           <td className="p-2.5 text-slate-700">
-                            {new Date(h.data_alteracao).toLocaleString('pt-BR')}
+                            {new Date(h.data_alteracao).toLocaleString("pt-BR")}
                           </td>
                           <td className="p-2.5 font-medium text-slate-900">
                             {h.descricao_anterior}
                           </td>
-                          <td className="p-2.5 font-mono">{h.codigo_anterior || '—'}</td>
+                          <td className="p-2.5 font-mono">
+                            {h.codigo_anterior || "—"}
+                          </td>
                           <td className="p-2.5 text-slate-600">
-                            {h.expand?.usuario_id?.name || h.expand?.usuario_id?.email || 'Sistema'}
+                            {h.expand?.usuario_id?.name ||
+                              h.expand?.usuario_id?.email ||
+                              "Sistema"}
                           </td>
                         </tr>
                       ))}
@@ -2330,7 +2637,10 @@ export const ProdutoForm: React.FC = () => {
       {/* ======================================================== */}
       {/* MODAL VINCULAR FORNECEDOR */}
       {/* ======================================================== */}
-      <Dialog open={modalFornecedorAberto} onOpenChange={setModalFornecedorAberto}>
+      <Dialog
+        open={modalFornecedorAberto}
+        onOpenChange={setModalFornecedorAberto}
+      >
         <DialogContent className="sm:max-w-md">
           <form onSubmit={handleSalvarFornecedorAux}>
             <DialogHeader>
@@ -2346,7 +2656,9 @@ export const ProdutoForm: React.FC = () => {
                 </Label>
                 <SelectFornecedor
                   value={fornItem.fornecedor_id}
-                  onChange={(val) => setFornItem((prev) => ({ ...prev, fornecedor_id: val }))}
+                  onChange={(val) =>
+                    setFornItem((prev) => ({ ...prev, fornecedor_id: val }))
+                  }
                   placeholder="Selecione o fornecedor..."
                 />
               </div>
@@ -2360,7 +2672,10 @@ export const ProdutoForm: React.FC = () => {
                     type="text"
                     value={fornItem.codigo_no_fornecedor}
                     onChange={(e) =>
-                      setFornItem((prev) => ({ ...prev, codigo_no_fornecedor: e.target.value }))
+                      setFornItem((prev) => ({
+                        ...prev,
+                        codigo_no_fornecedor: e.target.value,
+                      }))
                     }
                     placeholder="Ex: PROD-123"
                     className="h-8 text-xs font-mono"
@@ -2375,7 +2690,10 @@ export const ProdutoForm: React.FC = () => {
                     type="text"
                     value={fornItem.unidade_fornecedor}
                     onChange={(e) =>
-                      setFornItem((prev) => ({ ...prev, unidade_fornecedor: e.target.value }))
+                      setFornItem((prev) => ({
+                        ...prev,
+                        unidade_fornecedor: e.target.value,
+                      }))
                     }
                     placeholder="Ex: CX, FD, UN"
                     className="h-8 text-xs uppercase"
@@ -2392,7 +2710,10 @@ export const ProdutoForm: React.FC = () => {
                   type="text"
                   value={fornItem.descricao_no_fornecedor}
                   onChange={(e) =>
-                    setFornItem((prev) => ({ ...prev, descricao_no_fornecedor: e.target.value }))
+                    setFornItem((prev) => ({
+                      ...prev,
+                      descricao_no_fornecedor: e.target.value,
+                    }))
                   }
                   placeholder="Descrição que consta na nota do fornecedor"
                   className="h-8 text-xs"
@@ -2409,7 +2730,10 @@ export const ProdutoForm: React.FC = () => {
                     step="0.0001"
                     value={fornItem.fator_conversao}
                     onChange={(e) =>
-                      setFornItem((prev) => ({ ...prev, fator_conversao: Number(e.target.value) }))
+                      setFornItem((prev) => ({
+                        ...prev,
+                        fator_conversao: Number(e.target.value),
+                      }))
                     }
                     placeholder="1"
                     className="h-8 text-xs"
@@ -2426,7 +2750,7 @@ export const ProdutoForm: React.FC = () => {
                   <Input
                     type="number"
                     step="0.01"
-                    value={fornItem.ultimo_preco_compra ?? ''}
+                    value={fornItem.ultimo_preco_compra ?? ""}
                     onChange={(e) =>
                       setFornItem((prev) => ({
                         ...prev,
@@ -2448,7 +2772,10 @@ export const ProdutoForm: React.FC = () => {
               >
                 Cancelar
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
                 Vincular
               </Button>
             </DialogFooter>
@@ -2459,7 +2786,10 @@ export const ProdutoForm: React.FC = () => {
       {/* ======================================================== */}
       {/* MODAL CONVERSÃO DE UNIDADE */}
       {/* ======================================================== */}
-      <Dialog open={modalConversaoAberto} onOpenChange={setModalConversaoAberto}>
+      <Dialog
+        open={modalConversaoAberto}
+        onOpenChange={setModalConversaoAberto}
+      >
         <DialogContent className="sm:max-w-md">
           <form onSubmit={handleSalvarConversaoAux}>
             <DialogHeader>
@@ -2475,7 +2805,9 @@ export const ProdutoForm: React.FC = () => {
                 </Label>
                 <Select
                   value={convItem.unidade_id}
-                  onValueChange={(val) => setConvItem((prev) => ({ ...prev, unidade_id: val }))}
+                  onValueChange={(val) =>
+                    setConvItem((prev) => ({ ...prev, unidade_id: val }))
+                  }
                 >
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue placeholder="Selecione a unidade..." />
@@ -2499,13 +2831,17 @@ export const ProdutoForm: React.FC = () => {
                   step="0.0001"
                   value={convItem.fator_conversao}
                   onChange={(e) =>
-                    setConvItem((prev) => ({ ...prev, fator_conversao: Number(e.target.value) }))
+                    setConvItem((prev) => ({
+                      ...prev,
+                      fator_conversao: Number(e.target.value),
+                    }))
                   }
                   placeholder="Ex: 12 (para caixa com 12)"
                   className="h-8 text-xs"
                 />
                 <span className="text-[10px] text-slate-400">
-                  Quantas unidades de estoque equivalem a 1 desta unidade convertida.
+                  Quantas unidades de estoque equivalem a 1 desta unidade
+                  convertida.
                 </span>
               </div>
 
@@ -2517,7 +2853,10 @@ export const ProdutoForm: React.FC = () => {
                   type="text"
                   value={convItem.gtin_unidade}
                   onChange={(e) =>
-                    setConvItem((prev) => ({ ...prev, gtin_unidade: e.target.value.toUpperCase() }))
+                    setConvItem((prev) => ({
+                      ...prev,
+                      gtin_unidade: e.target.value.toUpperCase(),
+                    }))
                   }
                   placeholder="Código de barras da embalagem"
                   className="h-8 text-xs font-mono uppercase"
@@ -2534,7 +2873,10 @@ export const ProdutoForm: React.FC = () => {
               >
                 Cancelar
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
                 Salvar Conversão
               </Button>
             </DialogFooter>
@@ -2561,7 +2903,9 @@ export const ProdutoForm: React.FC = () => {
                 </Label>
                 <SelectProduto
                   value={kitItem.produto_item_id}
-                  onChange={(val) => setKitItem((prev) => ({ ...prev, produto_item_id: val }))}
+                  onChange={(val) =>
+                    setKitItem((prev) => ({ ...prev, produto_item_id: val }))
+                  }
                   filtroTipo="Produto"
                   placeholder="Selecione o produto componente..."
                 />
@@ -2576,22 +2920,33 @@ export const ProdutoForm: React.FC = () => {
                   step="0.001"
                   value={kitItem.quantidade}
                   onChange={(e) =>
-                    setKitItem((prev) => ({ ...prev, quantidade: Number(e.target.value) }))
+                    setKitItem((prev) => ({
+                      ...prev,
+                      quantidade: Number(e.target.value),
+                    }))
                   }
                   placeholder="1"
                   className="h-8 text-xs"
                 />
                 <span className="text-[10px] text-slate-400">
-                  Quantidade baixada do estoque para cada unidade de kit vendida.
+                  Quantidade baixada do estoque para cada unidade de kit
+                  vendida.
                 </span>
               </div>
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setModalKitAberto(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setModalKitAberto(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
                 Adicionar ao Kit
               </Button>
             </DialogFooter>
@@ -2599,7 +2954,7 @@ export const ProdutoForm: React.FC = () => {
         </DialogContent>
       </Dialog>
     </form>
-  )
-}
+  );
+};
 
-export default ProdutoForm
+export default ProdutoForm;
