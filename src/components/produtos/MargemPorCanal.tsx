@@ -403,6 +403,18 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                           Puxar do Mercado Livre
                         </button>
                       )}
+                      {editavel && ehCanalML(canal) && mlManual[chave] === undefined && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMlManual((prev) => Object.assign({}, prev, { [chave]: '' }))
+                          }
+                          className="ml-2 text-[10px] text-slate-500 hover:underline"
+                          title="Para anúncio sem SKU: digite o número do anúncio (MLB...)"
+                        >
+                          outro anúncio
+                        </button>
+                      )}
                       {mlManual[chave] !== undefined && (
                         <div className="mt-1 flex items-center gap-1">
                           <Input
