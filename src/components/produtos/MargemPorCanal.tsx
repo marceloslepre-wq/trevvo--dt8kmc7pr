@@ -46,6 +46,19 @@ const paraNumero = (txt: string): number | null => {
   return Number.isNaN(v) || v <= 0 ? null : Number(v.toFixed(2))
 }
 
+const TIPO_ANUNCIO_ML: Record<string, string> = {
+  gold_special: 'Clássico',
+  gold_pro: 'Premium',
+  free: 'Grátis',
+}
+const STATUS_ANUNCIO_ML: Record<string, string> = {
+  active: 'ativo',
+  paused: 'pausado',
+  closed: 'finalizado',
+  under_review: 'em revisão',
+  inactive: 'inativo',
+}
+
 const ehCanalML = (c: CanalMargem) => /mercado\s*livre/i.test(c.nome || '') && !!c.empresa_id
 
 function corMargem(m: number) {
@@ -258,7 +271,10 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
     setMlBuscando(chave)
     try {
       const r = await consultarPrecosProdutoMercadoLivre(canal.empresa_id, produtoId, opcoes)
-      const lista = r.anuncios || []
+      // Ativos primeiro
+      const lista = (r.anuncios || []).slice().sort(
+        (x, y) => Number(y.status_anuncio === 'active') - Number(x.status_anuncio === 'active'),
+      )
       if (lista.length === 0) {
         setMlManual((prev) => Object.assign({}, prev, { [chave]: prev[chave] || '' }))
         toast({
@@ -444,7 +460,8 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                       {(mlOpcoes[chave] || []).length > 0 && (
                         <div className="mt-1 space-y-1 rounded border border-blue-100 bg-blue-50 p-1.5">
                           <div className="text-[10px] text-slate-600">
-                            Vários anúncios com este SKU. Escolha um:
+                            {(mlOpcoes[chave] || []).length} anúncios deste produto. Escolha o que
+                            vale para a margem:
                           </div>
                           {(mlOpcoes[chave] || []).map((a) => (
                             <button
@@ -455,8 +472,10 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                             >
                               {a.anuncio_id}
                               {a.sku_anuncio ? ` SKU ${a.sku_anuncio}` : ''}
-                              {a.variacao ? ` (${a.variacao})` : ''} · {a.tipo_anuncio} ·{' '}
-                              {a.status_anuncio}: {detalheML(a)}
+                              {a.variacao ? ` (${a.variacao})` : ''} ·{' '}
+                              {TIPO_ANUNCIO_ML[a.tipo_anuncio] || a.tipo_anuncio} ·{' '}
+                              {STATUS_ANUNCIO_ML[a.status_anuncio] || a.status_anuncio}:{' '}
+                              {detalheML(a)}
                             </button>
                           ))}
                         </div>
