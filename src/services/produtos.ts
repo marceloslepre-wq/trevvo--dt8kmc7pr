@@ -15,6 +15,10 @@ export interface Produto {
   gtin?: string
   gtin_tributavel?: string
   referencia?: string
+  /** '' | 'Registro' | 'Notificação' | 'Isento' (ANVISA) */
+  anvisa_tipo?: string
+  /** Nº de registro ou notificação na ANVISA, como na embalagem */
+  anvisa_numero?: string
   marca_id?: string
   grupo_id?: string
   categoria_id?: string
@@ -1172,6 +1176,11 @@ export async function salvarProduto(
       : '',
 
     updated_by: pb.authStore.record?.id || null,
+  }
+  // ANVISA: só grava quando o chamador enviou (importações antigas não apagam o valor)
+  if (dados.anvisa_tipo !== undefined) payload.anvisa_tipo = dados.anvisa_tipo || ''
+  if (dados.anvisa_numero !== undefined) {
+    payload.anvisa_numero = (dados.anvisa_numero || '').replace(/[^0-9A-Za-z./-]/g, '')
   }
 
   const assinanteIdAtivo = obterAssinanteIdAtivo(dados.assinante_id)

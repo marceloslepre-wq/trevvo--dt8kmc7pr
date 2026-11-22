@@ -986,6 +986,57 @@ export const ProdutoForm: React.FC = () => {
                 </div>
               </div>
 
+              {/* ANVISA */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700 block mb-1">ANVISA</Label>
+                  <Select
+                    value={formData.anvisa_tipo || 'nao_informado'}
+                    onValueChange={(val) =>
+                      handleCampoChange('anvisa_tipo', val === 'nao_informado' ? '' : val)
+                    }
+                  >
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="nao_informado">Não informado</SelectItem>
+                      <SelectItem value="Registro">Registro</SelectItem>
+                      <SelectItem value="Notificação">Notificação</SelectItem>
+                      <SelectItem value="Isento">Isento (não regulado)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-[10px] text-slate-400">
+                    Exigido pelo Mercado Livre e marketplaces para produtos para saúde, cosméticos e
+                    saneantes.
+                  </span>
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Nº de registro / notificação na ANVISA
+                  </Label>
+                  <Input
+                    type="text"
+                    value={formData.anvisa_numero || ''}
+                    onChange={(e) => handleCampoChange('anvisa_numero', e.target.value)}
+                    placeholder="Ex.: 80246910003 (está na embalagem)"
+                    className="h-9 text-xs font-mono"
+                    maxLength={40}
+                    disabled={formData.anvisa_tipo === 'Isento'}
+                  />
+                  {formData.anvisa_numero && (
+                    <a
+                      href={`https://consultas.anvisa.gov.br/#/saude/q/?numeroRegistro=${encodeURIComponent(formData.anvisa_numero.replace(/[^0-9]/g, ''))}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-blue-600 hover:underline"
+                    >
+                      Conferir no site da ANVISA
+                    </a>
+                  )}
+                </div>
+              </div>
+
               {/* Unidades */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
                 <div>
