@@ -233,15 +233,16 @@ routerAdd(
       return { status: res.statusCode, dados: lerJson(res) }
     }
 
-    // Busca produtos do assinante pela referência (matrícula). Devolve lista resumida.
+    // Busca produtos do assinante pela referência da Tray (= matrícula do Uniplus = CÓDIGO do
+    // produto no Trevvo). Desde 21/11/2026 o campo referencia do Trevvo guarda o código da Tray,
+    // por isso a comparação é pelo código interno.
     function produtosPorReferencia(assinanteId, ref) {
       if (!ref) return []
-      // Só consulta quando a referência tem caracteres seguros para o filtro.
-      if (!/^[A-Za-z0-9._\-\/ ]{1,60}$/.test(ref)) return []
+      if (!/^[0-9]{1,12}$/.test(ref)) return []
       try {
         const recs = $app.findRecordsByFilter(
           'produtos',
-          "assinante_id = '" + assinanteId + "' && referencia = '" + ref + "'",
+          "assinante_id = '" + assinanteId + "' && codigo = " + parseInt(ref, 10),
           'codigo',
           5,
           0,
