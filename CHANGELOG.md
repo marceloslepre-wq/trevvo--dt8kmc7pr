@@ -2,6 +2,15 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-22 — Deploy-only: recarga do hook mercadolivre_precos (migration 0140 já aplicada)
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado; migrations não foram tocadas.
+- Objetivo: reimplantar o backend para recarregar `pocketbase/hooks/mercadolivre_precos.js` com a versão atual do repositório.
+- Migration `0140_create_produtos_vinculos_anuncios.js`: confirmada `applied` em `list_migrations` (não reaplicada). Próxima livre: 0141.
+- Verificação:
+  - `list_backend_functions`: `mercadolivre_precos` registrado em GET /backend/v1/mercadolivre/precos-produto.
+  - `list_logs` (hooks): sem erro de inicialização; único erro esperado é a regra de negócio de `vendas/cancelar` (título recebido bloqueia cancelamento).
+
 ## 2026-11-22 — Deploy-only: recarga do hook mercadolivre_precos (precificação por canal)
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado.
