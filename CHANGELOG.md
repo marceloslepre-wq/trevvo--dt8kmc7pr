@@ -2,10 +2,10 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
-## 2026-11-22 — Deploy-only: recarga do hook mercadolivre_precos
+## 2026-11-22 — Deploy-only: recarga do hook mercadolivre_precos (precificação por canal)
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado.
-- Objetivo: reimplantar o backend para recarregar `pocketbase/hooks/mercadolivre_precos.js` (usuário na edição de produto, /cadastros/produtos/:id/editar, consumindo os preços do Mercado Livre).
+- Objetivo: reimplantar o backend para recarregar `pocketbase/hooks/mercadolivre_precos.js` (usuário testando a precificação por canal em /cadastros/produtos/:id/editar).
 - Verificação:
   - `list_backend_functions`: `mercadolivre_precos` (GET /backend/v1/mercadolivre/precos-produto) registrado junto dos demais hooks.
   - `list_logs` (hooks): sem erro de inicialização de hooks após o deploy.
