@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Store, Loader2, Info, Check } from 'lucide-react'
+import { Store, Loader2, Info, Check, Download } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
@@ -17,6 +17,11 @@ import {
   precoParaMargemCanal,
 } from '@/services/canaisMargem'
 import { listarPrecosCanalDoProduto, salvarPrecoCanal } from '@/services/precosEmpresa'
+import {
+  AnuncioPrecoML,
+  consultarPrecosProdutoMercadoLivre,
+  mensagemErroMercadoLivre,
+} from '@/services/mercadoLivre'
 
 interface MargemPorCanalProps {
   produtoId?: string
@@ -40,6 +45,8 @@ const paraNumero = (txt: string): number | null => {
   const v = Number(t.replace(',', '.'))
   return Number.isNaN(v) || v <= 0 ? null : Number(v.toFixed(2))
 }
+
+const ehCanalML = (c: CanalMargem) => /mercado\s*livre/i.test(c.nome || '') && !!c.empresa_id
 
 function corMargem(m: number) {
   if (m < 0) return 'text-rose-700 bg-rose-50'
@@ -77,6 +84,8 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
   )
   const [salvando, setSalvando] = useState('')
   const [salvoOk, setSalvoOk] = useState('')
+  const [mlBuscando, setMlBuscando] = useState('')
+  const [mlOpcoes, setMlOpcoes] = useState<Record<string, AnuncioPrecoML[]>>({})
 
   useEffect(() => {
     let ativo = true
@@ -207,6 +216,61 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
 
   const editavel = podeEditar && Boolean(produtoId)
 
+  const detalheML = (a: AnuncioPrecoML) => {
+    const partes = [`preço ${brl(a.preco)}`]
+    if (a.tarifa_venda !== null) partes.push(`tarifa ${brl(a.tarifa_venda)}`)
+    if (a.custo_envio !== null) partes.push(`envio ${brl(a.custo_envio)}`)
+    return partes.join(' − ') + (a.valor_recebido !== null ? ` = ${brl(a.valor_recebido)}` : '')
+  }
+
+  const usarAnuncioML = async (chave: string, a: AnuncioPrecoML) => {
+    setMlOpcoes((prev) => {
+      const novo = Object.assign({}, prev)
+      delete novo[chave]
+      return novo
+    })
+    await gravar(chave, {
+      preco: a.preco > 0 ? Number(a.preco.toFixed(2)) : null,
+      recebido: a.valor_recebido !== null && a.valor_recebido > 0 ? a.valor_recebido : null,
+    })
+    toast({
+      title: `Mercado Livre ${a.anuncio_id}`,
+      description:
+        detalheML(a) +
+        (a.custo_envio === null ? ' (custo de envio não informado pelo Mercado Livre)' : ''),
+    })
+  }
+
+  const puxarDoML = async (canal: CanalMargem, chave: string) => {
+    if (!produtoId || !canal.empresa_id) return
+    setMlBuscando(chave)
+    try {
+      const r = await consultarPrecosProdutoMercadoLivre(canal.empresa_id, produtoId)
+      const lista = r.anuncios || []
+      if (lista.length === 0) {
+        toast({
+          title: 'Nenhum anúncio encontrado no Mercado Livre',
+          description:
+            r.mensagem ||
+            `Nenhum anúncio com SKU "${r.sku}" (a Referência do produto) na conta da loja do canal.`,
+          variant: 'destructive',
+        })
+      } else if (lista.length === 1) {
+        await usarAnuncioML(chave, lista[0])
+      } else {
+        setMlOpcoes((prev) => Object.assign({}, prev, { [chave]: lista }))
+      }
+    } catch (err) {
+      toast({
+        title: 'Erro ao consultar o Mercado Livre',
+        description: mensagemErroMercadoLivre(err, 'Falha ao consultar o Mercado Livre.'),
+        variant: 'destructive',
+      })
+    } finally {
+      setMlBuscando('')
+    }
+  }
+
   return (
     <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -282,6 +346,41 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                         )}
                         {salvoOk === chave && <Check className="h-3 w-3 text-emerald-600" />}
                       </div>
+                      {editavel && ehCanalML(canal) && (
+                        <button
+                          type="button"
+                          onClick={() => void puxarDoML(canal, chave)}
+                          disabled={mlBuscando === chave}
+                          className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:underline disabled:opacity-50"
+                          title="Lê o preço e o valor recebido do anúncio cujo SKU é a Referência do produto"
+                        >
+                          {mlBuscando === chave ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Download className="h-3 w-3" />
+                          )}
+                          Puxar do Mercado Livre
+                        </button>
+                      )}
+                      {(mlOpcoes[chave] || []).length > 0 && (
+                        <div className="mt-1 space-y-1 rounded border border-blue-100 bg-blue-50 p-1.5">
+                          <div className="text-[10px] text-slate-600">
+                            Vários anúncios com este SKU. Escolha um:
+                          </div>
+                          {(mlOpcoes[chave] || []).map((a) => (
+                            <button
+                              key={a.anuncio_id + a.variacao_id}
+                              type="button"
+                              onClick={() => void usarAnuncioML(chave, a)}
+                              className="block w-full text-left text-[10px] text-blue-700 hover:underline"
+                            >
+                              {a.anuncio_id}
+                              {a.variacao ? ` (${a.variacao})` : ''} · {a.tipo_anuncio} ·{' '}
+                              {a.status_anuncio}: {detalheML(a)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <div className="text-[10px] text-slate-400">
                         {loja ? `${loja}: ` : ''}
                         {brl(base)}
