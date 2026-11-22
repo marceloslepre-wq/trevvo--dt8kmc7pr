@@ -107,6 +107,13 @@ export const ProdutosLista: React.FC = () => {
 
   const [busca, setBusca] = useState('')
   const [buscaInput, setBuscaInput] = useState('')
+  const [buscaExata, setBuscaExata] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('produtos_busca_exata') === '1'
+    } catch {
+      return false
+    }
+  })
   const [filtroTipo, setFiltroTipo] = useState<TipoProduto | 'todos'>('todos')
   const [filtroGrupo, setFiltroGrupo] = useState('todos')
   const [filtroCategoria, setFiltroCategoria] = useState('todos')
@@ -215,6 +222,7 @@ export const ProdutosLista: React.FC = () => {
       const ordenacaoFormatada = ordem === 'desc' ? `-${ordenarPor}` : ordenarPor
       const res = await listarProdutos({
         busca,
+        busca_exata: buscaExata,
         tipo: filtroTipo,
         grupo_id: filtroGrupo,
         categoria_id: filtroCategoria,
@@ -244,6 +252,7 @@ export const ProdutosLista: React.FC = () => {
     }
   }, [
     busca,
+    buscaExata,
     filtroTipo,
     filtroGrupo,
     filtroCategoria,
@@ -682,6 +691,28 @@ export const ProdutosLista: React.FC = () => {
                 className="pl-9 h-9 text-xs"
               />
             </div>
+
+            <label
+              className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-600 whitespace-nowrap"
+              title="Número digitado: só o produto com código, GTIN ou referência exatamente igual. Texto: descrição que contém o texto."
+            >
+              <input
+                type="checkbox"
+                checked={buscaExata}
+                onChange={(e) => {
+                  const v = e.target.checked
+                  setBuscaExata(v)
+                  try {
+                    localStorage.setItem('produtos_busca_exata', v ? '1' : '0')
+                  } catch {
+                    /* sem armazenamento local */
+                  }
+                  setPagina(1)
+                }}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>Combinar exatamente</span>
+            </label>
 
             <div className="flex items-center gap-2">
               <Button
