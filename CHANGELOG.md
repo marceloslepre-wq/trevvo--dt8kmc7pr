@@ -2,6 +2,15 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-22 — Deploy-only: recarga dos hooks mercadolivre_precos e tray_produtos
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado.
+- Objetivo: reimplantar o backend para recarregar os hooks `pocketbase/hooks/mercadolivre_precos.js` e `pocketbase/hooks/tray_produtos.js`.
+- Execução: `deploy_backend` executado com sucesso, sem necessidade de commit para disparar o build.
+- Verificação:
+  - `list_backend_functions`: `mercadolivre_precos` (GET /backend/v1/mercadolivre/precos-produto) e `tray_produtos` (GET /backend/v1/tray/produtos/conferencia) registrados, sem erro de registro.
+  - `list_logs` (hooks e requests): sem erro de inicialização/boot; rotas da família Mercado Livre (ex.: POST /backend/v1/mercadolivre/notificacoes) respondendo 200.
+
 ## 2026-11-22 — Deploy-only: aplicação da migration 0138 (canais_margem)
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado.
