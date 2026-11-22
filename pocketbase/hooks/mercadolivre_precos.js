@@ -324,7 +324,10 @@ routerAdd(
 
       // Anúncios com este SKU (o filtro seller_sku pega SKU do anúncio e das variações).
       const ids = []
-      if (anuncioInformado) ids.push(anuncioInformado.indexOf('MLB') === 0 ? anuncioInformado : 'MLB' + anuncioInformado)
+      if (anuncioInformado)
+        ids.push(
+          anuncioInformado.indexOf('MLB') === 0 ? anuncioInformado : 'MLB' + anuncioInformado,
+        )
       const filtros = anuncioInformado || !sku ? [] : ['seller_sku=', 'sku=']
       for (let f = 0; f < filtros.length && ids.length === 0; f++) {
         const busca = chamarML(
