@@ -15,15 +15,11 @@ migrate(
     const col = app.findCollectionByNameOrId('produtos')
     let mudou = false
     if (!col.fields.getByName('anvisa_tipo')) {
-      col.fields.add(
-        new TextField({ name: 'anvisa_tipo', required: false, max: 20 }),
-      )
+      col.fields.add(new TextField({ name: 'anvisa_tipo', required: false, max: 20 }))
       mudou = true
     }
     if (!col.fields.getByName('anvisa_numero')) {
-      col.fields.add(
-        new TextField({ name: 'anvisa_numero', required: false, max: 40 }),
-      )
+      col.fields.add(new TextField({ name: 'anvisa_numero', required: false, max: 40 }))
       mudou = true
     }
     if (mudou) app.save(col)
