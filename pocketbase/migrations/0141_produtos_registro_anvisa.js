@@ -1,5 +1,5 @@
 // @ts-check
-/// <reference path="../types.d.ts" />
+/// <reference path='../types.d.ts' />
 
 /**
  * Migration 0141: registro na ANVISA no cadastro de produtos
@@ -12,29 +12,29 @@
  */
 migrate(
   (app) => {
-    const col = app.findCollectionByNameOrId("produtos");
-    let mudou = false;
-    if (!col.fields.getByName("anvisa_tipo")) {
+    const col = app.findCollectionByNameOrId('produtos')
+    let mudou = false
+    if (!col.fields.getByName('anvisa_tipo')) {
       col.fields.add(
-        new TextField({ name: "anvisa_tipo", required: false, max: 20 }),
-      );
-      mudou = true;
+        new TextField({ name: 'anvisa_tipo', required: false, max: 20 }),
+      )
+      mudou = true
     }
-    if (!col.fields.getByName("anvisa_numero")) {
+    if (!col.fields.getByName('anvisa_numero')) {
       col.fields.add(
-        new TextField({ name: "anvisa_numero", required: false, max: 40 }),
-      );
-      mudou = true;
+        new TextField({ name: 'anvisa_numero', required: false, max: 40 }),
+      )
+      mudou = true
     }
-    if (mudou) app.save(col);
+    if (mudou) app.save(col)
   },
   (app) => {
-    const col = app.findCollectionByNameOrId("produtos");
-    const nomes = ["anvisa_tipo", "anvisa_numero"];
+    const col = app.findCollectionByNameOrId('produtos')
+    const nomes = ['anvisa_tipo', 'anvisa_numero']
     for (let i = 0; i < nomes.length; i++) {
-      const f = col.fields.getByName(nomes[i]);
-      if (f) col.fields.removeById(f.id);
+      const f = col.fields.getByName(nomes[i])
+      if (f) col.fields.removeById(f.id)
     }
-    app.save(col);
+    app.save(col)
   },
-);
+)
