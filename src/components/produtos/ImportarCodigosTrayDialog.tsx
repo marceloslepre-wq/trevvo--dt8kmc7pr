@@ -231,7 +231,9 @@ export default function ImportarCodigosTrayDialog({ aberto, onFechar, onConcluid
           {concluido && (
             <div className={falhas.length ? 'text-amber-700' : 'text-emerald-700'}>
               Concluído: {total - falhas.length} produtos atualizados
-              {falhas.length ? `, ${falhas.length} com erro (${falhas.slice(0, 5).join('; ')})` : '.'}
+              {falhas.length
+                ? `, ${falhas.length} com erro (${falhas.slice(0, 5).join('; ')})`
+                : '.'}
             </div>
           )}
         </div>
