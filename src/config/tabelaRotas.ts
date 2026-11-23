@@ -1058,6 +1058,15 @@ export const ROTAS: ItemRota[] = [
     icone: ShoppingBag,
   },
   {
+    rota: '/configuracoes/shopee',
+    rotulo: 'Integração Shopee',
+    grupo: 'Configurações',
+    modulo: 'configuracoes',
+    acaoMinima: 'ver',
+    ordem: 22,
+    icone: ShoppingBag,
+  },
+  {
     rota: '/configuracoes/auditoria',
     rotulo: 'Log de Auditoria',
     grupo: 'Configurações',
