@@ -2,6 +2,15 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-23 — Deploy-only: reimplante do backend (PRs 48/49 — Saúde dos anúncios e Shopee)
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks e migrations não foram tocados.
+- Objetivo: reimplantar o backend para carregar o estado atual do repositório, ativando o que ficou pendente dos PRs 48 e 49 — Saúde dos anúncios (`anuncios_saude.js`) e Shopee (`shopee_conexao.js`).
+- Verificação (pós-commit):
+  - `list_migrations`: 0142 (`anuncios_saude`) e 0143 (`shopee_conexao`) `applied`, nenhuma migration falha.
+  - `list_backend_functions`: `anuncios_saude` (POST /backend/v1/anuncios-saude/verificar) e `shopee_conexao` (diagnóstico/conexão/callback/status/testar/desconectar) registrados; família `mercadolivre` intacta.
+  - `list_logs` (hooks, min_level=error): sem erro de inicialização de hook após o deploy.
+
 ## 2026-11-22 — Deploy-only: recarga do hook mercadolivre_precos (migration 0140 já aplicada)
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado; migrations não foram tocadas.
