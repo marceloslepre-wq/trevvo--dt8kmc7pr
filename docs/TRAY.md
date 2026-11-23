@@ -97,3 +97,12 @@ renovação do `access_token` e, para ERP, o consumo da API do **Multi CD**.
   de novo após 1, 2, 4 e 8 segundos.
 - Tela: card "Homologação do aplicativo" em Configurações > Tray (administrador, loja conectada),
   componente `src/components/tray/HomologacaoTray.tsx`, com botão "Baixar evidências (.txt)".
+
+## Importar descrição e imagens (tray_midia.js)
+
+`POST /backend/v1/tray/produtos/importar-midia` (administradores), uma página de produtos da Tray
+por chamada (`limite` até 10, padrão 5). Para cada produto ou variação, acha o produto do Trevvo
+(código = referência na Tray; senão `referencia` = código da Tray) e grava `descricao_site` (HTML
+sem scripts), `foto` + até 5 `fotos_adicionais` (baixadas da Tray e guardadas no Trevvo, até 2 MB
+cada) e peso/medidas quando vazios. `sobrescrever: true` substitui descrição e fotos existentes;
+`simular: true` não grava nada. Nada é enviado à Tray. Tela: Configurações > Tray.

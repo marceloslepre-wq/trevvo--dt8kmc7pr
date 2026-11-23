@@ -1241,6 +1241,24 @@ export const ProdutoForm: React.FC = () => {
                 </div>
               </div>
 
+              {/* Descrição para o site */}
+              <div className="pt-2 border-t border-slate-100">
+                <Label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Descrição para o site
+                </Label>
+                <Textarea
+                  value={formData.descricao_site || ''}
+                  onChange={(e) => handleCampoChange('descricao_site', e.target.value)}
+                  placeholder="Descrição completa do produto para a loja virtual e marketplaces (aceita HTML)..."
+                  rows={6}
+                  className="text-xs font-mono"
+                  maxLength={100000}
+                />
+                <span className="text-[10px] text-slate-400">
+                  Pode ser importada da Tray em Configurações &gt; Tray.
+                </span>
+              </div>
+
               {/* Observações */}
               <div className="pt-2 border-t border-slate-100">
                 <Label className="text-xs font-semibold text-slate-700 block mb-1">
