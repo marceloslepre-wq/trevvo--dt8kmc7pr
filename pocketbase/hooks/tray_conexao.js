@@ -908,6 +908,19 @@ routerAdd(
       const ctx = contextoDoUsuario(auth)
       const empresa = exigirEmpresa(ctx, String(q['empresa_id'] || '').trim())
       const conta = contaDaEmpresa(empresa.id)
+      let lojasTeste = ''
+      try {
+        lojasTeste = ($os.getenv('TRAY_LOJAS_TESTE') || '').trim()
+      } catch (_) {}
+      const hostConta = conta ? conta.getString('loja_host').toLowerCase() : ''
+      const storeConta = conta ? conta.getString('store_id').trim() : ''
+      const lojaDeTeste =
+        /(^|\.)corpsuite\.com\.br$/.test(hostConta) ||
+        (!!storeConta &&
+          lojasTeste
+            .split(',')
+            .map((x) => x.trim())
+            .indexOf(storeConta) >= 0)
       return c.json(200, {
         sucesso: true,
         segredos_configurados: segredosTray().ok,
@@ -916,6 +929,7 @@ routerAdd(
         loja_host: conta ? conta.getString('loja_host') : '',
         loja_nome: conta ? conta.getString('loja_nome') : '',
         store_id: conta ? conta.getString('store_id') : '',
+        loja_de_teste: lojaDeTeste,
         token_expira_em: conta ? conta.getString('token_expira_em') : '',
         refresh_expira_em: conta ? conta.getString('refresh_expira_em') : '',
         ultima_renovacao_em: conta ? conta.getString('ultima_renovacao_em') : '',
