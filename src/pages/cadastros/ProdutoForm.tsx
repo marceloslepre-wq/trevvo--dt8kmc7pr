@@ -18,6 +18,9 @@ import {
   Image as ImageIcon,
   CheckCircle2,
   RefreshCw,
+  X,
+  Eye,
+  Code,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -89,6 +92,25 @@ import { MargemPorCanal } from '@/components/produtos/MargemPorCanal'
 import { PrecosPorLoja } from '@/components/produtos/PrecosPorLoja'
 import { listarPrecosDoProduto } from '@/services/precosEmpresa'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
+
+/** Remove scripts, iframes e eventos on* antes de mostrar a descrição formatada. */
+function htmlSeguro(html: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    doc
+      .querySelectorAll('script, iframe, object, embed, style, link, meta')
+      .forEach((n) => n.remove())
+    doc.querySelectorAll('*').forEach((el) => {
+      Array.from(el.attributes).forEach((a) => {
+        const nome = a.name.toLowerCase()
+        if (nome.startsWith('on') || /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name)
+      })
+    })
+    return doc.body.innerHTML
+  } catch {
+    return ''
+  }
+}
 
 export const ProdutoForm: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -204,7 +226,11 @@ export const ProdutoForm: React.FC = () => {
   const [fotoArquivo, setFotoArquivo] = useState<File | null>(null)
   const [fotoPreview, setFotoPreview] = useState<string | null>(null)
   const [fotosAdicionais, setFotosAdicionais] = useState<File[]>([])
-  const [fotosAdicionaisExistentes, setFotosAdicionaisExistentes] = useState<string[]>([])
+  const [fotosAdicionaisExistentes, setFotosAdicionaisExistentes] = useState<
+    { nome: string; url: string }[]
+  >([])
+  const [fotosAdicionaisRemover, setFotosAdicionaisRemover] = useState<string[]>([])
+  const [editarHtmlDescricao, setEditarHtmlDescricao] = useState(false)
 
   // Tabelas auxiliares
   const [fornecedoresDoProduto, setFornecedoresDoProduto] = useState<ProdutoFornecedor[]>([])
@@ -289,9 +315,9 @@ export const ProdutoForm: React.FC = () => {
         if (prod.foto) {
           setFotoPreview(pb.files.getURL(prod, prod.foto))
         }
-        if (prod.fotos_adicionais && prod.fotos_adicionais.length > 0) {
-          setFotosAdicionaisExistentes(prod.fotos_adicionais.map((f) => pb.files.getURL(prod, f)))
-        }
+        setFotosAdicionaisExistentes(
+          (prod.fotos_adicionais || []).map((f) => ({ nome: f, url: pb.files.getURL(prod, f) })),
+        )
 
         // Carregar auxiliares em paralelo
         const [forns, convs, kits, hist] = await Promise.all([
@@ -490,6 +516,7 @@ export const ProdutoForm: React.FC = () => {
         ...formData,
         fotoArquivo,
         fotosAdicionaisArquivos: fotosAdicionais,
+        fotosAdicionaisRemover,
       })
 
       toast({
@@ -506,6 +533,10 @@ export const ProdutoForm: React.FC = () => {
       if (!ehEdicao) {
         navigate(`/cadastros/produtos/${salvo.id}/editar`)
       } else {
+        // Arquivos já enviados: limpa para não mandar de novo no próximo salvamento.
+        setFotoArquivo(null)
+        setFotosAdicionais([])
+        setFotosAdicionaisRemover([])
         carregarProduto(salvo.id)
       }
     } catch (err: unknown) {
@@ -1215,6 +1246,59 @@ export const ProdutoForm: React.FC = () => {
 
                   {/* Fotos adicionais */}
                   <div className="border-l border-slate-200 pl-4 space-y-2">
+                    {(fotosAdicionaisExistentes.length > 0 || fotosAdicionais.length > 0) && (
+                      <div className="flex flex-wrap gap-2">
+                        {fotosAdicionaisExistentes.map((f) => (
+                          <div
+                            key={f.nome}
+                            className="relative h-16 w-16 rounded border border-slate-200 bg-slate-50 overflow-hidden"
+                          >
+                            <a href={f.url} target="_blank" rel="noreferrer">
+                              <img
+                                src={f.url}
+                                alt="Foto adicional"
+                                className="h-full w-full object-cover"
+                              />
+                            </a>
+                            <button
+                              type="button"
+                              title="Remover foto (vale ao salvar)"
+                              className="absolute top-0.5 right-0.5 rounded-full bg-white/90 p-0.5 text-rose-600 shadow"
+                              onClick={() => {
+                                setFotosAdicionaisExistentes((prev) =>
+                                  prev.filter((x) => x.nome !== f.nome),
+                                )
+                                setFotosAdicionaisRemover((prev) => [...prev, f.nome])
+                              }}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                        {fotosAdicionais.map((arq, i) => (
+                          <div
+                            key={`${arq.name}-${i}`}
+                            className="relative h-16 w-16 rounded border border-dashed border-blue-300 bg-slate-50 overflow-hidden"
+                          >
+                            <img
+                              src={URL.createObjectURL(arq)}
+                              alt="Nova foto"
+                              className="h-full w-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              title="Tirar esta foto"
+                              className="absolute top-0.5 right-0.5 rounded-full bg-white/90 p-0.5 text-rose-600 shadow"
+                              onClick={() =>
+                                setFotosAdicionais((prev) => prev.filter((_, j) => j !== i))
+                              }
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <input
                       type="file"
                       multiple
@@ -1243,19 +1327,46 @@ export const ProdutoForm: React.FC = () => {
 
               {/* Descrição para o site */}
               <div className="pt-2 border-t border-slate-100">
-                <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Descrição para o site
-                </Label>
-                <Textarea
-                  value={formData.descricao_site || ''}
-                  onChange={(e) => handleCampoChange('descricao_site', e.target.value)}
-                  placeholder="Descrição completa do produto para a loja virtual e marketplaces (aceita HTML)..."
-                  rows={6}
-                  className="text-xs font-mono"
-                  maxLength={100000}
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs font-semibold text-slate-700 block">
+                    Descrição para o site
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setEditarHtmlDescricao((v) => !v)}
+                  >
+                    {editarHtmlDescricao ? (
+                      <>
+                        <Eye className="mr-1 h-3.5 w-3.5" /> Ver formatada
+                      </>
+                    ) : (
+                      <>
+                        <Code className="mr-1 h-3.5 w-3.5" /> Editar HTML
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {editarHtmlDescricao || !formData.descricao_site ? (
+                  <Textarea
+                    value={formData.descricao_site || ''}
+                    onChange={(e) => handleCampoChange('descricao_site', e.target.value)}
+                    placeholder="Descrição completa do produto para a loja virtual e marketplaces (aceita HTML)..."
+                    rows={8}
+                    className="text-xs font-mono"
+                    maxLength={100000}
+                  />
+                ) : (
+                  <div
+                    className="max-h-80 overflow-auto rounded-md border border-slate-200 bg-white p-3 text-sm leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_img]:max-w-full"
+                    dangerouslySetInnerHTML={{ __html: htmlSeguro(formData.descricao_site) }}
+                  />
+                )}
                 <span className="text-[10px] text-slate-400">
-                  Pode ser importada da Tray em Configurações &gt; Tray.
+                  Pode ser importada da Tray em Configurações &gt; Tray. É assim que ela aparece no
+                  site; use "Editar HTML" para alterar.
                 </span>
               </div>
 

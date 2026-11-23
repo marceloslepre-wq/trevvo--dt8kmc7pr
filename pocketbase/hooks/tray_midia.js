@@ -321,7 +321,111 @@ routerAdd(
       s = s.replace(/<(script|iframe|object|embed)[^>]*>/gi, '')
       s = s.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
       s = s.replace(/javascript:/gi, '')
+      s = decodificarAcentos(s)
       return s.trim().slice(0, 100000)
+    }
+
+    // Troca acentos e símbolos escritos como código HTML (&aacute;, &ccedil;, &#231;) pelas letras.
+    // &lt; &gt; &amp; &quot; &nbsp; ficam como estão, porque fazem parte da marcação.
+    function decodificarAcentos(s) {
+      const mapa = {
+        aacute: 'á',
+        eacute: 'é',
+        iacute: 'í',
+        oacute: 'ó',
+        uacute: 'ú',
+        yacute: 'ý',
+        Aacute: 'Á',
+        Eacute: 'É',
+        Iacute: 'Í',
+        Oacute: 'Ó',
+        Uacute: 'Ú',
+        Yacute: 'Ý',
+        agrave: 'à',
+        egrave: 'è',
+        igrave: 'ì',
+        ograve: 'ò',
+        ugrave: 'ù',
+        Agrave: 'À',
+        Egrave: 'È',
+        Igrave: 'Ì',
+        Ograve: 'Ò',
+        Ugrave: 'Ù',
+        acirc: 'â',
+        ecirc: 'ê',
+        icirc: 'î',
+        ocirc: 'ô',
+        ucirc: 'û',
+        Acirc: 'Â',
+        Ecirc: 'Ê',
+        Icirc: 'Î',
+        Ocirc: 'Ô',
+        Ucirc: 'Û',
+        atilde: 'ã',
+        otilde: 'õ',
+        ntilde: 'ñ',
+        Atilde: 'Ã',
+        Otilde: 'Õ',
+        Ntilde: 'Ñ',
+        auml: 'ä',
+        euml: 'ë',
+        iuml: 'ï',
+        ouml: 'ö',
+        uuml: 'ü',
+        Auml: 'Ä',
+        Euml: 'Ë',
+        Iuml: 'Ï',
+        Ouml: 'Ö',
+        Uuml: 'Ü',
+        ccedil: 'ç',
+        Ccedil: 'Ç',
+        ordm: 'º',
+        ordf: 'ª',
+        deg: '°',
+        sup2: '²',
+        sup3: '³',
+        frac12: '½',
+        micro: 'µ',
+        middot: '·',
+        bull: '•',
+        hellip: '…',
+        ndash: '–',
+        mdash: '—',
+        lsquo: '‘',
+        rsquo: '’',
+        ldquo: '“',
+        rdquo: '”',
+        laquo: '«',
+        raquo: '»',
+        reg: '®',
+        copy: '©',
+        trade: '™',
+        plusmn: '±',
+        times: '×',
+        divide: '÷',
+        euro: '€',
+        cent: '¢',
+        pound: '£',
+        sect: '§',
+        para: '¶',
+        iexcl: '¡',
+        iquest: '¿',
+      }
+      let out = s.replace(/&([a-zA-Z][a-zA-Z0-9]{1,9});/g, (m, nome) =>
+        Object.prototype.hasOwnProperty.call(mapa, nome) ? mapa[nome] : m,
+      )
+      out = out.replace(/&#(x[0-9a-fA-F]{1,6}|[0-9]{1,7});/g, (m, cod) => {
+        const n = cod[0] === 'x' || cod[0] === 'X' ? parseInt(cod.slice(1), 16) : parseInt(cod, 10)
+        // Mantém codificados os caracteres que fazem parte da marcação (< > & " ') e os de controle.
+        if (isNaN(n) || n < 32 || n === 34 || n === 38 || n === 39 || n === 60 || n === 62) return m
+        if (n > 0x10ffff) return m
+        try {
+          return String.fromCodePoint(n)
+        } catch (_) {
+          return m
+        }
+      })
+      return out
     }
 
     // Lista de URLs https das imagens de um produto ou variação da Tray, na ordem da loja.
