@@ -927,6 +927,8 @@ export async function salvarProduto(
   dados: Partial<Produto> & {
     fotoArquivo?: File | null
     fotosAdicionaisArquivos?: File[]
+    /** Nomes de arquivos de fotos_adicionais já gravadas que devem ser removidas (só na edição) */
+    fotosAdicionaisRemover?: string[]
   },
 ): Promise<Produto> {
   const ehEdicao = Boolean(dados.id)
@@ -965,7 +967,8 @@ export async function salvarProduto(
   // FormData se houver arquivos, senão JSON
   const temArquivos = Boolean(
     dados.fotoArquivo ||
-    (dados.fotosAdicionaisArquivos && dados.fotosAdicionaisArquivos.length > 0),
+    (dados.fotosAdicionaisArquivos && dados.fotosAdicionaisArquivos.length > 0) ||
+    (dados.id && dados.fotosAdicionaisRemover && dados.fotosAdicionaisRemover.length > 0),
   )
 
   const payload: Record<string, unknown> = {
@@ -1206,9 +1209,16 @@ export async function salvarProduto(
       if (dados.fotoArquivo) {
         formData.append('foto', dados.fotoArquivo)
       }
+      // Na edição, '+' soma as fotos novas às que já existem e '-' remove as marcadas
+      // (sem o '+', o PocketBase substituiria todas as fotos adicionais gravadas).
       if (dados.fotosAdicionaisArquivos && dados.fotosAdicionaisArquivos.length > 0) {
         dados.fotosAdicionaisArquivos.forEach((file) => {
-          formData.append('fotos_adicionais', file)
+          formData.append('fotos_adicionais+', file)
+        })
+      }
+      if (dados.fotosAdicionaisRemover && dados.fotosAdicionaisRemover.length > 0) {
+        dados.fotosAdicionaisRemover.forEach((nome) => {
+          formData.append('fotos_adicionais-', nome)
         })
       }
       recordFinal = await pb.collection('produtos').update<Produto>(dados.id, formData)
