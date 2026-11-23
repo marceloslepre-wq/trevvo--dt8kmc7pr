@@ -27,6 +27,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import AuditoriaAnuncios from '@/components/mercadolivre/AuditoriaAnuncios'
+import SaudeAnuncios from '@/components/mercadolivre/SaudeAnuncios'
 import {
   StatusMercadoLivre,
   desconectarMercadoLivre,
@@ -311,6 +312,10 @@ export const MercadoLivrePage: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+
+          {situacao === 'Conectada' && (
+            <SaudeAnuncios key={`saude-${empresaId}`} empresaId={empresaId} />
+          )}
 
           {situacao === 'Conectada' && <AuditoriaAnuncios key={empresaId} empresaId={empresaId} />}
 
