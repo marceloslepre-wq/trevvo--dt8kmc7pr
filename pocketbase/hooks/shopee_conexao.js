@@ -24,122 +24,122 @@
 
 // 1) Diagnóstico público.
 routerAdd('GET', '/backend/v1/shopee/diagnostico', (c) => {
-    // ---- Helpers Shopee (locais: JSVM não enxerga funções do topo do arquivo) ----
-    function segredosShopee() {
-      let pid = ''
-      let key = ''
-      let amb = ''
-      try {
-        pid = ($os.getenv('SHOPEE_PARTNER_ID') || '').trim()
-      } catch (_) {}
-      try {
-        key = ($os.getenv('SHOPEE_PARTNER_KEY') || '').trim()
-      } catch (_) {}
-      try {
-        amb = ($os.getenv('SHOPEE_AMBIENTE') || '').trim().toLowerCase()
-      } catch (_) {}
-      const host =
-        amb === 'teste' || amb === 'sandbox'
-          ? 'https://partner.test-stable.shopeemobile.com'
-          : 'https://partner.shopeemobile.com'
-      return { partnerId: pid.replace(/[^0-9]/g, ''), key: key, host: host, ok: !!(pid && key) }
-    }
+  // ---- Helpers Shopee (locais: JSVM não enxerga funções do topo do arquivo) ----
+  function segredosShopee() {
+    let pid = ''
+    let key = ''
+    let amb = ''
+    try {
+      pid = ($os.getenv('SHOPEE_PARTNER_ID') || '').trim()
+    } catch (_) {}
+    try {
+      key = ($os.getenv('SHOPEE_PARTNER_KEY') || '').trim()
+    } catch (_) {}
+    try {
+      amb = ($os.getenv('SHOPEE_AMBIENTE') || '').trim().toLowerCase()
+    } catch (_) {}
+    const host =
+      amb === 'teste' || amb === 'sandbox'
+        ? 'https://partner.test-stable.shopeemobile.com'
+        : 'https://partner.shopeemobile.com'
+    return { partnerId: pid.replace(/[^0-9]/g, ''), key: key, host: host, ok: !!(pid && key) }
+  }
 
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
+  function lerJson(res) {
+    if (res && res.json) return res.json
+    try {
+      return JSON.parse(res.raw || '{}')
+    } catch (_) {
+      return {}
     }
+  }
 
-    // Assinatura Shopee v2: HMAC-SHA256 (hex) de partner_id + caminho + timestamp [+ token + shop_id].
-    function assinar(seg, caminho, ts, token, shopId) {
-      return $security.hs256(seg.partnerId + caminho + ts + (token || '') + (shopId || ''), seg.key)
-    }
+  // Assinatura Shopee v2: HMAC-SHA256 (hex) de partner_id + caminho + timestamp [+ token + shop_id].
+  function assinar(seg, caminho, ts, token, shopId) {
+    return $security.hs256(seg.partnerId + caminho + ts + (token || '') + (shopId || ''), seg.key)
+  }
 
-    // Chamadas de token (code ou refresh). Nunca registrar em log o corpo (contém tokens).
-    function pedirToken(seg, caminho, corpo) {
-      const ts = Math.floor(Date.now() / 1000)
-      const url =
-        seg.host +
-        caminho +
-        '?partner_id=' +
-        seg.partnerId +
-        '&timestamp=' +
-        ts +
-        '&sign=' +
-        assinar(seg, caminho, ts, '', '')
-      const res = $http.send({
-        method: 'POST',
-        url: url,
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(corpo),
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  // Chamadas de token (code ou refresh). Nunca registrar em log o corpo (contém tokens).
+  function pedirToken(seg, caminho, corpo) {
+    const ts = Math.floor(Date.now() / 1000)
+    const url =
+      seg.host +
+      caminho +
+      '?partner_id=' +
+      seg.partnerId +
+      '&timestamp=' +
+      ts +
+      '&sign=' +
+      assinar(seg, caminho, ts, '', '')
+    const res = $http.send({
+      method: 'POST',
+      url: url,
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(corpo),
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    // Chamada GET de loja (com access_token e shop_id).
-    function chamarLoja(seg, caminho, token, shopId, extras) {
-      const ts = Math.floor(Date.now() / 1000)
-      const url =
-        seg.host +
-        caminho +
-        '?partner_id=' +
-        seg.partnerId +
-        '&timestamp=' +
-        ts +
-        '&access_token=' +
-        encodeURIComponent(token) +
-        '&shop_id=' +
-        shopId +
-        '&sign=' +
-        assinar(seg, caminho, ts, token, shopId) +
-        (extras || '')
-      const res = $http.send({
-        method: 'GET',
-        url: url,
-        headers: { Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  // Chamada GET de loja (com access_token e shop_id).
+  function chamarLoja(seg, caminho, token, shopId, extras) {
+    const ts = Math.floor(Date.now() / 1000)
+    const url =
+      seg.host +
+      caminho +
+      '?partner_id=' +
+      seg.partnerId +
+      '&timestamp=' +
+      ts +
+      '&access_token=' +
+      encodeURIComponent(token) +
+      '&shop_id=' +
+      shopId +
+      '&sign=' +
+      assinar(seg, caminho, ts, token, shopId) +
+      (extras || '')
+    const res = $http.send({
+      method: 'GET',
+      url: url,
+      headers: { Accept: 'application/json' },
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    function gravarTokens(conta, dados) {
-      const expiraSeg = parseInt(dados.expire_in, 10) || 14400
-      conta.set('access_token', dados.access_token || '')
-      // O refresh_token da Shopee muda a cada renovação: sempre gravar o novo.
-      if (dados.refresh_token) {
-        conta.set('refresh_token', dados.refresh_token)
-        conta.set('refresh_expira_em', new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString())
-      }
-      conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
+  function gravarTokens(conta, dados) {
+    const expiraSeg = parseInt(dados.expire_in, 10) || 14400
+    conta.set('access_token', dados.access_token || '')
+    // O refresh_token da Shopee muda a cada renovação: sempre gravar o novo.
+    if (dados.refresh_token) {
+      conta.set('refresh_token', dados.refresh_token)
+      conta.set('refresh_expira_em', new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString())
     }
+    conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
+    conta.set('ultima_renovacao_em', new Date().toISOString())
+    conta.set('status', 'Conectada')
+    conta.set('ultimo_erro', '')
+  }
 
-    function mensagemErroShopee(r) {
-      const d = (r && r.dados) || {}
-      const txt = [d.error || '', d.message || ''].filter((x) => !!x).join(' - ')
-      return 'Shopee respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-    }
+  function mensagemErroShopee(r) {
+    const d = (r && r.dados) || {}
+    const txt = [d.error || '', d.message || ''].filter((x) => !!x).join(' - ')
+    return 'Shopee respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
+  }
 
-    function contaDaEmpresa(empresaId) {
-      try {
-        const recs = $app.findRecordsByFilter(
-          'shopee_contas',
-          "empresa_id = '" + empresaId + "'",
-          '-created',
-          1,
-          0,
-        )
-        if (recs && recs.length > 0) return recs[0]
-      } catch (_) {}
-      return null
-    }
+  function contaDaEmpresa(empresaId) {
+    try {
+      const recs = $app.findRecordsByFilter(
+        'shopee_contas',
+        "empresa_id = '" + empresaId + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (recs && recs.length > 0) return recs[0]
+    } catch (_) {}
+    return null
+  }
   const seg = segredosShopee()
   let redirect = ''
   try {
@@ -468,122 +468,122 @@ routerAdd(
 
 // 3) Retorno da autorização (público): troca o code pelos tokens.
 routerAdd('GET', '/backend/v1/shopee/oauth/callback', (c) => {
-    // ---- Helpers Shopee (locais: JSVM não enxerga funções do topo do arquivo) ----
-    function segredosShopee() {
-      let pid = ''
-      let key = ''
-      let amb = ''
-      try {
-        pid = ($os.getenv('SHOPEE_PARTNER_ID') || '').trim()
-      } catch (_) {}
-      try {
-        key = ($os.getenv('SHOPEE_PARTNER_KEY') || '').trim()
-      } catch (_) {}
-      try {
-        amb = ($os.getenv('SHOPEE_AMBIENTE') || '').trim().toLowerCase()
-      } catch (_) {}
-      const host =
-        amb === 'teste' || amb === 'sandbox'
-          ? 'https://partner.test-stable.shopeemobile.com'
-          : 'https://partner.shopeemobile.com'
-      return { partnerId: pid.replace(/[^0-9]/g, ''), key: key, host: host, ok: !!(pid && key) }
-    }
+  // ---- Helpers Shopee (locais: JSVM não enxerga funções do topo do arquivo) ----
+  function segredosShopee() {
+    let pid = ''
+    let key = ''
+    let amb = ''
+    try {
+      pid = ($os.getenv('SHOPEE_PARTNER_ID') || '').trim()
+    } catch (_) {}
+    try {
+      key = ($os.getenv('SHOPEE_PARTNER_KEY') || '').trim()
+    } catch (_) {}
+    try {
+      amb = ($os.getenv('SHOPEE_AMBIENTE') || '').trim().toLowerCase()
+    } catch (_) {}
+    const host =
+      amb === 'teste' || amb === 'sandbox'
+        ? 'https://partner.test-stable.shopeemobile.com'
+        : 'https://partner.shopeemobile.com'
+    return { partnerId: pid.replace(/[^0-9]/g, ''), key: key, host: host, ok: !!(pid && key) }
+  }
 
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
+  function lerJson(res) {
+    if (res && res.json) return res.json
+    try {
+      return JSON.parse(res.raw || '{}')
+    } catch (_) {
+      return {}
     }
+  }
 
-    // Assinatura Shopee v2: HMAC-SHA256 (hex) de partner_id + caminho + timestamp [+ token + shop_id].
-    function assinar(seg, caminho, ts, token, shopId) {
-      return $security.hs256(seg.partnerId + caminho + ts + (token || '') + (shopId || ''), seg.key)
-    }
+  // Assinatura Shopee v2: HMAC-SHA256 (hex) de partner_id + caminho + timestamp [+ token + shop_id].
+  function assinar(seg, caminho, ts, token, shopId) {
+    return $security.hs256(seg.partnerId + caminho + ts + (token || '') + (shopId || ''), seg.key)
+  }
 
-    // Chamadas de token (code ou refresh). Nunca registrar em log o corpo (contém tokens).
-    function pedirToken(seg, caminho, corpo) {
-      const ts = Math.floor(Date.now() / 1000)
-      const url =
-        seg.host +
-        caminho +
-        '?partner_id=' +
-        seg.partnerId +
-        '&timestamp=' +
-        ts +
-        '&sign=' +
-        assinar(seg, caminho, ts, '', '')
-      const res = $http.send({
-        method: 'POST',
-        url: url,
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(corpo),
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  // Chamadas de token (code ou refresh). Nunca registrar em log o corpo (contém tokens).
+  function pedirToken(seg, caminho, corpo) {
+    const ts = Math.floor(Date.now() / 1000)
+    const url =
+      seg.host +
+      caminho +
+      '?partner_id=' +
+      seg.partnerId +
+      '&timestamp=' +
+      ts +
+      '&sign=' +
+      assinar(seg, caminho, ts, '', '')
+    const res = $http.send({
+      method: 'POST',
+      url: url,
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(corpo),
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    // Chamada GET de loja (com access_token e shop_id).
-    function chamarLoja(seg, caminho, token, shopId, extras) {
-      const ts = Math.floor(Date.now() / 1000)
-      const url =
-        seg.host +
-        caminho +
-        '?partner_id=' +
-        seg.partnerId +
-        '&timestamp=' +
-        ts +
-        '&access_token=' +
-        encodeURIComponent(token) +
-        '&shop_id=' +
-        shopId +
-        '&sign=' +
-        assinar(seg, caminho, ts, token, shopId) +
-        (extras || '')
-      const res = $http.send({
-        method: 'GET',
-        url: url,
-        headers: { Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  // Chamada GET de loja (com access_token e shop_id).
+  function chamarLoja(seg, caminho, token, shopId, extras) {
+    const ts = Math.floor(Date.now() / 1000)
+    const url =
+      seg.host +
+      caminho +
+      '?partner_id=' +
+      seg.partnerId +
+      '&timestamp=' +
+      ts +
+      '&access_token=' +
+      encodeURIComponent(token) +
+      '&shop_id=' +
+      shopId +
+      '&sign=' +
+      assinar(seg, caminho, ts, token, shopId) +
+      (extras || '')
+    const res = $http.send({
+      method: 'GET',
+      url: url,
+      headers: { Accept: 'application/json' },
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    function gravarTokens(conta, dados) {
-      const expiraSeg = parseInt(dados.expire_in, 10) || 14400
-      conta.set('access_token', dados.access_token || '')
-      // O refresh_token da Shopee muda a cada renovação: sempre gravar o novo.
-      if (dados.refresh_token) {
-        conta.set('refresh_token', dados.refresh_token)
-        conta.set('refresh_expira_em', new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString())
-      }
-      conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
+  function gravarTokens(conta, dados) {
+    const expiraSeg = parseInt(dados.expire_in, 10) || 14400
+    conta.set('access_token', dados.access_token || '')
+    // O refresh_token da Shopee muda a cada renovação: sempre gravar o novo.
+    if (dados.refresh_token) {
+      conta.set('refresh_token', dados.refresh_token)
+      conta.set('refresh_expira_em', new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString())
     }
+    conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
+    conta.set('ultima_renovacao_em', new Date().toISOString())
+    conta.set('status', 'Conectada')
+    conta.set('ultimo_erro', '')
+  }
 
-    function mensagemErroShopee(r) {
-      const d = (r && r.dados) || {}
-      const txt = [d.error || '', d.message || ''].filter((x) => !!x).join(' - ')
-      return 'Shopee respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-    }
+  function mensagemErroShopee(r) {
+    const d = (r && r.dados) || {}
+    const txt = [d.error || '', d.message || ''].filter((x) => !!x).join(' - ')
+    return 'Shopee respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
+  }
 
-    function contaDaEmpresa(empresaId) {
-      try {
-        const recs = $app.findRecordsByFilter(
-          'shopee_contas',
-          "empresa_id = '" + empresaId + "'",
-          '-created',
-          1,
-          0,
-        )
-        if (recs && recs.length > 0) return recs[0]
-      } catch (_) {}
-      return null
-    }
+  function contaDaEmpresa(empresaId) {
+    try {
+      const recs = $app.findRecordsByFilter(
+        'shopee_contas',
+        "empresa_id = '" + empresaId + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (recs && recs.length > 0) return recs[0]
+    } catch (_) {}
+    return null
+  }
   function responder(ok, motivo, retornoUrl) {
     if (retornoUrl) {
       const sep = retornoUrl.indexOf('?') >= 0 ? '&' : '?'
@@ -622,7 +622,8 @@ routerAdd('GET', '/backend/v1/shopee/oauth/callback', (c) => {
     const code = String(q['code'] || '').trim()
     const shopId = String(q['shop_id'] || '').replace(/[^0-9]/g, '')
 
-    if (!/^[A-Za-z0-9]{20,100}$/.test(estado)) return responder(false, 'Parâmetro estado inválido.', '')
+    if (!/^[A-Za-z0-9]{20,100}$/.test(estado))
+      return responder(false, 'Parâmetro estado inválido.', '')
 
     let estRec = null
     try {
@@ -657,7 +658,11 @@ routerAdd('GET', '/backend/v1/shopee/oauth/callback', (c) => {
 
     const seg = segredosShopee()
     if (!seg.ok) {
-      return responder(false, 'Segredos SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY não configurados.', retornoUrl)
+      return responder(
+        false,
+        'Segredos SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY não configurados.',
+        retornoUrl,
+      )
     }
 
     const r = pedirToken(seg, '/api/v2/auth/token/get', {
@@ -1236,10 +1241,18 @@ routerAdd(
       const ctx = contextoDoUsuario(auth)
       const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
       const seg = segredosShopee()
-      if (!seg.ok) return c.json(400, { sucesso: false, mensagem: 'Segredos da Shopee não configurados.' })
+      if (!seg.ok)
+        return c.json(400, { sucesso: false, mensagem: 'Segredos da Shopee não configurados.' })
       const conta = contaDaEmpresa(empresa.id)
-      if (!conta || conta.getString('status') === 'Desconectada' || !conta.getString('refresh_token')) {
-        return c.json(400, { sucesso: false, mensagem: 'Nenhuma loja da Shopee conectada nesta empresa.' })
+      if (
+        !conta ||
+        conta.getString('status') === 'Desconectada' ||
+        !conta.getString('refresh_token')
+      ) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Nenhuma loja da Shopee conectada nesta empresa.',
+        })
       }
       const shopId = conta.getString('shop_id')
       const expira = new Date(conta.getString('token_expira_em') || 0).getTime()
@@ -1255,10 +1268,19 @@ routerAdd(
         } else {
           conta.set('ultimo_erro', mensagemErroShopee(r))
           $app.save(conta)
-          return c.json(400, { sucesso: false, mensagem: 'Falha ao renovar o acesso. ' + mensagemErroShopee(r) })
+          return c.json(400, {
+            sucesso: false,
+            mensagem: 'Falha ao renovar o acesso. ' + mensagemErroShopee(r),
+          })
         }
       }
-      const info = chamarLoja(seg, '/api/v2/shop/get_shop_info', conta.getString('access_token'), shopId, '')
+      const info = chamarLoja(
+        seg,
+        '/api/v2/shop/get_shop_info',
+        conta.getString('access_token'),
+        shopId,
+        '',
+      )
       if (info.status !== 200 || !info.dados || info.dados.error) {
         return c.json(400, { sucesso: false, mensagem: mensagemErroShopee(info) })
       }
@@ -1520,7 +1542,10 @@ routerAdd(
       const body = c.requestInfo().body || {}
       const ctx = contextoDoUsuario(auth)
       if (!ctx.admin) {
-        return c.json(403, { sucesso: false, mensagem: 'Apenas administradores podem desconectar.' })
+        return c.json(403, {
+          sucesso: false,
+          mensagem: 'Apenas administradores podem desconectar.',
+        })
       }
       const empresa = exigirEmpresa(ctx, String(body.empresa_id || '').trim())
       const conta = contaDaEmpresa(empresa.id)
@@ -1547,122 +1572,122 @@ routerAdd(
 
 // Renovação automática do acesso (vale 4h). Renova o que vence nos próximos 90 minutos.
 cronAdd('shopee_renovar_tokens', '*/30 * * * *', () => {
-    // ---- Helpers Shopee (locais: JSVM não enxerga funções do topo do arquivo) ----
-    function segredosShopee() {
-      let pid = ''
-      let key = ''
-      let amb = ''
-      try {
-        pid = ($os.getenv('SHOPEE_PARTNER_ID') || '').trim()
-      } catch (_) {}
-      try {
-        key = ($os.getenv('SHOPEE_PARTNER_KEY') || '').trim()
-      } catch (_) {}
-      try {
-        amb = ($os.getenv('SHOPEE_AMBIENTE') || '').trim().toLowerCase()
-      } catch (_) {}
-      const host =
-        amb === 'teste' || amb === 'sandbox'
-          ? 'https://partner.test-stable.shopeemobile.com'
-          : 'https://partner.shopeemobile.com'
-      return { partnerId: pid.replace(/[^0-9]/g, ''), key: key, host: host, ok: !!(pid && key) }
-    }
+  // ---- Helpers Shopee (locais: JSVM não enxerga funções do topo do arquivo) ----
+  function segredosShopee() {
+    let pid = ''
+    let key = ''
+    let amb = ''
+    try {
+      pid = ($os.getenv('SHOPEE_PARTNER_ID') || '').trim()
+    } catch (_) {}
+    try {
+      key = ($os.getenv('SHOPEE_PARTNER_KEY') || '').trim()
+    } catch (_) {}
+    try {
+      amb = ($os.getenv('SHOPEE_AMBIENTE') || '').trim().toLowerCase()
+    } catch (_) {}
+    const host =
+      amb === 'teste' || amb === 'sandbox'
+        ? 'https://partner.test-stable.shopeemobile.com'
+        : 'https://partner.shopeemobile.com'
+    return { partnerId: pid.replace(/[^0-9]/g, ''), key: key, host: host, ok: !!(pid && key) }
+  }
 
-    function lerJson(res) {
-      if (res && res.json) return res.json
-      try {
-        return JSON.parse(res.raw || '{}')
-      } catch (_) {
-        return {}
-      }
+  function lerJson(res) {
+    if (res && res.json) return res.json
+    try {
+      return JSON.parse(res.raw || '{}')
+    } catch (_) {
+      return {}
     }
+  }
 
-    // Assinatura Shopee v2: HMAC-SHA256 (hex) de partner_id + caminho + timestamp [+ token + shop_id].
-    function assinar(seg, caminho, ts, token, shopId) {
-      return $security.hs256(seg.partnerId + caminho + ts + (token || '') + (shopId || ''), seg.key)
-    }
+  // Assinatura Shopee v2: HMAC-SHA256 (hex) de partner_id + caminho + timestamp [+ token + shop_id].
+  function assinar(seg, caminho, ts, token, shopId) {
+    return $security.hs256(seg.partnerId + caminho + ts + (token || '') + (shopId || ''), seg.key)
+  }
 
-    // Chamadas de token (code ou refresh). Nunca registrar em log o corpo (contém tokens).
-    function pedirToken(seg, caminho, corpo) {
-      const ts = Math.floor(Date.now() / 1000)
-      const url =
-        seg.host +
-        caminho +
-        '?partner_id=' +
-        seg.partnerId +
-        '&timestamp=' +
-        ts +
-        '&sign=' +
-        assinar(seg, caminho, ts, '', '')
-      const res = $http.send({
-        method: 'POST',
-        url: url,
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(corpo),
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  // Chamadas de token (code ou refresh). Nunca registrar em log o corpo (contém tokens).
+  function pedirToken(seg, caminho, corpo) {
+    const ts = Math.floor(Date.now() / 1000)
+    const url =
+      seg.host +
+      caminho +
+      '?partner_id=' +
+      seg.partnerId +
+      '&timestamp=' +
+      ts +
+      '&sign=' +
+      assinar(seg, caminho, ts, '', '')
+    const res = $http.send({
+      method: 'POST',
+      url: url,
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(corpo),
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    // Chamada GET de loja (com access_token e shop_id).
-    function chamarLoja(seg, caminho, token, shopId, extras) {
-      const ts = Math.floor(Date.now() / 1000)
-      const url =
-        seg.host +
-        caminho +
-        '?partner_id=' +
-        seg.partnerId +
-        '&timestamp=' +
-        ts +
-        '&access_token=' +
-        encodeURIComponent(token) +
-        '&shop_id=' +
-        shopId +
-        '&sign=' +
-        assinar(seg, caminho, ts, token, shopId) +
-        (extras || '')
-      const res = $http.send({
-        method: 'GET',
-        url: url,
-        headers: { Accept: 'application/json' },
-        timeout: 20,
-      })
-      return { status: res.statusCode, dados: lerJson(res) }
-    }
+  // Chamada GET de loja (com access_token e shop_id).
+  function chamarLoja(seg, caminho, token, shopId, extras) {
+    const ts = Math.floor(Date.now() / 1000)
+    const url =
+      seg.host +
+      caminho +
+      '?partner_id=' +
+      seg.partnerId +
+      '&timestamp=' +
+      ts +
+      '&access_token=' +
+      encodeURIComponent(token) +
+      '&shop_id=' +
+      shopId +
+      '&sign=' +
+      assinar(seg, caminho, ts, token, shopId) +
+      (extras || '')
+    const res = $http.send({
+      method: 'GET',
+      url: url,
+      headers: { Accept: 'application/json' },
+      timeout: 20,
+    })
+    return { status: res.statusCode, dados: lerJson(res) }
+  }
 
-    function gravarTokens(conta, dados) {
-      const expiraSeg = parseInt(dados.expire_in, 10) || 14400
-      conta.set('access_token', dados.access_token || '')
-      // O refresh_token da Shopee muda a cada renovação: sempre gravar o novo.
-      if (dados.refresh_token) {
-        conta.set('refresh_token', dados.refresh_token)
-        conta.set('refresh_expira_em', new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString())
-      }
-      conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
-      conta.set('ultima_renovacao_em', new Date().toISOString())
-      conta.set('status', 'Conectada')
-      conta.set('ultimo_erro', '')
+  function gravarTokens(conta, dados) {
+    const expiraSeg = parseInt(dados.expire_in, 10) || 14400
+    conta.set('access_token', dados.access_token || '')
+    // O refresh_token da Shopee muda a cada renovação: sempre gravar o novo.
+    if (dados.refresh_token) {
+      conta.set('refresh_token', dados.refresh_token)
+      conta.set('refresh_expira_em', new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString())
     }
+    conta.set('token_expira_em', new Date(Date.now() + expiraSeg * 1000).toISOString())
+    conta.set('ultima_renovacao_em', new Date().toISOString())
+    conta.set('status', 'Conectada')
+    conta.set('ultimo_erro', '')
+  }
 
-    function mensagemErroShopee(r) {
-      const d = (r && r.dados) || {}
-      const txt = [d.error || '', d.message || ''].filter((x) => !!x).join(' - ')
-      return 'Shopee respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
-    }
+  function mensagemErroShopee(r) {
+    const d = (r && r.dados) || {}
+    const txt = [d.error || '', d.message || ''].filter((x) => !!x).join(' - ')
+    return 'Shopee respondeu HTTP ' + (r ? r.status : '?') + (txt ? ': ' + txt : '')
+  }
 
-    function contaDaEmpresa(empresaId) {
-      try {
-        const recs = $app.findRecordsByFilter(
-          'shopee_contas',
-          "empresa_id = '" + empresaId + "'",
-          '-created',
-          1,
-          0,
-        )
-        if (recs && recs.length > 0) return recs[0]
-      } catch (_) {}
-      return null
-    }
+  function contaDaEmpresa(empresaId) {
+    try {
+      const recs = $app.findRecordsByFilter(
+        'shopee_contas',
+        "empresa_id = '" + empresaId + "'",
+        '-created',
+        1,
+        0,
+      )
+      if (recs && recs.length > 0) return recs[0]
+    } catch (_) {}
+    return null
+  }
   try {
     if (!$app.hasTable('shopee_contas')) return
     const seg = segredosShopee()
@@ -1701,10 +1726,18 @@ cronAdd('shopee_renovar_tokens', '*/30 * * * *', () => {
           $app.save(conta)
           console.log('[shopee] Loja precisa reconectar. empresa=' + conta.getString('empresa_id'))
         } else {
-          console.log('[shopee] Renovação adiada: HTTP ' + r.status + ' empresa=' + conta.getString('empresa_id'))
+          console.log(
+            '[shopee] Renovação adiada: HTTP ' +
+              r.status +
+              ' empresa=' +
+              conta.getString('empresa_id'),
+          )
         }
       } catch (errConta) {
-        console.log('[shopee] Erro ao renovar: ' + (errConta && errConta.message ? errConta.message : String(errConta)))
+        console.log(
+          '[shopee] Erro ao renovar: ' +
+            (errConta && errConta.message ? errConta.message : String(errConta)),
+        )
       }
     }
   } catch (err) {

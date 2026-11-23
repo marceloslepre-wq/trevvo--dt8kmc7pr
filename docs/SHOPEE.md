@@ -4,11 +4,11 @@ Parte 1: conexão da loja por empresa (Open Platform v2), no mesmo padrão do Me
 
 ## Segredos (Skip Cloud)
 
-| Segredo | Valor |
-|---|---|
-| `SHOPEE_PARTNER_ID` | Partner ID do app na Shopee Open Platform |
-| `SHOPEE_PARTNER_KEY` | Partner Key do app (secreta; nunca gravar em arquivo) |
-| `SHOPEE_AMBIENTE` | opcional: `teste` usa `partner.test-stable.shopeemobile.com` (sandbox) |
+| Segredo               | Valor                                                                     |
+| --------------------- | ------------------------------------------------------------------------- |
+| `SHOPEE_PARTNER_ID`   | Partner ID do app na Shopee Open Platform                                 |
+| `SHOPEE_PARTNER_KEY`  | Partner Key do app (secreta; nunca gravar em arquivo)                     |
+| `SHOPEE_AMBIENTE`     | opcional: `teste` usa `partner.test-stable.shopeemobile.com` (sandbox)    |
 | `SHOPEE_REDIRECT_URI` | opcional: se vazio, usa `https://{host}/backend/v1/shopee/oauth/callback` |
 
 No app da Open Platform, o domínio de retorno (Redirect URL Domain) deve ser o domínio do backend do Trevvo.

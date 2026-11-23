@@ -53,25 +53,18 @@ export async function iniciarConexaoShopee(
   })
 }
 
-export async function testarConexaoShopee(
-  empresaId: string,
-): Promise<RespostaSimplesShopee> {
+export async function testarConexaoShopee(empresaId: string): Promise<RespostaSimplesShopee> {
   return await pb.send<RespostaSimplesShopee>('/backend/v1/shopee/conexao/testar', {
     method: 'POST',
     body: { empresa_id: empresaId },
   })
 }
 
-export async function desconectarShopee(
-  empresaId: string,
-): Promise<RespostaSimplesShopee> {
-  return await pb.send<RespostaSimplesShopee>(
-    '/backend/v1/shopee/conexao/desconectar',
-    {
-      method: 'POST',
-      body: { empresa_id: empresaId },
-    },
-  )
+export async function desconectarShopee(empresaId: string): Promise<RespostaSimplesShopee> {
+  return await pb.send<RespostaSimplesShopee>('/backend/v1/shopee/conexao/desconectar', {
+    method: 'POST',
+    body: { empresa_id: empresaId },
+  })
 }
 
 /** Extrai a mensagem em português devolvida pelo backend em caso de erro. */
@@ -82,4 +75,3 @@ export function mensagemErroShopee(err: unknown, padrao: string): string {
   }
   return e?.response?.mensagem || e?.response?.message || e?.message || padrao
 }
-

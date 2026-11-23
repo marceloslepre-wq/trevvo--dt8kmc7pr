@@ -206,8 +206,8 @@ export const ShopeePage: React.FC = () => {
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Integração ainda não configurada</AlertTitle>
               <AlertDescription>
-                Cadastre os Segredos SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY no Skip Cloud com os dados da
-                aplicação criada na Shopee Open Platform. Depois recarregue esta tela.
+                Cadastre os Segredos SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY no Skip Cloud com os
+                dados da aplicação criada na Shopee Open Platform. Depois recarregue esta tela.
               </AlertDescription>
             </Alert>
           )}
@@ -217,7 +217,8 @@ export const ShopeePage: React.FC = () => {
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>É preciso conectar de novo</AlertTitle>
               <AlertDescription>
-                A Shopee deixou de aceitar a autorização desta loja (a autorização vale 365 dias ou foi revogada).
+                A Shopee deixou de aceitar a autorização desta loja (a autorização vale 365 dias ou
+                foi revogada).
                 {status.ultimo_erro ? ` Motivo: ${status.ultimo_erro}` : ''}
               </AlertDescription>
             </Alert>
