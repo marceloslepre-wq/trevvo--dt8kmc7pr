@@ -323,7 +323,7 @@ export const TrayPage: React.FC = () => {
             <ConferenciaProdutosTray key={empresaId} empresaId={empresaId} />
           )}
 
-          {situacao === 'Conectada' && podeGerenciar && (
+          {situacao === 'Conectada' && podeGerenciar && status.loja_de_teste && (
             <HomologacaoTray key={`homologacao-${empresaId}`} empresaId={empresaId} />
           )}
         </>

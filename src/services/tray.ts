@@ -13,6 +13,8 @@ export interface StatusTray {
   loja_host: string
   loja_nome: string
   store_id: string
+  /** true quando a loja conectada é uma loja de testes da Tray (libera o roteiro de homologação). */
+  loja_de_teste?: boolean
   token_expira_em: string
   refresh_expira_em: string
   ultima_renovacao_em: string

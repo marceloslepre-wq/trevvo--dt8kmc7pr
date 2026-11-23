@@ -310,6 +310,29 @@ routerAdd(
         })
       }
 
+      // Trava de segurança: o roteiro só roda em loja de testes da Tray (domínio *.corpsuite.com.br
+      // ou código de loja listado no Segredo TRAY_LOJAS_TESTE, separado por vírgula).
+      let lojasTeste = ''
+      try {
+        lojasTeste = ($os.getenv('TRAY_LOJAS_TESTE') || '').trim()
+      } catch (_) {}
+      const hostConta = conta.getString('loja_host').toLowerCase()
+      const storeConta = conta.getString('store_id').trim()
+      const ehLojaTeste =
+        /(^|\.)corpsuite\.com\.br$/.test(hostConta) ||
+        (!!storeConta &&
+          lojasTeste
+            .split(',')
+            .map((x) => x.trim())
+            .indexOf(storeConta) >= 0)
+      if (!ehLojaTeste) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem:
+            'O roteiro de homologação só pode ser executado na loja de testes da Tray. A loja conectada é a loja real.',
+        })
+      }
+
       const produtoIdInformado = /^[0-9]{1,20}$/.test(String(body['produto_id'] || ''))
         ? String(body['produto_id'])
         : ''
