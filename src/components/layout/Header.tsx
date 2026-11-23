@@ -220,7 +220,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
           {/* Buscar no Trevvo (ajuda e atalho para telas) */}
           <button
             onClick={() => setBuscaAberta(true)}
-            className="flex items-center gap-2 h-8 rounded-lg border border-slate-200 px-2.5 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+            className="flex shrink-0 items-center gap-2 h-8 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
             title="Buscar no Trevvo (Ctrl+K)"
             aria-label="Buscar no Trevvo"
           >
