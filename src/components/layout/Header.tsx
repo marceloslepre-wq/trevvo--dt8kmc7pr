@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { Menu, LogOut, Building, User, ShieldAlert, Loader2 } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Menu, LogOut, Building, User, ShieldAlert, Loader2, Search } from 'lucide-react'
+import { BuscaTrevvo } from '@/components/ajuda/BuscaTrevvo'
 import { useAuth } from '@/contexts/AuthContext'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
@@ -43,6 +44,19 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
   const { perfil, administrador } = usePermissoes()
   const { config, logoUrl } = useConfiguracoes()
   const [saindoModoMaster, setSaindoModoMaster] = useState(false)
+  const [buscaAberta, setBuscaAberta] = useState(false)
+
+  // Ctrl+K (ou Cmd+K no Mac) abre a barra "Buscar no Trevvo" de qualquer tela
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setBuscaAberta((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const handleSairModoMaster = async () => {
     try {
@@ -203,6 +217,21 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
 
         {/* Lado direito: Perfil do usuário e Ação Sair */}
         <div className="flex items-center gap-2 md:gap-3">
+          {/* Buscar no Trevvo (ajuda e atalho para telas) */}
+          <button
+            onClick={() => setBuscaAberta(true)}
+            className="flex items-center gap-2 h-8 rounded-lg border border-slate-200 px-2.5 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+            title="Buscar no Trevvo (Ctrl+K)"
+            aria-label="Buscar no Trevvo"
+          >
+            <Search size={14} />
+            <span className="hidden lg:inline">Buscar no Trevvo</span>
+            <kbd className="hidden xl:inline text-[10px] text-slate-400 border rounded px-1">
+              Ctrl K
+            </kbd>
+          </button>
+          <BuscaTrevvo aberto={buscaAberta} onAbertoChange={setBuscaAberta} />
+
           {/* Dropdown do perfil */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
