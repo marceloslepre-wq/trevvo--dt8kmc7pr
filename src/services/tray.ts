@@ -174,3 +174,44 @@ export async function obterEvidenciasTray(empresaId: string): Promise<{
     { method: 'GET' },
   )
 }
+
+/** Importação de descrição e imagens da Tray para os produtos do Trevvo (pocketbase/hooks/tray_midia.js). */
+export interface LinhaMidiaTray {
+  produto_tray: string
+  nome: string
+  variacao: string
+  referencia: string
+  produtos_trevvo: string
+  descricao: string
+  imagens: number
+  situacao: string
+  observacao: string
+}
+
+export interface PaginaMidiaTray {
+  sucesso: boolean
+  simulacao: boolean
+  pagina: number
+  limite: number
+  total_produtos: number
+  produtos_nesta_pagina: number
+  proxima_pagina: number | null
+  linhas: LinhaMidiaTray[]
+}
+
+export async function importarMidiaTray(
+  empresaId: string,
+  pagina: number,
+  opcoes: { limite?: number; sobrescrever?: boolean; simular?: boolean } = {},
+): Promise<PaginaMidiaTray> {
+  return await pb.send<PaginaMidiaTray>('/backend/v1/tray/produtos/importar-midia', {
+    method: 'POST',
+    body: {
+      empresa_id: empresaId,
+      pagina,
+      limite: opcoes.limite ?? 5,
+      sobrescrever: !!opcoes.sobrescrever,
+      simular: !!opcoes.simular,
+    },
+  })
+}

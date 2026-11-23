@@ -19,6 +19,8 @@ export interface Produto {
   anvisa_tipo?: string
   /** Nº de registro ou notificação na ANVISA, como na embalagem */
   anvisa_numero?: string
+  /** Descrição longa para loja virtual e marketplaces (aceita HTML; importada da Tray) */
+  descricao_site?: string
   marca_id?: string
   grupo_id?: string
   categoria_id?: string
@@ -1181,6 +1183,10 @@ export async function salvarProduto(
   if (dados.anvisa_tipo !== undefined) payload.anvisa_tipo = dados.anvisa_tipo || ''
   if (dados.anvisa_numero !== undefined) {
     payload.anvisa_numero = (dados.anvisa_numero || '').replace(/[^0-9A-Za-z./-]/g, '')
+  }
+  // Descrição para o site: só grava quando o chamador enviou (importações não apagam o valor)
+  if (dados.descricao_site !== undefined) {
+    payload.descricao_site = (dados.descricao_site || '').slice(0, 100000)
   }
 
   const assinanteIdAtivo = obterAssinanteIdAtivo(dados.assinante_id)
