@@ -294,6 +294,8 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
   }
 
   const MOTIVOS_IGNORAR = { out_of_stock: true, deleted: true, expired: true }
+  // Pausa feita pelo próprio vendedor (manual ou pela Tray): não é regra do ML.
+  const MOTIVOS_VENDEDOR = { paused_by_seller: true }
 
   // Produto do Trevvo pelo SKU (referência) ou pelo vínculo do anúncio.
   function produtoDoAnuncio(assinanteId, empresaId, anuncioId, skus) {
@@ -411,8 +413,10 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
         const statusItem = String(item.status || '')
         const subs = item.sub_status || []
         const subsUteis = []
+        let pausaVendedor = false
         for (let m = 0; m < subs.length; m++) {
-          if (!MOTIVOS_IGNORAR[subs[m]]) subsUteis.push(String(subs[m]))
+          if (MOTIVOS_VENDEDOR[subs[m]]) pausaVendedor = true
+          else if (!MOTIVOS_IGNORAR[subs[m]]) subsUteis.push(String(subs[m]))
         }
         const semEstoqueCanal = subs.indexOf('out_of_stock') >= 0
         let estoqueCanal = parseInt(item.available_quantity, 10) || 0
@@ -462,10 +466,11 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
           }
         } else if (statusItem === 'paused') {
           situacao = 'Pausado sem motivo'
-          motivo =
-            'Pausado com ' +
-            estoqueCanal +
-            ' em estoque no ML e sem motivo informado (pausa manual ou da Tray).'
+          motivo = pausaVendedor
+            ? 'Pausado pelo vendedor (manual ou pela Tray) com ' + estoqueCanal + ' em estoque no ML.'
+            : 'Pausado com ' +
+              estoqueCanal +
+              ' em estoque no ML e sem motivo informado (pausa manual ou da Tray).'
           acao = 'Confira na Tray se o produto está ativo. Se estiver, reative o anúncio no ML.'
         } else {
           continue
