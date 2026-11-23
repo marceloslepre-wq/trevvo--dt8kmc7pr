@@ -54,6 +54,7 @@ import ConfiguracaoFiscalPage from '@/pages/configuracoes/ConfiguracaoFiscalPage
 import IntegridadeEstoquePage from '@/pages/configuracoes/IntegridadeEstoquePage'
 import LogAuditoriaPage from '@/pages/configuracoes/LogAuditoriaPage'
 import MercadoLivrePage from '@/pages/configuracoes/MercadoLivrePage'
+import ShopeePage from '@/pages/configuracoes/ShopeePage'
 import TrayPage from '@/pages/configuracoes/TrayPage'
 import PedidosCompraListaPage from '@/pages/compras/PedidosCompraListaPage'
 import PedidoCompraFormPage from '@/pages/compras/PedidoCompraFormPage'
@@ -430,6 +431,7 @@ const App = () => (
                     <Route path="/configuracoes/canais-margem" element={<CanaisMargemPage />} />
                     <Route path="/configuracoes/tray" element={<TrayPage />} />
                     <Route path="/configuracoes/mercado-livre" element={<MercadoLivrePage />} />
+                    <Route path="/configuracoes/shopee" element={<ShopeePage />} />
                     <Route path="/configuracoes/auditoria" element={<LogAuditoriaPage />} />
                     <Route
                       path="/configuracoes/integridade-estoque"
