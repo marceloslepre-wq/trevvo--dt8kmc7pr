@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { Store, Plus, Save, Trash2, Loader2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowLeft, Store, Plus, Save, Trash2, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,7 +28,16 @@ export default function CanaisMargemPage() {
   const { empresas } = useEmpresaAtiva()
   const assinanteId = useAssinanteId()
   const { toast } = useToast()
+  const navigate = useNavigate()
   const podeEditar = pode('configuracoes', 'editar') || pode('configuracoes', 'criar')
+
+  // Volta à página anterior (ex.: edição do produto). Sem histórico interno
+  // (página aberta direto pela URL), cai para a lista de produtos.
+  const voltar = () => {
+    const temHistorico = typeof window !== 'undefined' && window.history.state?.idx > 0
+    if (temHistorico) navigate(-1)
+    else navigate('/cadastros/produtos')
+  }
 
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -123,6 +133,19 @@ export default function CanaisMargemPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
+      <div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={voltar}
+          title="Voltar"
+          aria-label="Voltar"
+          className="h-8 px-2 text-slate-600"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
+        </Button>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
