@@ -33,7 +33,15 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como cancelar uma nota fiscal (NF-e ou NFC-e)?',
     rota: '/fiscal/documentos',
     caminho: 'Fiscal > Documentos Fiscais',
-    termos: ['cancelar nota', 'cancelamento', 'cancelar nfe', 'cancelar nfce', 'cancelar cupom', 'anular nota', 'sefaz'],
+    termos: [
+      'cancelar nota',
+      'cancelamento',
+      'cancelar nfe',
+      'cancelar nfce',
+      'cancelar cupom',
+      'anular nota',
+      'sefaz',
+    ],
     passos: [
       'Abra Fiscal > Documentos Fiscais.',
       'Escolha a empresa e localize a nota (pesquise pelo número, pela chave de 44 dígitos ou pelo cliente).',
@@ -52,7 +60,14 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como cancelar uma venda já finalizada?',
     rota: '/vendas/pedidos',
     caminho: 'Vendas e PDV > Orçamentos e Pedidos',
-    termos: ['cancelar venda', 'estornar venda', 'desfazer venda', 'venda errada', 'cancelar pedido', 'estorno'],
+    termos: [
+      'cancelar venda',
+      'estornar venda',
+      'desfazer venda',
+      'venda errada',
+      'cancelar pedido',
+      'estorno',
+    ],
     passos: [
       'Abra Vendas e PDV > Orçamentos e Pedidos (as vendas do PDV também aparecem aqui; use o filtro de origem PDV).',
       'Na linha da venda, clique em Opções > Cancelar Venda.',
@@ -70,7 +85,14 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como fazer uma Carta de Correção (CC-e)?',
     rota: '/fiscal/documentos',
     caminho: 'Fiscal > Documentos Fiscais',
-    termos: ['carta de correcao', 'cce', 'cc-e', 'corrigir nota', 'erro na nota', 'corrigir endereco'],
+    termos: [
+      'carta de correcao',
+      'cce',
+      'cc-e',
+      'corrigir nota',
+      'erro na nota',
+      'corrigir endereco',
+    ],
     passos: [
       'Abra Fiscal > Documentos Fiscais e localize a NF-e autorizada.',
       'Clique no ícone "Carta de Correção (CC-e)" na linha da nota.',
@@ -87,14 +109,23 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'A nota foi rejeitada. Como reenviar?',
     rota: '/fiscal/documentos',
     caminho: 'Fiscal > Documentos Fiscais',
-    termos: ['rejeitada', 'rejeicao', 'reenviar nota', 'tentar de novo', 'erro sefaz', 'nota nao autorizou'],
+    termos: [
+      'rejeitada',
+      'rejeicao',
+      'reenviar nota',
+      'tentar de novo',
+      'erro sefaz',
+      'nota nao autorizou',
+    ],
     passos: [
       'Abra Fiscal > Documentos Fiscais e filtre o status Rejeitada.',
       'Leia o motivo da rejeição na linha da nota.',
       'Corrija a causa (por exemplo, o cadastro do cliente ou o fiscal do produto).',
       'Clique no ícone "Tentar de novo (Reenviar)" na linha da nota.',
     ],
-    dicas: ['No PDV, quando a NFC-e é rejeitada, a venda continua válida: você pode reenviar na hora ou depois pelo monitor fiscal.'],
+    dicas: [
+      'No PDV, quando a NFC-e é rejeitada, a venda continua válida: você pode reenviar na hora ou depois pelo monitor fiscal.',
+    ],
   },
   {
     id: 'danfe-xml',
@@ -134,7 +165,9 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
       'Gere o pacote e baixe o arquivo ZIP.',
       'Envie o ZIP para a contabilidade.',
     ],
-    dicas: ['O ZIP traz notas de saída autorizadas e canceladas, cartas de correção, inutilizações, entradas e uma planilha resumo. Guarde os XMLs por 5 anos.'],
+    dicas: [
+      'O ZIP traz notas de saída autorizadas e canceladas, cartas de correção, inutilizações, entradas e uma planilha resumo. Guarde os XMLs por 5 anos.',
+    ],
   },
   {
     id: 'sped',
@@ -168,7 +201,13 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como abrir o caixa?',
     rota: '/vendas/caixa',
     caminho: 'Vendas e PDV > Controle de Caixa (ou F9 no PDV)',
-    termos: ['abrir caixa', 'abertura de caixa', 'fundo de troco', 'iniciar turno', 'caixa fechado'],
+    termos: [
+      'abrir caixa',
+      'abertura de caixa',
+      'fundo de troco',
+      'iniciar turno',
+      'caixa fechado',
+    ],
     passos: [
       'Abra Vendas e PDV > Controle de Caixa e clique em Abrir Caixa. No PDV, a tecla F9 também abre o caixa quando ele está fechado.',
       'Escolha o terminal e informe o fundo de troco.',
@@ -184,7 +223,13 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como fechar o caixa?',
     rota: '/vendas/caixa',
     caminho: 'Vendas e PDV > Controle de Caixa > Fechar Meu Caixa',
-    termos: ['fechar caixa', 'fechamento', 'encerrar caixa', 'conferir caixa', 'diferenca de caixa'],
+    termos: [
+      'fechar caixa',
+      'fechamento',
+      'encerrar caixa',
+      'conferir caixa',
+      'diferenca de caixa',
+    ],
     passos: [
       'Abra Vendas e PDV > Controle de Caixa e clique em Fechar Meu Caixa (também dá para fechar pelo PDV e pelo celular).',
       'Conte o dinheiro da gaveta e digite os valores contados de cada forma de pagamento (o fechamento é "às cegas").',
@@ -210,7 +255,15 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como fazer uma venda no PDV?',
     rota: '/vendas/pdv',
     caminho: 'Vendas e PDV > PDV',
-    termos: ['vender', 'venda balcao', 'pdv', 'frente de caixa', 'atalhos pdv', 'teclas pdv', 'nfce'],
+    termos: [
+      'vender',
+      'venda balcao',
+      'pdv',
+      'frente de caixa',
+      'atalhos pdv',
+      'teclas pdv',
+      'nfce',
+    ],
     passos: [
       'Abra Vendas e PDV > PDV com o caixa aberto.',
       'Leia o código de barras ou aperte F2 para localizar o produto.',
@@ -234,7 +287,9 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
       'Se a NFC-e não for autorizada, o aviso de rejeição aparece. Clique em Emitir em contingência.',
       'A nota é emitida em contingência e enviada à SEFAZ quando ela voltar.',
     ],
-    dicas: ['Use a contingência só quando a SEFAZ estiver fora. Erro de cadastro deve ser corrigido e reenviado.'],
+    dicas: [
+      'Use a contingência só quando a SEFAZ estiver fora. Erro de cadastro deve ser corrigido e reenviado.',
+    ],
   },
   {
     id: 'venda-celular',
@@ -268,7 +323,14 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como fazer um orçamento ou pedido com NF-e?',
     rota: '/vendas/pedidos',
     caminho: 'Vendas e PDV > Orçamentos e Pedidos > Novo',
-    termos: ['orcamento', 'pedido', 'nfe para cliente', 'venda com nota', 'converter orcamento', 'venda empresa'],
+    termos: [
+      'orcamento',
+      'pedido',
+      'nfe para cliente',
+      'venda com nota',
+      'converter orcamento',
+      'venda empresa',
+    ],
     passos: [
       'Abra Vendas e PDV > Orçamentos e Pedidos e crie um novo.',
       'Escolha o cliente, adicione os produtos e as condições de pagamento.',
@@ -283,7 +345,14 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como transferir mercadoria entre lojas?',
     rota: '/estoque/transferencias',
     caminho: 'Estoque > Transferências > Nova Transferência',
-    termos: ['transferencia', 'transferir', 'mandar para loja', 'enviar mercadoria', 'filial', 'reposicao do dia'],
+    termos: [
+      'transferencia',
+      'transferir',
+      'mandar para loja',
+      'enviar mercadoria',
+      'filial',
+      'reposicao do dia',
+    ],
     passos: [
       'Abra Estoque > Transferências e clique em Nova Transferência.',
       'Escolha a loja de origem e a de destino e adicione os produtos.',
@@ -291,20 +360,32 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
       'Na lista, clique em Emitir NF-e de transferência.',
       'Na loja de destino, abra a transferência e use Receber e Conferir.',
     ],
-    dicas: ['O botão Reposição do dia monta sozinho a transferência do que a loja 01 vendeu sem estoque.'],
+    dicas: [
+      'O botão Reposição do dia monta sozinho a transferência do que a loja 01 vendeu sem estoque.',
+    ],
   },
   {
     id: 'ajustar-estoque',
     titulo: 'Como ajustar o estoque de um produto?',
     rota: '/estoque/lancamentos',
     caminho: 'Estoque > Lançamentos Manuais',
-    termos: ['ajustar estoque', 'acertar estoque', 'entrada manual', 'saida manual', 'perda', 'avaria', 'quebra'],
+    termos: [
+      'ajustar estoque',
+      'acertar estoque',
+      'entrada manual',
+      'saida manual',
+      'perda',
+      'avaria',
+      'quebra',
+    ],
     passos: [
       'Abra Estoque > Lançamentos Manuais.',
       'Escolha o produto, o tipo (entrada ou saída) e a quantidade.',
       'Informe o motivo e salve.',
     ],
-    dicas: ['Para contar a loja inteira, use Estoque > Inventários. Para ver o histórico do produto, use Estoque > Kardex.'],
+    dicas: [
+      'Para contar a loja inteira, use Estoque > Inventários. Para ver o histórico do produto, use Estoque > Kardex.',
+    ],
   },
   {
     id: 'inventario',
@@ -323,7 +404,14 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como ver o estoque e o histórico de um produto?',
     rota: '/estoque/posicao',
     caminho: 'Estoque > Posição de Estoque (e Estoque > Kardex)',
-    termos: ['ver estoque', 'saldo', 'quanto tem', 'kardex', 'historico do produto', 'movimentacao'],
+    termos: [
+      'ver estoque',
+      'saldo',
+      'quanto tem',
+      'kardex',
+      'historico do produto',
+      'movimentacao',
+    ],
     passos: [
       'Abra Estoque > Posição de Estoque para o saldo atual da empresa selecionada.',
       'Abra Estoque > Kardex e escolha o produto para ver cada entrada e saída.',
@@ -336,7 +424,14 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como lançar uma nota de compra pelo XML?',
     rota: '/compras/notas-entrada',
     caminho: 'Compras > Notas de Entrada > Importar XML NF-e',
-    termos: ['nota de entrada', 'xml fornecedor', 'importar xml', 'lancar nota', 'compra', 'entrada de mercadoria'],
+    termos: [
+      'nota de entrada',
+      'xml fornecedor',
+      'importar xml',
+      'lancar nota',
+      'compra',
+      'entrada de mercadoria',
+    ],
     passos: [
       'Abra Compras > Notas de Entrada e clique em Importar XML NF-e.',
       'Escolha o arquivo XML que o fornecedor enviou.',
@@ -365,7 +460,14 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como pagar (dar baixa em) uma conta?',
     rota: '/financeiro/contas-pagar',
     caminho: 'Financeiro > Contas a Pagar',
-    termos: ['pagar conta', 'baixa', 'baixar titulo', 'boleto', 'conta a pagar', 'fornecedor pagar'],
+    termos: [
+      'pagar conta',
+      'baixa',
+      'baixar titulo',
+      'boleto',
+      'conta a pagar',
+      'fornecedor pagar',
+    ],
     passos: [
       'Abra Financeiro > Contas a Pagar e filtre o vencimento.',
       'Na linha do título, clique em Pagar (ou selecione vários para pagar em lote).',
@@ -378,7 +480,14 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como registrar um recebimento de cliente?',
     rota: '/financeiro/receber',
     caminho: 'Financeiro > Contas a Receber',
-    termos: ['receber', 'recebimento', 'cliente pagou', 'conta a receber', 'baixa recebimento', 'fiado'],
+    termos: [
+      'receber',
+      'recebimento',
+      'cliente pagou',
+      'conta a receber',
+      'baixa recebimento',
+      'fiado',
+    ],
     passos: [
       'Abra Financeiro > Contas a Receber e localize o título do cliente.',
       'Clique em Receber (ou selecione vários para receber em lote).',
@@ -405,14 +514,23 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como cadastrar um produto novo?',
     rota: '/cadastros/produtos',
     caminho: 'Cadastros > Produtos > Novo Produto',
-    termos: ['cadastrar produto', 'novo produto', 'incluir produto', 'codigo de barras', 'ean', 'preco'],
+    termos: [
+      'cadastrar produto',
+      'novo produto',
+      'incluir produto',
+      'codigo de barras',
+      'ean',
+      'preco',
+    ],
     passos: [
       'Abra Cadastros > Produtos e clique em Novo Produto.',
       'Preencha descrição, unidade, código de barras (EAN), marca e categoria.',
       'Na aba fiscal, escolha o perfil tributário e confira NCM e CEST.',
       'Informe preço e custo e salve. O código é gerado sozinho.',
     ],
-    dicas: ['Produtos médicos: preencha o registro ANVISA. Produtos marcados "fiscal não revisado" aparecem em Cadastros > Conferência fiscal.'],
+    dicas: [
+      'Produtos médicos: preencha o registro ANVISA. Produtos marcados "fiscal não revisado" aparecem em Cadastros > Conferência fiscal.',
+    ],
   },
   {
     id: 'novo-cliente',
@@ -432,7 +550,10 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     rota: '/cadastros/fornecedores',
     caminho: 'Cadastros > Fornecedores',
     termos: ['cadastrar fornecedor', 'novo fornecedor', 'fornecedor'],
-    passos: ['Abra Cadastros > Fornecedores e crie um novo.', 'Informe CNPJ, razão social, IE e endereço e salve.'],
+    passos: [
+      'Abra Cadastros > Fornecedores e crie um novo.',
+      'Informe CNPJ, razão social, IE e endereço e salve.',
+    ],
     dicas: ['Ao importar o XML de uma compra, o fornecedor pode ser criado automaticamente.'],
   },
   {
@@ -440,7 +561,16 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como criar um usuário e dar permissões?',
     rota: '/cadastros/usuarios',
     caminho: 'Configurações > Usuários (e Configurações > Perfis de acesso)',
-    termos: ['usuario', 'novo usuario', 'permissao', 'acesso', 'senha', 'funcionario', 'perfil de acesso', 'login'],
+    termos: [
+      'usuario',
+      'novo usuario',
+      'permissao',
+      'acesso',
+      'senha',
+      'funcionario',
+      'perfil de acesso',
+      'login',
+    ],
     passos: [
       'Abra Configurações > Perfis de acesso e confira (ou crie) o perfil com as telas que a pessoa pode ver.',
       'Abra Configurações > Usuários e crie o usuário.',
@@ -455,7 +585,15 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Como ver anúncios pausados ou com problema no Mercado Livre?',
     rota: '/configuracoes/mercado-livre',
     caminho: 'Configurações > Integração Mercado Livre > Saúde dos anúncios',
-    termos: ['anuncio pausado', 'mercado livre', 'ml', 'saude dos anuncios', 'anuncio bloqueado', 'politica', 'anvisa'],
+    termos: [
+      'anuncio pausado',
+      'mercado livre',
+      'ml',
+      'saude dos anuncios',
+      'anuncio bloqueado',
+      'politica',
+      'anvisa',
+    ],
     passos: [
       'Abra Configurações > Integração Mercado Livre.',
       'No quadro Saúde dos anúncios, veja os anúncios com problema (a verificação roda todo dia de manhã).',
@@ -474,7 +612,9 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
       'Clique em Conectar à Shopee e autorize com a conta do vendedor.',
       'De volta ao Trevvo, clique em Testar conexão.',
     ],
-    dicas: ['Só administrador conecta. O Partner ID e a chave precisam estar configurados no servidor.'],
+    dicas: [
+      'Só administrador conecta. O Partner ID e a chave precisam estar configurados no servidor.',
+    ],
   },
 
   // ---------------- Geral ----------------
@@ -495,7 +635,14 @@ export const ARTIGOS_AJUDA: ArtigoAjuda[] = [
     titulo: 'Onde ficam os relatórios?',
     rota: '/relatorios',
     caminho: 'Relatórios > Central de Relatórios',
-    termos: ['relatorio', 'vendas por periodo', 'relatorio de vendas', 'curva abc', 'comissao', 'exportar csv'],
+    termos: [
+      'relatorio',
+      'vendas por periodo',
+      'relatorio de vendas',
+      'curva abc',
+      'comissao',
+      'exportar csv',
+    ],
     passos: [
       'Abra Relatórios > Central de Relatórios.',
       'Escolha o relatório, a empresa (ou todas) e o período.',

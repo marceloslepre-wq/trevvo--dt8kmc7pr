@@ -20,7 +20,14 @@ import { buscarArtigos, buscarTelas } from '@/lib/buscaAjuda'
 import { perguntarAoTrevvo, ChatAjudaIndisponivel } from '@/services/ajuda'
 
 /** Artigos mostrados com a busca vazia */
-const SUGESTOES = ['cancelar-nota', 'abrir-caixa', 'fechar-caixa', 'troca-devolucao', 'nota-entrada-xml', 'transferencia']
+const SUGESTOES = [
+  'cancelar-nota',
+  'abrir-caixa',
+  'fechar-caixa',
+  'troca-devolucao',
+  'nota-entrada-xml',
+  'transferencia',
+]
 
 type Visao =
   | { tipo: 'busca' }
@@ -296,9 +303,14 @@ export const BuscaTrevvo: React.FC<BuscaTrevvoProps> = ({ aberto, onAbertoChange
                   )
                 })()}
 
-              {texto.trim() && artigos.length === 0 && telas.length === 0 && texto.trim().length < 3 && (
-                <p className="px-3 py-6 text-center text-sm text-slate-500">Continue digitando...</p>
-              )}
+              {texto.trim() &&
+                artigos.length === 0 &&
+                telas.length === 0 &&
+                texto.trim().length < 3 && (
+                  <p className="px-3 py-6 text-center text-sm text-slate-500">
+                    Continue digitando...
+                  </p>
+                )}
             </>
           )}
 
@@ -362,11 +374,11 @@ export const BuscaTrevvo: React.FC<BuscaTrevvoProps> = ({ aberto, onAbertoChange
   )
 }
 
-const DetalheArtigo: React.FC<{ artigo: ArtigoAjuda; onVoltar: () => void; onAbrir: () => void }> = ({
-  artigo,
-  onVoltar,
-  onAbrir,
-}) => (
+const DetalheArtigo: React.FC<{
+  artigo: ArtigoAjuda
+  onVoltar: () => void
+  onAbrir: () => void
+}> = ({ artigo, onVoltar, onAbrir }) => (
   <div className="p-3 space-y-4">
     <button
       onClick={onVoltar}
