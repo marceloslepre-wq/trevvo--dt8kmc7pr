@@ -115,8 +115,8 @@ export const SaudeAnuncios: React.FC<Props> = ({ empresaId }) => {
         </CardTitle>
         <CardDescription>
           Todo dia às 6h o Trevvo confere os anúncios e lista os que estão fora do ar por regra do
-          Mercado Livre, os pausados com estoque sem motivo e os sem estoque no ML que têm saldo
-          no Trevvo. Os mais vendidos aparecem primeiro. Nada é alterado no Mercado Livre.
+          Mercado Livre, os pausados com estoque sem motivo e os sem estoque no ML que têm saldo no
+          Trevvo. Os mais vendidos aparecem primeiro. Nada é alterado no Mercado Livre.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

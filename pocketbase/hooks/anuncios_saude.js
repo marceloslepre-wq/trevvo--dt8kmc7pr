@@ -167,7 +167,8 @@ routerAdd(
           return c.json(200, {
             sucesso: true,
             execucao_id: abertas[0].id,
-            mensagem: 'Já existe uma verificação em andamento. O resultado aparece em alguns minutos.',
+            mensagem:
+              'Já existe uma verificação em andamento. O resultado aparece em alguns minutos.',
           })
         }
       } catch (_) {}
@@ -423,7 +424,8 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
         const vars = item.variations || []
         if (vars.length > 0) estoqueCanal = 0
         for (let v = 0; v < vars.length; v++) {
-          const sv = skuDosAtributos(vars[v].attributes) || String(vars[v].seller_custom_field || '').trim()
+          const sv =
+            skuDosAtributos(vars[v].attributes) || String(vars[v].seller_custom_field || '').trim()
           if (sv && skus.indexOf(sv) < 0) skus.push(sv)
           estoqueCanal += parseInt(vars[v].available_quantity, 10) || 0
         }
@@ -453,8 +455,7 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
         } else if (statusItem === 'paused' && (semEstoqueCanal || estoqueCanal <= 0)) {
           if (saldo > 0) {
             situacao = 'Estoque divergente'
-            motivo =
-              'Sem estoque no Mercado Livre, mas o Trevvo tem ' + saldo + ' na empresa.'
+            motivo = 'Sem estoque no Mercado Livre, mas o Trevvo tem ' + saldo + ' na empresa.'
             acao = 'A Tray não enviou o estoque. Confira o estoque do produto na Tray.'
           } else {
             continue // pausado só por falta de estoque: não é problema
@@ -462,7 +463,9 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
         } else if (statusItem === 'paused') {
           situacao = 'Pausado sem motivo'
           motivo =
-            'Pausado com ' + estoqueCanal + ' em estoque no ML e sem motivo informado (pausa manual ou da Tray).'
+            'Pausado com ' +
+            estoqueCanal +
+            ' em estoque no ML e sem motivo informado (pausa manual ou da Tray).'
           acao = 'Confira na Tray se o produto está ativo. Se estiver, reative o anúncio no ML.'
         } else {
           continue
@@ -505,7 +508,7 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
     for (let i = 0; i < existentes.length; i++) {
       porAnuncio[existentes[i].getString('anuncio_id')] = existentes[i]
     }
-    const resumo = { 'Política': 0, 'Pausado sem motivo': 0, 'Estoque divergente': 0 }
+    const resumo = { Política: 0, 'Pausado sem motivo': 0, 'Estoque divergente': 0 }
     const encontrados = {}
     for (let i = 0; i < problemas.length; i++) {
       const p = problemas[i]
