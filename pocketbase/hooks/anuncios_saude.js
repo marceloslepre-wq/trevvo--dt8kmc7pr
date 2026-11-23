@@ -467,7 +467,9 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
         } else if (statusItem === 'paused') {
           situacao = 'Pausado sem motivo'
           motivo = pausaVendedor
-            ? 'Pausado pelo vendedor (manual ou pela Tray) com ' + estoqueCanal + ' em estoque no ML.'
+            ? 'Pausado pelo vendedor (manual ou pela Tray) com ' +
+              estoqueCanal +
+              ' em estoque no ML.'
             : 'Pausado com ' +
               estoqueCanal +
               ' em estoque no ML e sem motivo informado (pausa manual ou da Tray).'
