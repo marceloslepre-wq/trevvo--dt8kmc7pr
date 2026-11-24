@@ -28,6 +28,7 @@ import { toast } from '@/hooks/use-toast'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import AuditoriaAnuncios from '@/components/mercadolivre/AuditoriaAnuncios'
 import SaudeAnuncios from '@/components/mercadolivre/SaudeAnuncios'
+import PreencherPrecosML from '@/components/mercadolivre/PreencherPrecosML'
 import {
   StatusMercadoLivre,
   desconectarMercadoLivre,
@@ -318,6 +319,10 @@ export const MercadoLivrePage: React.FC = () => {
           )}
 
           {situacao === 'Conectada' && <AuditoriaAnuncios key={empresaId} empresaId={empresaId} />}
+
+          {situacao === 'Conectada' && podeGerenciar && (
+            <PreencherPrecosML key={`precos-${empresaId}`} empresaId={empresaId} />
+          )}
 
           <Card>
             <CardHeader>
