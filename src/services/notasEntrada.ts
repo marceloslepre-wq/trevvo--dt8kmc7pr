@@ -635,12 +635,36 @@ export function sugerirCstPisCofinsEntrada(params: {
 export async function tentarVincularItemAutomatico(
   item: NotaEntradaItem,
   fornecedorId?: string,
+  fornecedorEhEmpresaPropria?: boolean,
 ): Promise<{
   produtoId: string | null
   fatorConversao: number
   marcarRevisao: boolean
-  metodo: 'fornecedor' | 'gtin' | 'nenhum'
+  metodo: 'fornecedor' | 'gtin' | 'codigo_proprio' | 'nenhum'
 }> {
+  // 0. Nota emitida por uma empresa do próprio grupo (venda ou transferência entre filiais):
+  // o código do produto no XML é o código do Trevvo, então vincula direto pelo código.
+  if (fornecedorEhEmpresaPropria && item.codigo_fornecedor) {
+    const cod = item.codigo_fornecedor.trim()
+    if (/^\d+$/.test(cod)) {
+      try {
+        const prod = await pb
+          .collection('produtos')
+          .getFirstListItem<any>(`codigo = ${Number(cod)}`, { sort: '-ativo' })
+        if (prod) {
+          return {
+            produtoId: prod.id,
+            fatorConversao: 1,
+            marcarRevisao: false,
+            metodo: 'codigo_proprio',
+          }
+        }
+      } catch {
+        // continua para os outros métodos
+      }
+    }
+  }
+
   // 1. produtos_fornecedores com fornecedor_id e codigo_no_fornecedor
   if (fornecedorId && item.codigo_fornecedor) {
     const codLimpo = item.codigo_fornecedor.trim().replace(/['"]/g, '')
@@ -726,6 +750,23 @@ export async function tentarVincularItemAutomatico(
 }
 
 /**
+ * Diz se o fornecedor da nota é uma das empresas cadastradas no Trevvo (mesmo CNPJ de uma
+ * empresa do assinante). Nesse caso a nota veio de outra filial do grupo.
+ */
+export async function fornecedorEhEmpresaDoGrupo(fornecedorId?: string): Promise<boolean> {
+  if (!fornecedorId) return false
+  try {
+    const forn = await pb.collection('fornecedores').getOne<any>(fornecedorId)
+    const doc = String(forn?.cpf_cnpj || '').replace(/\D/g, '')
+    if (doc.length !== 14) return false
+    const empresas = await pb.collection('empresas').getFullList<any>({ fields: 'id,cnpj' })
+    return empresas.some((e) => String(e.cnpj || '').replace(/\D/g, '') === doc)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Executa o vínculo automático para todos os itens da nota que estiverem sem produto_id
  */
 export async function executarVinculoAutomaticoNota(
@@ -738,11 +779,12 @@ export async function executarVinculoAutomaticoNota(
     filter: `nota_id = '${notaId}' && ativo = true`,
   })
 
+  const proprio = await fornecedorEhEmpresaDoGrupo(fornecedorId)
   let vinculados = 0
   for (const it of itens) {
     if (it.produto_id) continue
 
-    const res = await tentarVincularItemAutomatico(it, fornecedorId)
+    const res = await tentarVincularItemAutomatico(it, fornecedorId, proprio)
     if (res.produtoId) {
       await vincularProdutoAoItemNota(
         it.id,
