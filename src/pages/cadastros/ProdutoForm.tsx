@@ -1490,9 +1490,7 @@ export const ProdutoForm: React.FC = () => {
                     disabled
                     className="h-9 text-xs bg-slate-50 font-bold text-slate-800"
                   />
-                  <span className="text-[10px] text-slate-400">
-                    Custo − Rebaixa % + Despesas %
-                  </span>
+                  <span className="text-[10px] text-slate-400">Custo − Rebaixa % + Despesas %</span>
                 </div>
               </div>
 

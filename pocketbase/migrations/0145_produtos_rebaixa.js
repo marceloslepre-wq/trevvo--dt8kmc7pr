@@ -13,7 +13,9 @@ migrate(
   (app) => {
     const col = app.findCollectionByNameOrId('produtos')
     if (!col.fields.getByName('rebaixa_percentual')) {
-      col.fields.add(new NumberField({ name: 'rebaixa_percentual', required: false, min: 0, max: 100 }))
+      col.fields.add(
+        new NumberField({ name: 'rebaixa_percentual', required: false, min: 0, max: 100 }),
+      )
       app.save(col)
     }
   },
