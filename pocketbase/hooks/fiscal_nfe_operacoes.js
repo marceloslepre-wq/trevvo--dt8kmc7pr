@@ -1690,7 +1690,8 @@ routerAdd(
               {
                 const pgsT = jsonFocus.formas_pagamento || []
                 let somaPgT = 0
-                for (let iT = 0; iT < pgsT.length; iT++) somaPgT += Number(pgsT[iT].valor_pagamento) || 0
+                for (let iT = 0; iT < pgsT.length; iT++)
+                  somaPgT += Number(pgsT[iT].valor_pagamento) || 0
                 const alvoT = (Number(venda.getFloat('valor_total')) || 0) + valorTrocoVenda
                 const faltaT = alvoT - somaPgT
                 if (pgsT.length > 0 && faltaT > 0.009) {
@@ -1701,7 +1702,9 @@ routerAdd(
                       break
                     }
                   }
-                  pgsT[idxT].valor_pagamento = round2((Number(pgsT[idxT].valor_pagamento) || 0) + faltaT)
+                  pgsT[idxT].valor_pagamento = round2(
+                    (Number(pgsT[idxT].valor_pagamento) || 0) + faltaT,
+                  )
                 }
               }
             }

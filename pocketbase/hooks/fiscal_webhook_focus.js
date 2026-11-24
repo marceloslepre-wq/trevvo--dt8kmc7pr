@@ -2421,11 +2421,12 @@ routerAdd(
                 break
               }
             }
-            pgsT[idxT].valor_pagamento = round2Re((Number(pgsT[idxT].valor_pagamento) || 0) + faltaT)
+            pgsT[idxT].valor_pagamento = round2Re(
+              (Number(pgsT[idxT].valor_pagamento) || 0) + faltaT,
+            )
           }
         }
-      }
-      else delete jsonBase.valor_troco
+      } else delete jsonBase.valor_troco
       if (informarIbsCbsDoc) {
         jsonBase.valor_total_ibs = totIbsDoc
         jsonBase.valor_total_cbs = totCbsDoc
