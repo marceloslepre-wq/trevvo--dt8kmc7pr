@@ -127,7 +127,7 @@ export const SaudeAnuncios: React.FC<Props> = ({ empresaId }) => {
               <>
                 <span className="font-medium text-foreground">{execucao.status}</span>
                 {execucao.status === 'Concluída' &&
-                  ` em ${formatarDataHora(execucao.concluida_em)} (${execucao.total_lidos} anúncios fora do ar lidos)`}
+                  ` em ${formatarDataHora(execucao.concluida_em)} (${execucao.total_lidos} anúncios conferidos)`}
                 {execucao.status === 'Erro' && ` — ${execucao.mensagem}`}
                 {emAndamento && ' — o resultado aparece em até 5 minutos'}
               </>
