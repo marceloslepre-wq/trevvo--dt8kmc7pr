@@ -612,14 +612,17 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                     <td className="py-2 px-2 text-right">{brl(r.comissao + r.despesas)}</td>
                     <td className="py-2 px-2 text-right font-semibold">{brl(r.lucro)}</td>
                     <td className="py-2 px-2 text-right">
-                      <span className={`px-1.5 py-0.5 rounded font-bold ${corMargem(r.margem)}`}>
-                        {pct(r.margem)}
+                      <span
+                        className={`px-1.5 py-0.5 rounded font-bold ${corMargem(r.margemSobreRecebido)}`}
+                        title="Margem líquida: lucro dividido pelo valor recebido do canal"
+                      >
+                        {pct(r.margemSobreRecebido)}
                       </span>
                       <div
                         className="text-[10px] text-slate-400 mt-1"
-                        title="Lucro dividido pelo valor recebido"
+                        title="Lucro dividido pelo preço de venda no canal"
                       >
-                        {pct(r.margemSobreRecebido)} s/ recebido
+                        {pct(r.margem)} s/ preço
                       </div>
                     </td>
                     <td className="py-2 pl-2">
