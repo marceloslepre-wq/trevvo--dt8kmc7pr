@@ -191,6 +191,7 @@ export const ProdutoForm: React.FC = () => {
     // Preços
     preco_custo: 0,
     outras_despesas_percentual: 0,
+    rebaixa_percentual: 0,
     custo_final: 0,
     margem_percentual: 0,
     preco_venda: 0,
@@ -405,13 +406,19 @@ export const ProdutoForm: React.FC = () => {
       }
 
       // Cálculos bidirecionais de preços
-      if (campo === 'preco_custo' || campo === 'outras_despesas_percentual') {
+      if (
+        campo === 'preco_custo' ||
+        campo === 'outras_despesas_percentual' ||
+        campo === 'rebaixa_percentual'
+      ) {
         const custo = campo === 'preco_custo' ? Number(valor) : Number(prev.preco_custo || 0)
         const desp =
           campo === 'outras_despesas_percentual'
             ? Number(valor)
             : Number(prev.outras_despesas_percentual || 0)
-        const cFinal = calcularCustoFinal(custo, desp)
+        const reb =
+          campo === 'rebaixa_percentual' ? Number(valor) : Number(prev.rebaixa_percentual || 0)
+        const cFinal = calcularCustoFinal(custo, desp, reb)
         novo.custo_final = cFinal
 
         // Se houver margem definida, sugere o preço de venda
@@ -422,13 +429,21 @@ export const ProdutoForm: React.FC = () => {
         const margem = Number(valor)
         const cFinal =
           novo.custo_final ||
-          calcularCustoFinal(novo.preco_custo || 0, novo.outras_despesas_percentual || 0)
+          calcularCustoFinal(
+            novo.preco_custo || 0,
+            novo.outras_despesas_percentual || 0,
+            novo.rebaixa_percentual || 0,
+          )
         novo.preco_venda = sugerirPrecoVenda(cFinal, margem)
       } else if (campo === 'preco_venda') {
         const pVenda = Number(valor)
         const cFinal =
           novo.custo_final ||
-          calcularCustoFinal(novo.preco_custo || 0, novo.outras_despesas_percentual || 0)
+          calcularCustoFinal(
+            novo.preco_custo || 0,
+            novo.outras_despesas_percentual || 0,
+            novo.rebaixa_percentual || 0,
+          )
         novo.margem_percentual = recalcularMargem(pVenda, cFinal)
       }
 
@@ -721,7 +736,11 @@ export const ProdutoForm: React.FC = () => {
   // Cálculos de margem e markup em tela
   const custoFinalTela =
     formData.custo_final ||
-    calcularCustoFinal(formData.preco_custo || 0, formData.outras_despesas_percentual || 0)
+    calcularCustoFinal(
+      formData.preco_custo || 0,
+      formData.outras_despesas_percentual || 0,
+      formData.rebaixa_percentual || 0,
+    )
   const precoVendaTela = formData.preco_venda || 0
   const markupCalculado = calcularMarkup(precoVendaTela, custoFinalTela)
   const margemSobreVenda = calcularMargemSobreVenda(precoVendaTela, custoFinalTela)
@@ -1393,7 +1412,7 @@ export const ProdutoForm: React.FC = () => {
         <TabsContent value="precos" className="space-y-4">
           <Card>
             <CardContent className="pt-6 space-y-5 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Preço de Custo */}
                 <div>
                   <Label className="text-xs font-semibold text-slate-700 block mb-1">
@@ -1408,6 +1427,33 @@ export const ProdutoForm: React.FC = () => {
                     className="h-9 text-xs"
                   />
                   <span className="text-[10px] text-slate-400">Até 4 casas decimais</span>
+                </div>
+
+                {/* Rebaixa (bonificação do fornecedor) */}
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Rebaixa / Bonificação (%)
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={formData.rebaixa_percentual ?? ''}
+                      onChange={(e) => handleCampoChange('rebaixa_percentual', e.target.value)}
+                      placeholder="0,00"
+                      className="h-9 text-xs pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">
+                      %
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    {Number(formData.rebaixa_percentual || 0) > 0
+                      ? `− R$ ${((Number(formData.preco_custo || 0) * Number(formData.rebaixa_percentual || 0)) / 100).toFixed(2).replace('.', ',')} no custo`
+                      : 'Bonificação do fornecedor repassada ao custo'}
+                  </span>
                 </div>
 
                 {/* Outras despesas */}
@@ -1444,7 +1490,9 @@ export const ProdutoForm: React.FC = () => {
                     disabled
                     className="h-9 text-xs bg-slate-50 font-bold text-slate-800"
                   />
-                  <span className="text-[10px] text-slate-400">Custo + Custo × Despesas %</span>
+                  <span className="text-[10px] text-slate-400">
+                    Custo − Rebaixa % + Despesas %
+                  </span>
                 </div>
               </div>
 

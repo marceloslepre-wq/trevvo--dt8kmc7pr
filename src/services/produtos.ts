@@ -38,6 +38,7 @@ export interface Produto {
   // Preços
   preco_custo?: number
   outras_despesas_percentual?: number
+  rebaixa_percentual?: number
   custo_final?: number
   margem_percentual?: number
   preco_venda?: number
@@ -275,10 +276,19 @@ export function validarGTIN(codigoRaw: string): boolean {
 // -------------------------------------------------------------
 // AUXILIARES DE CÁLCULO DE PREÇO
 // -------------------------------------------------------------
-export function calcularCustoFinal(precoCusto: number, outrasDespesasPercentual: number): number {
+/**
+ * Custo final gerencial: preço de custo menos a rebaixa (bonificação do fornecedor) e mais as
+ * outras despesas. custo × (1 - rebaixa%) × (1 + despesas%).
+ */
+export function calcularCustoFinal(
+  precoCusto: number,
+  outrasDespesasPercentual: number,
+  rebaixaPercentual = 0,
+): number {
   const custo = precoCusto || 0
   const desp = outrasDespesasPercentual || 0
-  return Number((custo * (1 + desp / 100)).toFixed(4))
+  const reb = Math.min(100, Math.max(0, rebaixaPercentual || 0))
+  return Number((custo * (1 - reb / 100) * (1 + desp / 100)).toFixed(4))
 }
 
 export function sugerirPrecoVenda(custoFinal: number, margemPercentual: number): number {
@@ -953,7 +963,11 @@ export async function salvarProduto(
     dados.outras_despesas_percentual !== undefined && dados.outras_despesas_percentual !== null
       ? Number(dados.outras_despesas_percentual)
       : 0
-  const custoFinalCalculado = calcularCustoFinal(precoCustoNum, outrasDespesasNum)
+  const rebaixaNum =
+    dados.rebaixa_percentual !== undefined && dados.rebaixa_percentual !== null
+      ? Number(dados.rebaixa_percentual) || 0
+      : 0
+  const custoFinalCalculado = calcularCustoFinal(precoCustoNum, outrasDespesasNum, rebaixaNum)
 
   const fatorConversaoFinal =
     dados.fator_conversao_tributavel !== undefined &&
@@ -995,6 +1009,7 @@ export async function salvarProduto(
     // Preços
     preco_custo: precoCustoNum,
     outras_despesas_percentual: outrasDespesasNum,
+    rebaixa_percentual: rebaixaNum,
     custo_final: custoFinalCalculado,
     margem_percentual:
       dados.margem_percentual !== undefined && dados.margem_percentual !== null
@@ -1627,7 +1642,11 @@ export async function alterarPrecoMargemEmMassa(
         const atual = antes.preco_custo || 0
         const novoCusto = Number((atual * fator).toFixed(4))
         updates.preco_custo = novoCusto
-        const novoCustoFinal = calcularCustoFinal(novoCusto, antes.outras_despesas_percentual || 0)
+        const novoCustoFinal = calcularCustoFinal(
+          novoCusto,
+          antes.outras_despesas_percentual || 0,
+          antes.rebaixa_percentual || 0,
+        )
         updates.custo_final = novoCustoFinal
         if (antes.margem_percentual) {
           updates.preco_venda = sugerirPrecoVenda(novoCustoFinal, antes.margem_percentual)

@@ -634,7 +634,11 @@ routerAdd('POST', '/notas-entrada/lancar', (c) => {
         if (atualizarCustoProdutos && custoUnitarioEstoque > 0) {
           precoCustoNovo = custoUnitarioEstoque
           const despesasPct = prod.getFloat('outras_despesas_percentual') || 0
-          custoFinalNovo = precoCustoNovo * (1 + despesasPct / 100)
+          // Rebaixa (bonificação do fornecedor) reduz o custo final gerencial
+          let rebaixaPct = prod.getFloat('rebaixa_percentual') || 0
+          if (rebaixaPct < 0) rebaixaPct = 0
+          if (rebaixaPct > 100) rebaixaPct = 100
+          custoFinalNovo = precoCustoNovo * (1 - rebaixaPct / 100) * (1 + despesasPct / 100)
 
           if (custoFinalNovo > 0 && precoVendaAtual > 0) {
             margemNova = ((precoVendaAtual - custoFinalNovo) / custoFinalNovo) * 100
