@@ -398,6 +398,102 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
         if (res.length === 0 || offset >= total || offset >= 1000) break
       }
     }
+    const fontes = { busca_status: ids.length }
+
+    // 1b) O ML não devolve na busca por status os anúncios bloqueados por regra
+    //     (ex.: under_review + forbidden/ANVISA). Fontes extras, todas opcionais:
+    //     se uma falhar, segue com as outras.
+    function juntarId(valor, fonte) {
+      const id = String(valor || '').replace(/[^A-Za-z0-9]/g, '')
+      if (!/^MLB[0-9]+$/.test(id) || visto[id]) return
+      visto[id] = true
+      ids.push(id)
+      fontes[fonte] = (fontes[fonte] || 0) + 1
+    }
+    function idsNoObjeto(obj, fonte, prof) {
+      if (obj === null || obj === undefined || prof > 6) return
+      if (typeof obj === 'string') {
+        if (/^MLB[0-9]+$/.test(obj)) juntarId(obj, fonte)
+        return
+      }
+      if (typeof obj !== 'object') return
+      if (Array.isArray(obj)) {
+        for (let q = 0; q < obj.length; q++) idsNoObjeto(obj[q], fonte, prof + 1)
+        return
+      }
+      for (const chave in obj) idsNoObjeto(obj[chave], fonte, prof + 1)
+    }
+
+    // a) Busca por motivo (sub_status) em vez de status.
+    const buscasMotivo = ['sub_status=forbidden', 'status=under_review&sub_status=forbidden']
+    for (let s = 0; s < buscasMotivo.length; s++) {
+      try {
+        const r = chamarML(
+          '/users/' + mlUserId + '/items/search?' + buscasMotivo[s] + '&limit=100',
+          token,
+        )
+        if (r.status === 200) {
+          const res = (r.dados && r.dados.results) || []
+          for (let i = 0; i < res.length; i++) juntarId(res[i], 'busca_motivo')
+        }
+      } catch (_) {}
+    }
+
+    // b) Varredura completa da conta (search_type=scan, sem filtro de status).
+    try {
+      let scroll = ''
+      for (let pag = 0; pag < 60; pag++) {
+        const r = chamarML(
+          '/users/' +
+            mlUserId +
+            '/items/search?search_type=scan&limit=100' +
+            (scroll ? '&scroll_id=' + encodeURIComponent(scroll) : ''),
+          token,
+        )
+        if (r.status !== 200) break
+        const res = (r.dados && r.dados.results) || []
+        for (let i = 0; i < res.length; i++) juntarId(res[i], 'varredura')
+        scroll = String((r.dados && r.dados.scroll_id) || '')
+        if (res.length === 0 || !scroll) break
+      }
+    } catch (_) {}
+
+    // c) Infrações (moderações) da conta.
+    try {
+      for (let pag = 0; pag < 10; pag++) {
+        const r = chamarML(
+          '/moderations/infractions/' + mlUserId + '?limit=50&offset=' + pag * 50,
+          token,
+        )
+        if (r.status !== 200) break
+        const antes = ids.length
+        idsNoObjeto(r.dados, 'infracoes', 0)
+        const lista = (r.dados && (r.dados.infractions || r.dados.results)) || []
+        if (!lista.length || ids.length === antes) break
+      }
+    } catch (_) {}
+
+    // d) Anúncios que o Trevvo já conhece: vínculos e os já listados na Saúde dos anúncios.
+    try {
+      const vinc = $app.findRecordsByFilter(
+        'produtos_vinculos_anuncios',
+        "empresa_id = '" + empresaId + "' && marketplace = 'mercadolivre'",
+        '',
+        5000,
+        0,
+      )
+      for (let i = 0; i < vinc.length; i++) juntarId(vinc[i].getString('anuncio_id'), 'vinculos')
+    } catch (_) {}
+    try {
+      const ant = $app.findRecordsByFilter(
+        'anuncios_saude',
+        "empresa_id = '" + empresaId + "' && marketplace = 'mercadolivre'",
+        '',
+        5000,
+        0,
+      )
+      for (let i = 0; i < ant.length; i++) juntarId(ant[i].getString('anuncio_id'), 'ja_listados')
+    } catch (_) {}
 
     // 2) Detalhe em lotes de 20 e classificação.
     const agoraIso = new Date().toISOString()
@@ -557,6 +653,8 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
         } catch (_) {}
       }
     }
+    // Quantos anúncios vieram de cada fonte (para conferir a cobertura).
+    for (const f in fontes) resumo['fonte_' + f] = fontes[f]
     return { lidos: ids.length, problemas: problemas.length, resumo: resumo }
   }
 
