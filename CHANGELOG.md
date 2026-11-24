@@ -2,6 +2,15 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-23 — Deploy-only: reconstrução completa (frontend + backend, reinício da prévia)
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks e migrations não foram tocados.
+- Objetivo: reconstruir o projeto por completo — build do frontend (setup, lint, typecheck, build) e deploy do backend com os hooks e migrations atuais do repositório, reiniciando a prévia e o backend.
+- Verificação (pós-deploy):
+  - `list_backend_functions`: família `mercadolivre` (conexão, notificações, preços, auditoria), `anuncios_saude`, `shopee_conexao`, `ajuda_trevvo` (POST /backend/v1/ajuda/perguntar), `vendas_operacoes`, `fiscal_nfce_emitir` e `master_limpeza_testes` registrados.
+  - `list_migrations`: até 0143 aplicadas, nenhuma migration falha; próxima livre 0144.
+  - `list_logs` (hooks, min_level=error): sem erro de inicialização/boot.
+
 ## 2026-11-23 — Deploy-only: reimplante do backend (PRs 48/49 — Saúde dos anúncios e Shopee)
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks e migrations não foram tocados.
