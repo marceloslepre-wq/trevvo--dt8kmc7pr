@@ -2402,7 +2402,29 @@ routerAdd(
       jsonBase.items = itensRemontados
       jsonBase.formas_pagamento = formasPagamentoDoc
       const valorTrocoDoc = vendaDoc.getFloat('valor_troco') || 0
-      if (valorTrocoDoc > 0) jsonBase.valor_troco = round2Re(valorTrocoDoc)
+      if (valorTrocoDoc > 0) {
+        jsonBase.valor_troco = round2Re(valorTrocoDoc)
+        // SEFAZ (rejeição 869): vTroco = soma de vPag - vNF. O PDV grava o pagamento líquido
+        // (já sem o troco), então o valor entregue pelo cliente é refeito aqui somando o troco
+        // à forma em dinheiro (tPag 01) ou, sem dinheiro, à última forma.
+        {
+          const pgsT = jsonBase.formas_pagamento || []
+          let somaPgT = 0
+          for (let iT = 0; iT < pgsT.length; iT++) somaPgT += Number(pgsT[iT].valor_pagamento) || 0
+          const alvoT = (Number(vendaDoc.getFloat('valor_total')) || 0) + valorTrocoDoc
+          const faltaT = alvoT - somaPgT
+          if (pgsT.length > 0 && faltaT > 0.009) {
+            let idxT = pgsT.length - 1
+            for (let iT = 0; iT < pgsT.length; iT++) {
+              if (String(pgsT[iT].forma_pagamento) === '01') {
+                idxT = iT
+                break
+              }
+            }
+            pgsT[idxT].valor_pagamento = round2Re((Number(pgsT[idxT].valor_pagamento) || 0) + faltaT)
+          }
+        }
+      }
       else delete jsonBase.valor_troco
       if (informarIbsCbsDoc) {
         jsonBase.valor_total_ibs = totIbsDoc
