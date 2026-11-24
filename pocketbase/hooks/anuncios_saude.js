@@ -428,13 +428,24 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
     const buscasMotivo = ['sub_status=forbidden', 'status=under_review&sub_status=forbidden']
     for (let s = 0; s < buscasMotivo.length; s++) {
       try {
-        const r = chamarML(
-          '/users/' + mlUserId + '/items/search?' + buscasMotivo[s] + '&limit=100',
-          token,
-        )
-        if (r.status === 200) {
+        let offset = 0
+        for (let pag = 0; pag < 10; pag++) {
+          const r = chamarML(
+            '/users/' +
+              mlUserId +
+              '/items/search?' +
+              buscasMotivo[s] +
+              '&offset=' +
+              offset +
+              '&limit=100',
+            token,
+          )
+          if (r.status !== 200) break
           const res = (r.dados && r.dados.results) || []
           for (let i = 0; i < res.length; i++) juntarId(res[i], 'busca_motivo')
+          const total = (r.dados && r.dados.paging && r.dados.paging.total) || 0
+          offset += res.length
+          if (res.length === 0 || offset >= total || offset >= 1000) break
         }
       } catch (_) {}
     }
