@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
+import ImportarRelatoriosMarketplace from '@/components/canais/ImportarRelatoriosMarketplace'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import {
   CanalMargem,
@@ -330,6 +331,10 @@ export default function CanaisMargemPage() {
           )}
         </CardContent>
       </Card>
+
+      {podeEditar && !carregando && (
+        <ImportarRelatoriosMarketplace canais={linhas.filter((l) => !!l.id)} />
+      )}
     </div>
   )
 }
