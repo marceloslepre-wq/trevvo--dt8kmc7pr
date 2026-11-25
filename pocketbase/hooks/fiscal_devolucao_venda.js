@@ -1048,6 +1048,14 @@ routerAdd(
       presenca_comprador: '1',
       modalidade_frete: 9,
       cnpj_emitente: cnpjEmitente,
+      // xNome do emitente tem no máximo 60 caracteres (SEFAZ): nome_documentos_fiscais, senão razão social
+      nome_emitente: (
+        (empresaEmitente.getString('nome_documentos_fiscais') || '').trim() ||
+        (empresaEmitente.getString('razao_social') || '').trim()
+      )
+        .replace(/\s+/g, ' ')
+        .slice(0, 60)
+        .trim(),
       notas_referenciadas: [{ chave_nfe: chaveNotaOriginal }],
       nome_destinatario: nomeDestFinal,
       indicador_inscricao_estadual_destinatario: indicadorIeDest,
