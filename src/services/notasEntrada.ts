@@ -632,6 +632,20 @@ export function sugerirCstPisCofinsEntrada(params: {
 /**
  * Executa o vínculo automático para um item individual
  */
+/**
+ * GTIN-14 (DUN-14) da embalagem -> EAN-13 da unidade: tira o dígito indicador (1º) e o
+ * dígito verificador (último) e recalcula o verificador do EAN-13. null se não for GTIN-14.
+ */
+export function ean13DoGtin14(gtin: string): string | null {
+  const g = (gtin || '').replace(/\D/g, '')
+  if (g.length !== 14) return null
+  const base = g.slice(1, 13)
+  let soma = 0
+  for (let i = 0; i < 12; i++) soma += Number(base[i]) * (i % 2 === 0 ? 1 : 3)
+  const dv = (10 - (soma % 10)) % 10
+  return base + String(dv)
+}
+
 export async function tentarVincularItemAutomatico(
   item: NotaEntradaItem,
   fornecedorId?: string,
@@ -687,24 +701,46 @@ export async function tentarVincularItemAutomatico(
     }
   }
 
-  // 2. produtos com gtin = gtin_fornecedor (ignorar vazio, "SEM GTIN", "SEMGTIN")
+  // 2. produtos com gtin = gtin_fornecedor (ignorar vazio, "SEM GTIN", "SEMGTIN").
+  // Se o XML traz o GTIN-14 da caixa/fardo (DUN-14, ex.: 17896770902602), também procura
+  // o EAN-13 da unidade contido nele (7896770902605); nesse caso a unidade da nota é a
+  // embalagem e o item fica para revisar a conversão.
   const gtin = (item.gtin_fornecedor || '').trim().toUpperCase()
   if (gtin && gtin !== 'SEM GTIN' && gtin !== 'SEMGTIN') {
+    const candidatos = [gtin]
+    const ean13 = ean13DoGtin14(gtin)
+    if (ean13 && ean13 !== gtin) candidatos.push(ean13)
     try {
-      const prod = await pb
-        .collection('produtos')
-        // Inclui produtos suspensos (ativo = false): ativos vêm primeiro.
-        // O produto suspenso é reativado em vincularProdutoAoItemNota.
-        .getFirstListItem<any>(`gtin = '${gtin}'`, {
-          expand: 'unidade_id',
-          sort: '-ativo',
-        })
+      let prod: any = null
+      let porEmbalagem = false
+      for (const cand of candidatos) {
+        try {
+          prod = await pb
+            .collection('produtos')
+            // Inclui produtos suspensos (ativo = false): ativos vêm primeiro.
+            // O produto suspenso é reativado em vincularProdutoAoItemNota.
+            .getFirstListItem<any>(`gtin = '${cand}' || gtin_tributavel = '${cand}'`, {
+              expand: 'unidade_id',
+              sort: '-ativo',
+            })
+        } catch {
+          prod = null
+        }
+        if (prod) {
+          porEmbalagem = cand !== gtin && !gtin.startsWith('0')
+          break
+        }
+      }
       if (prod) {
         let fator = 1
         let marcarRevisao = false
         const unForn = (item.unidade_fornecedor || '').trim().toUpperCase()
         const unProdSigla = (prod.expand?.unidade_id?.sigla || '').trim().toUpperCase()
 
+        if (porEmbalagem && !(unForn && unProdSigla && unForn !== unProdSigla)) {
+          // GTIN da caixa com a mesma unidade: confere a quantidade por embalagem
+          marcarRevisao = true
+        }
         if (unForn && unProdSigla && unForn !== unProdSigla) {
           // Procurar em produtos_conversoes_unidade
           try {
