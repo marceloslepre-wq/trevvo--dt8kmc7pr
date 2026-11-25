@@ -121,6 +121,7 @@ import VendasCanaisPage from '@/pages/relatorios/VendasCanaisPage'
 import EstoqueGerencialPage from '@/pages/relatorios/EstoqueGerencialPage'
 import ContasPagarPorVencimentoPage from '@/pages/relatorios/ContasPagarVencimentoPage'
 import RelatorioPersonalizadoPage from '@/pages/relatorios/RelatorioPersonalizadoPage'
+import MargemCanaisPage from '@/pages/relatorios/MargemCanaisPage'
 
 // Trevvo Móvel (layout próprio, fora do Layout desktop)
 import MovelHomePage from '@/pages/movel/MovelHomePage'
@@ -409,6 +410,7 @@ const App = () => (
                     {/* Relatórios (Etapa 8) */}
                     <Route path="/relatorios" element={<CentralRelatoriosPage />} />
                     <Route path="/relatorios/vendas-canais" element={<VendasCanaisPage />} />
+                    <Route path="/relatorios/margem-canais" element={<MargemCanaisPage />} />
                     <Route
                       path="/relatorios/estoque-gerencial"
                       element={<EstoqueGerencialPage />}

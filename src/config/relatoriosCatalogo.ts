@@ -149,6 +149,17 @@ export const CATALOGO_RELATORIOS: ItemRelatorioCatalogo[] = [
 
   // ===================== ESTOQUE =====================
   {
+    id: 'margem_canais',
+    nome: 'Margem por Canal',
+    descricao:
+      'Margem líquida de cada produto em cada canal (Amazon, Shopee, Mercado Livre, site, loja), com faixas verde/amarelo/vermelho, mais vendidos e exportação para Excel.',
+    rota: '/relatorios/margem-canais',
+    modulo: 'produtos',
+    categoria: 'Vendas',
+    icone: TrendingUp,
+    novo: true,
+  },
+  {
     id: 'estoque_gerencial',
     nome: 'Estoque Gerencial',
     descricao:

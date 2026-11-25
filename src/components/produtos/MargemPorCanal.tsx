@@ -10,6 +10,10 @@ import { getErrorMessage } from '@/lib/pocketbase/errors'
 import {
   CanalMargem,
   ImpostosVendaPerfil,
+  CLASSE_FAIXA,
+  ROTULO_FAIXA,
+  classeMargem,
+  faixaMargem,
   IMPOSTOS_PADRAO,
   calcularMargemCanal,
   listarCanaisMargem,
@@ -62,11 +66,6 @@ const STATUS_ANUNCIO_ML: Record<string, string> = {
 
 const ehCanalML = (c: CanalMargem) => /mercado\s*livre/i.test(c.nome || '') && !!c.empresa_id
 
-function corMargem(m: number) {
-  if (m < 0) return 'text-rose-700 bg-rose-50'
-  if (m < 10) return 'text-amber-700 bg-amber-50'
-  return 'text-emerald-700 bg-emerald-50'
-}
 
 /**
  * Tabela "Margem por canal". Para cada canal:
@@ -380,6 +379,13 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
           {!produtoId && ' Salve o produto para gravar preço e valor recebido por canal.'}
         </span>
       </p>
+      <div className="flex flex-wrap gap-1.5 text-[10px]">
+        {(['verde', 'amarela', 'vermelha'] as const).map((f) => (
+          <span key={f} className={`px-1.5 py-0.5 rounded font-semibold ${CLASSE_FAIXA[f]}`}>
+            {ROTULO_FAIXA[f]}
+          </span>
+        ))}
+      </div>
 
       {carregando ? (
         <div className="py-4 text-center text-slate-400 text-xs">
@@ -613,8 +619,8 @@ export const MargemPorCanal: React.FC<MargemPorCanalProps> = ({
                     <td className="py-2 px-2 text-right font-semibold">{brl(r.lucro)}</td>
                     <td className="py-2 px-2 text-right">
                       <span
-                        className={`px-1.5 py-0.5 rounded font-bold ${corMargem(r.margemSobreRecebido)}`}
-                        title="Margem líquida: lucro dividido pelo valor recebido do canal"
+                        className={`px-1.5 py-0.5 rounded font-bold ${classeMargem(r.margemSobreRecebido)}`}
+                        title={`Margem líquida: lucro dividido pelo valor recebido do canal. ${ROTULO_FAIXA[faixaMargem(r.margemSobreRecebido)]}`}
                       >
                         {pct(r.margemSobreRecebido)}
                       </span>
