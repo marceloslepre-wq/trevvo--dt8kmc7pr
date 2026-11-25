@@ -103,26 +103,72 @@ export async function obterImpostosVendaDoPerfil(
     }>({
       filter: `perfil_id = '${perfilId}'`,
     })
-    const regra =
-      regras.find((r) => r.cenario === 'VENDA_INTERNA_CONSUMIDOR' && r.ativo !== false) ||
-      regras.find((r) => r.cenario === 'VENDA_INTERNA_CONTRIBUINTE' && r.ativo !== false)
-    if (!regra) return IMPOSTOS_PADRAO
-
-    const cst = String(regra.cst_icms || '').slice(-2)
-    const tributaIcms = ['00', '10', '20', '51', '70', '90', ''].includes(cst)
-    const aliquotaIcms = tributaIcms
-      ? (Number(regra.aliquota_icms) || 0) + (Number(regra.aliquota_fcp) || 0)
-      : 0
-    return {
-      aliquotaIcms,
-      reducaoBcIcms: tributaIcms ? Number(regra.reducao_bc_icms_percentual) || 0 : 0,
-      aliquotaPisCofins: (Number(regra.aliquota_pis) || 0) + (Number(regra.aliquota_cofins) || 0),
-      tributaIcms,
-      origem: 'perfil',
-    }
+    return impostosDasRegras(regras)
   } catch {
     return IMPOSTOS_PADRAO
   }
+}
+
+export interface RegraPerfilVenda {
+  perfil_id?: string
+  cenario: string
+  cst_icms?: string
+  aliquota_icms?: number | null
+  aliquota_fcp?: number | null
+  reducao_bc_icms_percentual?: number | null
+  aliquota_pis?: number | null
+  aliquota_cofins?: number | null
+  ativo?: boolean
+}
+
+/** Alíquotas de venda a partir das regras de um perfil (sem acesso ao banco). */
+export function impostosDasRegras(regras: RegraPerfilVenda[]): ImpostosVendaPerfil {
+  const regra =
+    regras.find((r) => r.cenario === 'VENDA_INTERNA_CONSUMIDOR' && r.ativo !== false) ||
+    regras.find((r) => r.cenario === 'VENDA_INTERNA_CONTRIBUINTE' && r.ativo !== false)
+  if (!regra) return IMPOSTOS_PADRAO
+  const cst = String(regra.cst_icms || '').slice(-2)
+  const tributaIcms = ['00', '10', '20', '51', '70', '90', ''].includes(cst)
+  const aliquotaIcms = tributaIcms
+    ? (Number(regra.aliquota_icms) || 0) + (Number(regra.aliquota_fcp) || 0)
+    : 0
+  return {
+    aliquotaIcms,
+    reducaoBcIcms: tributaIcms ? Number(regra.reducao_bc_icms_percentual) || 0 : 0,
+    aliquotaPisCofins: (Number(regra.aliquota_pis) || 0) + (Number(regra.aliquota_cofins) || 0),
+    tributaIcms,
+    origem: 'perfil',
+  }
+}
+
+/**
+ * Faixas de lucro líquido usadas em todo o sistema:
+ * acima de 20% verde (saudável), de 0 a 20% amarelo (requer atenção),
+ * abaixo de zero vermelho (intervenção urgente).
+ */
+export type FaixaMargem = 'verde' | 'amarela' | 'vermelha'
+export const LIMITE_MARGEM_SAUDAVEL = 20
+
+export function faixaMargem(m: number): FaixaMargem {
+  if (m < 0) return 'vermelha'
+  if (m <= LIMITE_MARGEM_SAUDAVEL) return 'amarela'
+  return 'verde'
+}
+
+export const ROTULO_FAIXA: Record<FaixaMargem, string> = {
+  verde: 'Acima de 20%',
+  amarela: '0 a 20%: requer atenção',
+  vermelha: 'Negativa: intervenção urgente',
+}
+
+export const CLASSE_FAIXA: Record<FaixaMargem, string> = {
+  verde: 'text-emerald-700 bg-emerald-50',
+  amarela: 'text-amber-700 bg-amber-50',
+  vermelha: 'text-rose-700 bg-rose-50',
+}
+
+export function classeMargem(m: number): string {
+  return CLASSE_FAIXA[faixaMargem(m)]
 }
 
 export interface ResultadoMargemCanal {

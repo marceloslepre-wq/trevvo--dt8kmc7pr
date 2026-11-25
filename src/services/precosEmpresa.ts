@@ -130,6 +130,9 @@ export interface PrecoCanal {
   canal_id: string
   preco?: number | null
   valor_recebido?: number | null
+  /** Unidades vendidas no período do último relatório importado (migration 0146). */
+  unidades_vendidas?: number | null
+  vendas_atualizadas_em?: string | null
 }
 
 export async function listarPrecosCanalDoProduto(produtoId: string): Promise<PrecoCanal[]> {
@@ -146,6 +149,8 @@ export async function salvarPrecoCanal(
   preco: number | null,
   valorRecebido: number | null,
   assinanteId?: string | null,
+  /** Unidades vendidas no período do relatório importado (omitido = não mexe). */
+  unidadesVendidas?: number | null,
 ): Promise<void> {
   let existente: PrecoCanal | null = null
   try {
@@ -162,9 +167,13 @@ export async function salvarPrecoCanal(
     if (existente?.id) await pb.collection('produtos_precos_canal').delete(existente.id)
     return
   }
-  const dados = {
+  const dados: Record<string, unknown> = {
     preco: vazio(preco) ? 0 : Number((preco as number).toFixed(2)),
     valor_recebido: vazio(valorRecebido) ? 0 : Number((valorRecebido as number).toFixed(2)),
+  }
+  if (unidadesVendidas !== undefined && unidadesVendidas !== null) {
+    dados.unidades_vendidas = Math.max(0, Math.round(Number(unidadesVendidas) || 0))
+    dados.vendas_atualizadas_em = new Date().toISOString().replace('T', ' ')
   }
   if (existente?.id) {
     await pb.collection('produtos_precos_canal').update(existente.id, dados)

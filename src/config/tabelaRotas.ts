@@ -683,6 +683,15 @@ export const ROTAS: ItemRota[] = [
     icone: BarChart3,
   },
   {
+    rota: '/relatorios/margem-canais',
+    rotulo: 'Margem por Canal',
+    grupo: 'Relatórios',
+    modulo: 'produtos',
+    acaoMinima: 'editar',
+    ordem: 2,
+    icone: Percent,
+  },
+  {
     rota: '/relatorios/estoque-gerencial',
     rotulo: 'Estoque Gerencial',
     grupo: 'Relatórios',
