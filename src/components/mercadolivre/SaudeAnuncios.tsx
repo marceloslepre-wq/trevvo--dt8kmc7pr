@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ExternalLink, HeartPulse, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -49,7 +50,18 @@ export const SaudeAnuncios: React.FC<Props> = ({ empresaId }) => {
   const [execucao, setExecucao] = useState<ExecucaoSaude | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [pedindo, setPedindo] = useState(false)
-  const [filtro, setFiltro] = useState<(typeof SITUACOES)[number]>('Todas')
+  // Vindo do aviso do Painel: ?saude=Política (ou outra situação) já filtra e rola até aqui
+  const [searchParams] = useSearchParams()
+  const saudeUrl = searchParams.get('saude') || ''
+  const [filtro, setFiltro] = useState<(typeof SITUACOES)[number]>(
+    (SITUACOES as readonly string[]).includes(saudeUrl)
+      ? (saudeUrl as (typeof SITUACOES)[number])
+      : 'Todas',
+  )
+  const cartaoRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (saudeUrl && cartaoRef.current) cartaoRef.current.scrollIntoView({ behavior: 'smooth' })
+  }, [saudeUrl])
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -107,7 +119,7 @@ export const SaudeAnuncios: React.FC<Props> = ({ empresaId }) => {
   )
 
   return (
-    <Card>
+    <Card ref={cartaoRef} id="saude-anuncios">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <HeartPulse className="h-5 w-5" />

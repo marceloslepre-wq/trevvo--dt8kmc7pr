@@ -35,6 +35,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePermissoes } from '@/contexts/PermissoesContext'
 import AvisoMargemCanais from '@/components/painel/AvisoMargemCanais'
+import AvisoAnunciosPausados from '@/components/painel/AvisoAnunciosPausados'
 import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import { useConfiguracoes } from '@/contexts/ConfiguracoesContext'
 import pb from '@/lib/pocketbase/client'
@@ -1175,6 +1176,9 @@ export default function Index() {
 
       {/* Aviso de margem nos canais de venda — só quem pode editar produtos (vê custo) */}
       {(administrador || pode('produtos', 'editar')) && <AvisoMargemCanais />}
+
+      {/* Aviso de anúncios pausados/fora do ar (Saúde dos anúncios) */}
+      {(administrador || pode('configuracoes', 'ver')) && <AvisoAnunciosPausados />}
 
       {/* Cartões de Indicadores Principais — apenas administrador ou pode_ver configuracoes */}
       {podeVerCardsCadastro &&
