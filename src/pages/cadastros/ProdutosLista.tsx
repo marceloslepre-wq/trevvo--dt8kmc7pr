@@ -83,6 +83,7 @@ import {
 import { listarTodasMarcasAtivas, Marca } from '@/services/marcas'
 import ImportarProdutosUniplusDialog from '@/components/produtos/ImportarProdutosUniplusDialog'
 import ImportarCodigosTrayDialog from '@/components/produtos/ImportarCodigosTrayDialog'
+import ImportarAnvisaDialog from '@/components/produtos/ImportarAnvisaDialog'
 import { listarTodosFornecedoresAtivos, Fornecedor } from '@/services/fornecedores'
 
 export const ProdutosLista: React.FC = () => {
@@ -161,6 +162,7 @@ export const ProdutosLista: React.FC = () => {
   const [modalImportacaoAberto, setModalImportacaoAberto] = useState(false)
   const [importarUniplusAberto, setImportarUniplusAberto] = useState(false)
   const [importarTrayAberto, setImportarTrayAberto] = useState(false)
+  const [importarAnvisaAberto, setImportarAnvisaAberto] = useState(false)
   const [arquivoCSV, setArquivoCSV] = useState<File | null>(null)
   const [validandoCSV, setValidandoCSV] = useState(false)
   const [resumoImportacao, setResumoImportacao] = useState<ResumoValidacaoImportacao | null>(null)
@@ -671,6 +673,17 @@ export const ProdutosLista: React.FC = () => {
               >
                 <Upload size={14} className="mr-1.5" />
                 Códigos da Tray
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImportarAnvisaAberto(true)}
+                className="text-xs h-9 border-slate-200 text-slate-700 hover:bg-slate-100"
+                title="Grava o tipo e o número do registro na ANVISA dos produtos"
+              >
+                <Upload size={14} className="mr-1.5" />
+                Registros ANVISA
               </Button>
 
               <Button
@@ -1685,6 +1698,11 @@ export const ProdutosLista: React.FC = () => {
       <ImportarCodigosTrayDialog
         aberto={importarTrayAberto}
         onFechar={() => setImportarTrayAberto(false)}
+        onConcluido={carregarDados}
+      />
+      <ImportarAnvisaDialog
+        aberto={importarAnvisaAberto}
+        onFechar={() => setImportarAnvisaAberto(false)}
         onConcluido={carregarDados}
       />
     </div>
