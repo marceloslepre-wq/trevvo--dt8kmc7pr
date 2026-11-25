@@ -10,9 +10,33 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Users, Search, Plus, Check } from 'lucide-react'
-import { listarClientes, type Cliente } from '@/services/clientes'
+import {
+  listarClientes,
+  buscarClientePorCpfCnpj,
+  normalizarCpfCnpj,
+  type Cliente,
+} from '@/services/clientes'
+import { validarCPF, validarCNPJ, formatarCPF, formatarCNPJ } from '@/lib/validacoes'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
 import { ClienteCadastroRapido } from '@/components/ClienteCadastroRapido'
+
+/** Máscara conforme o tamanho: até 11 dígitos = CPF, acima = CNPJ (aceita CNPJ alfanumérico). */
+function mascararDocumento(valor: string): string {
+  const limpo = normalizarCpfCnpj(valor).slice(0, 14)
+  if (!limpo) return ''
+  if (limpo.length <= 11 && /^\d+$/.test(limpo)) return formatarCPF(limpo)
+  return formatarCNPJ(limpo)
+}
+
+/** '' = vazio (ok), 'incompleto', 'invalido' ou 'cpf' / 'cnpj' quando válido. */
+function situacaoDocumento(valor: string): '' | 'incompleto' | 'invalido' | 'cpf' | 'cnpj' {
+  const limpo = normalizarCpfCnpj(valor)
+  if (!limpo) return ''
+  if (limpo.length === 11 && /^\d+$/.test(limpo)) return validarCPF(limpo) ? 'cpf' : 'invalido'
+  if (limpo.length === 14) return validarCNPJ(limpo) ? 'cnpj' : 'invalido'
+  if (limpo.length < 14) return 'incompleto'
+  return 'invalido'
+}
 
 interface ModalClientePDVProps {
   aberto: boolean
@@ -30,7 +54,9 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
   onConfirmar,
 }) => {
   const [busca, setBusca] = useState('')
-  const [cpfCnpjCupom, setCpfCnpjCupom] = useState(cpfCnpjAtual)
+  const [cpfCnpjCupom, setCpfCnpjCupom] = useState(mascararDocumento(cpfCnpjAtual))
+  const [clienteDoDocumento, setClienteDoDocumento] = useState<Cliente | null>(null)
+  const [tentouConfirmar, setTentouConfirmar] = useState(false)
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [selecionado, setSelecionado] = useState<Cliente | null>(clienteAtual)
   const [carregando, setCarregando] = useState(false)
@@ -42,8 +68,10 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
   useEffect(() => {
     if (aberto) {
       setBusca('')
-      setCpfCnpjCupom(cpfCnpjAtual || '')
+      setCpfCnpjCupom(mascararDocumento(cpfCnpjAtual || ''))
       setSelecionado(clienteAtual)
+      setClienteDoDocumento(null)
+      setTentouConfirmar(false)
       setTimeout(() => {
         inputBuscaRef.current?.focus()
       }, 100)
@@ -59,6 +87,24 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busca, aberto, assinanteId])
+
+  const situacaoDoc = situacaoDocumento(cpfCnpjCupom)
+  const documentoOk = situacaoDoc === '' || situacaoDoc === 'cpf' || situacaoDoc === 'cnpj'
+
+  // CPF/CNPJ válido digitado: procura se já existe cliente cadastrado com esse documento
+  useEffect(() => {
+    setClienteDoDocumento(null)
+    if (!aberto || (situacaoDoc !== 'cpf' && situacaoDoc !== 'cnpj')) return
+    let ativo = true
+    const doc = normalizarCpfCnpj(cpfCnpjCupom)
+    buscarClientePorCpfCnpj(doc, undefined, assinanteId || undefined).then((r) => {
+      if (ativo && r.ativo && selecionado?.id !== r.ativo.id) setClienteDoDocumento(r.ativo)
+    })
+    return () => {
+      ativo = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cpfCnpjCupom, aberto, assinanteId])
 
   const carregarClientes = async (termo: string) => {
     setCarregando(true)
@@ -105,15 +151,23 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
   }
 
   const handleSalvar = () => {
-    onConfirmar(selecionado, cpfCnpjCupom.trim())
+    if (!documentoOk) {
+      setTentouConfirmar(true)
+      return
+    }
+    onConfirmar(selecionado, normalizarCpfCnpj(cpfCnpjCupom))
     onOpenChange(false)
   }
 
+  const escolherCliente = (c: Cliente) => {
+    setSelecionado(c)
+    setClienteDoDocumento(null)
+    // O documento do cupom passa a ser o do cliente escolhido (evita cupom com CPF de outra pessoa)
+    setCpfCnpjCupom(c.cpf_cnpj ? mascararDocumento(c.cpf_cnpj) : '')
+  }
+
   const handleNovoClienteCriado = (novo: Cliente) => {
-    setSelecionado(novo)
-    if (novo.cpf_cnpj) {
-      setCpfCnpjCupom(novo.cpf_cnpj)
-    }
+    escolherCliente(novo)
     setModalNovoClienteAberto(false)
   }
 
@@ -149,12 +203,63 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
               <Input
                 placeholder="Digite apenas números (opcional)..."
                 value={cpfCnpjCupom}
-                onChange={(e) => setCpfCnpjCupom(e.target.value)}
-                className="h-9 bg-white border-slate-300 text-slate-900 font-mono text-sm"
+                inputMode="numeric"
+                maxLength={18}
+                onChange={(e) => {
+                  setCpfCnpjCupom(mascararDocumento(e.target.value))
+                  setTentouConfirmar(false)
+                }}
+                className={`h-9 bg-white text-slate-900 font-mono text-sm ${
+                  situacaoDoc === 'invalido' || (tentouConfirmar && !documentoOk)
+                    ? 'border-red-500 focus-visible:ring-red-500'
+                    : situacaoDoc === 'cpf' || situacaoDoc === 'cnpj'
+                      ? 'border-emerald-500'
+                      : 'border-slate-300'
+                }`}
               />
-              <p className="text-[11px] text-slate-500">
-                Útil para cupom fiscal/comprovante rápido sem necessidade de cadastro completo.
-              </p>
+              {situacaoDoc === 'invalido' && (
+                <p className="text-[11px] font-semibold text-red-600">
+                  CPF/CNPJ inválido: confira os números digitados.
+                </p>
+              )}
+              {situacaoDoc === 'incompleto' && (
+                <p
+                  className={`text-[11px] ${
+                    tentouConfirmar ? 'font-semibold text-red-600' : 'text-slate-500'
+                  }`}
+                >
+                  Documento incompleto: CPF tem 11 números e CNPJ tem 14.
+                </p>
+              )}
+              {(situacaoDoc === 'cpf' || situacaoDoc === 'cnpj') && !clienteDoDocumento && (
+                <p className="text-[11px] text-emerald-700">
+                  {situacaoDoc === 'cpf' ? 'CPF válido.' : 'CNPJ válido.'}
+                </p>
+              )}
+              {clienteDoDocumento && (
+                <div className="flex items-center justify-between gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] text-blue-800">
+                  <span className="min-w-0 truncate">
+                    Cliente cadastrado com este documento:{' '}
+                    <strong>
+                      {clienteDoDocumento.codigo ? `#${clienteDoDocumento.codigo} ` : ''}
+                      {clienteDoDocumento.nome_razao_social}
+                    </strong>
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => escolherCliente(clienteDoDocumento)}
+                    className="h-6 shrink-0 bg-blue-600 px-2 text-[11px] text-white hover:bg-blue-700"
+                  >
+                    Vincular
+                  </Button>
+                </div>
+              )}
+              {situacaoDoc === '' && (
+                <p className="text-[11px] text-slate-500">
+                  Útil para cupom fiscal/comprovante rápido sem necessidade de cadastro completo.
+                </p>
+              )}
             </div>
 
             {/* Busca de Cliente Cadastrado */}
@@ -215,12 +320,7 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
                   return (
                     <div
                       key={c.id}
-                      onClick={() => {
-                        setSelecionado(c)
-                        if (c.cpf_cnpj && !cpfCnpjCupom) {
-                          setCpfCnpjCupom(c.cpf_cnpj)
-                        }
-                      }}
+                      onClick={() => escolherCliente(c)}
                       className={`flex items-center justify-between p-2 rounded cursor-pointer text-xs ${
                         ativo
                           ? 'bg-blue-600 text-white font-semibold'
@@ -233,8 +333,9 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
                           {c.nome_razao_social}
                         </div>
                         <div className="text-[10px] opacity-75">
-                          {c.cpf_cnpj ? `Doc: ${c.cpf_cnpj}` : ''}{' '}
-                          {c.telefone ? `| Fone: ${c.telefone}` : ''}
+                          {c.cpf_cnpj ? `Doc: ${mascararDocumento(c.cpf_cnpj)}` : ''}{' '}
+                          {c.telefone || c.celular ? `| Fone: ${c.telefone || c.celular}` : ''}
+                          {c.municipio ? ` | ${c.municipio}${c.uf ? '/' + c.uf : ''}` : ''}
                         </div>
                       </div>
                       {ativo && <Check size={16} className="text-white shrink-0 ml-2" />}
@@ -259,6 +360,7 @@ export const ModalClientePDV: React.FC<ModalClientePDVProps> = ({
               type="button"
               size="sm"
               onClick={handleSalvar}
+              disabled={situacaoDoc === 'invalido'}
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-5"
             >
               Confirmar Cliente (Enter)
