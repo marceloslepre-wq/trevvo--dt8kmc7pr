@@ -421,8 +421,11 @@ export const ProdutoForm: React.FC = () => {
         const cFinal = calcularCustoFinal(custo, desp, reb)
         novo.custo_final = cFinal
 
-        // Se houver margem definida, sugere o preço de venda
-        if (prev.margem_percentual !== undefined && prev.margem_percentual !== null) {
+        if (campo === 'rebaixa_percentual' && Number(prev.preco_venda || 0) > 0) {
+          // Rebaixa (bonificação) aumenta a margem: mantém o preço de venda e recalcula o markup
+          novo.margem_percentual = recalcularMargem(Number(prev.preco_venda), cFinal)
+        } else if (prev.margem_percentual !== undefined && prev.margem_percentual !== null) {
+          // Se houver margem definida, sugere o preço de venda
           novo.preco_venda = sugerirPrecoVenda(cFinal, Number(prev.margem_percentual))
         }
       } else if (campo === 'margem_percentual') {
