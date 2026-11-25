@@ -1100,6 +1100,11 @@ routerAdd(
       docRec.set('valor_cbs', round2(totValorCbsDev))
     }
     docRec.set('json_enviado', payloadFocus)
+    // data_emissao é preenchida na criação do documento (mesma data enviada à Focus):
+    // garante que a confirmação pós-autorização tenha uma data para os movimentos.
+    if (!docRec.getString('data_emissao')) {
+      docRec.set('data_emissao', new Date().toISOString())
+    }
     $app.save(docRec)
 
     // Atualizar itens em documentos_fiscais_itens
@@ -1292,6 +1297,12 @@ routerAdd(
     const vendaOrigemId = devolucaoRec.getString('venda_origem_id')
     const docNumero = docRec.getInt('numero') || docRec.getString('referencia')
     const dataHojeIso = new Date().toISOString().slice(0, 10)
+    // data_movimento é obrigatório em estoque_movimentos e movimentacoes_financeiras:
+    // usa a data de emissão do documento fiscal (AAAA-MM-DD) e cai para a data atual
+    // se vier vazia — nunca grava em branco.
+    const dataEmissaoDoc = String(docRec.getString('data_emissao') || '')
+    const dataMovimentoDev =
+      (dataEmissaoDoc.length >= 10 ? dataEmissaoDoc.slice(0, 10) : '') || dataHojeIso
     const valorTotalDevolucao = devolucaoRec.getFloat('valor_total') || 0
 
     let valeCodigoGerado = ''
@@ -1353,7 +1364,7 @@ routerAdd(
           movRec.set('produto_id', prodId)
           movRec.set('tipo', 'Entrada')
           movRec.set('origem', 'DEVOLUCAO_VENDA')
-          movRec.set('data_movimento', new Date().toISOString())
+          movRec.set('data_movimento', dataMovimentoDev || dataHojeIso)
           movRec.set('quantidade', qtd)
           movRec.set('custo_unitario', custoUn)
           movRec.set('valor_total', Math.round(qtd * custoUn * 100) / 100)
@@ -1455,7 +1466,7 @@ routerAdd(
             movFin.set('empresa_id', empresaId)
             movFin.set('conta_financeira_id', contaFinIdFinal)
             movFin.set('tipo', 'Saída')
-            movFin.set('data_movimento', dataHojeIso)
+            movFin.set('data_movimento', dataMovimentoDev || dataHojeIso)
             movFin.set('valor', valorTotalDevolucao)
             if (planoDevolucaoId) movFin.set('plano_conta_id', planoDevolucaoId)
             movFin.set(
