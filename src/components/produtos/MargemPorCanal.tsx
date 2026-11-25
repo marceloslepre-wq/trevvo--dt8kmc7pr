@@ -66,7 +66,6 @@ const STATUS_ANUNCIO_ML: Record<string, string> = {
 
 const ehCanalML = (c: CanalMargem) => /mercado\s*livre/i.test(c.nome || '') && !!c.empresa_id
 
-
 /**
  * Tabela "Margem por canal". Para cada canal:
  *  - preço base = preço da loja do canal (ou o preço geral);

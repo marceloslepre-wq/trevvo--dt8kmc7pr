@@ -433,9 +433,7 @@ export async function gravarVinculo(
  * Um valor por produto: entre os anúncios do mesmo produto, o de menor valor recebido
  * (margem conservadora); sem vendas, o de menor preço.
  */
-export function valoresPorProduto(
-  linhas: LinhaImportacao[],
-): Map<
+export function valoresPorProduto(linhas: LinhaImportacao[]): Map<
   string,
   {
     produto: ProdutoTrevvo

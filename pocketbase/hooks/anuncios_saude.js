@@ -660,7 +660,8 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
             acao = 'O produto tem estoque e está ativo na Tray: reative o anúncio no ML.'
           } else {
             motivo += ' Não foi possível conferir o estoque na Tray.'
-            acao = 'Confira na Tray se o produto está ativo e com estoque. Se estiver, reative o anúncio no ML.'
+            acao =
+              'Confira na Tray se o produto está ativo e com estoque. Se estiver, reative o anúncio no ML.'
           }
         } else {
           continue
