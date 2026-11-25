@@ -170,6 +170,8 @@ export async function lerRelatoriosAmazon(
       titulo: string
     }
   >()
+  /** Unidades vendidas por SKU em todos os pedidos (também os com vários SKUs). */
+  const vendidasSku = new Map<string, number>()
   for (const l of lt.slice(it + 1)) {
     const id = (l[cPedido] || '').trim()
     if (!id) continue
@@ -184,12 +186,12 @@ export async function lerRelatoriosAmazon(
       const sku = (l[cSkuT] || '').trim()
       if (sku) p.skus.add(sku)
       p.qtd += Number(l[cQtd]) || 0
+      if (sku) vendidasSku.set(sku, (vendidasSku.get(sku) || 0) + (Number(l[cQtd]) || 0))
       p.titulo = (l[cDesc] || '').trim()
     } else if (tipo.startsWith('reembolso')) p.reembolso = true
     else if (tipo.includes('envio') || tipo.includes('tarifa')) p.temTarifa = true
   }
   const porSku = new Map<string, number[]>()
-  const qtdSku = new Map<string, number>()
   const tituloSku = new Map<string, string>()
   for (const p of Array.from(pedidos.values())) {
     if (p.skus.size !== 1 || p.qtd <= 0 || p.reembolso || !p.temTarifa) continue
@@ -197,16 +199,18 @@ export async function lerRelatoriosAmazon(
     const lista = porSku.get(sku) || []
     lista.push(p.total / p.qtd)
     porSku.set(sku, lista)
-    qtdSku.set(sku, (qtdSku.get(sku) || 0) + p.qtd)
     tituloSku.set(sku, p.titulo)
   }
   for (const [sku, vs] of Array.from(porSku.entries())) {
     const a = anuncios.get(sku)
     if (a) {
       a.recebido = mediana(vs)
-      a.unidades = qtdSku.get(sku) || 0
       a.pedidos = vs.length
     }
+  }
+  for (const [sku, qtd] of Array.from(vendidasSku.entries())) {
+    const a = anuncios.get(sku)
+    if (a) a.unidades = qtd
   }
   return Array.from(anuncios.values())
 }
@@ -433,11 +437,26 @@ export function valoresPorProduto(
   linhas: LinhaImportacao[],
 ): Map<
   string,
-  { produto: ProdutoTrevvo; preco: number; recebido: number | null; sku: string; outros: number }
+  {
+    produto: ProdutoTrevvo
+    preco: number
+    recebido: number | null
+    sku: string
+    outros: number
+    /** Soma das unidades vendidas de todos os anúncios do produto. */
+    unidades: number
+  }
 > {
   const mapa = new Map<
     string,
-    { produto: ProdutoTrevvo; preco: number; recebido: number | null; sku: string; outros: number }
+    {
+      produto: ProdutoTrevvo
+      preco: number
+      recebido: number | null
+      sku: string
+      outros: number
+      unidades: number
+    }
   >()
   for (const l of linhas) {
     if (!l.produto || l.preco <= 0) continue
@@ -449,10 +468,12 @@ export function valoresPorProduto(
         recebido: l.recebido,
         sku: l.sku,
         outros: 0,
+        unidades: Number(l.unidades) || 0,
       })
       continue
     }
     atual.outros++
+    atual.unidades += Number(l.unidades) || 0
     const melhor =
       l.recebido !== null && (atual.recebido === null || l.recebido < atual.recebido)
         ? true

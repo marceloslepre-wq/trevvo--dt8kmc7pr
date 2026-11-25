@@ -347,6 +347,71 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
     return 0
   }
 
+  // Estoque do produto na Tray (fonte que pausa/reativa o anúncio no ML enquanto a Tray
+  // integra os marketplaces). SKU do ML = código da Tray ("6005") ou produto_variação
+  // ("6005_123"). Devolve { estoque, ativo } ou null quando não dá para conferir.
+  // Só leitura (GET); nunca registrar a URL em log (contém o token).
+  function contaTray(empresaId) {
+    try {
+      if (!$app.hasTable('tray_contas')) return null
+      const recs = $app.findRecordsByFilter(
+        'tray_contas',
+        "empresa_id = '" + empresaId + "' && status = 'Conectada'",
+        '-created',
+        1,
+        0,
+      )
+      if (!recs || recs.length === 0) return null
+      const conta = recs[0]
+      const expira = new Date(conta.getString('token_expira_em') || 0).getTime()
+      if (!expira || expira < Date.now() + 60 * 1000) return null
+      if (!conta.getString('access_token') || !conta.getString('api_address')) return null
+      return conta
+    } catch (_) {
+      return null
+    }
+  }
+
+  function estoqueTray(conta, skus) {
+    if (!conta) return null
+    const api = conta.getString('api_address')
+    const token = encodeURIComponent(conta.getString('access_token'))
+    for (let i = 0; i < skus.length; i++) {
+      const sku = String(skus[i] || '').trim()
+      let caminho = ''
+      let chave = ''
+      let m = sku.match(/^([0-9]{1,12})$/)
+      if (m) {
+        caminho = '/products/' + m[1]
+        chave = 'Product'
+      } else {
+        m = sku.match(/^[0-9]{1,12}_([0-9]{1,12})$/)
+        if (m) {
+          caminho = '/products/variants/' + m[1]
+          chave = 'Variant'
+        }
+      }
+      if (!caminho) continue
+      try {
+        sleep(350) // limite da Tray: 180 requisições por minuto
+        const res = $http.send({
+          method: 'GET',
+          url: api + caminho + '?access_token=' + token,
+          headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
+          timeout: 20,
+        })
+        if (res.statusCode !== 200) continue
+        const d = lerJson(res)
+        const no = (d && d[chave]) || d || {}
+        const estoque = parseFloat(String(no.stock === undefined ? '' : no.stock)) || 0
+        const disp = no.available
+        const ativo = disp === undefined ? true : String(disp) === '1' || disp === true
+        return { estoque: estoque, ativo: ativo }
+      } catch (_) {}
+    }
+    return null
+  }
+
   // Executa uma verificação do Mercado Livre. Devolve { lidos, problemas, resumo }.
   function verificarMercadoLivre(exec) {
     const empresaId = exec.getString('empresa_id')
@@ -510,6 +575,8 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
     const agoraIso = new Date().toISOString()
     const limiteFinalizado = Date.now() - 60 * 24 * 60 * 60 * 1000
     const problemas = []
+    let contaTrayEmpresa = undefined
+    let pausadosSemEstoqueTray = 0
     for (let i = 0; i < ids.length; i += 20) {
       const lote = ids.slice(i, i + 20)
       const r = chamarML('/items?ids=' + lote.join(',') + '&include_attributes=all', token)
@@ -572,6 +639,14 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
             continue // pausado só por falta de estoque: não é problema
           }
         } else if (statusItem === 'paused') {
+          // A Tray pausa o anúncio quando o produto fica sem estoque (ou inativo) nela, mas não
+          // zera o estoque do ML. Confere na Tray antes de acusar "pausado sem motivo".
+          if (contaTrayEmpresa === undefined) contaTrayEmpresa = contaTray(empresaId)
+          const tray = estoqueTray(contaTrayEmpresa, skus)
+          if (tray && (tray.estoque <= 0 || !tray.ativo)) {
+            pausadosSemEstoqueTray++
+            continue // pausado porque a Tray está sem estoque ou com o produto inativo: normal
+          }
           situacao = 'Pausado sem motivo'
           motivo = pausaVendedor
             ? 'Pausado pelo vendedor (manual ou pela Tray) com ' +
@@ -580,7 +655,13 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
             : 'Pausado com ' +
               estoqueCanal +
               ' em estoque no ML e sem motivo informado (pausa manual ou da Tray).'
-          acao = 'Confira na Tray se o produto está ativo. Se estiver, reative o anúncio no ML.'
+          if (tray) {
+            motivo += ' Na Tray o produto está ativo com ' + tray.estoque + ' em estoque.'
+            acao = 'O produto tem estoque e está ativo na Tray: reative o anúncio no ML.'
+          } else {
+            motivo += ' Não foi possível conferir o estoque na Tray.'
+            acao = 'Confira na Tray se o produto está ativo e com estoque. Se estiver, reative o anúncio no ML.'
+          }
         } else {
           continue
         }
@@ -666,6 +747,7 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
     }
     // Quantos anúncios vieram de cada fonte (para conferir a cobertura).
     for (const f in fontes) resumo['fonte_' + f] = fontes[f]
+    resumo.pausados_sem_estoque_tray = pausadosSemEstoqueTray
     return { lidos: ids.length, problemas: problemas.length, resumo: resumo }
   }
 

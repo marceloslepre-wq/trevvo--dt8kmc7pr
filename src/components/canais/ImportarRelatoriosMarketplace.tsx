@@ -202,7 +202,15 @@ const QuadroMarketplace: React.FC<{ marketplace: Marketplace; canal: CanalMargem
         lote.map(async (v) => {
           const recebido = v.recebido ?? (recebidoAtual.get(v.produto.id) || null)
           try {
-            await salvarPrecoCanal(v.produto.id, canal.id as string, v.preco, recebido, assinanteId)
+            await salvarPrecoCanal(
+              v.produto.id,
+              canal.id as string,
+              v.preco,
+              recebido,
+              assinanteId,
+              // Unidades só quando veio o arquivo de vendas (sem ele não se sabe quanto vendeu)
+              arq2 ? v.unidades : undefined,
+            )
             linhasRes.push([
               String(v.produto.codigo),
               v.produto.descricao,

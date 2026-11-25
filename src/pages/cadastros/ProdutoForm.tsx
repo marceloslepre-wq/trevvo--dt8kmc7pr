@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useParams, Link } from 'react-router-dom'
+import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom'
 import {
   Package,
   ArrowLeft,
@@ -162,7 +162,8 @@ export const ProdutoForm: React.FC = () => {
 
   const [carregando, setCarregando] = useState(false)
   const [salvando, setSalvando] = useState(false)
-  const [abaAtiva, setAbaAtiva] = useState('geral')
+  const [searchParamsAba] = useSearchParams()
+  const [abaAtiva, setAbaAtiva] = useState(searchParamsAba.get('aba') || 'geral')
 
   // Unidades de medida disponíveis
   const [unidadesMedida, setUnidadesMedida] = useState<UnidadeMedida[]>([])
