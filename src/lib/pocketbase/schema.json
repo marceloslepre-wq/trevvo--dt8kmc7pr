@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-25T18:33:56.001Z",
+  "generatedAt": "2026-11-25T18:37:59.870Z",
   "collections": [
     {
       "name": "users",
@@ -8424,19 +8424,6 @@
           "selectValues": ["Orçamento", "Pedido", "PDV", "Devolução"]
         },
         {
-          "name": "status",
-          "type": "select",
-          "required": true,
-          "system": false,
-          "selectValues": [
-            "Orçamento",
-            "Pedido em aberto",
-            "Finalizada",
-            "Cancelada",
-            "Orçamento expirado"
-          ]
-        },
-        {
           "name": "cliente_id",
           "type": "relation",
           "required": true,
@@ -8632,6 +8619,20 @@
           "type": "number",
           "required": false,
           "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Orçamento",
+            "Pedido em aberto",
+            "Finalizada",
+            "Cancelada",
+            "Orçamento expirado",
+            "Pendente de nota"
+          ]
         }
       ],
       "indexes": [
