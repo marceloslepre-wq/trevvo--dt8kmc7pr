@@ -1244,7 +1244,7 @@ routerAdd(
 // =========================================================================
 routerAdd(
   'POST',
-  '/backend/v1/fiscal/confirmar-autorizacao-devolucao-venda',
+  '/backend/v1/fiscal/confirmar-autorizacao-devolucao-venda-v2',
   (c) => {
     const authRecord = c.auth || c.get('authRecord')
     if (!authRecord) {

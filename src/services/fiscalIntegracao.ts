@@ -496,7 +496,7 @@ export async function confirmarAutorizacaoDevolucaoVenda(
   params: ConfirmarAutorizacaoDevolucaoVendaParams,
 ): Promise<ConfirmarAutorizacaoDevolucaoVendaResponse> {
   return await pb.send<ConfirmarAutorizacaoDevolucaoVendaResponse>(
-    '/backend/v1/fiscal/confirmar-autorizacao-devolucao-venda',
+    '/backend/v1/fiscal/confirmar-autorizacao-devolucao-venda-v2',
     {
       method: 'POST',
       body: params,
