@@ -2,6 +2,13 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-25 — Deploy-only: recarga do backend com os hooks atuais do repositório
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, telas, migrations e serviços não foram tocados (`fiscal_documentos_operacoes.js`, `fiscal_nfe_operacoes.js` e `fiscal_nfce_emitir.js` permanecem intocados, conforme PROJETO_ERP.md).
+- Objetivo: reimplantar o backend com os hooks atuais do repositório, garantindo o estado já corrigido em produção (incluindo `fiscal_devolucao_venda.js` sem `require` de módulos locais no JSVM).
+- Estado verificado antes do deploy: todas as migrations até `0152_documentos_fiscais_tipo_documento_zero.js` constam como `applied` — nenhuma pendente, nenhuma falha; próxima livre: 0153.
+- Verificação (pós-deploy): `list_backend_functions` com todos os hooks esperados registrados e `list_logs` (hooks, min_level=warn) sem erro de inicialização/boot.
+
 ## 2026-11-25 — Deploy-only: recarga do backend com o fiscal_devolucao_venda corrigido
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, telas e migrations não foram tocados (`fiscal_documentos_operacoes.js`, `fiscal_nfe_operacoes.js` e `fiscal_nfce_emitir.js` permanecem intocados, conforme PROJETO_ERP.md).
