@@ -2,6 +2,15 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-24 — Deploy-only: recarga do hook anuncios_saude (reinício do backend)
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, frontend e migrations não foram tocados.
+- Objetivo: reimplantar o backend para recarregar `pocketbase/hooks/anuncios_saude.js`, atualizado pelo repositório.
+- Verificação (pós-deploy):
+  - `list_backend_functions`: `anuncios_saude` (POST /backend/v1/anuncios-saude/verificar) registrado junto dos demais hooks (`ajuda_trevvo`, família `mercadolivre_*`, `shopee_conexao`, `vendas_operacoes`, `fiscal_*`, `master_rotas`).
+  - `list_migrations`: nenhuma falha; migrations 0142 a 0146 `applied`; próxima livre 0147.
+  - `list_logs` (hooks, min_level=error): sem erro de inicialização/boot.
+
 ## 2026-11-23 — Deploy-only: reconstrução completa (frontend + backend, reinício da prévia)
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks e migrations não foram tocados.
