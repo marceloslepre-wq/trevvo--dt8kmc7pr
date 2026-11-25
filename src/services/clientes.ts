@@ -293,9 +293,20 @@ export async function listarClientes(
     if (termoLimpo) {
       subConds.push(`cpf_cnpj ~ "${termoLimpo}"`)
     }
-    const numeroBusca = parseInt(termo, 10)
-    if (!Number.isNaN(numeroBusca)) {
-      subConds.push(`codigo = ${numeroBusca}`)
+    if (/^\d+$/.test(termo)) {
+      subConds.push(`codigo = ${parseInt(termo, 10)}`)
+    }
+    // Várias palavras ("maria silva"): cada palavra precisa aparecer no nome ou na fantasia,
+    // em qualquer ordem (acha "MARIA DA SILVA SANTOS").
+    const palavras = termo.split(/\s+/).filter((w) => w.length > 0)
+    if (palavras.length > 1) {
+      subConds.push(
+        '(' +
+          palavras
+            .map((w) => `(nome_razao_social ~ "${w}" || nome_fantasia ~ "${w}")`)
+            .join(' && ') +
+          ')',
+      )
     }
     filters.push(`(${subConds.join(' || ')})`)
   }
