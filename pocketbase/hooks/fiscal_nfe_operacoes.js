@@ -1038,7 +1038,10 @@ routerAdd(
               const cBenef = regraRec ? regraRec.getString('c_benef') || '' : ''
 
               if (!cfop) {
-                if (ehOperacaoInterna) {
+                if (cstIcms === '60' || csosn === '500') {
+                  // ST já recolhida: 5405 interna / 6404 interestadual (5102 com CST 60 = rejeição 382)
+                  cfop = ehOperacaoInterna ? '5405' : '6404'
+                } else if (ehOperacaoInterna) {
                   cfop = '5102'
                 } else {
                   cfop = indicadorIe === '9' ? '6108' : '6102'
