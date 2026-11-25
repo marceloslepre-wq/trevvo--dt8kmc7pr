@@ -571,7 +571,18 @@ export const TrocasDevolucoesPage: React.FC = () => {
       }
     } catch (err: any) {
       setFaseTransmissao('erro')
-      setMensagemTransmissao(`Erro: ${err?.message || 'Falha ao emitir NF-e de devolução.'}`)
+      // Mostra o campo recusado pelo banco (ex.: status: Invalid value ...) em vez de só
+      // "Failed to create record."
+      const campos = err?.response?.data
+      const detalhe =
+        campos && typeof campos === 'object'
+          ? Object.entries(campos)
+              .map(([k, v]: [string, any]) => `${k}: ${v?.message || v}`)
+              .join('; ')
+          : ''
+      setMensagemTransmissao(
+        `Erro: ${err?.message || 'Falha ao emitir NF-e de devolução.'}${detalhe ? ` (${detalhe})` : ''}`,
+      )
     } finally {
       setProcessando(false)
     }
