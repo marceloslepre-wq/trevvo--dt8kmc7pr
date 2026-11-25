@@ -469,7 +469,132 @@ routerAdd(
     // IBS/CBS (Reforma Tributária): mesmo padrão da NF-e de venda e da NFC-e
     const informarIbsCbsDevVenda = cfgFiscal.getBool('informar_ibs_cbs')
 
-    const { obterTokenFocus } = require(`${__hooks}/fiscal_token_lib.js`)
+    // obterTokenFocus copiada localmente (require de fiscal_token_lib.js falha no JSVM do Skip:
+    // a rota quebrava com 'Something went wrong' antes de montar a NF-e de devolução)
+    function obterTokenFocus(empresaId, appInstance) {
+      const app = appInstance || $app
+      if (!empresaId) {
+        return {
+          token: '',
+          origem: 'nenhuma',
+          ambiente: 'Homologação',
+          nomeSegredo: 'FOCUS_NFE_TOKEN_HOMOLOGACAO',
+          codigoToken: '',
+        }
+      }
+
+      let ambiente = 'Homologação'
+      let codigoToken = ''
+      try {
+        const configs = app.findRecordsByFilter(
+          'config_emissao_fiscal',
+          `empresa_id = '${empresaId}' && ativo = true`,
+          '-created',
+          1,
+          0,
+        )
+        if (configs && configs.length > 0) {
+          const cfg = configs[0]
+          ambiente = cfg.getString('ambiente') === 'Produção' ? 'Produção' : 'Homologação'
+          codigoToken = (cfg.getString('codigo_token') || '').trim().toUpperCase()
+        }
+      } catch (_) {}
+
+      const ehProducao = ambiente === 'Produção'
+      const sufixoAmbiente = ehProducao ? 'PRODUCAO' : 'HOMOLOGACAO'
+      let nomeSegredo = codigoToken
+        ? `FOCUS_NFE_TOKEN_${sufixoAmbiente}_${codigoToken}`
+        : `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+
+      try {
+        const creds = app.findRecordsByFilter(
+          'credenciais_fiscais',
+          `empresa_id = '${empresaId}'`,
+          '-created',
+          1,
+          0,
+        )
+        if (creds && creds.length > 0) {
+          const credRec = creds[0]
+          const tokenBanco = (
+            ehProducao
+              ? credRec.getString('token_producao')
+              : credRec.getString('token_homologacao')
+          ).trim()
+
+          if (tokenBanco && tokenBanco.length > 0) {
+            return {
+              token: tokenBanco,
+              origem: 'banco',
+              ambiente: ambiente,
+              nomeSegredo: nomeSegredo,
+              codigoToken: codigoToken,
+            }
+          }
+        }
+      } catch (_) {}
+
+      let tokenSegredo = ''
+      try {
+        if (codigoToken) {
+          tokenSegredo = ($os.getenv(nomeSegredo) || '').trim()
+        }
+      } catch (_) {
+        tokenSegredo = ''
+      }
+
+      if (!tokenSegredo) {
+        try {
+          const empRec = app.findRecordById('empresas', empresaId)
+          const codEmp = empRec.getInt('codigo')
+          if (codEmp === 2) {
+            const segEcommerce = (
+              $os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}_ECOMMERCE`) || ''
+            ).trim()
+            if (segEcommerce) {
+              tokenSegredo = segEcommerce
+              nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}_ECOMMERCE`
+            }
+          } else if (codEmp === 3) {
+            const segFilial05 = (
+              $os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}_FILIAL05`) || ''
+            ).trim()
+            if (segFilial05) {
+              tokenSegredo = segFilial05
+              nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}_FILIAL05`
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!tokenSegredo) {
+        try {
+          const segPadrao = ($os.getenv(`FOCUS_NFE_TOKEN_${sufixoAmbiente}`) || '').trim()
+          if (segPadrao) {
+            tokenSegredo = segPadrao
+            nomeSegredo = `FOCUS_NFE_TOKEN_${sufixoAmbiente}`
+          }
+        } catch (_) {}
+      }
+
+      if (tokenSegredo && tokenSegredo.length > 0) {
+        return {
+          token: tokenSegredo,
+          origem: 'segredo',
+          ambiente: ambiente,
+          nomeSegredo: nomeSegredo,
+          codigoToken: codigoToken,
+        }
+      }
+
+      return {
+        token: '',
+        origem: 'nenhuma',
+        ambiente: ambiente,
+        nomeSegredo: nomeSegredo,
+        codigoToken: codigoToken,
+      }
+    }
     const tokenInfo = obterTokenFocus(empresaId, $app)
     const ambiente = tokenInfo.ambiente
     const token = tokenInfo.token
