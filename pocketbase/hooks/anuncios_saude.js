@@ -692,10 +692,7 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
           // A Tray pausa o anúncio quando o produto fica sem estoque (ou inativo) nela, mas não
           // zera o estoque do ML. Confere na Tray antes de acusar "pausado sem motivo".
           if (contaTrayEmpresa === undefined) contaTrayEmpresa = contaTray(empresaId)
-          const tray = estoqueTray(
-            contaTrayEmpresa,
-            codigosTray(assinanteId, skus, produto),
-          )
+          const tray = estoqueTray(contaTrayEmpresa, codigosTray(assinanteId, skus, produto))
           if (tray.ok && (tray.estoque <= 0 || !tray.ativo)) {
             pausadosSemEstoqueTray++
             continue // pausado porque a Tray está sem estoque ou com o produto inativo: normal
@@ -710,7 +707,11 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
               ' em estoque no ML e sem motivo informado (pausa manual ou da Tray).'
           if (tray.ok) {
             motivo +=
-              ' Na Tray (código ' + tray.codigo + ') o produto está ativo com ' + tray.estoque + ' em estoque.'
+              ' Na Tray (código ' +
+              tray.codigo +
+              ') o produto está ativo com ' +
+              tray.estoque +
+              ' em estoque.'
             acao = 'O produto tem estoque e está ativo na Tray: reative o anúncio no ML.'
           } else {
             motivo += ' Não foi possível conferir o estoque na Tray (' + tray.detalhe + ').'
