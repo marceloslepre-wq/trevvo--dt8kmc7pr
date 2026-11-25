@@ -2,6 +2,16 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-25 — Deploy-only: recarga do backend com o fiscal_devolucao_venda corrigido
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, telas e migrations não foram tocados (`fiscal_documentos_operacoes.js`, `fiscal_nfe_operacoes.js` e `fiscal_nfce_emitir.js` permanecem intocados, conforme PROJETO_ERP.md).
+- Objetivo: reimplantar o backend para recarregar os hooks atuais do repositório, incluindo `pocketbase/hooks/fiscal_devolucao_venda.js` na versão corrigida (sem `require` de módulos locais no JSVM).
+- Estado verificado antes do deploy: todas as migrations até `0152_documentos_fiscais_tipo_documento_zero.js` constam como `applied` — nenhuma pendente, nenhuma falha; próxima livre: 0153.
+- Verificação (pós-deploy):
+  - `list_migrations`: 0152 é a última aplicada, nenhuma pendente/falha.
+  - `list_backend_functions`: `fiscal_devolucao_venda` (POST /backend/v1/fiscal/emitir-nfe-devolucao-venda e confirmar-autorizacao-devolucao-venda), `vendas_operacoes`, `fiscal_nfce_emitir`, `fiscal_documentos_operacoes`, `fiscal_nfe_operacoes`, `mercadolivre_precos`, `anuncios_saude`, `shopee_conexao` e `ajuda_trevvo` registrados.
+  - `list_logs` (hooks, min_level=warn): sem erro de inicialização/boot; único erro é regra de negócio de `vendas/finalizar` (conta financeira padrão de recebimentos não configurada — configuração da empresa).
+
 ## 2026-11-25 — Correção do 400 genérico em emitir-nfe-devolucao-venda (hook fiscal_devolucao_venda)
 
 - Causa raiz (logs de requests, status 0 + "Invalid module"): a versão implantada do hook `fiscal_devolucao_venda.js` ainda usava `require` de módulos locais (`tenancy.js`, `fiscal_token_lib.js`), que falha no JSVM do PocketBase — a exceção era engolida pelo handler genérico e virava HTTP 400 "Something went wrong while processing your request.", sem mensagem de negócio.
