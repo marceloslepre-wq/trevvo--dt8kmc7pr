@@ -2,6 +2,13 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-25 — Correção do 400 genérico em emitir-nfe-devolucao-venda (hook fiscal_devolucao_venda)
+
+- Causa raiz (logs de requests, status 0 + "Invalid module"): a versão implantada do hook `fiscal_devolucao_venda.js` ainda usava `require` de módulos locais (`tenancy.js`, `fiscal_token_lib.js`), que falha no JSVM do PocketBase — a exceção era engolida pelo handler genérico e virava HTTP 400 "Something went wrong while processing your request.", sem mensagem de negócio.
+- O repositório já continha a versão corrigida (funções de tenancy e `obterTokenFocus` copiadas localmente no callback); faltava o deploy. `deploy_backend` executado nesta rodada.
+- Dados da devolução real validados por `db_query` (o0e459n9fsh2osg, MARCELO DA SILVEIRA LEPRE 02286256705): itens presentes, venda origem #14 com NFC-e Autorizada (chave 44 dígitos), token Focus em `credenciais_fiscais` e config fiscal ativa com natureza "Devolução de venda" — nenhum bloqueio de negócio.
+- Restrição respeitada: `fiscal_documentos_operacoes.js` e `fiscal_nfe_operacoes.js` não foram tocados.
+
 ## 2026-11-24 — Deploy-only: recarga do hook anuncios_saude (reinício do backend)
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, frontend e migrations não foram tocados.
