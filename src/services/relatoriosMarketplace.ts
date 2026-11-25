@@ -14,6 +14,11 @@ export interface AnuncioRelatorio {
   sku: string
   titulo: string
   preco: number
+  /**
+   * Amazon: preço cadastrado no relatório de ofertas. Quando há vendas no período, `preco`
+   * passa a ser o preço realmente cobrado (mediana) e este guarda o preço do anúncio.
+   */
+  precoAnuncio?: number
   /** Mediana do valor recebido por unidade; null sem vendas no período. */
   recebido: number | null
   unidades: number
@@ -159,12 +164,16 @@ export async function lerRelatoriosAmazon(
   const cQtd = col(cab, 'quantidade')
   const cTotal = col(cab, 'total')
   const cDesc = col(cab, 'descrição', 'descricao')
+  const cVendas = col(cab, 'vendas do produto')
+  const cDescontos = col(cab, 'descontos promocionais')
   const pedidos = new Map<
     string,
     {
       skus: Set<string>
       qtd: number
       total: number
+      /** Valor pago pelo cliente (vendas do produto + descontos promocionais). */
+      venda: number
       temTarifa: boolean
       reembolso: boolean
       titulo: string
@@ -178,7 +187,15 @@ export async function lerRelatoriosAmazon(
     const tipo = (l[cTipo] || '').trim().toLowerCase()
     let p = pedidos.get(id)
     if (!p) {
-      p = { skus: new Set(), qtd: 0, total: 0, temTarifa: false, reembolso: false, titulo: '' }
+      p = {
+        skus: new Set(),
+        qtd: 0,
+        total: 0,
+        venda: 0,
+        temTarifa: false,
+        reembolso: false,
+        titulo: '',
+      }
       pedidos.set(id, p)
     }
     p.total += numeroBR(l[cTotal])
@@ -186,12 +203,15 @@ export async function lerRelatoriosAmazon(
       const sku = (l[cSkuT] || '').trim()
       if (sku) p.skus.add(sku)
       p.qtd += Number(l[cQtd]) || 0
+      if (cVendas >= 0)
+        p.venda += numeroBR(l[cVendas]) + (cDescontos >= 0 ? numeroBR(l[cDescontos]) : 0)
       if (sku) vendidasSku.set(sku, (vendidasSku.get(sku) || 0) + (Number(l[cQtd]) || 0))
       p.titulo = (l[cDesc] || '').trim()
     } else if (tipo.startsWith('reembolso')) p.reembolso = true
     else if (tipo.includes('envio') || tipo.includes('tarifa')) p.temTarifa = true
   }
   const porSku = new Map<string, number[]>()
+  const precoSku = new Map<string, number[]>()
   const tituloSku = new Map<string, string>()
   for (const p of Array.from(pedidos.values())) {
     if (p.skus.size !== 1 || p.qtd <= 0 || p.reembolso || !p.temTarifa) continue
@@ -199,6 +219,11 @@ export async function lerRelatoriosAmazon(
     const lista = porSku.get(sku) || []
     lista.push(p.total / p.qtd)
     porSku.set(sku, lista)
+    if (p.venda > 0) {
+      const lp = precoSku.get(sku) || []
+      lp.push(p.venda / p.qtd)
+      precoSku.set(sku, lp)
+    }
     tituloSku.set(sku, p.titulo)
   }
   for (const [sku, vs] of Array.from(porSku.entries())) {
@@ -206,6 +231,15 @@ export async function lerRelatoriosAmazon(
     if (a) {
       a.recebido = mediana(vs)
       a.pedidos = vs.length
+      // Preço e recebido dos MESMOS pedidos: o preço do relatório de ofertas é o preço de
+      // tabela do anúncio, e a Amazon pode vender mais barato (promoção, preço Business,
+      // cupom). Ex.: Curatec Gel 150 ml anunciado a 138,60 e vendido a 90,78; com o preço de
+      // tabela, a diferença para o recebido virava "comissão/taxa" de 53%.
+      const pv = mediana(precoSku.get(sku) || [])
+      if (pv && pv > 0) {
+        a.precoAnuncio = a.preco
+        a.preco = pv
+      }
     }
   }
   for (const [sku, qtd] of Array.from(vendidasSku.entries())) {
@@ -362,6 +396,10 @@ export function casarAnuncios(
       unidades: a.unidades,
       sugestao: '',
     }
+    const notaPreco =
+      a.precoAnuncio && Math.abs(a.precoAnuncio - a.preco) >= 0.01
+        ? `anúncio a ${a.precoAnuncio.toFixed(2).replace('.', ',')}, vendido a ${a.preco.toFixed(2).replace('.', ',')}`
+        : ''
     const vinc = vinculos.get(a.sku)
     if (vinc && porId.get(vinc)) {
       return {
@@ -369,7 +407,7 @@ export function casarAnuncios(
         produto: porId.get(vinc) || null,
         origem: 'vinculo',
         situacao: '',
-        observacao: '',
+        observacao: notaPreco,
       }
     }
     const pCodigo = /^\d+$/.test(a.sku) ? porCodigo.get(a.sku) : undefined
