@@ -1353,6 +1353,7 @@ routerAdd(
           movRec.set('produto_id', prodId)
           movRec.set('tipo', 'Entrada')
           movRec.set('origem', 'DEVOLUCAO_VENDA')
+          movRec.set('data_movimento', new Date().toISOString())
           movRec.set('quantidade', qtd)
           movRec.set('custo_unitario', custoUn)
           movRec.set('valor_total', Math.round(qtd * custoUn * 100) / 100)
@@ -1461,8 +1462,11 @@ routerAdd(
               'historico',
               `Devolução em dinheiro NF-e #${docNumero} (Devolução #${devolucaoRec.getInt('numero')})`,
             )
-            movFin.set('origem', 'Devolucao')
-            movFin.set('origem_id', devolucaoId)
+            // origem é select: 'Devolucao' não existe na lista (gravação falhava)
+            movFin.set('origem', 'AJUSTE')
+            movFin.set('documento_tipo', 'Devolução de venda')
+            movFin.set('documento_id', devolucaoId)
+            movFin.set('documento_numero', String(docNumero))
             movFin.set('conciliado', false)
             movFin.set('ativo', true)
             txApp.save(movFin)
