@@ -2,6 +2,13 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-25 — Deploy-only: reimplante do backend com os hooks atuais do repositório
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, telas, migrations e serviços não foram tocados (`fiscal_documentos_operacoes.js`, `fiscal_nfe_operacoes.js` e `fiscal_nfce_emitir.js` permanecem intocados, conforme PROJETO_ERP.md).
+- Objetivo: reimplantar o backend para recarregar os hooks atuais do repositório no PocketBase.
+- Estado verificado antes do deploy: todas as migrations até `0152_documentos_fiscais_tipo_documento_zero.js` constam como `applied` — nenhuma pendente, nenhuma falha; próxima livre: 0153.
+- Verificação (pós-deploy): `list_backend_functions` com todos os hooks esperados registrados (família `fiscal_*`, `vendas_operacoes`, `caixa_*`, `financeiro_*`, `master_rotas`, `ajuda_trevvo`, `anuncios_saude`, `shopee_conexao`, família `mercadolivre_*`, família `tray_*`) e `list_logs` (hooks, min_level=warn) sem erro de inicialização/boot.
+
 ## 2026-11-25 — Deploy-only: recarga do backend com os hooks atuais do repositório
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, telas, migrations e serviços não foram tocados (`fiscal_documentos_operacoes.js`, `fiscal_nfe_operacoes.js` e `fiscal_nfce_emitir.js` permanecem intocados, conforme PROJETO_ERP.md).
