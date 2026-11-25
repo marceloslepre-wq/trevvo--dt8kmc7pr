@@ -372,44 +372,94 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
     }
   }
 
-  function estoqueTray(conta, skus) {
-    if (!conta) return null
-    const api = conta.getString('api_address')
-    const token = encodeURIComponent(conta.getString('access_token'))
+  // Códigos da Tray a tentar, em ordem: o SKU do anúncio ("6005" = produto; "6005-123" ou
+  // "6005_123" = variação 123), a referência do produto do Trevvo (= código da Tray) e, quando
+  // o SKU é o código do Trevvo/Uniplus, a referência desse produto.
+  function codigosTray(assinanteId, skus, produto) {
+    const out = []
+    function add(tipo, id) {
+      const k = tipo + ':' + id
+      for (let i = 0; i < out.length; i++) if (out[i].k === k) return
+      out.push({ k: k, tipo: tipo, id: id })
+    }
+    function porCodigo(cod) {
+      try {
+        const r = $app.findRecordsByFilter(
+          'produtos',
+          "assinante_id = '" + assinanteId + "' && codigo = " + parseInt(cod, 10),
+          '',
+          1,
+          0,
+        )
+        if (r && r.length > 0) {
+          const ref = r[0].getString('referencia').trim()
+          if (/^[0-9]{1,12}$/.test(ref)) add('produto', ref)
+        }
+      } catch (_) {}
+    }
     for (let i = 0; i < skus.length; i++) {
       const sku = String(skus[i] || '').trim()
-      let caminho = ''
-      let chave = ''
       let m = sku.match(/^([0-9]{1,12})$/)
-      if (m) {
-        caminho = '/products/' + m[1]
-        chave = 'Product'
-      } else {
-        m = sku.match(/^[0-9]{1,12}_([0-9]{1,12})$/)
-        if (m) {
-          caminho = '/products/variants/' + m[1]
-          chave = 'Variant'
+      if (m) add('produto', m[1])
+      m = sku.match(/^[0-9]{1,12}[-_]([0-9]{1,12})$/)
+      if (m) add('variacao', m[1])
+    }
+    if (produto) {
+      const ref = produto.getString('referencia').trim()
+      if (/^[0-9]{1,12}$/.test(ref)) add('produto', ref)
+    }
+    for (let i = 0; i < skus.length; i++) {
+      const sku = String(skus[i] || '').trim()
+      if (/^[0-9]{1,9}$/.test(sku)) porCodigo(sku)
+    }
+    return out
+  }
+
+  // Devolve { ok: true, estoque, ativo, codigo } ou { ok: false, detalhe }.
+  function estoqueTray(conta, codigos) {
+    if (!conta) return { ok: false, detalhe: 'loja Tray não conectada ou acesso vencido' }
+    if (codigos.length === 0) return { ok: false, detalhe: 'SKU sem código da Tray' }
+    const api = conta.getString('api_address')
+    const token = encodeURIComponent(conta.getString('access_token'))
+    const falhas = []
+    for (let i = 0; i < codigos.length && i < 4; i++) {
+      const cod = codigos[i]
+      const caminho = (cod.tipo === 'variacao' ? '/products/variants/' : '/products/') + cod.id
+      const chave = cod.tipo === 'variacao' ? 'Variant' : 'Product'
+      let status = 0
+      let d = null
+      const esperas = [0, 1000, 2000, 4000]
+      for (let t = 0; t < esperas.length; t++) {
+        sleep(350 + esperas[t]) // limite da Tray: 180 requisições por minuto
+        try {
+          const res = $http.send({
+            method: 'GET',
+            url: api + caminho + '?access_token=' + token,
+            headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
+            timeout: 20,
+          })
+          status = res.statusCode
+          if (status === 200) d = lerJson(res)
+        } catch (_) {
+          status = -1
         }
+        if (status !== 429 && status !== -1) break
       }
-      if (!caminho) continue
-      try {
-        sleep(350) // limite da Tray: 180 requisições por minuto
-        const res = $http.send({
-          method: 'GET',
-          url: api + caminho + '?access_token=' + token,
-          headers: { Accept: 'application/json', 'User-Agent': 'Trevvo-ERP/1.0' },
-          timeout: 20,
-        })
-        if (res.statusCode !== 200) continue
-        const d = lerJson(res)
-        const no = (d && d[chave]) || d || {}
+      if (status === 200 && d) {
+        const no = d[chave] || d
         const estoque = parseFloat(String(no.stock === undefined ? '' : no.stock)) || 0
         const disp = no.available
         const ativo = disp === undefined ? true : String(disp) === '1' || disp === true
-        return { estoque: estoque, ativo: ativo }
-      } catch (_) {}
+        return {
+          ok: true,
+          estoque: estoque,
+          ativo: ativo,
+          codigo: (cod.tipo === 'variacao' ? 'variação ' : '') + cod.id,
+        }
+      }
+      falhas.push((cod.tipo === 'variacao' ? 'variação ' : '') + cod.id + ' HTTP ' + status)
     }
-    return null
+    return { ok: false, detalhe: falhas.join(', ') }
   }
 
   // Executa uma verificação do Mercado Livre. Devolve { lidos, problemas, resumo }.
@@ -642,8 +692,11 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
           // A Tray pausa o anúncio quando o produto fica sem estoque (ou inativo) nela, mas não
           // zera o estoque do ML. Confere na Tray antes de acusar "pausado sem motivo".
           if (contaTrayEmpresa === undefined) contaTrayEmpresa = contaTray(empresaId)
-          const tray = estoqueTray(contaTrayEmpresa, skus)
-          if (tray && (tray.estoque <= 0 || !tray.ativo)) {
+          const tray = estoqueTray(
+            contaTrayEmpresa,
+            codigosTray(assinanteId, skus, produto),
+          )
+          if (tray.ok && (tray.estoque <= 0 || !tray.ativo)) {
             pausadosSemEstoqueTray++
             continue // pausado porque a Tray está sem estoque ou com o produto inativo: normal
           }
@@ -655,11 +708,12 @@ cronAdd('anuncios_saude_monitor', '*/5 * * * *', () => {
             : 'Pausado com ' +
               estoqueCanal +
               ' em estoque no ML e sem motivo informado (pausa manual ou da Tray).'
-          if (tray) {
-            motivo += ' Na Tray o produto está ativo com ' + tray.estoque + ' em estoque.'
+          if (tray.ok) {
+            motivo +=
+              ' Na Tray (código ' + tray.codigo + ') o produto está ativo com ' + tray.estoque + ' em estoque.'
             acao = 'O produto tem estoque e está ativo na Tray: reative o anúncio no ML.'
           } else {
-            motivo += ' Não foi possível conferir o estoque na Tray.'
+            motivo += ' Não foi possível conferir o estoque na Tray (' + tray.detalhe + ').'
             acao =
               'Confira na Tray se o produto está ativo e com estoque. Se estiver, reative o anúncio no ML.'
           }
