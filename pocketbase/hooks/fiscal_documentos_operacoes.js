@@ -304,6 +304,9 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
         let cstPisRecalc = regraRecalc.getString('cst_pis') || ''
         let cstCofinsRecalc = regraRecalc.getString('cst_cofins') || ''
 
+        if (!cfopRecalc && (cstIcmsRecalc === '60' || csosnRecalc === '500')) {
+          cfopRecalc = ehOperacaoInternaRecalc ? '5405' : '6404'
+        }
         if (!cfopRecalc) {
           cfopRecalc = ehOperacaoInternaRecalc
             ? '5102'
@@ -1033,6 +1036,9 @@ routerAdd('POST', '/backend/v1/fiscal/montar-rascunho', (c) => {
             } else {
               cfop = ehOperacaoInterna ? '5152' : '6152'
             }
+          } else if (cstIcms === '60' || csosn === '500') {
+            // ST já recolhida: 5405 interna / 6404 interestadual (5102 com CST 60 = rejeição 382)
+            cfop = ehOperacaoInterna ? '5405' : '6404'
           } else {
             if (ehOperacaoInterna) {
               cfop = '5102'
