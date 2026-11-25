@@ -764,6 +764,8 @@ routerAdd(
       docRec.set('destinatario_cpf_cnpj', cpfCnpjCliente)
       docRec.set('destinatario_uf', ufCliente)
       docRec.set('usuario_emissao_id', userId)
+      // referencia é obrigatória e única: grava uma provisória e troca logo abaixo
+      docRec.set('referencia', `DEVV_${devolucaoId}_${Date.now()}`)
       $app.save(docRec)
     }
 
