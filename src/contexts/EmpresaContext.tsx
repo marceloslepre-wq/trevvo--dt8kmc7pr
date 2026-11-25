@@ -38,6 +38,16 @@ const EmpresaContext = createContext<EmpresaContextType | undefined>(undefined)
 const CHAVE_STORAGE = 'erp_empresa_ativa_id'
 
 /**
+ * A empresa escolhida fica guardada POR LOGIN. Antes a chave era única no aparelho: num
+ * celular ou computador compartilhado, o próximo usuário entrava na empresa do anterior
+ * (ex.: caixa da loja 01 abrindo na Matriz) em vez da sua Empresa Padrão.
+ */
+function chaveEmpresaAtiva(): string {
+  const loginId = (pb.authStore.record as any)?.id || ''
+  return loginId ? `${CHAVE_STORAGE}:${loginId}` : CHAVE_STORAGE
+}
+
+/**
  * Lista de empresas acessíveis ao usuário logado (multiempresa).
  * Complementa useEmpresaAtiva (que traz só a empresa ativa do seletor do topo).
  */
@@ -150,12 +160,12 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       if (listaFiltrada.length === 0) {
         setEmpresaAtiva(null)
-        localStorage.removeItem(CHAVE_STORAGE)
+        localStorage.removeItem(chaveEmpresaAtiva())
         return
       }
 
       // Tenta recuperar do localStorage
-      const salvoId = localStorage.getItem(CHAVE_STORAGE)
+      const salvoId = localStorage.getItem(chaveEmpresaAtiva())
       const encontrada = listaFiltrada.find((e) => e.id === salvoId)
 
       if (encontrada) {
@@ -166,7 +176,7 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const padrao = listaFiltrada.find((e) => e.id === usuarioERP.empresa_padrao_id)
           if (padrao) {
             setEmpresaAtiva(padrao)
-            localStorage.setItem(CHAVE_STORAGE, padrao.id)
+            localStorage.setItem(chaveEmpresaAtiva(), padrao.id)
             return
           }
         }
@@ -174,7 +184,7 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
         // Seleciona a Matriz por padrão, ou a primeira disponível
         const matriz = listaFiltrada.find((e) => e.tipo === 'Matriz') || listaFiltrada[0]
         setEmpresaAtiva(matriz)
-        localStorage.setItem(CHAVE_STORAGE, matriz.id)
+        localStorage.setItem(chaveEmpresaAtiva(), matriz.id)
       }
     } catch (err) {
       console.error('Erro ao carregar empresas ativas:', err)
@@ -194,7 +204,7 @@ export const EmpresaProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const escolhida = empresas.find((e) => e.id === empresaId)
       if (escolhida) {
         setEmpresaAtiva(escolhida)
-        localStorage.setItem(CHAVE_STORAGE, escolhida.id)
+        localStorage.setItem(chaveEmpresaAtiva(), escolhida.id)
       }
     },
     [empresas],
