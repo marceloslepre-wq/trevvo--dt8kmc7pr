@@ -691,9 +691,6 @@ routerAdd(
             cfop = cfopRec.getString('codigo') || cfop
           } catch (_) {}
         }
-        if (!cfop) cfop = '5102'
-        if (!cfopPrimeiroItem) cfopPrimeiroItem = cfop
-
         let cstIcms =
           itRec.getString('cst_icms') || (regraRec ? regraRec.getString('cst_icms') : '') || ''
         let csosn = itRec.getString('csosn') || (regraRec ? regraRec.getString('csosn') : '') || ''
@@ -703,6 +700,10 @@ routerAdd(
           if (!cstIcms) cstIcms = '00'
         }
         const situacaoIcms = ehSimples ? csosn : cstIcms
+        // Sem CFOP na regra: mercadoria com ST já recolhida (CST 60 / CSOSN 500) sai em 5405,
+        // as demais em 5102 (CFOP 5102 com CST 60 = rejeição 382 da SEFAZ).
+        if (!cfop) cfop = cstIcms === '60' || csosn === '500' ? '5405' : '5102'
+        if (!cfopPrimeiroItem) cfopPrimeiroItem = cfop
 
         const origemMercadoria =
           itRec.getString('origem') || (regraRec ? regraRec.getString('origem') : '0') || '0'

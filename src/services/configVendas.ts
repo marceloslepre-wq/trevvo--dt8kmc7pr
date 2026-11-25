@@ -51,18 +51,18 @@ export interface ConfigVendasEmpresa {
  * Regra: pessoa Física, sem CPF, indicador_ie '9', consumidor_final true.
  */
 export async function obterOuCriarConsumidorFinal(assinanteId?: string): Promise<Cliente> {
-  // 1. Tenta achar cliente do assinante com consumidor_final = true ou nome "Consumidor Final"
-  const conds = [
-    'ativo = true',
-    '(consumidor_final = true || nome_razao_social = "Consumidor Final")',
-  ]
+  // 1. Procura o cadastro genérico "Consumidor Final" (sem CPF/CNPJ) do assinante.
+  // NÃO basta consumidor_final = true: esse é o indicador fiscal que toda pessoa física
+  // importada tem. Antes, com sort '-created', a venda sem cliente caía no último cliente
+  // PF cadastrado (ex.: vendas do PDV/Móvel saindo no nome de um cliente real).
+  const conds = ['ativo = true', 'nome_razao_social = "Consumidor Final"', "cpf_cnpj = ''"]
   if (assinanteId) {
     conds.unshift(`assinante_id = '${assinanteId}'`)
   }
   try {
     const achado = await pb
       .collection('clientes')
-      .getFirstListItem<Cliente>(conds.join(' && '), { sort: '-created' })
+      .getFirstListItem<Cliente>(conds.join(' && '), { sort: 'codigo,created' })
     if (achado) return achado
   } catch {
     // cria novo
