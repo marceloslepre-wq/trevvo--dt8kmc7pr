@@ -2,6 +2,16 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-26 — Deploy-only: recarga do backend (tray_produtos) e confirmação da migration 0153
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, telas, migrations e serviços não foram tocados.
+- Objetivo: reimplantar o backend para recarregar os hooks atuais do repositório (em especial `pocketbase/hooks/tray_produtos.js`).
+- Estado verificado antes do deploy: migrations até `0153_vinculos_anuncios_preco_anuncio.js` constam como `applied` — nenhuma pendente, nenhuma falha; próxima livre é 0154, que não existe no repositório (nada a criar).
+- Verificação (pós-deploy):
+  - `list_backend_functions`: família Tray completa (`tray_conexao`, `tray_produtos` (GET /backend/v1/tray/produtos/conferencia), `tray_midia`, `tray_homologacao`), família `mercadolivre_*`, `anuncios_saude`, `shopee_conexao`, `ajuda_trevvo`, família `fiscal_*`, `vendas_operacoes`, `caixa_*`, `financeiro_*` e `master_rotas` registrados sem erro.
+  - `list_logs` (hooks): sem erro de inicialização/boot.
+  - `db_show_schema`: coleção `produtos_vinculos_anuncios` com o campo `preco_anuncio: number` (criado pela 0153), além de `unidades` e índices únicos por produto/empresa/marketplace/anuncio/variacao.
+
 ## 2026-11-25 — Deploy-only: reimplante do backend com os hooks atuais do repositório
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, telas, migrations e serviços não foram tocados (`fiscal_documentos_operacoes.js`, `fiscal_nfe_operacoes.js` e `fiscal_nfce_emitir.js` permanecem intocados, conforme PROJETO_ERP.md).
