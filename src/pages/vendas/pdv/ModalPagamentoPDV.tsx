@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   DollarSign,
   QrCode,
@@ -21,50 +21,61 @@ import {
   Loader2,
   Trash2,
   Plus,
-} from 'lucide-react'
-import type { FormaPagamento } from '@/services/formasPagamento'
-import type { ContaFinanceira } from '@/services/contasFinanceiras'
-import type { CondicaoPagamento } from '@/services/condicoesPagamento'
-import type { Cliente } from '@/services/clientes'
-import { creditoCliente, type SituacaoCreditoCliente } from '@/services/contasReceber'
-import { consultarValeTroca, abaterSaldoValeTroca } from '@/services/devolucoes'
+} from "lucide-react";
+import type { FormaPagamento } from "@/services/formasPagamento";
+import type { ContaFinanceira } from "@/services/contasFinanceiras";
+import type { CondicaoPagamento } from "@/services/condicoesPagamento";
+import type { Cliente } from "@/services/clientes";
+import {
+  creditoCliente,
+  type SituacaoCreditoCliente,
+} from "@/services/contasReceber";
+import {
+  consultarValeTroca,
+  abaterSaldoValeTroca,
+} from "@/services/devolucoes";
+import { montarPixCopiaECola } from "@/lib/pixBrCode";
+import { PixQrCode } from "@/components/PixQrCode";
 
 export interface PagamentoPDVLinha {
-  id: string
-  forma_pagamento_id: string
-  valor: number
-  parcelas: number
-  bandeira?: string
-  nsu?: string
-  codigo_autorizacao?: string
-  conta_financeira_id?: string
-  condicao_pagamento_id?: string
-  taxa_percentual?: number
+  id: string;
+  forma_pagamento_id: string;
+  valor: number;
+  parcelas: number;
+  bandeira?: string;
+  nsu?: string;
+  codigo_autorizacao?: string;
+  conta_financeira_id?: string;
+  condicao_pagamento_id?: string;
+  taxa_percentual?: number;
 }
 
 interface ModalPagamentoPDVProps {
-  aberto: boolean
-  onOpenChange: (aberto: boolean) => void
-  totalVenda: number
-  cliente: Cliente | null
-  formas: FormaPagamento[]
-  contas: ContaFinanceira[]
-  condicoes: CondicaoPagamento[]
-  contaPadraoCaixaId?: string
-  empresaId: string
+  aberto: boolean;
+  onOpenChange: (aberto: boolean) => void;
+  totalVenda: number;
+  cliente: Cliente | null;
+  formas: FormaPagamento[];
+  contas: ContaFinanceira[];
+  condicoes: CondicaoPagamento[];
+  contaPadraoCaixaId?: string;
+  empresaId: string;
+  /** Nome e cidade do recebedor que vão dentro do QR Code PIX */
+  nomeRecebedorPix?: string;
+  cidadeRecebedorPix?: string;
   onConfirmar: (
     pagamentos: Array<{
-      forma_pagamento_id: string
-      valor: number
-      parcelas?: number
-      bandeira?: string
-      nsu?: string
-      codigo_autorizacao?: string
-      conta_financeira_id?: string
-      condicao_pagamento_id?: string
+      forma_pagamento_id: string;
+      valor: number;
+      parcelas?: number;
+      bandeira?: string;
+      nsu?: string;
+      codigo_autorizacao?: string;
+      conta_financeira_id?: string;
+      condicao_pagamento_id?: string;
     }>,
     troco: number,
-  ) => Promise<void>
+  ) => Promise<void>;
 }
 
 export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
@@ -77,192 +88,206 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
   condicoes,
   contaPadraoCaixaId,
   empresaId,
+  nomeRecebedorPix,
+  cidadeRecebedorPix,
   onConfirmar,
 }) => {
-  const [linhas, setLinhas] = useState<PagamentoPDVLinha[]>([])
-  const [valorDigitado, setValorDigitado] = useState<string>('')
-  const [formaSelecionadaId, setFormaSelecionadaId] = useState<string>('')
-  const [salvando, setSalvando] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
-  const [analiseCredito, setAnaliseCredito] = useState<SituacaoCreditoCliente | null>(null)
-  const [checandoCredito, setChecandoCredito] = useState(false)
+  const [linhas, setLinhas] = useState<PagamentoPDVLinha[]>([]);
+  const [valorDigitado, setValorDigitado] = useState<string>("");
+  const [formaSelecionadaId, setFormaSelecionadaId] = useState<string>("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [analiseCredito, setAnaliseCredito] =
+    useState<SituacaoCreditoCliente | null>(null);
+  const [checandoCredito, setChecandoCredito] = useState(false);
 
   // Campos adicionais da forma ativa (ex.: parcelas, cartão, PIX, vale-troca)
-  const [parcelasCartao, setParcelasCartao] = useState<number>(1)
-  const [nsuCartao, setNsuCartao] = useState<string>('')
-  const [autCartao, setAutCartao] = useState<string>('')
-  const [bandeiraCartao, setBandeiraCartao] = useState<string>('')
-  const [condicaoCrediarioId, setCondicaoCrediarioId] = useState<string>('')
-  const [codigoValeTroca, setCodigoValeTroca] = useState<string>('')
-  const [valeCarregado, setValeCarregado] = useState<any>(null)
-  const [buscandoVale, setBuscandoVale] = useState(false)
-  const [pixConfirmadoManualmente, setPixConfirmadoManualmente] = useState(false)
+  const [parcelasCartao, setParcelasCartao] = useState<number>(1);
+  const [nsuCartao, setNsuCartao] = useState<string>("");
+  const [autCartao, setAutCartao] = useState<string>("");
+  const [bandeiraCartao, setBandeiraCartao] = useState<string>("");
+  const [condicaoCrediarioId, setCondicaoCrediarioId] = useState<string>("");
+  const [codigoValeTroca, setCodigoValeTroca] = useState<string>("");
+  const [valeCarregado, setValeCarregado] = useState<any>(null);
+  const [buscandoVale, setBuscandoVale] = useState(false);
+  const [pixConfirmadoManualmente, setPixConfirmadoManualmente] =
+    useState(false);
 
-  const inputValorRef = useRef<HTMLInputElement>(null)
+  const inputValorRef = useRef<HTMLInputElement>(null);
 
   // Totais
   const totalInformado = useMemo(() => {
-    return linhas.reduce((acc, l) => acc + (Number(l.valor) || 0), 0)
-  }, [linhas])
+    return linhas.reduce((acc, l) => acc + (Number(l.valor) || 0), 0);
+  }, [linhas]);
 
   const restante = useMemo(() => {
-    return Math.max(0, Number((totalVenda - totalInformado).toFixed(2)))
-  }, [totalVenda, totalInformado])
+    return Math.max(0, Number((totalVenda - totalInformado).toFixed(2)));
+  }, [totalVenda, totalInformado]);
 
   const totalDinheiro = useMemo(() => {
     return linhas.reduce((acc, l) => {
-      const f = formas.find((forma) => forma.id === l.forma_pagamento_id)
+      const f = formas.find((forma) => forma.id === l.forma_pagamento_id);
       if (
-        f?.tipo === 'Dinheiro' ||
-        f?.codigo_tpag === '01' ||
-        f?.descricao.toLowerCase().includes('dinheiro')
+        f?.tipo === "Dinheiro" ||
+        f?.codigo_tpag === "01" ||
+        f?.descricao.toLowerCase().includes("dinheiro")
       ) {
-        return acc + (Number(l.valor) || 0)
+        return acc + (Number(l.valor) || 0);
       }
-      return acc
-    }, 0)
-  }, [linhas, formas])
+      return acc;
+    }, 0);
+  }, [linhas, formas]);
 
   const troco = useMemo(() => {
-    const diff = Number((totalInformado - totalVenda).toFixed(2))
+    const diff = Number((totalInformado - totalVenda).toFixed(2));
     if (diff > 0 && totalDinheiro >= diff - 0.01) {
-      return diff
+      return diff;
     }
-    return 0
-  }, [totalInformado, totalVenda, totalDinheiro])
+    return 0;
+  }, [totalInformado, totalVenda, totalDinheiro]);
 
   // Formas ativas e numeradas para atalho (1 a 9)
   const formasAtivas = useMemo(() => {
-    return formas.filter((f) => f.ativo)
-  }, [formas])
+    return formas.filter((f) => f.ativo);
+  }, [formas]);
 
   const formaAtivaAtual = useMemo(() => {
-    return formas.find((f) => f.id === formaSelecionadaId) || formasAtivas[0] || null
-  }, [formas, formaSelecionadaId, formasAtivas])
+    return (
+      formas.find((f) => f.id === formaSelecionadaId) || formasAtivas[0] || null
+    );
+  }, [formas, formaSelecionadaId, formasAtivas]);
 
   // Inicializa quando abre
   useEffect(() => {
     if (aberto) {
-      setLinhas([])
-      setErro(null)
-      setPixConfirmadoManualmente(false)
-      const primeira = formasAtivas[0]
+      setLinhas([]);
+      setErro(null);
+      setPixConfirmadoManualmente(false);
+      const primeira = formasAtivas[0];
       if (primeira) {
-        setFormaSelecionadaId(primeira.id)
+        setFormaSelecionadaId(primeira.id);
       }
-      setValorDigitado(totalVenda > 0 ? totalVenda.toFixed(2) : '')
-      setParcelasCartao(1)
-      setNsuCartao('')
-      setAutCartao('')
-      setBandeiraCartao('')
-      setCondicaoCrediarioId(condicoes[0]?.id || '')
+      setValorDigitado(totalVenda > 0 ? totalVenda.toFixed(2) : "");
+      setParcelasCartao(1);
+      setNsuCartao("");
+      setAutCartao("");
+      setBandeiraCartao("");
+      setCondicaoCrediarioId(condicoes[0]?.id || "");
 
       setTimeout(() => {
-        inputValorRef.current?.focus()
-        inputValorRef.current?.select()
-      }, 100)
+        inputValorRef.current?.focus();
+        inputValorRef.current?.select();
+      }, 100);
     }
-  }, [aberto, totalVenda, formasAtivas, condicoes])
+  }, [aberto, totalVenda, formasAtivas, condicoes]);
 
   // Atualiza o valor sugerido conforme o restante
   useEffect(() => {
     if (aberto && restante > 0 && linhas.length > 0) {
-      setValorDigitado(restante.toFixed(2))
+      setValorDigitado(restante.toFixed(2));
     }
-  }, [aberto, restante, linhas.length])
+  }, [aberto, restante, linhas.length]);
 
   // Consulta limite de crédito se cliente selecionou Crediário
   useEffect(() => {
     const ehCrediario =
-      formaAtivaAtual?.tipo === 'Crédito loja' ||
-      formaAtivaAtual?.tipo === 'Boleto' ||
-      formaAtivaAtual?.codigo_tpag === '05' ||
-      formaAtivaAtual?.descricao.toLowerCase().includes('crediário')
+      formaAtivaAtual?.tipo === "Crédito loja" ||
+      formaAtivaAtual?.tipo === "Boleto" ||
+      formaAtivaAtual?.codigo_tpag === "05" ||
+      formaAtivaAtual?.descricao.toLowerCase().includes("crediário");
 
     if (ehCrediario && cliente?.id && cliente.consumidor_final !== true) {
-      setChecandoCredito(true)
+      setChecandoCredito(true);
       creditoCliente(cliente.id, empresaId)
         .then((res) => {
-          setAnaliseCredito(res)
+          setAnaliseCredito(res);
         })
         .catch(() => {
-          setAnaliseCredito(null)
+          setAnaliseCredito(null);
         })
         .finally(() => {
-          setChecandoCredito(false)
-        })
+          setChecandoCredito(false);
+        });
     } else {
-      setAnaliseCredito(null)
+      setAnaliseCredito(null);
     }
-  }, [formaAtivaAtual, cliente, empresaId])
+  }, [formaAtivaAtual, cliente, empresaId]);
 
   // Adicionar linha de pagamento
   const handleAdicionarPagamento = () => {
-    setErro(null)
+    setErro(null);
     if (!formaAtivaAtual) {
-      setErro('Selecione uma forma de pagamento.')
-      return
+      setErro("Selecione uma forma de pagamento.");
+      return;
     }
 
-    const valorNum = parseFloat(valorDigitado.replace(',', '.'))
+    const valorNum = parseFloat(valorDigitado.replace(",", "."));
     if (isNaN(valorNum) || valorNum <= 0) {
-      setErro('Informe um valor válido maior que zero.')
-      inputValorRef.current?.focus()
-      return
+      setErro("Informe um valor válido maior que zero.");
+      inputValorRef.current?.focus();
+      return;
     }
 
     const ehValeTroca =
-      formaAtivaAtual.codigo_tpag === '99' ||
-      formaAtivaAtual.descricao.toLowerCase().includes('vale-troca') ||
-      formaAtivaAtual.descricao.toLowerCase().includes('vale troca')
+      formaAtivaAtual.codigo_tpag === "99" ||
+      formaAtivaAtual.descricao.toLowerCase().includes("vale-troca") ||
+      formaAtivaAtual.descricao.toLowerCase().includes("vale troca");
 
     if (ehValeTroca) {
       if (!codigoValeTroca.trim()) {
-        setErro('Digite o código do vale-troca para validar e aplicar o saldo.')
-        return
+        setErro(
+          "Digite o código do vale-troca para validar e aplicar o saldo.",
+        );
+        return;
       }
       if (!valeCarregado) {
-        setErro('Valide o código do vale-troca antes de lançar.')
-        return
+        setErro("Valide o código do vale-troca antes de lançar.");
+        return;
       }
       if (valorNum > valeCarregado.saldo + 0.009) {
-        setErro(`O valor supera o saldo disponível do vale (R$ ${valeCarregado.saldo.toFixed(2)}).`)
-        return
+        setErro(
+          `O valor supera o saldo disponível do vale (R$ ${valeCarregado.saldo.toFixed(2)}).`,
+        );
+        return;
       }
     }
 
     const ehCrediario =
       !ehValeTroca &&
-      (formaAtivaAtual.tipo === 'Crédito loja' ||
-        formaAtivaAtual.tipo === 'Boleto' ||
-        formaAtivaAtual.codigo_tpag === '05' ||
-        formaAtivaAtual.descricao.toLowerCase().includes('crediário'))
+      (formaAtivaAtual.tipo === "Crédito loja" ||
+        formaAtivaAtual.tipo === "Boleto" ||
+        formaAtivaAtual.codigo_tpag === "05" ||
+        formaAtivaAtual.descricao.toLowerCase().includes("crediário"));
 
     if (ehCrediario) {
       if (
         !cliente ||
         cliente.consumidor_final ||
-        cliente.nome_razao_social === 'Consumidor Final'
+        cliente.nome_razao_social === "Consumidor Final"
       ) {
-        setErro('Crediário / Venda a prazo exige um cliente identificado cadastrado.')
-        return
+        setErro(
+          "Crediário / Venda a prazo exige um cliente identificado cadastrado.",
+        );
+        return;
       }
-      if (analiseCredito && analiseCredito.situacao === 'Bloqueado') {
-        setErro(`Cliente bloqueado para crediário: ${analiseCredito.motivos.join(', ')}`)
-        return
+      if (analiseCredito && analiseCredito.situacao === "Bloqueado") {
+        setErro(
+          `Cliente bloqueado para crediário: ${analiseCredito.motivos.join(", ")}`,
+        );
+        return;
       }
     }
 
     const ehPix =
-      formaAtivaAtual.tipo === 'PIX' ||
-      formaAtivaAtual.codigo_tpag === '17' ||
-      formaAtivaAtual.descricao.toLowerCase().includes('pix')
+      formaAtivaAtual.tipo === "PIX" ||
+      formaAtivaAtual.codigo_tpag === "17" ||
+      formaAtivaAtual.descricao.toLowerCase().includes("pix");
 
     if (ehPix && !pixConfirmadoManualmente) {
       setErro(
-        'Por favor, confira o recebimento do PIX e marque a confirmação manual antes de lançar.',
-      )
-      return
+        "Por favor, confira o recebimento do PIX e marque a confirmação manual antes de lançar.",
+      );
+      return;
     }
 
     const novaLinha: PagamentoPDVLinha = {
@@ -273,72 +298,80 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
       bandeira: bandeiraCartao || undefined,
       nsu: nsuCartao || undefined,
       codigo_autorizacao: autCartao || undefined,
-      conta_financeira_id: formaAtivaAtual.conta_financeira_padrao_id || contaPadraoCaixaId,
+      conta_financeira_id:
+        formaAtivaAtual.conta_financeira_padrao_id || contaPadraoCaixaId,
       condicao_pagamento_id: ehCrediario ? condicaoCrediarioId : undefined,
-    }
+    };
 
-    const novasLinhas = [...linhas, novaLinha]
-    setLinhas(novasLinhas)
+    const novasLinhas = [...linhas, novaLinha];
+    setLinhas(novasLinhas);
 
     // Reseta inputs secundários
-    setPixConfirmadoManualmente(false)
-    setNsuCartao('')
-    setAutCartao('')
-    setBandeiraCartao('')
-    setCodigoValeTroca('')
-    setValeCarregado(null)
+    setPixConfirmadoManualmente(false);
+    setNsuCartao("");
+    setAutCartao("");
+    setBandeiraCartao("");
+    setCodigoValeTroca("");
+    setValeCarregado(null);
 
-    const novoTotal = novasLinhas.reduce((acc, l) => acc + l.valor, 0)
-    const novoRestante = Math.max(0, Number((totalVenda - novoTotal).toFixed(2)))
-    setValorDigitado(novoRestante > 0 ? novoRestante.toFixed(2) : '')
+    const novoTotal = novasLinhas.reduce((acc, l) => acc + l.valor, 0);
+    const novoRestante = Math.max(
+      0,
+      Number((totalVenda - novoTotal).toFixed(2)),
+    );
+    setValorDigitado(novoRestante > 0 ? novoRestante.toFixed(2) : "");
 
     setTimeout(() => {
-      inputValorRef.current?.focus()
-      inputValorRef.current?.select()
-    }, 50)
-  }
+      inputValorRef.current?.focus();
+      inputValorRef.current?.select();
+    }, 50);
+  };
 
   const handleRemoverLinha = (id: string) => {
-    setLinhas(linhas.filter((l) => l.id !== id))
-  }
+    setLinhas(linhas.filter((l) => l.id !== id));
+  };
 
   const handleFinalizar = async () => {
-    setErro(null)
+    setErro(null);
     if (linhas.length === 0) {
-      setErro('Informe pelo menos um pagamento para concluir a venda.')
-      return
+      setErro("Informe pelo menos um pagamento para concluir a venda.");
+      return;
     }
 
     if (restante > 0.009) {
-      setErro(`Ainda resta R$ ${restante.toFixed(2)} a ser pago.`)
-      return
+      setErro(`Ainda resta R$ ${restante.toFixed(2)} a ser pago.`);
+      return;
     }
 
     // Se houve excedente mas não tem dinheiro suficiente
-    const excedente = totalInformado - totalVenda
+    const excedente = totalInformado - totalVenda;
     if (excedente > 0.01 && troco <= 0) {
-      setErro('O valor informado ultrapassa o total da venda, mas não há dinheiro para troco.')
-      return
+      setErro(
+        "O valor informado ultrapassa o total da venda, mas não há dinheiro para troco.",
+      );
+      return;
     }
 
-    setSalvando(true)
+    setSalvando(true);
     try {
       // Se houver pagamentos em Vale-troca, abate do banco
       for (const linha of linhas) {
-        const formaLinha = formas.find((f) => f.id === linha.forma_pagamento_id)
+        const formaLinha = formas.find(
+          (f) => f.id === linha.forma_pagamento_id,
+        );
         const ehVale =
-          formaLinha?.codigo_tpag === '99' ||
-          formaLinha?.descricao.toLowerCase().includes('vale-troca') ||
-          formaLinha?.descricao.toLowerCase().includes('vale troca')
+          formaLinha?.codigo_tpag === "99" ||
+          formaLinha?.descricao.toLowerCase().includes("vale-troca") ||
+          formaLinha?.descricao.toLowerCase().includes("vale troca");
 
         if (ehVale && linha.codigo_autorizacao) {
           try {
             await abaterSaldoValeTroca({
               valeId: linha.codigo_autorizacao,
               valorAbater: linha.valor,
-            })
+            });
           } catch (errVale) {
-            console.warn('Erro ao abater vale:', errVale)
+            console.warn("Erro ao abater vale:", errVale);
           }
         }
       }
@@ -352,104 +385,123 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
         codigo_autorizacao: l.codigo_autorizacao,
         conta_financeira_id: l.conta_financeira_id,
         condicao_pagamento_id: l.condicao_pagamento_id,
-      }))
+      }));
 
-      await onConfirmar(payload, troco)
+      await onConfirmar(payload, troco);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Falha ao processar pagamento.'
-      setErro(msg)
+      const msg =
+        err instanceof Error ? err.message : "Falha ao processar pagamento.";
+      setErro(msg);
     } finally {
-      setSalvando(false)
+      setSalvando(false);
     }
-  }
+  };
 
   // Atalhos dentro do modal (1..9 para formas, Enter para adicionar/finalizar)
   useEffect(() => {
-    if (!aberto) return
+    if (!aberto) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Se pressionar Ctrl+Enter ou F10 dentro do modal, finaliza se estiver tudo pago
-      if (e.key === 'F10' || (e.ctrlKey && e.key === 'Enter')) {
-        e.preventDefault()
+      if (e.key === "F10" || (e.ctrlKey && e.key === "Enter")) {
+        e.preventDefault();
         if (restante <= 0.009 && linhas.length > 0 && !salvando) {
-          handleFinalizar()
+          handleFinalizar();
         }
       }
 
       // Atalhos numéricos com Alt + 1..9 para mudar a forma rápida
-      if (e.altKey && e.key >= '1' && e.key <= '9') {
-        const idx = parseInt(e.key, 10) - 1
+      if (e.altKey && e.key >= "1" && e.key <= "9") {
+        const idx = parseInt(e.key, 10) - 1;
         if (formasAtivas[idx]) {
-          e.preventDefault()
-          setFormaSelecionadaId(formasAtivas[idx].id)
+          e.preventDefault();
+          setFormaSelecionadaId(formasAtivas[idx].id);
         }
       }
-    }
+    };
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [aberto, restante, linhas.length, salvando, formasAtivas])
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [aberto, restante, linhas.length, salvando, formasAtivas]);
 
   // Conta de PIX para exibir chave
   const contaPix = useMemo(() => {
     return (
       contas.find((c) => c.chave_pix && c.ativo) ||
-      contas.find((c) => c.tipo === 'Conta corrente' && c.chave_pix) ||
+      contas.find((c) => c.tipo === "Conta corrente" && c.chave_pix) ||
       null
-    )
-  }, [contas])
+    );
+  }, [contas]);
+
+  // PIX copia e cola (BR Code estático com valor) para o QR Code
+  const valorPixQr = useMemo(() => {
+    const v = parseFloat((valorDigitado || "").replace(",", "."));
+    return isNaN(v) || v <= 0 ? 0 : Math.round(v * 100) / 100;
+  }, [valorDigitado]);
+  const pixCopiaECola = useMemo(() => {
+    if (!contaPix?.chave_pix || valorPixQr <= 0) return "";
+    return montarPixCopiaECola({
+      chave: contaPix.chave_pix,
+      valor: valorPixQr,
+      nome: nomeRecebedorPix || contaPix.nome || "",
+      cidade: cidadeRecebedorPix || "",
+    });
+  }, [contaPix, valorPixQr, nomeRecebedorPix, cidadeRecebedorPix]);
 
   const ehValeTrocaAtual =
-    formaAtivaAtual?.codigo_tpag === '99' ||
-    formaAtivaAtual?.descricao.toLowerCase().includes('vale-troca') ||
-    formaAtivaAtual?.descricao.toLowerCase().includes('vale troca')
+    formaAtivaAtual?.codigo_tpag === "99" ||
+    formaAtivaAtual?.descricao.toLowerCase().includes("vale-troca") ||
+    formaAtivaAtual?.descricao.toLowerCase().includes("vale troca");
 
   const ehCartaoAtual =
-    formaAtivaAtual?.tipo === 'Cartão de crédito' ||
-    formaAtivaAtual?.tipo === 'Cartão de débito' ||
-    formaAtivaAtual?.codigo_tpag === '03' ||
-    formaAtivaAtual?.codigo_tpag === '04'
+    formaAtivaAtual?.tipo === "Cartão de crédito" ||
+    formaAtivaAtual?.tipo === "Cartão de débito" ||
+    formaAtivaAtual?.codigo_tpag === "03" ||
+    formaAtivaAtual?.codigo_tpag === "04";
 
   const ehCrediarioAtual =
     !ehValeTrocaAtual &&
-    (formaAtivaAtual?.tipo === 'Crédito loja' ||
-      formaAtivaAtual?.tipo === 'Boleto' ||
-      formaAtivaAtual?.codigo_tpag === '05' ||
-      formaAtivaAtual?.descricao.toLowerCase().includes('crediário'))
+    (formaAtivaAtual?.tipo === "Crédito loja" ||
+      formaAtivaAtual?.tipo === "Boleto" ||
+      formaAtivaAtual?.codigo_tpag === "05" ||
+      formaAtivaAtual?.descricao.toLowerCase().includes("crediário"));
 
   const ehPixAtual =
-    formaAtivaAtual?.tipo === 'PIX' ||
-    formaAtivaAtual?.codigo_tpag === '17' ||
-    formaAtivaAtual?.descricao.toLowerCase().includes('pix')
+    formaAtivaAtual?.tipo === "PIX" ||
+    formaAtivaAtual?.codigo_tpag === "17" ||
+    formaAtivaAtual?.descricao.toLowerCase().includes("pix");
 
   // Consulta e validação rápida do vale
   const handleValidarVale = async () => {
-    if (!codigoValeTroca.trim() || !empresaId) return
-    setBuscandoVale(true)
-    setErro(null)
+    if (!codigoValeTroca.trim() || !empresaId) return;
+    setBuscandoVale(true);
+    setErro(null);
     try {
-      const vale = await consultarValeTroca(empresaId, codigoValeTroca.trim())
+      const vale = await consultarValeTroca(empresaId, codigoValeTroca.trim());
       if (!vale) {
-        setErro('Vale-troca não encontrado ou inativo.')
-        setValeCarregado(null)
-      } else if (vale.status !== 'Ativo') {
-        setErro(`Vale-troca está com status "${vale.status}".`)
-        setValeCarregado(null)
+        setErro("Vale-troca não encontrado ou inativo.");
+        setValeCarregado(null);
+      } else if (vale.status !== "Ativo") {
+        setErro(`Vale-troca está com status "${vale.status}".`);
+        setValeCarregado(null);
       } else if (vale.saldo <= 0.009) {
-        setErro('Vale-troca sem saldo disponível.')
-        setValeCarregado(null)
+        setErro("Vale-troca sem saldo disponível.");
+        setValeCarregado(null);
       } else {
-        setValeCarregado(vale)
-        const valorSugerido = Math.min(vale.saldo, restante > 0 ? restante : totalVenda)
-        setValorDigitado(valorSugerido.toFixed(2))
-        setAutCartao(vale.id) // guarda o ID do vale no campo autorização
+        setValeCarregado(vale);
+        const valorSugerido = Math.min(
+          vale.saldo,
+          restante > 0 ? restante : totalVenda,
+        );
+        setValorDigitado(valorSugerido.toFixed(2));
+        setAutCartao(vale.id); // guarda o ID do vale no campo autorização
       }
     } catch {
-      setErro('Erro ao consultar o vale-troca.')
+      setErro("Erro ao consultar o vale-troca.");
     } finally {
-      setBuscandoVale(false)
+      setBuscandoVale(false);
     }
-  }
+  };
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
@@ -465,8 +517,10 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                   Finalizar Pagamento (F10)
                 </DialogTitle>
                 <p className="text-xs text-slate-500">
-                  Total da Venda:{' '}
-                  <span className="font-semibold text-slate-900">R$ {totalVenda.toFixed(2)}</span>
+                  Total da Venda:{" "}
+                  <span className="font-semibold text-slate-900">
+                    R$ {totalVenda.toFixed(2)}
+                  </span>
                   {cliente?.nome_razao_social && (
                     <span className="ml-2 border-l border-slate-200 pl-2">
                       Cliente: {cliente.nome_razao_social}
@@ -498,7 +552,8 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
               Total da Venda
             </span>
             <div className="text-2xl font-black text-slate-900 mt-0.5">
-              R$ {totalVenda.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              R${" "}
+              {totalVenda.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </div>
           </div>
           <div className="text-center border-r border-slate-200 px-2">
@@ -506,7 +561,10 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
               Total Pago
             </span>
             <div className="text-2xl font-black text-blue-600 mt-0.5">
-              R$ {totalInformado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              R${" "}
+              {totalInformado.toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+              })}
             </div>
           </div>
           <div className="text-center pl-2">
@@ -516,7 +574,8 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                   Troco em Dinheiro
                 </span>
                 <div className="text-3xl font-black text-emerald-600 mt-0.5">
-                  R$ {troco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R${" "}
+                  {troco.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                 </div>
               </div>
             ) : (
@@ -526,10 +585,13 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                 </span>
                 <div
                   className={`text-2xl font-black mt-0.5 ${
-                    restante > 0 ? 'text-amber-600' : 'text-slate-500'
+                    restante > 0 ? "text-amber-600" : "text-slate-500"
                   }`}
                 >
-                  R$ {restante.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R${" "}
+                  {restante.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                  })}
                 </div>
               </div>
             )}
@@ -544,27 +606,29 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
             </Label>
             <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
               {formasAtivas.map((f, idx) => {
-                const ativa = f.id === formaSelecionadaId
-                const num = idx + 1
+                const ativa = f.id === formaSelecionadaId;
+                const num = idx + 1;
                 return (
                   <button
                     key={f.id}
                     type="button"
                     onClick={() => {
-                      setFormaSelecionadaId(f.id)
-                      inputValorRef.current?.focus()
-                      inputValorRef.current?.select()
+                      setFormaSelecionadaId(f.id);
+                      inputValorRef.current?.focus();
+                      inputValorRef.current?.select();
                     }}
                     className={`flex items-center justify-between p-3 rounded-lg border text-left transition-all ${
                       ativa
-                        ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20 font-bold scale-[1.01]'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                        ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20 font-bold scale-[1.01]"
+                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span
                         className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-mono font-bold ${
-                          ativa ? 'bg-white text-blue-700' : 'bg-slate-100 text-slate-600'
+                          ativa
+                            ? "bg-white text-blue-700"
+                            : "bg-slate-100 text-slate-600"
                         }`}
                       >
                         {num}
@@ -575,7 +639,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                       {f.tipo}
                     </span>
                   </button>
-                )
+                );
               })}
             </div>
           </div>
@@ -584,7 +648,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
           <div className="col-span-7 space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                2. Valor para {formaAtivaAtual?.descricao || 'Pagamento'} (R$)
+                2. Valor para {formaAtivaAtual?.descricao || "Pagamento"} (R$)
               </Label>
               <div className="flex gap-2">
                 <Input
@@ -595,9 +659,9 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                   value={valorDigitado}
                   onChange={(e) => setValorDigitado(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      handleAdicionarPagamento()
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAdicionarPagamento();
                     }
                   }}
                   placeholder="0,00"
@@ -623,18 +687,24 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <Label className="text-[10px] text-slate-500">Parcelas</Label>
+                    <Label className="text-[10px] text-slate-500">
+                      Parcelas
+                    </Label>
                     <Input
                       type="number"
                       min="1"
                       max="24"
                       value={parcelasCartao}
-                      onChange={(e) => setParcelasCartao(parseInt(e.target.value, 10) || 1)}
+                      onChange={(e) =>
+                        setParcelasCartao(parseInt(e.target.value, 10) || 1)
+                      }
                       className="h-8 text-xs bg-white border-slate-300 mt-1"
                     />
                   </div>
                   <div>
-                    <Label className="text-[10px] text-slate-500">Bandeira (opcional)</Label>
+                    <Label className="text-[10px] text-slate-500">
+                      Bandeira (opcional)
+                    </Label>
                     <Input
                       placeholder="Ex: Visa"
                       value={bandeiraCartao}
@@ -643,7 +713,9 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                     />
                   </div>
                   <div>
-                    <Label className="text-[10px] text-slate-500">NSU / Autorização</Label>
+                    <Label className="text-[10px] text-slate-500">
+                      NSU / Autorização
+                    </Label>
                     <Input
                       placeholder="000000"
                       value={nsuCartao}
@@ -670,7 +742,9 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                   <Input
                     placeholder="Ex: VT-9482-K3X"
                     value={codigoValeTroca}
-                    onChange={(e) => setCodigoValeTroca(e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      setCodigoValeTroca(e.target.value.toUpperCase())
+                    }
                     className="h-8 text-xs bg-white border-slate-300 uppercase font-mono"
                   />
                   <Button
@@ -680,7 +754,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                     onClick={handleValidarVale}
                     className="h-8 text-xs bg-slate-200 hover:bg-slate-300 text-slate-700"
                   >
-                    {buscandoVale ? 'Validando...' : 'Validar'}
+                    {buscandoVale ? "Validando..." : "Validar"}
                   </Button>
                 </div>
               </div>
@@ -702,17 +776,38 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                       {contaPix.chave_pix}
                     </span>
                   </div>
-                ) : (
+                ) : null}
+                {contaPix?.chave_pix && pixCopiaECola ? (
+                  <div className="text-center space-y-1">
+                    <PixQrCode texto={pixCopiaECola} />
+                    <span className="text-[10px] text-slate-500 block">
+                      QR Code com valor de R${" "}
+                      {valorPixQr.toFixed(2).replace(".", ",")}. O cliente lê no
+                      app do banco.
+                    </span>
+                    <button
+                      type="button"
+                      className="text-[11px] text-blue-600 underline"
+                      onClick={() =>
+                        navigator.clipboard?.writeText(pixCopiaECola)
+                      }
+                    >
+                      Copiar PIX copia e cola
+                    </button>
+                  </div>
+                ) : contaPix?.chave_pix ? null : (
                   <p className="text-[11px] text-slate-500">
-                    Chave PIX não cadastrada nas contas financeiras. Realize a cobrança pelo
-                    terminal da empresa.
+                    Chave PIX não cadastrada nas contas financeiras. Realize a
+                    cobrança pelo terminal da empresa.
                   </p>
                 )}
                 <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={pixConfirmadoManualmente}
-                    onChange={(e) => setPixConfirmadoManualmente(e.target.checked)}
+                    onChange={(e) =>
+                      setPixConfirmadoManualmente(e.target.checked)
+                    }
                     className="rounded border-slate-300 bg-white text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                   />
                   <span className="text-slate-600 text-xs">
@@ -732,34 +827,38 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                 {cliente ? (
                   <div className="space-y-1">
                     <div className="flex justify-between items-center text-[11px]">
-                      <span className="text-slate-500">Cliente Selecionado:</span>
-                      <span className="font-bold text-slate-900">{cliente.nome_razao_social}</span>
+                      <span className="text-slate-500">
+                        Cliente Selecionado:
+                      </span>
+                      <span className="font-bold text-slate-900">
+                        {cliente.nome_razao_social}
+                      </span>
                     </div>
                     {checandoCredito ? (
                       <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <Loader2 size={12} className="animate-spin" /> Consultando limite de
-                        crédito...
+                        <Loader2 size={12} className="animate-spin" />{" "}
+                        Consultando limite de crédito...
                       </span>
                     ) : analiseCredito ? (
                       <div className="p-2 bg-slate-50 rounded border border-slate-200 flex justify-between items-center text-[11px]">
                         <span>
-                          Situação:{' '}
+                          Situação:{" "}
                           <strong
                             className={
-                              analiseCredito.situacao === 'Liberado'
-                                ? 'text-emerald-600'
-                                : 'text-red-600'
+                              analiseCredito.situacao === "Liberado"
+                                ? "text-emerald-600"
+                                : "text-red-600"
                             }
                           >
                             {analiseCredito.situacao}
                           </strong>
                         </span>
                         <span>
-                          Limite disp.:{' '}
+                          Limite disp.:{" "}
                           <strong>
                             {analiseCredito.credito_disponivel !== null
                               ? `R$ ${analiseCredito.credito_disponivel.toFixed(2)}`
-                              : 'Ilimitado'}
+                              : "Ilimitado"}
                           </strong>
                         </span>
                       </div>
@@ -767,13 +866,15 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                   </div>
                 ) : (
                   <p className="text-amber-600 text-[11px]">
-                    Nenhum cliente identificado na venda. Use F3 para selecionar o cliente antes do
-                    crediário.
+                    Nenhum cliente identificado na venda. Use F3 para selecionar
+                    o cliente antes do crediário.
                   </p>
                 )}
 
                 <div>
-                  <Label className="text-[10px] text-slate-500">Plano de Pagamento</Label>
+                  <Label className="text-[10px] text-slate-500">
+                    Plano de Pagamento
+                  </Label>
                   <select
                     value={condicaoCrediarioId}
                     onChange={(e) => setCondicaoCrediarioId(e.target.value)}
@@ -801,16 +902,20 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
               ) : (
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                   {linhas.map((l, i) => {
-                    const f = formas.find((forma) => forma.id === l.forma_pagamento_id)
+                    const f = formas.find(
+                      (forma) => forma.id === l.forma_pagamento_id,
+                    );
                     return (
                       <div
                         key={l.id}
                         className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-xs"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-slate-500 font-bold">{i + 1}.</span>
+                          <span className="font-mono text-slate-500 font-bold">
+                            {i + 1}.
+                          </span>
                           <span className="font-semibold text-slate-900">
-                            {f?.descricao || 'Forma'}
+                            {f?.descricao || "Forma"}
                           </span>
                           {l.parcelas > 1 && (
                             <Badge
@@ -823,7 +928,10 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="font-bold text-emerald-600 font-mono text-sm">
-                            R$ {l.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            R${" "}
+                            {l.valor.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })}
                           </span>
                           <button
                             type="button"
@@ -835,7 +943,7 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
                           </button>
                         </div>
                       </div>
-                    )
+                    );
                   })}
                 </div>
               )}
@@ -876,5 +984,5 @@ export const ModalPagamentoPDV: React.FC<ModalPagamentoPDVProps> = ({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
+  );
+};

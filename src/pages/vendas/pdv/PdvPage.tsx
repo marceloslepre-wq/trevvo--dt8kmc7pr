@@ -1,22 +1,41 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import pb from '@/lib/pocketbase/client'
-import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
-import { useAuth } from '@/contexts/AuthContext'
-import { usePermissoes } from '@/contexts/PermissoesContext'
-import { useToast } from '@/hooks/use-toast'
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
+import { useNavigate } from "react-router-dom";
+import pb from "@/lib/pocketbase/client";
+import { useEmpresaAtiva } from "@/contexts/EmpresaContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { usePermissoes } from "@/contexts/PermissoesContext";
+import { useToast } from "@/hooks/use-toast";
 
-import { obterSessaoAbertaOperador, CaixaSessao } from '@/services/caixa'
-import { resolverOperadorErpId } from '@/services/operadorErp'
-import { listarTerminais, obterTerminalPorId, PdvTerminal } from '@/services/terminais'
+import { obterSessaoAbertaOperador, CaixaSessao } from "@/services/caixa";
+import { resolverOperadorErpId } from "@/services/operadorErp";
+import {
+  listarTerminais,
+  obterTerminalPorId,
+  PdvTerminal,
+} from "@/services/terminais";
 import {
   obterOuCriarConfigVendasEmpresa,
   obterOuCriarConsumidorFinal,
   ConfigVendasEmpresa,
-} from '@/services/configVendas'
-import { listarFormasPagamento, FormaPagamento } from '@/services/formasPagamento'
-import { listarContasFinanceiras, ContaFinanceira } from '@/services/contasFinanceiras'
-import { listarTodasCondicoesAtivas, CondicaoPagamento } from '@/services/condicoesPagamento'
+} from "@/services/configVendas";
+import {
+  listarFormasPagamento,
+  FormaPagamento,
+} from "@/services/formasPagamento";
+import {
+  listarContasFinanceiras,
+  ContaFinanceira,
+} from "@/services/contasFinanceiras";
+import {
+  listarTodasCondicoesAtivas,
+  CondicaoPagamento,
+} from "@/services/condicoesPagamento";
 import {
   salvarVenda,
   finalizarVenda,
@@ -25,12 +44,15 @@ import {
   Venda,
   VendaItem,
   VendaPagamento,
-} from '@/services/vendas'
-import { imprimirComprovanteNaoFiscal, DadosImpressaoVenda } from '@/services/vendasImpressao'
-import { registrarAuditoria } from '@/services/auditoria'
-import type { Produto } from '@/services/produtos'
-import type { Cliente } from '@/services/clientes'
-import type { Usuario } from '@/services/usuarios'
+} from "@/services/vendas";
+import {
+  imprimirComprovanteNaoFiscal,
+  DadosImpressaoVenda,
+} from "@/services/vendasImpressao";
+import { registrarAuditoria } from "@/services/auditoria";
+import type { Produto } from "@/services/produtos";
+import type { Cliente } from "@/services/clientes";
+import type { Usuario } from "@/services/usuarios";
 
 import {
   ItemCarrinhoPDV,
@@ -42,22 +64,22 @@ import {
   interpretarEntradaPDV,
   consultarProdutoPorCodigoNoServidorPDV,
   atualizarProdutoNoCachePDV,
-} from '@/services/pdv'
+} from "@/services/pdv";
 
-import { ModalAbrirCaixa } from '@/pages/vendas/caixa/ModalAbrirCaixa'
-import { ModalFecharCaixa } from '@/pages/vendas/caixa/ModalFecharCaixa'
-import { ModalSangria } from '@/pages/vendas/caixa/ModalSangria'
-import { ModalSuprimento } from '@/pages/vendas/caixa/ModalSuprimento'
-import { ModalPagamentoPDV } from './ModalPagamentoPDV'
-import { ModalBuscaProdutoPDV } from './ModalBuscaProdutoPDV'
-import { ModalClientePDV } from './ModalClientePDV'
-import { ModalVendedorPDV } from './ModalVendedorPDV'
+import { ModalAbrirCaixa } from "@/pages/vendas/caixa/ModalAbrirCaixa";
+import { ModalFecharCaixa } from "@/pages/vendas/caixa/ModalFecharCaixa";
+import { ModalSangria } from "@/pages/vendas/caixa/ModalSangria";
+import { ModalSuprimento } from "@/pages/vendas/caixa/ModalSuprimento";
+import { ModalPagamentoPDV } from "./ModalPagamentoPDV";
+import { ModalBuscaProdutoPDV } from "./ModalBuscaProdutoPDV";
+import { ModalClientePDV } from "./ModalClientePDV";
+import { ModalVendedorPDV } from "./ModalVendedorPDV";
 import {
   ModalQuantidadeItemPDV,
   ModalDescontoItemPDV,
   ModalDescontoTotalPDV,
   ModalCancelarItemPDV,
-} from './ModaisOperacoesPDV'
+} from "./ModaisOperacoesPDV";
 
 import {
   Barcode,
@@ -81,318 +103,362 @@ import {
   Receipt,
   Printer,
   RefreshCw,
-} from 'lucide-react'
-import { obterConfigFiscalEmpresa, ConfigEmissaoFiscal } from '@/services/configEmissaoFiscal'
-import { emitirNFCeVenda, imprimirDanfeUrl } from '@/services/fiscalIntegracao'
-import { salvarCliente } from '@/services/clientes'
-import { EnviarDocumentoFiscal } from '@/components/fiscal/EnviarDocumentoFiscal'
+} from "lucide-react";
+import {
+  obterConfigFiscalEmpresa,
+  ConfigEmissaoFiscal,
+} from "@/services/configEmissaoFiscal";
+import { emitirNFCeVenda, imprimirDanfeUrl } from "@/services/fiscalIntegracao";
+import { salvarCliente } from "@/services/clientes";
+import { EnviarDocumentoFiscal } from "@/components/fiscal/EnviarDocumentoFiscal";
 
-const MENSAGEM_BLOQUEIO_TROCA_EMPRESA = 'Feche o caixa (ou saia do PDV) para trocar de empresa'
+const MENSAGEM_BLOQUEIO_TROCA_EMPRESA =
+  "Feche o caixa (ou saia do PDV) para trocar de empresa";
 
 export const PdvPage: React.FC = () => {
-  const { empresaAtiva, empresas, selecionarEmpresa, definirBloqueioTrocaEmpresa } =
-    useEmpresaAtiva()
-  const { user } = useAuth()
-  const { usuarioERP, pode } = usePermissoes()
-  const usuario = usuarioERP || (user ? { id: user.id, nome: user.name || user.email } : null)
-  const { toast } = useToast()
-  const navigate = useNavigate()
+  const {
+    empresaAtiva,
+    empresas,
+    selecionarEmpresa,
+    definirBloqueioTrocaEmpresa,
+  } = useEmpresaAtiva();
+  const { user } = useAuth();
+  const { usuarioERP, pode } = usePermissoes();
+  const usuario =
+    usuarioERP ||
+    (user ? { id: user.id, nome: user.name || user.email } : null);
+  const { toast } = useToast();
+  const navigate = useNavigate();
 
   // Sessão de Caixa e Terminal
-  const [sessaoCaixa, setSessaoCaixa] = useState<CaixaSessao | null>(null)
-  const [terminais, setTerminais] = useState<PdvTerminal[]>([])
-  const [terminalAtivo, setTerminalAtivo] = useState<PdvTerminal | null>(null)
-  const [configVendas, setConfigVendas] = useState<ConfigVendasEmpresa | null>(null)
-  const [configFiscal, setConfigFiscal] = useState<ConfigEmissaoFiscal | null>(null)
-  const [formasPagamento, setFormasPagamento] = useState<FormaPagamento[]>([])
-  const [contasFinanceiras, setContasFinanceiras] = useState<ContaFinanceira[]>([])
-  const [condicoesPagamento, setCondicoesPagamento] = useState<CondicaoPagamento[]>([])
+  const [sessaoCaixa, setSessaoCaixa] = useState<CaixaSessao | null>(null);
+  const [terminais, setTerminais] = useState<PdvTerminal[]>([]);
+  const [terminalAtivo, setTerminalAtivo] = useState<PdvTerminal | null>(null);
+  const [configVendas, setConfigVendas] = useState<ConfigVendasEmpresa | null>(
+    null,
+  );
+  const [configFiscal, setConfigFiscal] = useState<ConfigEmissaoFiscal | null>(
+    null,
+  );
+  const [formasPagamento, setFormasPagamento] = useState<FormaPagamento[]>([]);
+  const [contasFinanceiras, setContasFinanceiras] = useState<ContaFinanceira[]>(
+    [],
+  );
+  const [condicoesPagamento, setCondicoesPagamento] = useState<
+    CondicaoPagamento[]
+  >([]);
 
   // Modal de Aviso de Rejeição de NFC-e no PDV
-  const [modalRejeicaoNfceAberto, setModalRejeicaoNfceAberto] = useState(false)
+  const [modalRejeicaoNfceAberto, setModalRejeicaoNfceAberto] = useState(false);
   const [dadosRejeicaoNfce, setDadosRejeicaoNfce] = useState<{
-    vendaId: string
-    numeroVenda: number
-    motivo: string
-    erroInterno?: boolean
-  } | null>(null)
-  const [reemitindoNfce, setReemitindoNfce] = useState(false)
+    vendaId: string;
+    numeroVenda: number;
+    motivo: string;
+    erroInterno?: boolean;
+  } | null>(null);
+  const [reemitindoNfce, setReemitindoNfce] = useState(false);
 
   // Catálogo de produtos em memória
-  const [produtosCatalogo, setProdutosCatalogo] = useState<Produto[]>([])
-  const [carregandoCatalogo, setCarregandoCatalogo] = useState(false)
+  const [produtosCatalogo, setProdutosCatalogo] = useState<Produto[]>([]);
+  const [carregandoCatalogo, setCarregandoCatalogo] = useState(false);
 
   // Status de rede
-  const [online, setOnline] = useState(navigator.onLine)
+  const [online, setOnline] = useState(navigator.onLine);
 
   // Estado da Venda Atual
-  const [itens, setItens] = useState<ItemCarrinhoPDV[]>([])
-  const [descontoTotal, setDescontoTotal] = useState(0)
-  const [cliente, setCliente] = useState<Cliente | null>(null)
-  const [cpfCnpjCupom, setCpfCnpjCupom] = useState('')
-  const [vendedor, setVendedor] = useState<Usuario | null>(null)
+  const [itens, setItens] = useState<ItemCarrinhoPDV[]>([]);
+  const [descontoTotal, setDescontoTotal] = useState(0);
+  const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [cpfCnpjCupom, setCpfCnpjCupom] = useState("");
+  const [vendedor, setVendedor] = useState<Usuario | null>(null);
 
   // Leitura de Entrada
-  const [entradaLeitor, setEntradaLeitor] = useState('')
-  const inputLeitorRef = useRef<HTMLInputElement>(null)
-  const [mensagemStatus, setMensagemStatus] = useState<string | null>(null)
-  const [tipoMensagemStatus, setTipoMensagemStatus] = useState<'info' | 'erro' | 'sucesso'>('info')
+  const [entradaLeitor, setEntradaLeitor] = useState("");
+  const inputLeitorRef = useRef<HTMLInputElement>(null);
+  const [mensagemStatus, setMensagemStatus] = useState<string | null>(null);
+  const [tipoMensagemStatus, setTipoMensagemStatus] = useState<
+    "info" | "erro" | "sucesso"
+  >("info");
 
   // Relógio Topo
-  const [horaAtual, setHoraAtual] = useState(new Date().toLocaleTimeString('pt-BR'))
+  const [horaAtual, setHoraAtual] = useState(
+    new Date().toLocaleTimeString("pt-BR"),
+  );
 
   // Tela Cheia
-  const [isFullScreen, setIsFullScreen] = useState(false)
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   // Modais
-  const [modalAbrirCaixaAberto, setModalAbrirCaixaAberto] = useState(false)
-  const [modalFecharCaixaAberto, setModalFecharCaixaAberto] = useState(false)
-  const [modalSangriaAberto, setModalSangriaAberto] = useState(false)
-  const [modalSuprimentoAberto, setModalSuprimentoAberto] = useState(false)
-  const [modalPagamentoAberto, setModalPagamentoAberto] = useState(false)
-  const [modalBuscaProdutoAberto, setModalBuscaProdutoAberto] = useState(false)
-  const [modalClienteAberto, setModalClienteAberto] = useState(false)
-  const [modalVendedorAberto, setModalVendedorAberto] = useState(false)
-  const [modalQtdItemAberto, setModalQtdItemAberto] = useState(false)
-  const [modalDescontoItemAberto, setModalDescontoItemAberto] = useState(false)
-  const [modalDescontoTotalAberto, setModalDescontoTotalAberto] = useState(false)
-  const [modalCancelarItemAberto, setModalCancelarItemAberto] = useState(false)
-  const [modalPerguntaRascunhoAberto, setModalPerguntaRascunhoAberto] = useState(false)
-  const [rascunhoPendente, setRascunhoPendente] = useState<VendaRascunhoPDV | null>(null)
+  const [modalAbrirCaixaAberto, setModalAbrirCaixaAberto] = useState(false);
+  const [modalFecharCaixaAberto, setModalFecharCaixaAberto] = useState(false);
+  const [modalSangriaAberto, setModalSangriaAberto] = useState(false);
+  const [modalSuprimentoAberto, setModalSuprimentoAberto] = useState(false);
+  const [modalPagamentoAberto, setModalPagamentoAberto] = useState(false);
+  const [modalBuscaProdutoAberto, setModalBuscaProdutoAberto] = useState(false);
+  const [modalClienteAberto, setModalClienteAberto] = useState(false);
+  const [modalVendedorAberto, setModalVendedorAberto] = useState(false);
+  const [modalQtdItemAberto, setModalQtdItemAberto] = useState(false);
+  const [modalDescontoItemAberto, setModalDescontoItemAberto] = useState(false);
+  const [modalDescontoTotalAberto, setModalDescontoTotalAberto] =
+    useState(false);
+  const [modalCancelarItemAberto, setModalCancelarItemAberto] = useState(false);
+  const [modalPerguntaRascunhoAberto, setModalPerguntaRascunhoAberto] =
+    useState(false);
+  const [rascunhoPendente, setRascunhoPendente] =
+    useState<VendaRascunhoPDV | null>(null);
 
   // Modal de Envio do Cupom (NFC-e Autorizada): estado por venda concluída.
   const [dadosEnvioCupom, setDadosEnvioCupom] = useState<{
-    numero: number
-    serie: string
-    chave: string
-    valorTotal: number
-    formasPagamentoTexto: string
-    celularCliente: string
-    emailCliente: string
-    caminhoDanfe?: string
-    focusBaseUrl?: string
-    urlConsulta?: string
-    urlImpressao?: string
-  } | null>(null)
-  const [modalEnvioCupomAberto, setModalEnvioCupomAberto] = useState(false)
-  const [clienteParaSalvarContato, setClienteParaSalvarContato] = useState<Cliente | null>(null)
-  const [clienteAtualizadoParaContato, setClienteAtualizadoParaContato] = useState<Cliente | null>(
-    null,
-  )
+    numero: number;
+    serie: string;
+    chave: string;
+    valorTotal: number;
+    formasPagamentoTexto: string;
+    celularCliente: string;
+    emailCliente: string;
+    caminhoDanfe?: string;
+    focusBaseUrl?: string;
+    urlConsulta?: string;
+    urlImpressao?: string;
+  } | null>(null);
+  const [modalEnvioCupomAberto, setModalEnvioCupomAberto] = useState(false);
+  const [clienteParaSalvarContato, setClienteParaSalvarContato] =
+    useState<Cliente | null>(null);
+  const [clienteAtualizadoParaContato, setClienteAtualizadoParaContato] =
+    useState<Cliente | null>(null);
   // Esc dentro do modal de envio: fecha e devolve o foco ao campo de código
   useEffect(() => {
-    if (!modalEnvioCupomAberto) return
+    if (!modalEnvioCupomAberto) return;
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        fecharModalEnvioCupom()
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        fecharModalEnvioCupom();
       }
-    }
-    window.addEventListener('keydown', handleEsc, true)
-    return () => window.removeEventListener('keydown', handleEsc, true)
+    };
+    window.addEventListener("keydown", handleEsc, true);
+    return () => window.removeEventListener("keydown", handleEsc, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modalEnvioCupomAberto])
+  }, [modalEnvioCupomAberto]);
 
   // Lista com auto-scroll
-  const itensFimRef = useRef<HTMLDivElement>(null)
+  const itensFimRef = useRef<HTMLDivElement>(null);
 
   // Foco no campo de leitura sempre que possível
   const focarLeitor = useCallback(() => {
     setTimeout(() => {
-      inputLeitorRef.current?.focus()
-    }, 60)
-  }, [])
+      inputLeitorRef.current?.focus();
+    }, 60);
+  }, []);
 
   // Atualiza relógio
   useEffect(() => {
     const timer = setInterval(() => {
-      setHoraAtual(new Date().toLocaleTimeString('pt-BR'))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [])
+      setHoraAtual(new Date().toLocaleTimeString("pt-BR"));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Monitora online/offline
   useEffect(() => {
     const handleOnline = () => {
-      setOnline(true)
-      toast({ title: 'Conexão restabelecida', description: 'Sistema PDV online.' })
-    }
-    const handleOffline = () => {
-      setOnline(false)
+      setOnline(true);
       toast({
-        title: 'Sem conexão com a internet',
-        description: 'Vendas não poderão ser finalizadas até a conexão voltar.',
-        variant: 'destructive',
-      })
-    }
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
+        title: "Conexão restabelecida",
+        description: "Sistema PDV online.",
+      });
+    };
+    const handleOffline = () => {
+      setOnline(false);
+      toast({
+        title: "Sem conexão com a internet",
+        description: "Vendas não poderão ser finalizadas até a conexão voltar.",
+        variant: "destructive",
+      });
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
     return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [toast])
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [toast]);
 
   // Carrega configurações iniciais
   const carregarDadosIniciais = useCallback(async () => {
-    if (!empresaAtiva?.id) return
+    if (!empresaAtiva?.id) return;
 
     try {
       // Sessão de caixa é gravada com o id do registro ERP (coleção usuarios),
       // não com o id do login (coleção users) — mesmo caso das v0.0.249/v0.0.251.
-      const operadorErpId = usuarioERP?.id || (await resolverOperadorErpId()) || ''
-      if (!operadorErpId) return
+      const operadorErpId =
+        usuarioERP?.id || (await resolverOperadorErpId()) || "";
+      if (!operadorErpId) return;
 
-      const [sessao, terms, cfg, formas, contas, conds, cfgFiscal] = await Promise.all([
-        obterSessaoAbertaOperador(empresaAtiva.id, operadorErpId),
-        listarTerminais(empresaAtiva.id),
-        obterOuCriarConfigVendasEmpresa(empresaAtiva.id),
-        listarFormasPagamento(empresaAtiva.id),
-        listarContasFinanceiras(empresaAtiva.id),
-        listarTodasCondicoesAtivas('Vendas'),
-        obterConfigFiscalEmpresa(empresaAtiva.id).catch(() => null),
-      ])
+      const [sessao, terms, cfg, formas, contas, conds, cfgFiscal] =
+        await Promise.all([
+          obterSessaoAbertaOperador(empresaAtiva.id, operadorErpId),
+          listarTerminais(empresaAtiva.id),
+          obterOuCriarConfigVendasEmpresa(empresaAtiva.id),
+          listarFormasPagamento(empresaAtiva.id),
+          listarContasFinanceiras(empresaAtiva.id),
+          listarTodasCondicoesAtivas("Vendas"),
+          obterConfigFiscalEmpresa(empresaAtiva.id).catch(() => null),
+        ]);
 
-      setSessaoCaixa(sessao)
-      setTerminais(terms)
-      setConfigVendas(cfg)
-      setConfigFiscal(cfgFiscal)
-      setFormasPagamento(formas)
-      setContasFinanceiras(contas)
-      setCondicoesPagamento(conds)
+      setSessaoCaixa(sessao);
+      setTerminais(terms);
+      setConfigVendas(cfg);
+      setConfigFiscal(cfgFiscal);
+      setFormasPagamento(formas);
+      setContasFinanceiras(contas);
+      setCondicoesPagamento(conds);
 
       if (sessao?.pdv_terminal_id) {
-        const t = terms.find((term) => term.id === sessao.pdv_terminal_id) || null
-        setTerminalAtivo(t)
+        const t =
+          terms.find((term) => term.id === sessao.pdv_terminal_id) || null;
+        setTerminalAtivo(t);
       } else if (terms.length > 0) {
-        setTerminalAtivo(terms[0])
+        setTerminalAtivo(terms[0]);
       }
 
       if (!sessao) {
-        setModalAbrirCaixaAberto(true)
+        setModalAbrirCaixaAberto(true);
       }
     } catch (err) {
-      console.error('Erro ao carregar dados iniciais do PDV:', err)
+      console.error("Erro ao carregar dados iniciais do PDV:", err);
     }
-  }, [empresaAtiva?.id, usuarioERP?.id])
+  }, [empresaAtiva?.id, usuarioERP?.id]);
 
   useEffect(() => {
-    carregarDadosIniciais()
-  }, [carregarDadosIniciais])
+    carregarDadosIniciais();
+  }, [carregarDadosIniciais]);
 
   // Alinha a empresa ativa à empresa do terminal da sessão de caixa aberta do operador.
   // Se a empresa ativa não tem caixa aberto, procura nas empresas permitidas e troca para a do terminal.
   useEffect(() => {
-    if (!empresaAtiva?.id || !usuarioERP?.id) return
-    let cancelado = false
-    const operadorErpId = usuarioERP.id
+    if (!empresaAtiva?.id || !usuarioERP?.id) return;
+    let cancelado = false;
+    const operadorErpId = usuarioERP.id;
     const alinhar = async () => {
       try {
-        const sessaoAtiva = await obterSessaoAbertaOperador(empresaAtiva.id, operadorErpId)
-        if (sessaoAtiva || cancelado) return
+        const sessaoAtiva = await obterSessaoAbertaOperador(
+          empresaAtiva.id,
+          operadorErpId,
+        );
+        if (sessaoAtiva || cancelado) return;
         for (const emp of empresas) {
-          if (emp.id === empresaAtiva.id) continue
-          const s = await obterSessaoAbertaOperador(emp.id, operadorErpId).catch(() => null)
-          if (!s || cancelado) continue
-          let empresaDoTerminalId = s.empresa_id
+          if (emp.id === empresaAtiva.id) continue;
+          const s = await obterSessaoAbertaOperador(
+            emp.id,
+            operadorErpId,
+          ).catch(() => null);
+          if (!s || cancelado) continue;
+          let empresaDoTerminalId = s.empresa_id;
           if (s.pdv_terminal_id) {
-            const t = await obterTerminalPorId(s.pdv_terminal_id).catch(() => null)
-            if (t?.empresa_id) empresaDoTerminalId = t.empresa_id
+            const t = await obterTerminalPorId(s.pdv_terminal_id).catch(
+              () => null,
+            );
+            if (t?.empresa_id) empresaDoTerminalId = t.empresa_id;
           }
-          const destino = empresas.find((e) => e.id === empresaDoTerminalId)
-          if (!destino || destino.id === empresaAtiva.id) return
-          selecionarEmpresa(destino.id)
+          const destino = empresas.find((e) => e.id === empresaDoTerminalId);
+          if (!destino || destino.id === empresaAtiva.id) return;
+          selecionarEmpresa(destino.id);
           toast({
-            title: 'Empresa ajustada ao caixa aberto',
+            title: "Empresa ajustada ao caixa aberto",
             description: `O caixa aberto pertence a ${destino.codigo} - ${destino.nome_fantasia || destino.razao_social}. A empresa ativa foi trocada para ela.`,
-          })
-          return
+          });
+          return;
         }
       } catch (err) {
-        console.error('Erro ao alinhar empresa ao caixa aberto do PDV:', err)
+        console.error("Erro ao alinhar empresa ao caixa aberto do PDV:", err);
       }
-    }
-    alinhar()
+    };
+    alinhar();
     return () => {
-      cancelado = true
-    }
+      cancelado = true;
+    };
     // toast fica fora das dependências para não reexecutar a checagem a cada render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresaAtiva?.id, usuarioERP?.id, empresas, selecionarEmpresa])
+  }, [empresaAtiva?.id, usuarioERP?.id, empresas, selecionarEmpresa]);
 
   // Bloqueia o seletor de empresa do cabeçalho enquanto há caixa aberto ou itens na venda.
   useEffect(() => {
-    const bloqueado = Boolean(sessaoCaixa) || itens.length > 0
-    definirBloqueioTrocaEmpresa(bloqueado ? MENSAGEM_BLOQUEIO_TROCA_EMPRESA : null)
-  }, [sessaoCaixa, itens.length, definirBloqueioTrocaEmpresa])
+    const bloqueado = Boolean(sessaoCaixa) || itens.length > 0;
+    definirBloqueioTrocaEmpresa(
+      bloqueado ? MENSAGEM_BLOQUEIO_TROCA_EMPRESA : null,
+    );
+  }, [sessaoCaixa, itens.length, definirBloqueioTrocaEmpresa]);
 
   // Ao sair do PDV, libera o seletor de empresa.
   useEffect(() => {
-    return () => definirBloqueioTrocaEmpresa(null)
-  }, [definirBloqueioTrocaEmpresa])
+    return () => definirBloqueioTrocaEmpresa(null);
+  }, [definirBloqueioTrocaEmpresa]);
 
   // Carrega catálogo de produtos na inicialização e atualiza a cada 5 minutos
   const recarregarProdutos = useCallback(
     async (forcar = false) => {
-      if (!empresaAtiva?.id) return
-      setCarregandoCatalogo(true)
+      if (!empresaAtiva?.id) return;
+      setCarregandoCatalogo(true);
       try {
-        const prods = await carregarCatalogoProdutosPDV(empresaAtiva.id, forcar)
-        setProdutosCatalogo(prods)
+        const prods = await carregarCatalogoProdutosPDV(
+          empresaAtiva.id,
+          forcar,
+        );
+        setProdutosCatalogo(prods);
       } catch (err) {
-        console.error('Falha ao carregar produtos no PDV:', err)
+        console.error("Falha ao carregar produtos no PDV:", err);
       } finally {
-        setCarregandoCatalogo(false)
+        setCarregandoCatalogo(false);
       }
     },
     [empresaAtiva?.id],
-  )
+  );
 
   useEffect(() => {
-    recarregarProdutos(false)
+    recarregarProdutos(false);
     const interval = setInterval(
       () => {
-        recarregarProdutos(true)
+        recarregarProdutos(true);
       },
       5 * 60 * 1000,
-    )
-    return () => clearInterval(interval)
-  }, [recarregarProdutos])
+    );
+    return () => clearInterval(interval);
+  }, [recarregarProdutos]);
 
   // Atualiza a lista de produtos sozinha quando o foco volta para a aba do PDV
   // (troca de aba/janela), no máximo a cada 5 minutos, sem interferir na digitação
   // nem tocar no carrinho/rascunho.
-  const ultimaAtualizacaoFocoRef = useRef(0)
+  const ultimaAtualizacaoFocoRef = useRef(0);
   useEffect(() => {
     const atualizarAoVoltarFoco = () => {
-      if (document.visibilityState !== 'visible') return
-      const agora = Date.now()
-      if (agora - ultimaAtualizacaoFocoRef.current < 5 * 60 * 1000) return
-      ultimaAtualizacaoFocoRef.current = agora
-      recarregarProdutos(true)
-    }
-    document.addEventListener('visibilitychange', atualizarAoVoltarFoco)
-    window.addEventListener('focus', atualizarAoVoltarFoco)
+      if (document.visibilityState !== "visible") return;
+      const agora = Date.now();
+      if (agora - ultimaAtualizacaoFocoRef.current < 5 * 60 * 1000) return;
+      ultimaAtualizacaoFocoRef.current = agora;
+      recarregarProdutos(true);
+    };
+    document.addEventListener("visibilitychange", atualizarAoVoltarFoco);
+    window.addEventListener("focus", atualizarAoVoltarFoco);
     return () => {
-      document.removeEventListener('visibilitychange', atualizarAoVoltarFoco)
-      window.removeEventListener('focus', atualizarAoVoltarFoco)
-    }
-  }, [recarregarProdutos])
+      document.removeEventListener("visibilitychange", atualizarAoVoltarFoco);
+      window.removeEventListener("focus", atualizarAoVoltarFoco);
+    };
+  }, [recarregarProdutos]);
 
   // Checa se há rascunho salvo no localStorage
   useEffect(() => {
     if (empresaAtiva?.id) {
-      const rascunho = obterRascunhoPDV(empresaAtiva.id)
+      const rascunho = obterRascunhoPDV(empresaAtiva.id);
       if (rascunho && rascunho.itens.length > 0) {
-        setRascunhoPendente(rascunho)
-        setModalPerguntaRascunhoAberto(true)
+        setRascunhoPendente(rascunho);
+        setModalPerguntaRascunhoAberto(true);
       }
     }
-  }, [empresaAtiva?.id])
+  }, [empresaAtiva?.id]);
 
   // Salva rascunho sempre que itens mudarem
   useEffect(() => {
-    if (!empresaAtiva?.id) return
+    if (!empresaAtiva?.id) return;
     if (itens.length > 0) {
       salvarRascunhoPDV({
         versao: 1,
@@ -400,16 +466,16 @@ export const PdvPage: React.FC = () => {
         empresa_id: empresaAtiva.id,
         terminal_id: terminalAtivo?.id,
         caixa_sessao_id: sessaoCaixa?.id,
-        cliente_id: cliente?.id || '',
+        cliente_id: cliente?.id || "",
         cliente_nome: cliente?.nome_razao_social,
         cpf_cnpj_consumidor: cpfCnpjCupom,
         vendedor_id: vendedor?.id,
         vendedor_nome: vendedor?.nome,
         desconto_total_valor: descontoTotal,
         itens,
-      })
+      });
     } else {
-      limparRascunhoPDV()
+      limparRascunhoPDV();
     }
   }, [
     itens,
@@ -420,26 +486,26 @@ export const PdvPage: React.FC = () => {
     empresaAtiva?.id,
     terminalAtivo?.id,
     sessaoCaixa?.id,
-  ])
+  ]);
 
   // Totais calculados
   const subtotalItens = useMemo(() => {
-    return itens.reduce((acc, it) => acc + it.valor_total, 0)
-  }, [itens])
+    return itens.reduce((acc, it) => acc + it.valor_total, 0);
+  }, [itens]);
 
   const totalVendaFinal = useMemo(() => {
-    const tot = subtotalItens - descontoTotal
-    return Math.max(0, Number(tot.toFixed(2)))
-  }, [subtotalItens, descontoTotal])
+    const tot = subtotalItens - descontoTotal;
+    return Math.max(0, Number(tot.toFixed(2)));
+  }, [subtotalItens, descontoTotal]);
 
   const totalQuantidadeGeral = useMemo(() => {
-    return itens.reduce((acc, it) => acc + it.quantidade, 0)
-  }, [itens])
+    return itens.reduce((acc, it) => acc + it.quantidade, 0);
+  }, [itens]);
 
   const ultimoItem = useMemo(() => {
-    if (itens.length === 0) return null
-    return itens[itens.length - 1]
-  }, [itens])
+    if (itens.length === 0) return null;
+    return itens[itens.length - 1];
+  }, [itens]);
 
   // Adicionar produto ao carrinho — exige sessão de caixa aberta antes de lançar itens
   const adicionarProdutoAoCarrinho = useCallback(
@@ -451,19 +517,19 @@ export const PdvPage: React.FC = () => {
       pesoBalancaKg?: number,
     ) => {
       if (!sessaoCaixa) {
-        setMensagemStatus('Abra o caixa antes de lançar itens na venda.')
-        setTipoMensagemStatus('erro')
-        setModalAbrirCaixaAberto(true)
-        return
+        setMensagemStatus("Abra o caixa antes de lançar itens na venda.");
+        setTipoMensagemStatus("erro");
+        setModalAbrirCaixaAberto(true);
+        return;
       }
       const precoUnit =
         precoUnitarioCustom !== undefined
           ? precoUnitarioCustom
           : produto.preco_promocional && produto.preco_promocional > 0
             ? produto.preco_promocional
-            : produto.preco_venda || 0
+            : produto.preco_venda || 0;
 
-      const totalItem = Number((precoUnit * quantidade).toFixed(2))
+      const totalItem = Number((precoUnit * quantidade).toFixed(2));
 
       const novoItem: ItemCarrinhoPDV = {
         tempId: Math.random().toString(36).substring(2, 9),
@@ -471,7 +537,7 @@ export const PdvPage: React.FC = () => {
         produto_id: produto.id,
         codigo: produto.codigo,
         descricao: produto.descricao,
-        unidade: produto.expand?.unidade_id?.sigla || 'UN',
+        unidade: produto.expand?.unidade_id?.sigla || "UN",
         quantidade,
         preco_unitario: precoUnit,
         preco_tabela: produto.preco_venda || precoUnit,
@@ -482,99 +548,105 @@ export const PdvPage: React.FC = () => {
         foto: produto.foto ? pb.files.getURL(produto, produto.foto) : undefined,
         peso_liquido_kg:
           pesoBalancaKg ||
-          (produto.peso_liquido_kg ? produto.peso_liquido_kg * quantidade : undefined),
+          (produto.peso_liquido_kg
+            ? produto.peso_liquido_kg * quantidade
+            : undefined),
         saldo_estoque: undefined,
         eh_balanca: false,
         ncm: produto.ncm,
         cest: produto.cest,
         cfop: produto.cfop_venda_interna || undefined,
-      }
+      };
 
-      setItens((prev) => [...prev, novoItem])
+      setItens((prev) => [...prev, novoItem]);
       setMensagemStatus(
         `Item adicionado: ${produto.descricao} (${quantidade} x R$ ${precoUnit.toFixed(2)})`,
-      )
-      setTipoMensagemStatus('sucesso')
+      );
+      setTipoMensagemStatus("sucesso");
 
       setTimeout(() => {
-        itensFimRef.current?.scrollIntoView({ behavior: 'smooth' })
-        focarLeitor()
-      }, 50)
+        itensFimRef.current?.scrollIntoView({ behavior: "smooth" });
+        focarLeitor();
+      }, 50);
     },
     [itens.length, focarLeitor, sessaoCaixa],
-  )
+  );
 
   // Leitura do campo principal (Enter) — busca na lista em memória e, se não achar,
   // consulta o servidor antes de reportar "não localizado" (cobrindo produto
   // criado/alterado depois da abertura do PDV).
   const handleProcessarLeitura = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const entrada = entradaLeitor.trim()
-    if (!entrada) return
+    e.preventDefault();
+    const entrada = entradaLeitor.trim();
+    if (!entrada) return;
 
-    setEntradaLeitor('')
+    setEntradaLeitor("");
 
-    const res = interpretarEntradaPDV(entrada, produtosCatalogo, configVendas)
+    const res = interpretarEntradaPDV(entrada, produtosCatalogo, configVendas);
 
     if (!res.sucesso || !res.produto) {
       // Extrai o código puro da entrada (remove "quantidade*" de "3*7891000000014").
       // Em erro de etiqueta de balança, consulta pelo código de produto da etiqueta.
-      let termoConsulta = entrada
-      if (entrada.includes('*')) {
-        const partes = entrada.split('*')
-        if (partes.length === 2) termoConsulta = partes[1].trim()
+      let termoConsulta = entrada;
+      if (entrada.includes("*")) {
+        const partes = entrada.split("*");
+        if (partes.length === 2) termoConsulta = partes[1].trim();
       }
       if (res.balanca?.ehEtiquetaBalanca) {
-        termoConsulta = res.balanca.codigoProduto || ''
+        termoConsulta = res.balanca.codigoProduto || "";
       }
-      let produtoServidor: Produto | null = null
+      let produtoServidor: Produto | null = null;
       if (termoConsulta) {
-        setCarregandoCatalogo(true)
+        setCarregandoCatalogo(true);
         produtoServidor = await consultarProdutoPorCodigoNoServidorPDV(
           termoConsulta,
           empresaAtiva?.id,
-        )
-        setCarregandoCatalogo(false)
+        );
+        setCarregandoCatalogo(false);
       }
       if (produtoServidor) {
-        atualizarProdutoNoCachePDV(produtoServidor, empresaAtiva?.id)
+        atualizarProdutoNoCachePDV(produtoServidor, empresaAtiva?.id);
         setProdutosCatalogo((prev) => {
-          const idx = prev.findIndex((p) => p.id === produtoServidor!.id)
+          const idx = prev.findIndex((p) => p.id === produtoServidor!.id);
           if (idx >= 0) {
-            const copia = [...prev]
-            copia[idx] = produtoServidor!
-            return copia
+            const copia = [...prev];
+            copia[idx] = produtoServidor!;
+            return copia;
           }
-          return [produtoServidor!, ...prev]
-        })
-        const res2 = interpretarEntradaPDV(entrada, [produtoServidor], configVendas)
+          return [produtoServidor!, ...prev];
+        });
+        const res2 = interpretarEntradaPDV(
+          entrada,
+          [produtoServidor],
+          configVendas,
+        );
         if (res2.sucesso && res2.produto) {
-          const ehBalanca2 = Boolean(res2.balanca?.ehEtiquetaBalanca)
+          const ehBalanca2 = Boolean(res2.balanca?.ehEtiquetaBalanca);
           adicionarProdutoAoCarrinho(
             res2.produto,
             res2.quantidade,
             res2.precoUnitario,
             ehBalanca2,
             res2.balanca?.pesoKg,
-          )
-          return
+          );
+          return;
         }
       }
-      setMensagemStatus(res.mensagemErro || 'Código não identificado.')
-      setTipoMensagemStatus('erro')
-      focarLeitor()
-      return
+      setMensagemStatus(res.mensagemErro || "Código não identificado.");
+      setTipoMensagemStatus("erro");
+      focarLeitor();
+      return;
     }
 
-    const ehBalanca = Boolean(res.balanca?.ehEtiquetaBalanca)
+    const ehBalanca = Boolean(res.balanca?.ehEtiquetaBalanca);
     adicionarProdutoAoCarrinho(
       res.produto,
       res.quantidade,
       res.precoUnitario,
       ehBalanca,
       res.balanca?.pesoKg,
-    )
-  }
+    );
+  };
 
   // Atalhos de teclado globais
   useEffect(() => {
@@ -592,122 +664,127 @@ export const PdvPage: React.FC = () => {
         modalDescontoItemAberto ||
         modalDescontoTotalAberto ||
         modalCancelarItemAberto ||
-        modalPerguntaRascunhoAberto
+        modalPerguntaRascunhoAberto;
 
       if (algumModalAberto) {
-        if (e.key === 'Escape') {
-          focarLeitor()
+        if (e.key === "Escape") {
+          focarLeitor();
         }
-        return
+        return;
       }
 
       switch (e.key) {
-        case 'F2':
-          e.preventDefault()
-          setModalBuscaProdutoAberto(true)
-          break
-        case 'F3':
-          e.preventDefault()
-          setModalClienteAberto(true)
-          break
-        case 'F4':
-          e.preventDefault()
+        case "F2":
+          e.preventDefault();
+          setModalBuscaProdutoAberto(true);
+          break;
+        case "F3":
+          e.preventDefault();
+          setModalClienteAberto(true);
+          break;
+        case "F4":
+          e.preventDefault();
           if (itens.length > 0) {
-            setModalQtdItemAberto(true)
+            setModalQtdItemAberto(true);
           } else {
             toast({
-              title: 'Nenhum item na venda',
-              description: 'Adicione itens antes de alterar quantidade.',
-            })
+              title: "Nenhum item na venda",
+              description: "Adicione itens antes de alterar quantidade.",
+            });
           }
-          break
-        case 'F5':
-          e.preventDefault()
-          setModalVendedorAberto(true)
-          break
-        case 'F6':
-          e.preventDefault()
+          break;
+        case "F5":
+          e.preventDefault();
+          setModalVendedorAberto(true);
+          break;
+        case "F6":
+          e.preventDefault();
           if (itens.length > 0) {
-            setModalDescontoItemAberto(true)
+            setModalDescontoItemAberto(true);
           } else {
             toast({
-              title: 'Nenhum item na venda',
-              description: 'Adicione itens antes de dar desconto.',
-            })
+              title: "Nenhum item na venda",
+              description: "Adicione itens antes de dar desconto.",
+            });
           }
-          break
-        case 'F7':
-          e.preventDefault()
+          break;
+        case "F7":
+          e.preventDefault();
           if (itens.length > 0) {
-            setModalDescontoTotalAberto(true)
+            setModalDescontoTotalAberto(true);
           } else {
             toast({
-              title: 'Nenhum item na venda',
-              description: 'Adicione itens antes de dar desconto.',
-            })
+              title: "Nenhum item na venda",
+              description: "Adicione itens antes de dar desconto.",
+            });
           }
-          break
-        case 'F8':
-          e.preventDefault()
+          break;
+        case "F8":
+          e.preventDefault();
           if (itens.length > 0) {
-            setModalCancelarItemAberto(true)
+            setModalCancelarItemAberto(true);
           } else {
-            toast({ title: 'Nenhum item na venda', description: 'Não há itens para cancelar.' })
+            toast({
+              title: "Nenhum item na venda",
+              description: "Não há itens para cancelar.",
+            });
           }
-          break
-        case 'F9':
-          e.preventDefault()
+          break;
+        case "F9":
+          e.preventDefault();
           if (!sessaoCaixa) {
-            setModalAbrirCaixaAberto(true)
+            setModalAbrirCaixaAberto(true);
           } else {
-            setModalSangriaAberto(true)
+            setModalSangriaAberto(true);
           }
-          break
-        case 'F10':
-          e.preventDefault()
+          break;
+        case "F10":
+          e.preventDefault();
           if (itens.length === 0) {
             toast({
-              title: 'Venda vazia',
-              description: 'Insira pelo menos um produto antes de finalizar.',
-              variant: 'destructive',
-            })
-            return
+              title: "Venda vazia",
+              description: "Insira pelo menos um produto antes de finalizar.",
+              variant: "destructive",
+            });
+            return;
           }
           if (!online) {
             toast({
-              title: 'Sem conexão com a internet',
-              description: 'O PDV está offline. Conecte-se para finalizar a venda.',
-              variant: 'destructive',
-            })
-            return
+              title: "Sem conexão com a internet",
+              description:
+                "O PDV está offline. Conecte-se para finalizar a venda.",
+              variant: "destructive",
+            });
+            return;
           }
           if (!sessaoCaixa) {
             toast({
-              title: 'Caixa Fechado',
-              description: 'Abra o caixa do operador antes de finalizar a venda.',
-              variant: 'destructive',
-            })
-            setModalAbrirCaixaAberto(true)
-            return
+              title: "Caixa Fechado",
+              description:
+                "Abra o caixa do operador antes de finalizar a venda.",
+              variant: "destructive",
+            });
+            setModalAbrirCaixaAberto(true);
+            return;
           }
-          setModalPagamentoAberto(true)
-          break
-        case 'F12':
-          e.preventDefault()
+          setModalPagamentoAberto(true);
+          break;
+        case "F12":
+          e.preventDefault();
           if (itens.length > 0) {
-            handleCancelarVendaEmAndamento()
+            handleCancelarVendaEmAndamento();
           }
-          break
-        case 'Escape':
-          focarLeitor()
-          break
+          break;
+        case "Escape":
+          focarLeitor();
+          break;
         default:
-          break
+          break;
       }
-    }
+    };
 
-    window.addEventListener('keydown', handleGlobalKeyDown)
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [
     modalAbrirCaixaAberto,
     modalSangriaAberto,
@@ -726,21 +803,23 @@ export const PdvPage: React.FC = () => {
     sessaoCaixa,
     toast,
     focarLeitor,
-  ])
+  ]);
 
   // Cancelar Venda Em Andamento (F12) com auditoria
   const handleCancelarVendaEmAndamento = async () => {
-    if (!window.confirm('Deseja realmente cancelar toda a venda em andamento?')) {
-      focarLeitor()
-      return
+    if (
+      !window.confirm("Deseja realmente cancelar toda a venda em andamento?")
+    ) {
+      focarLeitor();
+      return;
     }
 
     if (empresaAtiva?.id) {
       try {
         await registrarAuditoria({
-          tabela: 'vendas',
-          registro_id: sessaoCaixa?.id || 'PDV',
-          acao: 'CANCELAR_VENDA_PDV_EM_ANDAMENTO',
+          tabela: "vendas",
+          registro_id: sessaoCaixa?.id || "PDV",
+          acao: "CANCELAR_VENDA_PDV_EM_ANDAMENTO",
           empresa_id: empresaAtiva.id,
           valores_antes: {
             descricao: `Cancelamento de venda PDV em andamento com ${itens.length} itens no valor total de R$ ${totalVendaFinal.toFixed(2)}.`,
@@ -752,107 +831,119 @@ export const PdvPage: React.FC = () => {
             })),
             totalVendaFinal,
           },
-        })
+        });
       } catch (err) {
-        console.warn('Erro ao registrar auditoria de cancelamento:', err)
+        console.warn("Erro ao registrar auditoria de cancelamento:", err);
       }
     }
 
-    setItens([])
-    setDescontoTotal(0)
-    setCliente(null)
-    setCpfCnpjCupom('')
-    limparRascunhoPDV()
-    setMensagemStatus('Venda cancelada pelo operador.')
-    setTipoMensagemStatus('info')
-    focarLeitor()
-  }
+    setItens([]);
+    setDescontoTotal(0);
+    setCliente(null);
+    setCpfCnpjCupom("");
+    limparRascunhoPDV();
+    setMensagemStatus("Venda cancelada pelo operador.");
+    setTipoMensagemStatus("info");
+    focarLeitor();
+  };
 
   // Cancelar Item Específico (F8) com auditoria
-  const handleConfirmarCancelarItem = async (numeroItem: number, motivo: string) => {
-    const itemAlvo = itens.find((it) => it.item === numeroItem)
-    if (!itemAlvo) return
+  const handleConfirmarCancelarItem = async (
+    numeroItem: number,
+    motivo: string,
+  ) => {
+    const itemAlvo = itens.find((it) => it.item === numeroItem);
+    if (!itemAlvo) return;
 
     if (empresaAtiva?.id) {
       try {
         await registrarAuditoria({
-          tabela: 'vendas_itens',
-          registro_id: sessaoCaixa?.id || 'PDV',
-          acao: 'CANCELAR_ITEM_PDV',
+          tabela: "vendas_itens",
+          registro_id: sessaoCaixa?.id || "PDV",
+          acao: "CANCELAR_ITEM_PDV",
           empresa_id: empresaAtiva.id,
           valores_antes: {
             descricao: `Item #${numeroItem} (${itemAlvo.descricao}, Qtd: ${itemAlvo.quantidade}, Total: R$ ${itemAlvo.valor_total.toFixed(2)}) cancelado no PDV. Motivo: ${motivo}`,
             item: itemAlvo as unknown as Record<string, unknown>,
           },
-        })
+        });
       } catch (err) {
-        console.warn('Erro ao registrar auditoria de item cancelado:', err)
+        console.warn("Erro ao registrar auditoria de item cancelado:", err);
       }
     }
 
     const novosItens = itens
       .filter((it) => it.item !== numeroItem)
-      .map((it, idx) => ({ ...it, item: idx + 1 }))
+      .map((it, idx) => ({ ...it, item: idx + 1 }));
 
-    setItens(novosItens)
-    setMensagemStatus(`Item #${numeroItem} cancelado: ${itemAlvo.descricao}`)
-    setTipoMensagemStatus('erro')
-    focarLeitor()
-  }
+    setItens(novosItens);
+    setMensagemStatus(`Item #${numeroItem} cancelado: ${itemAlvo.descricao}`);
+    setTipoMensagemStatus("erro");
+    focarLeitor();
+  };
 
   // Alterar Quantidade do Último Item (F4)
   const handleConfirmarQtdItem = (novaQtd: number) => {
-    if (itens.length === 0) return
-    const ultimoIdx = itens.length - 1
-    const atual = itens[ultimoIdx]
-    const sub = atual.preco_unitario * novaQtd
-    const desc = atual.desconto_valor
-    const novoTot = Number(Math.max(0, sub - desc).toFixed(2))
+    if (itens.length === 0) return;
+    const ultimoIdx = itens.length - 1;
+    const atual = itens[ultimoIdx];
+    const sub = atual.preco_unitario * novaQtd;
+    const desc = atual.desconto_valor;
+    const novoTot = Number(Math.max(0, sub - desc).toFixed(2));
 
     const atualizado: ItemCarrinhoPDV = {
       ...atual,
       quantidade: novaQtd,
       valor_total: novoTot,
-    }
+    };
 
-    const copia = [...itens]
-    copia[ultimoIdx] = atualizado
-    setItens(copia)
-    setMensagemStatus(`Quantidade do item #${atual.item} alterada para ${novaQtd}`)
-    setTipoMensagemStatus('sucesso')
-    focarLeitor()
-  }
+    const copia = [...itens];
+    copia[ultimoIdx] = atualizado;
+    setItens(copia);
+    setMensagemStatus(
+      `Quantidade do item #${atual.item} alterada para ${novaQtd}`,
+    );
+    setTipoMensagemStatus("sucesso");
+    focarLeitor();
+  };
 
   // Desconto no Item (F6)
-  const handleConfirmarDescontoItem = (descontoValor: number, descontoPercentual: number) => {
-    if (itens.length === 0) return
-    const ultimoIdx = itens.length - 1
-    const atual = itens[ultimoIdx]
-    const sub = atual.preco_unitario * atual.quantidade
-    const novoTot = Number(Math.max(0, sub - descontoValor).toFixed(2))
+  const handleConfirmarDescontoItem = (
+    descontoValor: number,
+    descontoPercentual: number,
+  ) => {
+    if (itens.length === 0) return;
+    const ultimoIdx = itens.length - 1;
+    const atual = itens[ultimoIdx];
+    const sub = atual.preco_unitario * atual.quantidade;
+    const novoTot = Number(Math.max(0, sub - descontoValor).toFixed(2));
 
     const atualizado: ItemCarrinhoPDV = {
       ...atual,
       desconto_valor: descontoValor,
       desconto_percentual: descontoPercentual,
       valor_total: novoTot,
-    }
+    };
 
-    const copia = [...itens]
-    copia[ultimoIdx] = atualizado
-    setItens(copia)
-    setMensagemStatus(`Desconto de R$ ${descontoValor.toFixed(2)} aplicado no item #${atual.item}`)
-    setTipoMensagemStatus('sucesso')
-    focarLeitor()
-  }
+    const copia = [...itens];
+    copia[ultimoIdx] = atualizado;
+    setItens(copia);
+    setMensagemStatus(
+      `Desconto de R$ ${descontoValor.toFixed(2)} aplicado no item #${atual.item}`,
+    );
+    setTipoMensagemStatus("sucesso");
+    focarLeitor();
+  };
 
   // Desconto no Total (F7)
   const handleConfirmarDescontoTotal = (descontoValor: number) => {
-    setDescontoTotal(descontoValor)
-    setMensagemStatus(`Desconto total de R$ ${descontoValor.toFixed(2)} aplicado na venda`)
-    setTipoMensagemStatus('sucesso')
-    focarLeitor()
-  }
+    setDescontoTotal(descontoValor);
+    setMensagemStatus(
+      `Desconto total de R$ ${descontoValor.toFixed(2)} aplicado na venda`,
+    );
+    setTipoMensagemStatus("sucesso");
+    focarLeitor();
+  };
 
   // Alternar Tela Cheia
   const toggleFullScreen = () => {
@@ -860,37 +951,41 @@ export const PdvPage: React.FC = () => {
       document.documentElement
         .requestFullscreen()
         .then(() => setIsFullScreen(true))
-        .catch(() => {})
+        .catch(() => {});
     } else {
       if (document.exitFullscreen) {
         document
           .exitFullscreen()
           .then(() => setIsFullScreen(false))
-          .catch(() => {})
+          .catch(() => {});
       }
     }
-  }
+  };
 
   // Concluir Venda (F10 - Confirmação do Modal de Pagamentos)
   const handleFinalizarVenda = async (
     pagamentos: Array<{
-      forma_pagamento_id: string
-      valor: number
-      parcelas?: number
-      bandeira?: string
-      nsu?: string
-      codigo_autorizacao?: string
-      conta_financeira_id?: string
-      condicao_pagamento_id?: string
+      forma_pagamento_id: string;
+      valor: number;
+      parcelas?: number;
+      bandeira?: string;
+      nsu?: string;
+      codigo_autorizacao?: string;
+      conta_financeira_id?: string;
+      condicao_pagamento_id?: string;
     }>,
     troco: number,
   ) => {
-    if (!empresaAtiva?.id) return
+    if (!empresaAtiva?.id) return;
     if (!sessaoCaixa?.id) {
-      throw new Error('Não há sessão de caixa aberta para registrar os pagamentos.')
+      throw new Error(
+        "Não há sessão de caixa aberta para registrar os pagamentos.",
+      );
     }
     if (!online) {
-      throw new Error('PDV desconectado. Aguarde a conexão retornar para finalizar.')
+      throw new Error(
+        "PDV desconectado. Aguarde a conexão retornar para finalizar.",
+      );
     }
 
     // 1. Cria a venda pelo serviço central salvarVenda com payload PLANO
@@ -898,30 +993,38 @@ export const PdvPage: React.FC = () => {
     // registro genérico "Consumidor Final" (sem CPF) — NUNCA o cliente_padrao_id da
     // config de vendas, que pode ser qualquer cadastro (ex. TESTE PF SP) e acabava
     // saindo como destinatário da NFC-e.
-    let clienteIdFinal = cliente?.id || ''
+    let clienteIdFinal = cliente?.id || "";
     if (!clienteIdFinal) {
       try {
-        const consumidor = await obterOuCriarConsumidorFinal(usuarioERP?.assinante_id || undefined)
-        clienteIdFinal = consumidor.id
+        const consumidor = await obterOuCriarConsumidorFinal(
+          usuarioERP?.assinante_id || undefined,
+        );
+        clienteIdFinal = consumidor.id;
         setConfigVendas((cfg) =>
-          cfg && !cfg.cliente_padrao_id ? { ...cfg, cliente_padrao_id: consumidor.id } : cfg,
-        )
+          cfg && !cfg.cliente_padrao_id
+            ? { ...cfg, cliente_padrao_id: consumidor.id }
+            : cfg,
+        );
       } catch (errCons) {
-        console.warn('Não foi possível resolver o Consumidor Final do assinante:', errCons)
+        console.warn(
+          "Não foi possível resolver o Consumidor Final do assinante:",
+          errCons,
+        );
       }
     }
     if (!clienteIdFinal) {
-      throw new Error('Cliente é obrigatório para registrar a venda.')
+      throw new Error("Cliente é obrigatório para registrar a venda.");
     }
 
     const inputSalvar: SalvarVendaInput = {
       empresa_id: empresaAtiva.id,
-      tipo: 'PDV',
+      tipo: "PDV",
       cliente_id: clienteIdFinal,
       cpf_cnpj_consumidor: cpfCnpjCupom || undefined,
       vendedor_id: vendedor?.id || undefined,
       operador_id: usuarioERP?.id || undefined,
-      pdv_terminal_id: sessaoCaixa?.pdv_terminal_id || terminalAtivo?.id || undefined,
+      pdv_terminal_id:
+        sessaoCaixa?.pdv_terminal_id || terminalAtivo?.id || undefined,
       caixa_sessao_id: sessaoCaixa?.id,
       valor_desconto_total: descontoTotal,
       itens: itens.map((it) => ({
@@ -940,9 +1043,9 @@ export const PdvPage: React.FC = () => {
         cest: it.cest,
         cfop: it.cfop,
       })),
-    }
+    };
 
-    const vendaSalva = await salvarVenda(inputSalvar)
+    const vendaSalva = await salvarVenda(inputSalvar);
 
     // 2. Chama finalizarVenda que dispara o hook /backend/v1/vendas/finalizar (baixa estoque, financeiro, caixa)
     const vendaFinalizada = await finalizarVenda({
@@ -957,45 +1060,45 @@ export const PdvPage: React.FC = () => {
         conta_financeira_id: p.conta_financeira_id,
         condicao_pagamento_id: p.condicao_pagamento_id,
       })),
-    })
+    });
 
     // 3. Emissão Fiscal de NFC-e ou Comprovante Não Fiscal
     const podeEmitirNfce =
       configFiscal &&
       configFiscal.emite_documentos_fiscais &&
       configFiscal.emite_nfce &&
-      configFiscal.emitir_nfce_automaticamente_no_pdv
+      configFiscal.emitir_nfce_automaticamente_no_pdv;
 
-    let nfceAutorizada = false
-    let nfceDanfeUrl = ''
+    let nfceAutorizada = false;
+    let nfceDanfeUrl = "";
     // Guarda o retorno da emissão para o modal de envio do cupom (imutável durante o fluxo)
     const respNfceRef: {
       current: {
-        numero?: number
-        serie?: string
-        chave?: string
-        caminho_danfe?: string
-        url_consulta?: string
-        danfe_url?: string
-      } | null
-    } = { current: null }
+        numero?: number;
+        serie?: string;
+        chave?: string;
+        caminho_danfe?: string;
+        url_consulta?: string;
+        danfe_url?: string;
+      } | null;
+    } = { current: null };
 
     if (podeEmitirNfce) {
       if (!configFiscal.csc_configurado) {
         toast({
-          title: 'Aviso Fiscal',
-          description: 'CSC da NFC-e não configurado para esta loja.',
-          variant: 'destructive',
-        })
+          title: "Aviso Fiscal",
+          description: "CSC da NFC-e não configurado para esta loja.",
+          variant: "destructive",
+        });
       } else {
         try {
           const respNfce = await emitirNFCeVenda({
             vendaId: vendaSalva.id,
-          })
+          });
 
-          if (respNfce.sucesso && respNfce.status === 'Autorizada') {
-            nfceAutorizada = true
-            nfceDanfeUrl = respNfce.danfe_url || ''
+          if (respNfce.sucesso && respNfce.status === "Autorizada") {
+            nfceAutorizada = true;
+            nfceDanfeUrl = respNfce.danfe_url || "";
             respNfceRef.current = {
               numero: respNfce.numero,
               serie: respNfce.serie,
@@ -1003,31 +1106,36 @@ export const PdvPage: React.FC = () => {
               caminho_danfe: respNfce.danfe_url,
               url_consulta: respNfce.url_consulta,
               danfe_url: respNfce.danfe_url,
-            }
+            };
             toast({
-              title: respNfce.contingencia ? 'NFC-e Emitida em Contingência!' : 'NFC-e Autorizada!',
-              description: `Nota nº ${respNfce.numero || ''} autorizada com sucesso na SEFAZ.`,
-            })
+              title: respNfce.contingencia
+                ? "NFC-e Emitida em Contingência!"
+                : "NFC-e Autorizada!",
+              description: `Nota nº ${respNfce.numero || ""} autorizada com sucesso na SEFAZ.`,
+            });
           } else {
             // Rejeição da SEFAZ ou erro interno do ERP (o hook distingue em erro_interno)
             setDadosRejeicaoNfce({
               vendaId: vendaSalva.id,
               numeroVenda: vendaFinalizada.numero || 0,
-              motivo: respNfce.message || 'Rejeição na SEFAZ',
+              motivo: respNfce.message || "Rejeição na SEFAZ",
               erroInterno: respNfce.erro_interno === true,
-            })
-            setModalRejeicaoNfceAberto(true)
+            });
+            setModalRejeicaoNfceAberto(true);
           }
         } catch (errNfce: any) {
-          console.error('Erro ao emitir NFC-e no PDV:', errNfce)
-          const msg = errNfce?.data?.message || errNfce?.message || 'Falha na emissão da NFC-e.'
+          console.error("Erro ao emitir NFC-e no PDV:", errNfce);
+          const msg =
+            errNfce?.data?.message ||
+            errNfce?.message ||
+            "Falha na emissão da NFC-e.";
           setDadosRejeicaoNfce({
             vendaId: vendaSalva.id,
             numeroVenda: vendaFinalizada.numero || 0,
             motivo: msg,
             erroInterno: true,
-          })
-          setModalRejeicaoNfceAberto(true)
+          });
+          setModalRejeicaoNfceAberto(true);
         }
       }
     }
@@ -1036,24 +1144,24 @@ export const PdvPage: React.FC = () => {
     // Se não autorizada, imprime o comprovante não fiscal com observação "NFC-e pendente".
     try {
       if (nfceAutorizada && nfceDanfeUrl) {
-        imprimirDanfeUrl(nfceDanfeUrl)
+        imprimirDanfeUrl(nfceDanfeUrl);
       } else {
-        let vendaImpressao: Venda = vendaSalva
-        let itensImpressao: VendaItem[] = []
-        let pagamentosImpressao: VendaPagamento[] = []
+        let vendaImpressao: Venda = vendaSalva;
+        let itensImpressao: VendaItem[] = [];
+        let pagamentosImpressao: VendaPagamento[] = [];
 
         try {
-          const completa = await obterVendaCompleta(vendaSalva.id)
-          vendaImpressao = completa.venda
-          itensImpressao = completa.itens
-          pagamentosImpressao = completa.pagamentos
+          const completa = await obterVendaCompleta(vendaSalva.id);
+          vendaImpressao = completa.venda;
+          itensImpressao = completa.itens;
+          pagamentosImpressao = completa.pagamentos;
         } catch {
           vendaImpressao = {
             ...vendaSalva,
-            status: 'Finalizada',
+            status: "Finalizada",
             valor_troco: vendaFinalizada.valor_troco ?? troco,
             valor_total: vendaFinalizada.valor_total ?? vendaSalva.valor_total,
-          }
+          };
           itensImpressao = itens.map((it) => ({
             id: it.tempId,
             venda_id: vendaSalva.id,
@@ -1069,7 +1177,7 @@ export const PdvPage: React.FC = () => {
             acrescimo_valor: it.acrescimo_valor,
             valor_total: it.valor_total,
             ativo: true,
-          }))
+          }));
           pagamentosImpressao = pagamentos.map((p, idx) => ({
             id: String(idx),
             venda_id: vendaSalva.id,
@@ -1082,14 +1190,16 @@ export const PdvPage: React.FC = () => {
             conta_financeira_id: p.conta_financeira_id,
             ativo: true,
             expand: {
-              forma_pagamento_id: formasPagamento.find((f) => f.id === p.forma_pagamento_id),
+              forma_pagamento_id: formasPagamento.find(
+                (f) => f.id === p.forma_pagamento_id,
+              ),
             },
-          }))
+          }));
         }
 
         const msgRodape = configFiscal?.emite_nfce
-          ? `${configVendas?.mensagem_rodape_comprovante ? configVendas.mensagem_rodape_comprovante + ' | ' : ''}NFC-e pendente`
-          : configVendas?.mensagem_rodape_comprovante || undefined
+          ? `${configVendas?.mensagem_rodape_comprovante ? configVendas.mensagem_rodape_comprovante + " | " : ""}NFC-e pendente`
+          : configVendas?.mensagem_rodape_comprovante || undefined;
 
         const dadosImpressao: DadosImpressaoVenda = {
           venda: vendaImpressao,
@@ -1124,122 +1234,131 @@ export const PdvPage: React.FC = () => {
             : undefined,
           vendedorNome: vendedor?.nome || undefined,
           mensagemRodape: msgRodape,
-        }
+        };
 
-        imprimirComprovanteNaoFiscal(dadosImpressao)
+        imprimirComprovanteNaoFiscal(dadosImpressao);
       }
     } catch (errImp) {
-      console.warn('Erro ao acionar impressão do cupom:', errImp)
+      console.warn("Erro ao acionar impressão do cupom:", errImp);
     }
 
     // 4. Limpa estado e rascunho para a próxima venda
-    setItens([])
-    setDescontoTotal(0)
-    setCliente(null)
-    setCpfCnpjCupom('')
-    setVendedor(null)
-    limparRascunhoPDV()
-    setModalPagamentoAberto(false)
+    setItens([]);
+    setDescontoTotal(0);
+    setCliente(null);
+    setCpfCnpjCupom("");
+    setVendedor(null);
+    limparRascunhoPDV();
+    setModalPagamentoAberto(false);
 
     setMensagemStatus(
       `Venda #${vendaFinalizada.numero} finalizada com sucesso! Troco: R$ ${troco.toFixed(2)}`,
-    )
-    setTipoMensagemStatus('sucesso')
+    );
+    setTipoMensagemStatus("sucesso");
 
     // Abre o modal de envio do cupom quando a NFC-e saiu autorizada
     if (nfceAutorizada && respNfceRef.current) {
-      const info = respNfceRef.current
+      const info = respNfceRef.current;
       const formasTexto = pagamentos
         .map((p) => {
-          const f = formasPagamento.find((x) => x.id === p.forma_pagamento_id)
-          return f?.descricao || 'Forma'
+          const f = formasPagamento.find((x) => x.id === p.forma_pagamento_id);
+          return f?.descricao || "Forma";
         })
         .filter((v, i, arr) => arr.indexOf(v) === i)
-        .join(' + ')
+        .join(" + ");
       setDadosEnvioCupom({
         numero: info.numero || vendaFinalizada.numero || 0,
-        serie: info.serie || '',
-        chave: info.chave || '',
+        serie: info.serie || "",
+        chave: info.chave || "",
         valorTotal: vendaFinalizada.valor_total ?? totalVendaFinal,
-        formasPagamentoTexto: formasTexto || '—',
-        celularCliente: cliente?.celular || '',
-        emailCliente: cliente?.email || '',
+        formasPagamentoTexto: formasTexto || "—",
+        celularCliente: cliente?.celular || "",
+        emailCliente: cliente?.email || "",
         // danfe_url já sai do backend com a URL base da Focus composta
-        caminhoDanfe: info.danfe_url || '',
-        urlConsulta: info.url_consulta || '',
+        caminhoDanfe: info.danfe_url || "",
+        urlConsulta: info.url_consulta || "",
         urlImpressao: info.danfe_url || nfceDanfeUrl,
-      })
+      });
       setClienteParaSalvarContato(
-        cliente && cliente.id !== (configVendas?.cliente_padrao_id || '') ? cliente : null,
-      )
-      setClienteAtualizadoParaContato(null)
-      setModalEnvioCupomAberto(true)
+        cliente && cliente.id !== (configVendas?.cliente_padrao_id || "")
+          ? cliente
+          : null,
+      );
+      setClienteAtualizadoParaContato(null);
+      setModalEnvioCupomAberto(true);
     } else {
       // Sem modal (sem NFC-e autorizada): foco volta ao campo de código imediatamente
-      focarLeitor()
+      focarLeitor();
     }
-  }
+  };
 
   /** Fecha o modal de envio do cupom e devolve o foco ao campo de código (F10 volta a funcionar) */
   const fecharModalEnvioCupom = () => {
-    setModalEnvioCupomAberto(false)
-    setDadosEnvioCupom(null)
-    setClienteParaSalvarContato(null)
-    setClienteAtualizadoParaContato(null)
+    setModalEnvioCupomAberto(false);
+    setDadosEnvioCupom(null);
+    setClienteParaSalvarContato(null);
+    setClienteAtualizadoParaContato(null);
     setTimeout(() => {
-      inputLeitorRef.current?.focus()
-    }, 80)
-  }
+      inputLeitorRef.current?.focus();
+    }, 80);
+  };
 
   const tentarNfceNovamente = async (contingencia: boolean) => {
-    if (!dadosRejeicaoNfce?.vendaId) return
-    setReemitindoNfce(true)
+    if (!dadosRejeicaoNfce?.vendaId) return;
+    setReemitindoNfce(true);
     try {
       const resp = await emitirNFCeVenda({
         vendaId: dadosRejeicaoNfce.vendaId,
         contingencia,
-      })
-      if (resp.sucesso && resp.status === 'Autorizada') {
+      });
+      if (resp.sucesso && resp.status === "Autorizada") {
         toast({
-          title: resp.contingencia ? 'NFC-e Emitida em Contingência!' : 'NFC-e Autorizada!',
+          title: resp.contingencia
+            ? "NFC-e Emitida em Contingência!"
+            : "NFC-e Autorizada!",
           description: resp.contingencia
-            ? 'A Focus vai transmitir a nota para a SEFAZ assim que ela voltar.'
+            ? "A Focus vai transmitir a nota para a SEFAZ assim que ela voltar."
             : `Nota autorizada com sucesso na SEFAZ.`,
-        })
+        });
         if (resp.danfe_url) {
-          imprimirDanfeUrl(resp.danfe_url)
+          imprimirDanfeUrl(resp.danfe_url);
         }
-        setModalRejeicaoNfceAberto(false)
-        setDadosRejeicaoNfce(null)
-        focarLeitor()
+        setModalRejeicaoNfceAberto(false);
+        setDadosRejeicaoNfce(null);
+        focarLeitor();
       } else {
         setDadosRejeicaoNfce((prev) =>
           prev
             ? {
                 ...prev,
-                motivo: resp.message || 'Falha na reemissão',
+                motivo: resp.message || "Falha na reemissão",
                 erroInterno: resp.erro_interno === true,
               }
             : null,
-        )
+        );
         toast({
-          title: resp.erro_interno ? 'Erro interno do ERP' : 'Tentativa Rejeitada',
-          description: resp.message || 'Verifique o cadastro fiscal.',
-          variant: 'destructive',
-        })
+          title: resp.erro_interno
+            ? "Erro interno do ERP"
+            : "Tentativa Rejeitada",
+          description: resp.message || "Verifique o cadastro fiscal.",
+          variant: "destructive",
+        });
       }
     } catch (errRetry: any) {
-      const msg = errRetry?.data?.message || errRetry?.message || 'Falha na conexão.'
-      setDadosRejeicaoNfce((prev) => (prev ? { ...prev, motivo: msg, erroInterno: true } : null))
+      const msg =
+        errRetry?.data?.message || errRetry?.message || "Falha na conexão.";
+      setDadosRejeicaoNfce((prev) =>
+        prev ? { ...prev, motivo: msg, erroInterno: true } : null,
+      );
       toast({
-        title: 'Erro ao tentar de novo',
+        title: "Erro ao tentar de novo",
         description: msg,
-        variant: 'destructive',
-      })
+        variant: "destructive",
+      });
     } finally {
-      setReemitindoNfce(false)
+      setReemitindoNfce(false);
     }
-  }
+  };
 
   return (
     <div className="flex flex-col h-full w-full bg-slate-100 text-slate-800 font-sans select-none overflow-hidden">
@@ -1247,24 +1366,33 @@ export const PdvPage: React.FC = () => {
       <header className="h-14 bg-white border-b border-slate-200 px-4 flex items-center justify-between shrink-0 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-black text-xl tracking-wider text-blue-600">PDV</span>
+            <span className="font-black text-xl tracking-wider text-blue-600">
+              PDV
+            </span>
             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700">
-              {empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || 'Empresa'}
+              {empresaAtiva?.nome_fantasia ||
+                empresaAtiva?.razao_social ||
+                "Empresa"}
             </span>
           </div>
 
           <div className="hidden md:flex items-center gap-3 text-xs text-slate-500 border-l border-slate-200 pl-4">
             <span title="Terminal Atual">
-              Terminal:{' '}
-              <strong className="text-slate-800">{terminalAtivo?.nome || 'PDV 01'}</strong>
+              Terminal:{" "}
+              <strong className="text-slate-800">
+                {terminalAtivo?.nome || "PDV 01"}
+              </strong>
             </span>
             <span className="text-slate-300">|</span>
             <span title="Operador">
-              Operador: <strong className="text-slate-800">{usuario?.nome || 'Caixa'}</strong>
+              Operador:{" "}
+              <strong className="text-slate-800">
+                {usuario?.nome || "Caixa"}
+              </strong>
             </span>
             <span className="text-slate-300">|</span>
             <span title="Sessão de Caixa" className="flex items-center gap-1">
-              Caixa:{' '}
+              Caixa:{" "}
               {sessaoCaixa ? (
                 <>
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[11px]">
@@ -1275,13 +1403,14 @@ export const PdvPage: React.FC = () => {
                     onClick={() => {
                       if (itens.length > 0) {
                         toast({
-                          title: 'Venda em andamento',
-                          description: 'Finalize ou cancele a venda atual antes de fechar o caixa.',
-                          variant: 'destructive',
-                        })
-                        return
+                          title: "Venda em andamento",
+                          description:
+                            "Finalize ou cancele a venda atual antes de fechar o caixa.",
+                          variant: "destructive",
+                        });
+                        return;
                       }
-                      setModalFecharCaixaAberto(true)
+                      setModalFecharCaixaAberto(true);
                     }}
                     className="inline-flex items-center px-2 py-0.5 rounded-full bg-white border border-slate-300 text-slate-700 font-bold text-[11px] hover:bg-slate-100 cursor-pointer"
                   >
@@ -1336,11 +1465,15 @@ export const PdvPage: React.FC = () => {
             type="button"
             onClick={() => {
               if (itens.length > 0) {
-                if (window.confirm('Existe uma venda em andamento. Deseja sair do PDV?')) {
-                  navigate('/vendas/pedidos')
+                if (
+                  window.confirm(
+                    "Existe uma venda em andamento. Deseja sair do PDV?",
+                  )
+                ) {
+                  navigate("/vendas/pedidos");
                 }
               } else {
-                navigate('/vendas/pedidos')
+                navigate("/vendas/pedidos");
               }
             }}
             className="text-xs bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded border border-slate-200 transition-colors"
@@ -1379,18 +1512,18 @@ export const PdvPage: React.FC = () => {
               </div>
             ) : (
               itens.map((it) => {
-                const ehUltimo = ultimoItem?.tempId === it.tempId
+                const ehUltimo = ultimoItem?.tempId === it.tempId;
                 return (
                   <div
                     key={it.tempId}
                     className={`grid grid-cols-12 items-center px-4 py-3 rounded-lg text-sm transition-colors ${
                       ehUltimo
-                        ? 'bg-blue-50 border border-blue-300 shadow-sm text-slate-800 font-medium'
-                        : 'bg-white border border-slate-200 hover:bg-slate-100 text-slate-700'
+                        ? "bg-blue-50 border border-blue-300 shadow-sm text-slate-800 font-medium"
+                        : "bg-white border border-slate-200 hover:bg-slate-100 text-slate-700"
                     }`}
                   >
                     <span className="col-span-1 text-center font-mono font-bold text-slate-500 text-base">
-                      {String(it.item).padStart(2, '0')}
+                      {String(it.item).padStart(2, "0")}
                     </span>
                     <div className="col-span-6 min-w-0 pr-3">
                       <div className="truncate font-semibold text-slate-900 text-base leading-snug">
@@ -1407,19 +1540,23 @@ export const PdvPage: React.FC = () => {
                       </div>
                     </div>
                     <div className="col-span-2 text-right font-mono">
-                      <span className="text-base font-bold text-slate-800">{it.quantidade}</span>
+                      <span className="text-base font-bold text-slate-800">
+                        {it.quantidade}
+                      </span>
                       <span className="text-xs text-slate-500 block">
                         x R$ {it.preco_unitario.toFixed(2)}
                       </span>
                     </div>
                     <div className="col-span-1 text-right font-mono text-amber-600">
-                      {it.desconto_valor > 0 ? `- R$ ${it.desconto_valor.toFixed(2)}` : '—'}
+                      {it.desconto_valor > 0
+                        ? `- R$ ${it.desconto_valor.toFixed(2)}`
+                        : "—"}
                     </div>
                     <div className="col-span-2 text-right font-mono font-bold text-lg text-emerald-600">
                       R$ {it.valor_total.toFixed(2)}
                     </div>
                   </div>
-                )
+                );
               })
             )}
             <div ref={itensFimRef} />
@@ -1445,13 +1582,15 @@ export const PdvPage: React.FC = () => {
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-600 text-white uppercase">
                       Último Item ({ultimoItem.item})
                     </span>
-                    <span className="text-xs text-slate-500 font-mono">#{ultimoItem.codigo}</span>
+                    <span className="text-xs text-slate-500 font-mono">
+                      #{ultimoItem.codigo}
+                    </span>
                   </div>
                   <div className="text-sm font-bold text-slate-800 truncate mt-0.5">
                     {ultimoItem.descricao}
                   </div>
                   <div className="text-xs text-slate-500 mt-0.5">
-                    {ultimoItem.quantidade} {ultimoItem.unidade} x R${' '}
+                    {ultimoItem.quantidade} {ultimoItem.unidade} x R${" "}
                     {ultimoItem.preco_unitario.toFixed(2)}
                   </div>
                 </div>
@@ -1479,18 +1618,21 @@ export const PdvPage: React.FC = () => {
             <div className="flex items-center justify-between text-xs text-slate-500 uppercase font-bold tracking-wider">
               <span>Total a Pagar</span>
               <span>
-                {itens.length} {itens.length === 1 ? 'item' : 'itens'} (
+                {itens.length} {itens.length === 1 ? "item" : "itens"} (
                 {totalQuantidadeGeral.toFixed(2)} un)
               </span>
             </div>
 
             <div className="my-2 text-right">
               <div className="text-5xl font-black text-emerald-700 tracking-tight font-mono">
-                R$ {totalVendaFinal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                R${" "}
+                {totalVendaFinal.toLocaleString("pt-BR", {
+                  minimumFractionDigits: 2,
+                })}
               </div>
               {descontoTotal > 0 && (
                 <div className="text-xs text-amber-600 font-mono mt-1 font-semibold">
-                  Subtotal: R$ {subtotalItens.toFixed(2)} | Desconto Geral: - R${' '}
+                  Subtotal: R$ {subtotalItens.toFixed(2)} | Desconto Geral: - R${" "}
                   {descontoTotal.toFixed(2)}
                 </div>
               )}
@@ -1507,7 +1649,7 @@ export const PdvPage: React.FC = () => {
                   <span>Cliente (F3)</span>
                 </div>
                 <div className="truncate font-bold text-slate-800 mt-0.5">
-                  {cliente?.nome_razao_social || 'Consumidor Final'}
+                  {cliente?.nome_razao_social || "Consumidor Final"}
                 </div>
                 {cpfCnpjCupom && (
                   <div className="text-[10px] text-blue-600 font-mono truncate">
@@ -1526,7 +1668,7 @@ export const PdvPage: React.FC = () => {
                   <span>Vendedor (F5)</span>
                 </div>
                 <div className="truncate font-bold text-slate-800 mt-0.5">
-                  {vendedor?.nome || 'Balcão / Geral'}
+                  {vendedor?.nome || "Balcão / Geral"}
                 </div>
               </div>
             </div>
@@ -1539,7 +1681,9 @@ export const PdvPage: React.FC = () => {
                 <Barcode size={16} />
                 Código de Barras / Ref / Qtd*Cód
               </span>
-              <span className="text-[10px] text-slate-500 font-normal">Ex: 3*7891000...</span>
+              <span className="text-[10px] text-slate-500 font-normal">
+                Ex: 3*7891000...
+              </span>
             </label>
             <form onSubmit={handleProcessarLeitura} className="flex gap-2">
               <input
@@ -1563,17 +1707,20 @@ export const PdvPage: React.FC = () => {
             {mensagemStatus && (
               <div
                 className={`mt-2 p-2 rounded text-xs flex items-center gap-1.5 transition-all ${
-                  tipoMensagemStatus === 'erro'
-                    ? 'bg-red-50 text-red-700 border border-red-200'
-                    : tipoMensagemStatus === 'sucesso'
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-slate-100 text-slate-600'
+                  tipoMensagemStatus === "erro"
+                    ? "bg-red-50 text-red-700 border border-red-200"
+                    : tipoMensagemStatus === "sucesso"
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : "bg-slate-100 text-slate-600"
                 }`}
               >
-                {tipoMensagemStatus === 'erro' ? (
+                {tipoMensagemStatus === "erro" ? (
                   <AlertTriangle size={14} className="shrink-0 text-red-500" />
                 ) : (
-                  <CheckCircle size={14} className="shrink-0 text-emerald-600" />
+                  <CheckCircle
+                    size={14}
+                    className="shrink-0 text-emerald-600"
+                  />
                 )}
                 <span className="truncate">{mensagemStatus}</span>
               </div>
@@ -1597,17 +1744,18 @@ export const PdvPage: React.FC = () => {
               onClick={() => {
                 if (itens.length === 0) {
                   toast({
-                    title: 'Venda vazia',
-                    description: 'Insira pelo menos um produto antes de finalizar.',
-                    variant: 'destructive',
-                  })
-                  return
+                    title: "Venda vazia",
+                    description:
+                      "Insira pelo menos um produto antes de finalizar.",
+                    variant: "destructive",
+                  });
+                  return;
                 }
                 if (!sessaoCaixa) {
-                  setModalAbrirCaixaAberto(true)
-                  return
+                  setModalAbrirCaixaAberto(true);
+                  return;
                 }
-                setModalPagamentoAberto(true)
+                setModalPagamentoAberto(true);
               }}
               disabled={itens.length === 0 || !online}
               className="col-span-2 h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-600/30 disabled:bg-emerald-100 disabled:text-slate-400 transition-all"
@@ -1652,7 +1800,9 @@ export const PdvPage: React.FC = () => {
                 disabled={itens.length === 0}
                 className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 disabled:opacity-40"
               >
-                <span className="font-semibold text-left">Alterar Qtd Item</span>
+                <span className="font-semibold text-left">
+                  Alterar Qtd Item
+                </span>
                 <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">
                   F4
                 </span>
@@ -1699,7 +1849,9 @@ export const PdvPage: React.FC = () => {
                 disabled={itens.length === 0}
                 className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 disabled:opacity-40"
               >
-                <span className="font-semibold text-left text-red-600">Cancelar Item</span>
+                <span className="font-semibold text-left text-red-600">
+                  Cancelar Item
+                </span>
                 <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 text-[10px]">
                   F8
                 </span>
@@ -1708,8 +1860,8 @@ export const PdvPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  if (!sessaoCaixa) setModalAbrirCaixaAberto(true)
-                  else setModalSangriaAberto(true)
+                  if (!sessaoCaixa) setModalAbrirCaixaAberto(true);
+                  else setModalSangriaAberto(true);
                 }}
                 className="flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700"
               >
@@ -1736,25 +1888,25 @@ export const PdvPage: React.FC = () => {
                   Venda em Andamento Recuperada
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Existe um rascunho com {rascunhoPendente.itens.length} itens salvo neste
-                  navegador.
+                  Existe um rascunho com {rascunhoPendente.itens.length} itens
+                  salvo neste navegador.
                 </p>
               </div>
             </div>
 
             <p className="text-xs text-slate-600">
-              Deseja continuar atendendo a venda anterior ou prefere descartar e iniciar uma nova
-              venda em branco?
+              Deseja continuar atendendo a venda anterior ou prefere descartar e
+              iniciar uma nova venda em branco?
             </p>
 
             <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => {
-                  limparRascunhoPDV()
-                  setRascunhoPendente(null)
-                  setModalPerguntaRascunhoAberto(false)
-                  focarLeitor()
+                  limparRascunhoPDV();
+                  setRascunhoPendente(null);
+                  setModalPerguntaRascunhoAberto(false);
+                  focarLeitor();
                 }}
                 className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded text-xs font-semibold"
               >
@@ -1763,13 +1915,13 @@ export const PdvPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setItens(rascunhoPendente.itens)
-                  setDescontoTotal(rascunhoPendente.desconto_total_valor || 0)
-                  setCpfCnpjCupom(rascunhoPendente.cpf_cnpj_consumidor || '')
-                  setModalPerguntaRascunhoAberto(false)
-                  setMensagemStatus('Rascunho recuperado com sucesso.')
-                  setTipoMensagemStatus('sucesso')
-                  focarLeitor()
+                  setItens(rascunhoPendente.itens);
+                  setDescontoTotal(rascunhoPendente.desconto_total_valor || 0);
+                  setCpfCnpjCupom(rascunhoPendente.cpf_cnpj_consumidor || "");
+                  setModalPerguntaRascunhoAberto(false);
+                  setMensagemStatus("Rascunho recuperado com sucesso.");
+                  setTipoMensagemStatus("sucesso");
+                  focarLeitor();
                 }}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold"
               >
@@ -1785,8 +1937,8 @@ export const PdvPage: React.FC = () => {
         <ModalPagamentoPDV
           aberto={modalPagamentoAberto}
           onOpenChange={(ab) => {
-            setModalPagamentoAberto(ab)
-            if (!ab) focarLeitor()
+            setModalPagamentoAberto(ab);
+            if (!ab) focarLeitor();
           }}
           totalVenda={totalVendaFinal}
           cliente={cliente}
@@ -1794,7 +1946,11 @@ export const PdvPage: React.FC = () => {
           contas={contasFinanceiras}
           condicoes={condicoesPagamento}
           contaPadraoCaixaId={terminalAtivo?.conta_financeira_id}
-          empresaId={empresaAtiva?.id || ''}
+          empresaId={empresaAtiva?.id || ""}
+          nomeRecebedorPix={
+            empresaAtiva?.razao_social || empresaAtiva?.nome_fantasia || ""
+          }
+          cidadeRecebedorPix={empresaAtiva?.municipio || ""}
           onConfirmar={handleFinalizarVenda}
         />
       )}
@@ -1804,12 +1960,12 @@ export const PdvPage: React.FC = () => {
         <ModalBuscaProdutoPDV
           aberto={modalBuscaProdutoAberto}
           onOpenChange={(ab) => {
-            setModalBuscaProdutoAberto(ab)
-            if (!ab) focarLeitor()
+            setModalBuscaProdutoAberto(ab);
+            if (!ab) focarLeitor();
           }}
           produtos={produtosCatalogo}
           onSelecionar={(p, qtd) => {
-            adicionarProdutoAoCarrinho(p, qtd)
+            adicionarProdutoAoCarrinho(p, qtd);
           }}
         />
       )}
@@ -1819,15 +1975,15 @@ export const PdvPage: React.FC = () => {
         <ModalClientePDV
           aberto={modalClienteAberto}
           onOpenChange={(ab) => {
-            setModalClienteAberto(ab)
-            if (!ab) focarLeitor()
+            setModalClienteAberto(ab);
+            if (!ab) focarLeitor();
           }}
           clienteAtual={cliente}
           cpfCnpjAtual={cpfCnpjCupom}
           onConfirmar={(c, cpf) => {
-            setCliente(c)
-            setCpfCnpjCupom(cpf)
-            focarLeitor()
+            setCliente(c);
+            setCpfCnpjCupom(cpf);
+            focarLeitor();
           }}
         />
       )}
@@ -1837,14 +1993,14 @@ export const PdvPage: React.FC = () => {
         <ModalVendedorPDV
           aberto={modalVendedorAberto}
           onOpenChange={(ab) => {
-            setModalVendedorAberto(ab)
-            if (!ab) focarLeitor()
+            setModalVendedorAberto(ab);
+            if (!ab) focarLeitor();
           }}
           vendedorAtualId={vendedor?.id}
-          empresaId={empresaAtiva?.id || ''}
+          empresaId={empresaAtiva?.id || ""}
           onConfirmar={(v) => {
-            setVendedor(v)
-            focarLeitor()
+            setVendedor(v);
+            focarLeitor();
           }}
         />
       )}
@@ -1854,8 +2010,8 @@ export const PdvPage: React.FC = () => {
         <ModalQuantidadeItemPDV
           aberto={modalQtdItemAberto}
           onOpenChange={(ab) => {
-            setModalQtdItemAberto(ab)
-            if (!ab) focarLeitor()
+            setModalQtdItemAberto(ab);
+            if (!ab) focarLeitor();
           }}
           itemDescricao={ultimoItem.descricao}
           quantidadeAtual={ultimoItem.quantidade}
@@ -1868,8 +2024,8 @@ export const PdvPage: React.FC = () => {
         <ModalDescontoItemPDV
           aberto={modalDescontoItemAberto}
           onOpenChange={(ab) => {
-            setModalDescontoItemAberto(ab)
-            if (!ab) focarLeitor()
+            setModalDescontoItemAberto(ab);
+            if (!ab) focarLeitor();
           }}
           itemDescricao={ultimoItem.descricao}
           valorTotalItem={ultimoItem.valor_total}
@@ -1884,8 +2040,8 @@ export const PdvPage: React.FC = () => {
         <ModalDescontoTotalPDV
           aberto={modalDescontoTotalAberto}
           onOpenChange={(ab) => {
-            setModalDescontoTotalAberto(ab)
-            if (!ab) focarLeitor()
+            setModalDescontoTotalAberto(ab);
+            if (!ab) focarLeitor();
           }}
           subtotalVenda={subtotalItens}
           descontoAtual={descontoTotal}
@@ -1898,8 +2054,8 @@ export const PdvPage: React.FC = () => {
         <ModalCancelarItemPDV
           aberto={modalCancelarItemAberto}
           onOpenChange={(ab) => {
-            setModalCancelarItemAberto(ab)
-            if (!ab) focarLeitor()
+            setModalCancelarItemAberto(ab);
+            if (!ab) focarLeitor();
           }}
           totalItens={itens.length}
           onConfirmar={handleConfirmarCancelarItem}
@@ -1916,7 +2072,9 @@ export const PdvPage: React.FC = () => {
                   <CheckCircle size={24} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-800">NFC-e Autorizada!</h3>
+                  <h3 className="text-base font-bold text-slate-800">
+                    NFC-e Autorizada!
+                  </h3>
                   <p className="text-xs text-slate-500">
                     Envie o cupom ao cliente ou imprima de novo.
                   </p>
@@ -1937,14 +2095,22 @@ export const PdvPage: React.FC = () => {
               <span className="text-slate-500 font-semibold">Loja:</span>
               <span
                 className="text-slate-800 font-bold truncate"
-                title={empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || ''}
+                title={
+                  empresaAtiva?.nome_fantasia ||
+                  empresaAtiva?.razao_social ||
+                  ""
+                }
               >
-                {empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || '—'}
+                {empresaAtiva?.nome_fantasia ||
+                  empresaAtiva?.razao_social ||
+                  "—"}
               </span>
               <span className="text-slate-500 font-semibold">Total:</span>
               <span className="text-slate-800 font-bold font-mono">
-                R${' '}
-                {dadosEnvioCupom.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                R${" "}
+                {dadosEnvioCupom.valorTotal.toLocaleString("pt-BR", {
+                  minimumFractionDigits: 2,
+                })}
               </span>
               <span className="text-slate-500 font-semibold">Pagamento:</span>
               <span
@@ -1967,7 +2133,11 @@ export const PdvPage: React.FC = () => {
             </div>
 
             <EnviarDocumentoFiscal
-              nomeLoja={empresaAtiva?.nome_fantasia || empresaAtiva?.razao_social || 'Loja'}
+              nomeLoja={
+                empresaAtiva?.nome_fantasia ||
+                empresaAtiva?.razao_social ||
+                "Loja"
+              }
               numero={dadosEnvioCupom.numero}
               serie={dadosEnvioCupom.serie}
               chave={dadosEnvioCupom.chave}
@@ -1980,28 +2150,32 @@ export const PdvPage: React.FC = () => {
               emailCliente={dadosEnvioCupom.emailCliente}
               permitirSalvarNoCliente={Boolean(clienteParaSalvarContato)}
               onSalvarContato={async (celular, email) => {
-                const alvo = clienteAtualizadoParaContato || clienteParaSalvarContato
-                if (!alvo) return
+                const alvo =
+                  clienteAtualizadoParaContato || clienteParaSalvarContato;
+                if (!alvo) return;
                 try {
                   const atualizado = await salvarCliente({
                     ...alvo,
                     celular,
                     email,
-                  })
-                  setClienteAtualizadoParaContato(atualizado)
-                  toast({ title: 'Contato salvo no cadastro do cliente' })
+                  });
+                  setClienteAtualizadoParaContato(atualizado);
+                  toast({ title: "Contato salvo no cadastro do cliente" });
                 } catch (err) {
-                  console.error('Erro ao salvar contato no cliente:', err)
+                  console.error("Erro ao salvar contato no cliente:", err);
                   toast({
-                    title: 'Não foi possível salvar o contato',
-                    description: err instanceof Error ? err.message : 'Erro ao salvar cliente.',
-                    variant: 'destructive',
-                  })
+                    title: "Não foi possível salvar o contato",
+                    description:
+                      err instanceof Error
+                        ? err.message
+                        : "Erro ao salvar cliente.",
+                    variant: "destructive",
+                  });
                 }
               }}
               onImprimir={() => {
                 if (dadosEnvioCupom.urlImpressao) {
-                  imprimirDanfeUrl(dadosEnvioCupom.urlImpressao)
+                  imprimirDanfeUrl(dadosEnvioCupom.urlImpressao);
                 }
               }}
             />
@@ -2026,9 +2200,9 @@ export const PdvPage: React.FC = () => {
           onOpenChange={setModalAbrirCaixaAberto}
           empresaId={empresaAtiva.id}
           onSucesso={() => {
-            setModalAbrirCaixaAberto(false)
-            carregarDadosIniciais()
-            focarLeitor()
+            setModalAbrirCaixaAberto(false);
+            carregarDadosIniciais();
+            focarLeitor();
           }}
         />
       )}
@@ -2040,11 +2214,13 @@ export const PdvPage: React.FC = () => {
           onOpenChange={setModalFecharCaixaAberto}
           sessao={sessaoCaixa}
           empresaId={empresaAtiva.id}
-          empresaNome={empresaAtiva.nome_fantasia || empresaAtiva.razao_social || ''}
+          empresaNome={
+            empresaAtiva.nome_fantasia || empresaAtiva.razao_social || ""
+          }
           onSucesso={() => {
-            setModalFecharCaixaAberto(false)
-            setSessaoCaixa(null)
-            carregarDadosIniciais()
+            setModalFecharCaixaAberto(false);
+            setSessaoCaixa(null);
+            carregarDadosIniciais();
           }}
         />
       )}
@@ -2055,11 +2231,11 @@ export const PdvPage: React.FC = () => {
           open={modalSangriaAberto}
           onOpenChange={setModalSangriaAberto}
           sessao={sessaoCaixa}
-          empresaNome={empresaAtiva?.razao_social || ''}
+          empresaNome={empresaAtiva?.razao_social || ""}
           onSucesso={() => {
-            setModalSangriaAberto(false)
-            carregarDadosIniciais()
-            focarLeitor()
+            setModalSangriaAberto(false);
+            carregarDadosIniciais();
+            focarLeitor();
           }}
         />
       )}
@@ -2071,9 +2247,9 @@ export const PdvPage: React.FC = () => {
           onOpenChange={setModalSuprimentoAberto}
           sessao={sessaoCaixa}
           onSucesso={() => {
-            setModalSuprimentoAberto(false)
-            carregarDadosIniciais()
-            focarLeitor()
+            setModalSuprimentoAberto(false);
+            carregarDadosIniciais();
+            focarLeitor();
           }}
         />
       )}
@@ -2089,10 +2265,13 @@ export const PdvPage: React.FC = () => {
               <div className="flex-1 min-w-0">
                 {dadosRejeicaoNfce.erroInterno ? (
                   <>
-                    <h3 className="text-base font-bold text-red-600">Erro interno do ERP</h3>
+                    <h3 className="text-base font-bold text-red-600">
+                      Erro interno do ERP
+                    </h3>
                     <p className="text-xs text-slate-600 mt-1">
-                      A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com sucesso no caixa,
-                      mas houve uma falha interna na emissão da nota (não chegou à SEFAZ).
+                      A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com
+                      sucesso no caixa, mas houve uma falha interna na emissão
+                      da nota (não chegou à SEFAZ).
                     </p>
                   </>
                 ) : (
@@ -2101,8 +2280,9 @@ export const PdvPage: React.FC = () => {
                       NFC-e Rejeitada pela SEFAZ
                     </h3>
                     <p className="text-xs text-slate-600 mt-1">
-                      A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com sucesso no caixa,
-                      mas a emissão da nota fiscal foi rejeitada pela SEFAZ.
+                      A venda #{dadosRejeicaoNfce.numeroVenda} foi concluída com
+                      sucesso no caixa, mas a emissão da nota fiscal foi
+                      rejeitada pela SEFAZ.
                     </p>
                   </>
                 )}
@@ -2117,17 +2297,18 @@ export const PdvPage: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-500">
-              Você pode tentar reenviar a mesma nota agora ou fechar este aviso para continuar
-              atendendo os clientes. A venda ficará com status "Rejeitada" no monitor fiscal.
+              Você pode tentar reenviar a mesma nota agora ou fechar este aviso
+              para continuar atendendo os clientes. A venda ficará com status
+              "Rejeitada" no monitor fiscal.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200">
               <button
                 type="button"
                 onClick={() => {
-                  setModalRejeicaoNfceAberto(false)
-                  setDadosRejeicaoNfce(null)
-                  focarLeitor()
+                  setModalRejeicaoNfceAberto(false);
+                  setDadosRejeicaoNfce(null);
+                  focarLeitor();
                 }}
                 className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold"
               >
@@ -2152,14 +2333,19 @@ export const PdvPage: React.FC = () => {
                 onClick={() => tentarNfceNovamente(false)}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
               >
-                <RefreshCw size={14} className={reemitindoNfce ? 'animate-spin' : ''} />
-                <span>{reemitindoNfce ? 'Transmitindo...' : 'Tentar de novo'}</span>
+                <RefreshCw
+                  size={14}
+                  className={reemitindoNfce ? "animate-spin" : ""}
+                />
+                <span>
+                  {reemitindoNfce ? "Transmitindo..." : "Tentar de novo"}
+                </span>
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  )
-}
-export default PdvPage
+  );
+};
+export default PdvPage;
