@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Produto, listarProdutos } from '@/services/produtos'
 import pb from '@/lib/pocketbase/client'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
+import { AvisoProdutoInativo } from '@/components/AvisoProdutoInativo'
 
 export interface BuscaProdutoGtinProps {
   onSelecionarProduto: (produto: Produto, quantidade?: number) => void
@@ -35,6 +36,8 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
   const [sugestoes, setSugestoes] = useState<Produto[]>([])
   const [menuAberto, setMenuAberto] = useState(false)
   const [aviso, setAviso] = useState('')
+  // Termo cuja busca terminou sem nenhum produto ativo (mostra aviso de inativo)
+  const [termoSemResultado, setTermoSemResultado] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const assinanteId = useAssinanteId()
@@ -60,6 +63,7 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
   useEffect(() => {
     const q = termo.trim()
     setAviso('')
+    setTermoSemResultado('')
     if (q.length < 2) {
       setSugestoes([])
       setMenuAberto(false)
@@ -81,6 +85,7 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
           : res.items
         setSugestoes(filtrados)
         setMenuAberto(true)
+        if (filtrados.length === 0) setTermoSemResultado(q)
       } catch (err) {
         console.error('Erro na busca de produtos:', err)
       } finally {
@@ -140,29 +145,10 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
           encontrado = sugestoes[0]
         }
 
-        // Não achou entre os ativos: verifica se existe INATIVO (ex.: suspenso na importação)
+        // Não achou entre os ativos: o aviso abaixo procura cadastro INATIVO (com Reativar)
         if (!encontrado) {
-          let msg = `Nenhum produto encontrado com "${codigoLimpo}".`
-          try {
-            const t = codigoLimpo.replace(/['"\\]/g, '')
-            const partes = [`gtin = '${t}'`, `gtin_tributavel = '${t}'`, `referencia = '${t}'`]
-            if (/^\d+$/.test(t) && t.length <= 9) partes.push(`codigo = ${parseInt(t, 10)}`)
-            const filtroInativo =
-              '(' +
-              partes.join(' || ') +
-              ') && ativo = false' +
-              (assinanteId ? ` && assinante_id = '${assinanteId}'` : '')
-            const inativo = await pb
-              .collection('produtos')
-              .getList<Produto>(1, 1, { filter: filtroInativo })
-            if (inativo.items.length > 0) {
-              const pi = inativo.items[0]
-              msg = `O produto #${pi.codigo} ${pi.descricao} está INATIVO. Ative-o no cadastro de produtos para poder usar.`
-            }
-          } catch {
-            /* intentionally ignored */
-          }
-          setAviso(msg)
+          setAviso(`Nenhum produto ativo encontrado com "${codigoLimpo}".`)
+          setTermoSemResultado(codigoLimpo)
           setMenuAberto(false)
         }
 
@@ -232,9 +218,24 @@ export const BuscaProdutoGtin: React.FC<BuscaProdutoGtinProps> = ({
         </div>
       </div>
 
-      {aviso && (
-        <div className="absolute z-50 left-0 right-0 mt-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 shadow">
-          {aviso}
+      {(aviso || termoSemResultado) && !(menuAberto && sugestoes.length > 0) && (
+        <div className="absolute z-50 left-0 right-0 mt-1 space-y-1">
+          {aviso && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 shadow">
+              {aviso}
+            </div>
+          )}
+          {termoSemResultado && (
+            <AvisoProdutoInativo
+              termo={termoSemResultado}
+              className="shadow"
+              onReativado={(p) => {
+                setAviso('')
+                setTermoSemResultado('')
+                handleSelecionarItem(p)
+              }}
+            />
+          )}
         </div>
       )}
 
