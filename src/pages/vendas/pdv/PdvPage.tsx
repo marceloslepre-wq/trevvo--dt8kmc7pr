@@ -86,6 +86,8 @@ import { obterConfigFiscalEmpresa, ConfigEmissaoFiscal } from '@/services/config
 import { emitirNFCeVenda, imprimirDanfeUrl } from '@/services/fiscalIntegracao'
 import { salvarCliente } from '@/services/clientes'
 import { EnviarDocumentoFiscal } from '@/components/fiscal/EnviarDocumentoFiscal'
+import { AvisoProdutoInativo } from '@/components/AvisoProdutoInativo'
+import { aplicarPrecosDaEmpresa } from '@/services/precosEmpresa'
 
 const MENSAGEM_BLOQUEIO_TROCA_EMPRESA = 'Feche o caixa (ou saia do PDV) para trocar de empresa'
 
@@ -136,6 +138,8 @@ export const PdvPage: React.FC = () => {
   const [entradaLeitor, setEntradaLeitor] = useState('')
   const inputLeitorRef = useRef<HTMLInputElement>(null)
   const [mensagemStatus, setMensagemStatus] = useState<string | null>(null)
+  // Código lido que não achou produto ativo: o aviso procura cadastro inativo (Reativar)
+  const [termoInativoPdv, setTermoInativoPdv] = useState('')
   const [tipoMensagemStatus, setTipoMensagemStatus] = useState<'info' | 'erro' | 'sucesso'>('info')
 
   // Relógio Topo
@@ -507,6 +511,20 @@ export const PdvPage: React.FC = () => {
     [itens.length, focarLeitor, sessaoCaixa],
   )
 
+  // Produto reativado pelo aviso de inativo: aplica o preço da loja e põe no catálogo do PDV
+  const incluirProdutoReativadoNoPdv = async (produto: Produto): Promise<Produto> => {
+    let comPreco = produto
+    try {
+      const [p] = await aplicarPrecosDaEmpresa([produto], empresaAtiva?.id)
+      if (p) comPreco = p
+    } catch {
+      /* usa o preço geral */
+    }
+    atualizarProdutoNoCachePDV(comPreco, empresaAtiva?.id)
+    setProdutosCatalogo((prev) => [comPreco, ...prev.filter((x) => x.id !== comPreco.id)])
+    return comPreco
+  }
+
   // Leitura do campo principal (Enter) — busca na lista em memória e, se não achar,
   // consulta o servidor antes de reportar "não localizado" (cobrindo produto
   // criado/alterado depois da abertura do PDV).
@@ -516,6 +534,7 @@ export const PdvPage: React.FC = () => {
     if (!entrada) return
 
     setEntradaLeitor('')
+    setTermoInativoPdv('')
 
     const res = interpretarEntradaPDV(entrada, produtosCatalogo, configVendas)
 
@@ -565,6 +584,7 @@ export const PdvPage: React.FC = () => {
       }
       setMensagemStatus(res.mensagemErro || 'Código não identificado.')
       setTipoMensagemStatus('erro')
+      if (termoConsulta) setTermoInativoPdv(termoConsulta)
       focarLeitor()
       return
     }
@@ -1587,6 +1607,17 @@ export const PdvPage: React.FC = () => {
                 <span className="truncate">{mensagemStatus}</span>
               </div>
             )}
+            {termoInativoPdv && (
+              <AvisoProdutoInativo
+                termo={termoInativoPdv}
+                className="mt-2"
+                onReativado={async (p) => {
+                  setTermoInativoPdv('')
+                  const comPreco = await incluirProdutoReativadoNoPdv(p)
+                  adicionarProdutoAoCarrinho(comPreco, 1)
+                }}
+              />
+            )}
           </div>
 
           {/* BOTÕES GRANDES DE FINALIZAR E CANCELAR — logo abaixo do campo de código, sempre visíveis */}
@@ -1822,6 +1853,7 @@ export const PdvPage: React.FC = () => {
           onSelecionar={(p, qtd) => {
             adicionarProdutoAoCarrinho(p, qtd)
           }}
+          onProdutoReativado={incluirProdutoReativadoNoPdv}
         />
       )}
 

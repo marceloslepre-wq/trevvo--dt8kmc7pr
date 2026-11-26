@@ -10,12 +10,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Search, Loader2 } from 'lucide-react'
 import type { Produto } from '@/services/produtos'
+import { AvisoProdutoInativo } from '@/components/AvisoProdutoInativo'
 
 interface ModalBuscaProdutoPDVProps {
   aberto: boolean
   onOpenChange: (aberto: boolean) => void
   produtos: Produto[]
   onSelecionar: (produto: Produto, quantidade: number) => void
+  /** Produto reativado pelo aviso de inativo; devolve o produto com o preço da loja */
+  onProdutoReativado?: (produto: Produto) => Promise<Produto>
 }
 
 export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
@@ -23,6 +26,7 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
   onOpenChange,
   produtos,
   onSelecionar,
+  onProdutoReativado,
 }) => {
   const [busca, setBusca] = useState('')
   const [qtd, setQtd] = useState(1)
@@ -140,6 +144,17 @@ export const ModalBuscaProdutoPDV: React.FC<ModalBuscaProdutoPDVProps> = ({
             {filtrados.length === 0 ? (
               <div className="p-8 text-center text-slate-500 text-xs">
                 Nenhum produto localizado com o termo informado.
+                {busca.trim().length >= 2 && (
+                  <AvisoProdutoInativo
+                    termo={busca}
+                    className="mt-3 text-left"
+                    onReativado={async (p) => {
+                      const comPreco = onProdutoReativado ? await onProdutoReativado(p) : p
+                      onSelecionar(comPreco, qtd > 0 ? qtd : 1)
+                      onOpenChange(false)
+                    }}
+                  />
+                )}
               </div>
             ) : (
               filtrados.map((p, idx) => {

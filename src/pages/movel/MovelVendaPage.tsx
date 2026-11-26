@@ -44,6 +44,7 @@ import TelaResultadoVendaMovel from './TelaResultadoVendaMovel'
 import TelaEnvioCupomMovel from './TelaEnvioCupomMovel'
 import TelaFecharCaixaMovel from './TelaFecharCaixaMovel'
 import { imprimirDanfeUrl } from '@/services/fiscalIntegracao'
+import { AvisoProdutoInativo } from '@/components/AvisoProdutoInativo'
 
 /** Item do carrinho do Móvel (mesma forma da parte 1). */
 type ItemCarrinho = ItemCarrinhoMovel
@@ -79,6 +80,8 @@ export default function MovelVendaPage() {
   // ---- Busca (igual à de /movel/consulta) ----
   const [termo, setTermo] = useState('')
   const [resultados, setResultados] = useState<Produto[]>([])
+  // Termo cuja busca não achou produto ativo (aviso de inativo com Reativar)
+  const [termoSemResultado, setTermoSemResultado] = useState('')
   const [buscando, setBuscando] = useState(false)
   const [erroBusca, setErroBusca] = useState<string | null>(null)
   const [avisoCamera, setAvisoCamera] = useState<string | null>(null)
@@ -174,6 +177,7 @@ export default function MovelVendaPage() {
       const bus = texto.trim()
       if (!bus) {
         setResultados([])
+        setTermoSemResultado('')
         setErroBusca(null)
         return
       }
@@ -196,6 +200,7 @@ export default function MovelVendaPage() {
         const comPrecos = await aplicarPrecosDaEmpresa(res.items, empresaAtiva?.id)
         if (seq !== seqBuscaRef.current || !montadoRef.current) return
         setResultados(comPrecos)
+        setTermoSemResultado(comPrecos.length === 0 ? bus : '')
       } catch {
         if (seq === seqBuscaRef.current && montadoRef.current) {
           setResultados([])
@@ -536,6 +541,26 @@ export default function MovelVendaPage() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {termoSemResultado && resultados.length === 0 && (
+              <AvisoProdutoInativo
+                termo={termoSemResultado}
+                className="text-xs"
+                onReativado={async (p) => {
+                  let comPreco = p
+                  try {
+                    const [pp] = await aplicarPrecosDaEmpresa([p], empresaAtiva?.id)
+                    if (pp) comPreco = pp
+                  } catch {
+                    /* usa o preço geral */
+                  }
+                  adicionarProduto(comPreco, 1)
+                  setTermo('')
+                  setTermoSemResultado('')
+                  setResultados([])
+                }}
+              />
             )}
 
             {resultados.length > 0 && (
