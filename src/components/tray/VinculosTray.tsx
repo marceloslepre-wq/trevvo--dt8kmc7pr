@@ -50,6 +50,7 @@ interface Vinculo {
   anuncio_id: string
   variacao_id: string
   unidades: number
+  preco_anuncio?: number
 }
 
 interface Pendente {
@@ -59,6 +60,8 @@ interface Pendente {
   vinculoId?: string
   produtoCodigo: string
   unidades: string
+  /** Preço fixo do anúncio (caixa/kit); vazio = preço da loja x unidades */
+  precoAnuncio: string
   precoTrevvo?: number
   salvando?: boolean
   salvo?: boolean
@@ -116,7 +119,7 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
 
     const vinculos = await pb.collection('produtos_vinculos_anuncios').getFullList<Vinculo>({
       filter: `empresa_id = '${empresaId}' && marketplace = '${MARKETPLACE}'`,
-      fields: 'id,produto_id,anuncio_id,variacao_id,unidades',
+      fields: 'id,produto_id,anuncio_id,variacao_id,unidades,preco_anuncio',
       batch: 1000,
       requestKey: null,
     })
@@ -187,19 +190,32 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
               motivo: 'sem_vinculo',
               produtoCodigo: '',
               unidades: '1',
+              precoAnuncio: '',
             })
             continue
           }
           const prod = porId.get(vinc.produto_id)
           const unid = vinc.unidades > 0 ? vinc.unidades : 1
-          if (prod && prod.preco_venda > 0 && unid === 1 && l.preco > prod.preco_venda * 3) {
+          if (
+            prod &&
+            prod.preco_venda > 0 &&
+            unid === 1 &&
+            !(vinc.preco_anuncio && vinc.preco_anuncio > 0) &&
+            l.preco > prod.preco_venda * 3
+          ) {
+            // Quantidade da caixa pelo nome (C/100, 100UN, X 50); senão fica para preencher
+            const m =
+              /C\/?\s*(\d{2,4})\b/i.exec(l.nome) ||
+              /(\d{2,4})\s*UN/i.exec(l.nome) ||
+              /X\s*(\d{2,4})\b/i.exec(l.nome)
             novosPendentes.push({
               chave,
               linha: l,
               motivo: 'unidades',
               vinculoId: vinc.id,
               produtoCodigo: String(prod.codigo),
-              unidades: String(Math.round(l.preco / prod.preco_venda)),
+              unidades: m ? m[1] : '',
+              precoAnuncio: String(l.preco || ''),
               precoTrevvo: prod.preco_venda,
             })
           }
@@ -219,7 +235,11 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
     }
   }
 
-  const alterarPendente = (chave: string, campo: 'produtoCodigo' | 'unidades', valor: string) => {
+  const alterarPendente = (
+    chave: string,
+    campo: 'produtoCodigo' | 'unidades' | 'precoAnuncio',
+    valor: string,
+  ) => {
     setPendentes((lista) =>
       lista.map((p) => (p.chave === chave ? { ...p, [campo]: valor, salvo: false } : p)),
     )
@@ -231,6 +251,15 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
       toast({ title: 'Unidades inválidas', variant: 'destructive' })
       return
     }
+    const txtPreco = p.precoAnuncio.trim()
+    const precoAnuncio = txtPreco
+      ? Number(txtPreco.includes(',') ? txtPreco.replace(/\./g, '').replace(',', '.') : txtPreco)
+      : 0
+    if (!Number.isFinite(precoAnuncio) || precoAnuncio < 0) {
+      toast({ title: 'Preço do anúncio inválido', variant: 'destructive' })
+      return
+    }
+    const preco_anuncio = Math.round(precoAnuncio * 100) / 100
     const prod = produtosRef.current.porCodigo.get(Number(p.produtoCodigo))
     if (!prod) {
       toast({
@@ -244,7 +273,11 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
       if (p.vinculoId) {
         await pb
           .collection('produtos_vinculos_anuncios')
-          .update(p.vinculoId, { produto_id: prod.id, unidades }, { requestKey: null })
+          .update(
+            p.vinculoId,
+            { produto_id: prod.id, unidades, preco_anuncio },
+            { requestKey: null },
+          )
       } else {
         const criado = await pb.collection('produtos_vinculos_anuncios').create<Vinculo>(
           {
@@ -259,6 +292,7 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
               300,
             ),
             unidades,
+            preco_anuncio,
           },
           { requestKey: null },
         )
@@ -357,6 +391,7 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
                     <TableHead className="text-[11px] text-right">Preço Tray</TableHead>
                     <TableHead className="text-[11px] w-28">Cód. Trevvo</TableHead>
                     <TableHead className="text-[11px] w-20">Unidades</TableHead>
+                    <TableHead className="text-[11px] w-24">Preço anúncio</TableHead>
                     <TableHead className="w-20" />
                   </TableRow>
                 </TableHeader>
@@ -401,6 +436,16 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
                           onChange={(e) => alterarPendente(p.chave, 'unidades', e.target.value)}
                           className="h-7 text-[11px]"
                           inputMode="numeric"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={p.precoAnuncio}
+                          placeholder="loja x un."
+                          title="Preço fixo do anúncio (caixa/kit). Vazio = preço da loja x unidades"
+                          onChange={(e) => alterarPendente(p.chave, 'precoAnuncio', e.target.value)}
+                          className="h-7 text-[11px]"
+                          inputMode="decimal"
                         />
                       </TableCell>
                       <TableCell>

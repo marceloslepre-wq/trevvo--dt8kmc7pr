@@ -27,7 +27,8 @@ import { conferirProdutosTray, mensagemErroTray } from '@/services/tray'
  *  - estoque = saldo da loja conectada + saldos NEGATIVOS das lojas marcadas (ex.: loja física
  *    que vende sem estoque e é reposta no fim do dia), dividido pelas unidades do anúncio
  *    (kit/caixa), arredondado para baixo, nunca menor que zero;
- *  - preço = preço próprio da loja conectada (ou o preço geral) x unidades do anúncio;
+ *  - preço = preço fixo do anúncio (caixa/kit), se houver; senão preço próprio da loja
+ *    conectada (ou o preço geral) x unidades do anúncio;
  *  - produto inativo no Trevvo = estoque 0.
  */
 
@@ -107,9 +108,10 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
           anuncio_id: string
           variacao_id: string
           unidades: number
+          preco_anuncio?: number
         }>({
           filter: `empresa_id = '${empresaId}' && marketplace = 'tray'`,
-          fields: 'produto_id,anuncio_id,variacao_id,unidades',
+          fields: 'produto_id,anuncio_id,variacao_id,unidades,preco_anuncio',
           batch: 1000,
           requestKey: null,
         }),
@@ -177,7 +179,10 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
           const saldo = prod.ativo ? saldoBase.get(prod.id) || 0 : 0
           const estoque = Math.max(0, Math.floor(saldo / unidades))
           const precoUnit = precoLoja.get(prod.id) ?? (Number(prod.preco_venda) || 0)
-          const preco = Math.round(precoUnit * unidades * 100) / 100
+          const preco =
+            v.preco_anuncio && v.preco_anuncio > 0
+              ? Math.round(v.preco_anuncio * 100) / 100
+              : Math.round(precoUnit * unidades * 100) / 100
           const difEstoque = estoque !== Math.floor(l.estoque || 0)
           const difPreco = Math.abs(preco - (l.preco || 0)) >= 0.005
           novas.push({
@@ -297,8 +302,8 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
         <CardDescription className="text-xs">
           Calcula, para cada anúncio vinculado, o estoque e o preço que o Trevvo enviaria e compara
           com o que está na Tray agora. Não grava nada. Estoque = saldo desta loja (somado aos
-          saldos negativos das lojas marcadas) ÷ unidades do anúncio. Preço = preço desta loja x
-          unidades.
+          saldos negativos das lojas marcadas) ÷ unidades do anúncio. Preço = preço fixo do anúncio
+          (caixa/kit) ou preço desta loja x unidades.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-xs">
