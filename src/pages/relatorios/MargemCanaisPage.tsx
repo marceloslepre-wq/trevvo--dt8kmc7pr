@@ -226,7 +226,10 @@ export const MargemCanaisPage: React.FC = () => {
   const sel = 'h-9 rounded-md border border-slate-200 bg-white px-2 text-xs'
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-[1600px] mx-auto notranslate" translate="no">
+    <div
+      className="p-4 sm:p-6 space-y-5 max-w-[1600px] mx-auto notranslate overflow-x-hidden"
+      translate="no"
+    >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <div>
           <div className="flex items-center gap-2">
@@ -274,7 +277,7 @@ export const MargemCanaisPage: React.FC = () => {
           return (
             <Card
               key={r.canal.id}
-              className={`cursor-pointer transition-all ${ativo ? 'ring-2 ring-indigo-400' : 'hover:shadow-sm'}`}
+              className={`cursor-pointer transition-all min-w-0 ${ativo ? 'ring-2 ring-indigo-400' : 'hover:shadow-sm'}`}
               onClick={() => setParam('canal', ativo ? '' : (r.canal.id as string))}
             >
               <CardContent className="p-3 space-y-2">
@@ -414,22 +417,22 @@ export const MargemCanaisPage: React.FC = () => {
           Calculando margens...
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
+        <div className="min-w-0 rounded-xl border border-slate-200 bg-white overflow-hidden">
           <div className="px-3 py-2 text-xs text-slate-500 border-b border-slate-100">
             {filtradas.length} produto(s)
           </div>
-          <table className="w-full text-xs">
+          <table className="w-full table-fixed text-xs">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
-                <th className="text-left p-2 w-16">Código</th>
-                <th className="text-left p-2 min-w-[220px]">Produto</th>
-                <th className="text-right p-2">Custo</th>
+                <th className="text-left p-2 w-14 overflow-hidden">Código</th>
+                <th className="text-left p-2 w-[18%]">Produto</th>
+                <th className="text-right p-2 w-24">Custo</th>
                 {canaisVisiveis.map((c) => (
-                  <th key={c.id} className="text-right p-2 min-w-[150px]">
+                  <th key={c.id} className="text-right p-2 overflow-hidden">
                     {c.nome}
                   </th>
                 ))}
-                {!canalId && <th className="text-right p-2">Vendidos</th>}
+                {!canalId && <th className="text-right p-2 w-14">Vendidos</th>}
               </tr>
             </thead>
             <tbody>
@@ -439,14 +442,16 @@ export const MargemCanaisPage: React.FC = () => {
                   className="border-t border-slate-100 hover:bg-indigo-50/40 cursor-pointer"
                   onClick={() => abrirProduto(l.produto.id)}
                 >
-                  <td className="p-2 font-mono text-slate-500">{l.produto.codigo}</td>
-                  <td className="p-2">
-                    <div className="font-medium text-slate-800">{l.produto.descricao}</div>
+                  <td className="p-2 font-mono text-slate-500 overflow-hidden">
+                    {l.produto.codigo}
+                  </td>
+                  <td className="p-2 overflow-hidden">
+                    <div className="font-medium text-slate-800 truncate">{l.produto.descricao}</div>
                     {!l.produto.ativo && (
                       <span className="text-[10px] text-slate-400">inativo</span>
                     )}
                   </td>
-                  <td className="p-2 text-right whitespace-nowrap">
+                  <td className="p-2 text-right overflow-hidden">
                     {l.semCusto ? (
                       <span className="text-amber-700 font-semibold">sem custo</span>
                     ) : (
@@ -465,19 +470,21 @@ export const MargemCanaisPage: React.FC = () => {
                     const cel = l.celulas[c.id as string]
                     if (!cel || cel.r.preco <= 0)
                       return (
-                        <td key={c.id} className="p-2 text-right text-slate-300">
+                        <td key={c.id} className="p-2 text-right text-slate-300 overflow-hidden">
                           sem preço
                         </td>
                       )
                     return (
-                      <td key={c.id} className="p-2 text-right whitespace-nowrap">
-                        <div className={cel.temDados ? 'text-slate-800' : 'text-slate-400'}>
+                      <td key={c.id} className="p-2 text-right overflow-hidden">
+                        <div
+                          className={`truncate ${cel.temDados ? 'text-slate-800' : 'text-slate-400'}`}
+                        >
                           {brl(cel.r.preco)}
                           {cel.r.recebidoInformado && (
                             <span className="text-slate-400"> → {brl(cel.r.recebido)}</span>
                           )}
                         </div>
-                        <div className="mt-0.5 flex items-center justify-end gap-1.5">
+                        <div className="mt-0.5 flex items-center justify-end gap-1">
                           {cel.unidades > 0 && (
                             <span
                               className="text-[10px] text-slate-500"
@@ -501,7 +508,9 @@ export const MargemCanaisPage: React.FC = () => {
                     )
                   })}
                   {!canalId && (
-                    <td className="p-2 text-right">{l.unidadesTotal > 0 ? l.unidadesTotal : ''}</td>
+                    <td className="p-2 text-right overflow-hidden">
+                      {l.unidadesTotal > 0 ? l.unidadesTotal : ''}
+                    </td>
                   )}
                 </tr>
               ))}
