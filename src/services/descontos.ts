@@ -23,6 +23,7 @@ export interface ResultadoValidacaoDesconto {
  * - O limite do produto vem de `produto.permite_desconto` e `produto.desconto_maximo_percentual`.
  * - Se `produto.permite_desconto === false`, o produto NÃO aceita desconto (limite = 0%).
  * - Caso aceite, vale o MENOR dos dois limites (`Math.min(limiteUsuario, limiteProduto)`).
+ * - Limite do produto 0 ou vazio = sem limite próprio (vale só o do usuário).
  * - Descontos acima do limite apurado exigem "Autorização de supervisor".
  */
 export function validarDescontoItem({
@@ -52,12 +53,10 @@ export function validarDescontoItem({
   }
 
   // 3. Apura limite do produto
-  const limiteProd =
-    produto.desconto_maximo_percentual !== undefined &&
-    produto.desconto_maximo_percentual !== null &&
-    !isNaN(Number(produto.desconto_maximo_percentual))
-      ? Number(produto.desconto_maximo_percentual)
-      : 100 // se não especificado no produto, 100%
+  // 0 ou vazio = produto sem limite próprio (vale só o limite do usuário).
+  // Os produtos importados vieram com 0, o que travava qualquer desconto.
+  const limiteProdNum = Number(produto.desconto_maximo_percentual)
+  const limiteProd = !isNaN(limiteProdNum) && limiteProdNum > 0 ? limiteProdNum : 100
 
   // 4. Apura limite do usuário
   const limiteUser =
