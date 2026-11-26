@@ -72,7 +72,13 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
   const pararRef = useRef(false)
   const [lidos, setLidos] = useState(0)
   const [total, setTotal] = useState(0)
-  const [resumo, setResumo] = useState({ anuncios: 0, criados: 0, existentes: 0, falhas: 0 })
+  const [resumo, setResumo] = useState({
+    anuncios: 0,
+    criados: 0,
+    existentes: 0,
+    falhas: 0,
+    inativos: 0,
+  })
   const [pendentes, setPendentes] = useState<Pendente[]>([])
   const [filtro, setFiltro] = useState<'todos' | 'sem_vinculo' | 'unidades'>('todos')
   const produtosRef = useRef<{
@@ -126,7 +132,7 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
     setLidos(0)
     setTotal(0)
     setPendentes([])
-    const r = { anuncios: 0, criados: 0, existentes: 0, falhas: 0 }
+    const r = { anuncios: 0, criados: 0, existentes: 0, falhas: 0, inativos: 0 }
     setResumo({ ...r })
     try {
       const vinculos = await carregarBase()
@@ -138,6 +144,11 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
         setLidos((n) => n + resp.produtos_nesta_pagina)
         const novosPendentes: Pendente[] = []
         for (const l of resp.linhas) {
+          // Anúncio inativo na Tray (a Tray não deixa excluir, só inativar): ignorado
+          if (!l.ativo_na_tray) {
+            r.inativos++
+            continue
+          }
           r.anuncios++
           const chave = chaveDe(l.produto_id, l.variacao_id)
           let vinc = vinculos.get(chave)
@@ -286,7 +297,8 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
         <CardDescription className="text-xs">
           Liga cada anúncio da Tray (e cada variação) a um produto do Trevvo, com quantas unidades o
           anúncio vende. É a base do envio de estoque e preço e da entrada de pedidos. Grava só no
-          Trevvo; nada é enviado para a Tray. Vínculos já existentes não são trocados.
+          Trevvo; nada é enviado para a Tray. Vínculos já existentes não são trocados. Anúncios
+          inativos na Tray são ignorados.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-xs">
@@ -308,6 +320,7 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
               {lidos} de {total || '?'} produtos lidos · {resumo.anuncios} anúncios ·{' '}
               {resumo.criados} vínculos criados · {resumo.existentes} já existiam
               {resumo.falhas ? ` · ${resumo.falhas} falhas` : ''}
+              {resumo.inativos ? ` · ${resumo.inativos} inativos na Tray ignorados` : ''}
             </span>
           )}
         </div>

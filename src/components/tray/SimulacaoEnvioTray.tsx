@@ -68,6 +68,7 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
   const [lidos, setLidos] = useState(0)
   const [total, setTotal] = useState(0)
   const [linhas, setLinhas] = useState<Linha[]>([])
+  const [inativos, setInativos] = useState(0)
   const [filtro, setFiltro] = useState<Linha['situacao'] | 'todas' | 'diferentes'>('diferentes')
 
   const simular = async () => {
@@ -77,23 +78,22 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
     setLidos(0)
     setTotal(0)
     setLinhas([])
+    setInativos(0)
     try {
       const filtroAss = assinanteId ? `assinante_id = '${assinanteId}'` : ''
       const [produtos, precosLoja, vinculos, saldos] = await Promise.all([
-        pb
-          .collection('produtos')
-          .getFullList<{
-            id: string
-            codigo: number
-            descricao: string
-            preco_venda: number
-            ativo: boolean
-          }>({
-            fields: 'id,codigo,descricao,preco_venda,ativo',
-            filter: filtroAss,
-            batch: 1000,
-            requestKey: null,
-          }),
+        pb.collection('produtos').getFullList<{
+          id: string
+          codigo: number
+          descricao: string
+          preco_venda: number
+          ativo: boolean
+        }>({
+          fields: 'id,codigo,descricao,preco_venda,ativo',
+          filter: filtroAss,
+          batch: 1000,
+          requestKey: null,
+        }),
         pb
           .collection('produtos_precos_empresa')
           .getFullList<{ produto_id: string; preco_venda: number }>({
@@ -102,19 +102,17 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
             batch: 1000,
             requestKey: null,
           }),
-        pb
-          .collection('produtos_vinculos_anuncios')
-          .getFullList<{
-            produto_id: string
-            anuncio_id: string
-            variacao_id: string
-            unidades: number
-          }>({
-            filter: `empresa_id = '${empresaId}' && marketplace = 'tray'`,
-            fields: 'produto_id,anuncio_id,variacao_id,unidades',
-            batch: 1000,
-            requestKey: null,
-          }),
+        pb.collection('produtos_vinculos_anuncios').getFullList<{
+          produto_id: string
+          anuncio_id: string
+          variacao_id: string
+          unidades: number
+        }>({
+          filter: `empresa_id = '${empresaId}' && marketplace = 'tray'`,
+          fields: 'produto_id,anuncio_id,variacao_id,unidades',
+          batch: 1000,
+          requestKey: null,
+        }),
         pb
           .collection('estoque_saldos')
           .getFullList<{ empresa_id: string; produto_id: string; quantidade: number }>({
@@ -150,6 +148,11 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
         setLidos((n) => n + resp.produtos_nesta_pagina)
         const novas: Linha[] = []
         for (const l of resp.linhas) {
+          // Anúncio inativo na Tray não recebe envio
+          if (!l.ativo_na_tray) {
+            setInativos((n) => n + 1)
+            continue
+          }
           const chave = `${l.produto_id}|${l.variacao_id || ''}`
           const v = vincPorChave.get(chave)
           const prod = v ? prodPorId.get(v.produto_id) : undefined
@@ -341,6 +344,7 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
           {(rodando || linhas.length > 0) && (
             <span className="text-slate-600">
               {lidos} de {total || '?'} produtos lidos · {linhas.length} anúncios
+              {inativos ? ` · ${inativos} inativos na Tray ignorados` : ''}
             </span>
           )}
         </div>
