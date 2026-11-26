@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,54 +6,65 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { ShieldCheck, AlertCircle, Lock } from 'lucide-react'
-import { autorizarDescontoSupervisor, ResultadoAutorizacaoSupervisor } from '@/services/descontos'
-import { useToast } from '@/hooks/use-toast'
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ShieldCheck, AlertCircle, Lock } from "lucide-react";
+import {
+  autorizarDescontoSupervisor,
+  ResultadoAutorizacaoSupervisor,
+} from "@/services/descontos";
+import { useToast } from "@/hooks/use-toast";
 
 export interface ModalAutorizacaoSupervisorProps {
-  aberto: boolean
-  onOpenChange: (aberto: boolean) => void
-  descontoPercentual: number
-  produtoNome?: string
-  produtoId?: string
-  empresaId?: string
-  origem?: string
-  vendaContexto?: Record<string, unknown>
-  onAutorizado: (resultado: ResultadoAutorizacaoSupervisor) => void
+  aberto: boolean;
+  onOpenChange: (aberto: boolean) => void;
+  descontoPercentual: number;
+  produtoNome?: string;
+  produtoId?: string;
+  empresaId?: string;
+  origem?: string;
+  vendaContexto?: Record<string, unknown>;
+  /** Só Gerente/Administrador pode autorizar (operações que não são desconto) */
+  exigeGerente?: boolean;
+  /** Subtítulo do modal; padrão = liberação de desconto */
+  descricao?: string;
+  onAutorizado: (resultado: ResultadoAutorizacaoSupervisor) => void;
 }
 
-export const ModalAutorizacaoSupervisor: React.FC<ModalAutorizacaoSupervisorProps> = ({
+export const ModalAutorizacaoSupervisor: React.FC<
+  ModalAutorizacaoSupervisorProps
+> = ({
   aberto,
   onOpenChange,
   descontoPercentual,
   produtoNome,
   produtoId,
   empresaId,
-  origem = 'venda',
+  origem = "venda",
   vendaContexto,
+  exigeGerente = false,
+  descricao,
   onAutorizado,
 }) => {
-  const { toast } = useToast()
-  const [email, setEmail] = useState('')
-  const [senha, setSenha] = useState('')
-  const [validando, setValidando] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
+  const { toast } = useToast();
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [validando, setValidando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setErro(null)
+    e.preventDefault();
+    setErro(null);
 
     if (!email.trim() || !senha) {
-      setErro('Preencha o e-mail e a senha do supervisor.')
-      return
+      setErro("Preencha o e-mail e a senha do supervisor.");
+      return;
     }
 
     try {
-      setValidando(true)
+      setValidando(true);
       const res = await autorizarDescontoSupervisor({
         email: email.trim(),
         senha,
@@ -63,24 +74,28 @@ export const ModalAutorizacaoSupervisor: React.FC<ModalAutorizacaoSupervisorProp
         empresaId,
         origem,
         vendaContexto,
-      })
+        exigeGerente,
+      });
 
       toast({
-        title: 'Desconto autorizado',
+        title: "Desconto autorizado",
         description: res.mensagem,
-      })
+      });
 
-      onAutorizado(res)
-      onOpenChange(false)
-      setEmail('')
-      setSenha('')
+      onAutorizado(res);
+      onOpenChange(false);
+      setEmail("");
+      setSenha("");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha na autorização do supervisor.'
-      setErro(msg)
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Falha na autorização do supervisor.";
+      setErro(msg);
     } finally {
-      setValidando(false)
+      setValidando(false);
     }
-  }
+  };
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
@@ -95,7 +110,8 @@ export const ModalAutorizacaoSupervisor: React.FC<ModalAutorizacaoSupervisorProp
                 Autorização de Supervisor
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500">
-                Liberação de desconto acima do limite operacional
+                {descricao ||
+                  "Liberação de desconto acima do limite operacional"}
               </DialogDescription>
             </div>
           </div>
@@ -104,20 +120,24 @@ export const ModalAutorizacaoSupervisor: React.FC<ModalAutorizacaoSupervisorProp
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           {/* Alerta de Desconto */}
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900 space-y-1">
-            <p className="font-semibold flex items-center gap-1.5">
-              <span>Desconto solicitado:</span>
-              <span className="font-mono text-sm font-bold text-amber-700">
-                {descontoPercentual.toFixed(2)}%
-              </span>
-            </p>
+            {descontoPercentual > 0 && (
+              <p className="font-semibold flex items-center gap-1.5">
+                <span>Desconto solicitado:</span>
+                <span className="font-mono text-sm font-bold text-amber-700">
+                  {descontoPercentual.toFixed(2)}%
+                </span>
+              </p>
+            )}
             {produtoNome && (
               <p className="text-amber-800">
-                Item: <strong className="font-medium">{produtoNome}</strong>
+                {descontoPercentual > 0 ? "Item: " : ""}
+                <strong className="font-medium">{produtoNome}</strong>
               </p>
             )}
             <p className="text-[11px] text-amber-700 mt-1">
-              Um supervisor ou administrador com limite compatível deve digitar suas credenciais
-              para autorizar.
+              {exigeGerente
+                ? "Um usuário com perfil Gerente ou Administrador deve digitar suas credenciais para autorizar."
+                : "Um gerente, administrador ou usuário com limite compatível deve digitar suas credenciais para autorizar."}
             </p>
           </div>
 
@@ -130,7 +150,10 @@ export const ModalAutorizacaoSupervisor: React.FC<ModalAutorizacaoSupervisorProp
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="supervisor_email" className="text-xs font-medium text-slate-700">
+              <Label
+                htmlFor="supervisor_email"
+                className="text-xs font-medium text-slate-700"
+              >
                 E-mail do Supervisor <span className="text-red-500">*</span>
               </Label>
               <Input
@@ -146,7 +169,10 @@ export const ModalAutorizacaoSupervisor: React.FC<ModalAutorizacaoSupervisorProp
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="supervisor_senha" className="text-xs font-medium text-slate-700">
+              <Label
+                htmlFor="supervisor_senha"
+                className="text-xs font-medium text-slate-700"
+              >
                 Senha do Supervisor <span className="text-red-500">*</span>
               </Label>
               <div className="relative">
@@ -186,11 +212,11 @@ export const ModalAutorizacaoSupervisor: React.FC<ModalAutorizacaoSupervisorProp
               className="text-xs bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
             >
               <ShieldCheck size={14} />
-              <span>{validando ? 'Validando...' : 'Autorizar Desconto'}</span>
+              <span>{validando ? "Validando..." : "Autorizar Desconto"}</span>
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
+  );
+};
