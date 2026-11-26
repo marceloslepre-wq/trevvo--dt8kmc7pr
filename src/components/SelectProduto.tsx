@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Produto, TipoProduto, listarProdutos } from '@/services/produtos'
 import pb from '@/lib/pocketbase/client'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
+import { AvisoProdutoInativo } from '@/components/AvisoProdutoInativo'
 
 export interface SelectProdutoProps {
   value?: string
@@ -224,6 +225,13 @@ export const SelectProduto: React.FC<SelectProdutoProps> = ({
               <p>Nenhum produto encontrado</p>
               {busca && (
                 <p className="text-[11px] text-slate-400 mt-1">Tente pesquisar por outro termo.</p>
+              )}
+              {busca && !incluirInativos && (
+                <AvisoProdutoInativo
+                  termo={busca}
+                  onReativado={handleSelect}
+                  className="mx-2 mt-3 text-left"
+                />
               )}
             </div>
           ) : (

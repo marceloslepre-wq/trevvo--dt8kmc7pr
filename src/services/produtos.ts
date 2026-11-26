@@ -453,6 +453,41 @@ export async function buscarProdutoPorCodigoOuGtin(
 }
 
 /**
+ * Procura produtos INATIVOS (suspensos) que correspondem ao termo digitado numa busca
+ * de movimentação (venda, compra, transferência, estoque). Usado para avisar
+ * "produto inativado, ative em Cadastro de Produtos" quando a busca de ativos não acha nada.
+ * Códigos (GTIN, referência, código interno) são comparados exatos; texto busca na descrição.
+ */
+export async function buscarProdutosInativos(
+  termo: string,
+  assinanteId?: string,
+  limite = 5,
+): Promise<Produto[]> {
+  const t = (termo || '').trim().replace(/['"\\]/g, '')
+  if (t.length < 2) return []
+  const partes = [
+    `gtin = '${t}'`,
+    `gtin_tributavel = '${t}'`,
+    `referencia = '${t}'`,
+    `descricao ~ '${t}'`,
+  ]
+  if (/^\d+$/.test(t) && t.length <= 9) partes.push(`codigo = ${parseInt(t, 10)}`)
+  const conds = ['ativo = false', `(${partes.join(' || ')})`]
+  if (assinanteId) conds.push(`assinante_id = '${assinanteId}'`)
+  try {
+    const res = await pb.collection('produtos').getList<Produto>(1, limite, {
+      filter: conds.join(' && '),
+      sort: 'descricao',
+      expand: 'unidade_id,marca_id',
+      requestKey: null,
+    })
+    return res.items
+  } catch {
+    return []
+  }
+}
+
+/**
  * Busca produtos (ativos e suspensos) para o modal de vínculo de itens da nota de entrada (por termo: código, descrição, GTIN ou ref)
  */
 export async function buscarProdutosParaVinculo(
