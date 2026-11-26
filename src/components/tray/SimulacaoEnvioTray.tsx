@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react'
-import { Download, FlaskConical, Loader2, Square } from 'lucide-react'
+import { Download, FlaskConical, Loader2, Send, Square } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,12 +16,14 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
 import { useEmpresasAcessiveis } from '@/contexts/EmpresaContext'
-import { conferirProdutosTray, mensagemErroTray } from '@/services/tray'
+import { conferirProdutosTray, enviarParaTray, mensagemErroTray } from '@/services/tray'
+import { usePermissoes } from '@/contexts/PermissoesContext'
 
 /**
  * SIMULAÇÃO (somente leitura) do envio de estoque e preço para a Tray.
  * Para cada anúncio vinculado calcula o que o Trevvo enviaria e compara com o que a Tray
- * mostra hoje. Nada é gravado, nem na Tray nem no Trevvo.
+ * mostra hoje. A simulação não grava nada; o administrador pode então enviar as diferenças
+ * (ou um anúncio só) pelo hook tray_envio.js, que recalcula os valores no servidor.
  *
  * Regras (as mesmas que o envio real vai usar):
  *  - estoque = saldo da loja conectada + saldos NEGATIVOS das lojas marcadas (ex.: loja física
@@ -40,6 +42,7 @@ interface Linha {
   chave: string
   nome: string
   anuncio: string
+  variacaoId: string
   variacao: string
   produtoCodigo: number | null
   produtoDescricao: string
@@ -71,6 +74,69 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [inativos, setInativos] = useState(0)
   const [filtro, setFiltro] = useState<Linha['situacao'] | 'todas' | 'diferentes'>('diferentes')
+  const { administrador } = usePermissoes()
+  const [enviarEstoque, setEnviarEstoque] = useState(true)
+  const [enviarPreco, setEnviarPreco] = useState(true)
+  const [enviando, setEnviando] = useState(false)
+  const [enviados, setEnviados] = useState(0)
+  const [aEnviar, setAEnviar] = useState(0)
+  const [resultadoEnvio, setResultadoEnvio] = useState<
+    Record<string, { ok: boolean; msg: string }>
+  >({})
+
+  /** Envia para a Tray (em lotes de 20) os anúncios informados. Só administrador. */
+  const enviar = async (alvo: Linha[]) => {
+    const validos = alvo.filter((l) => l.situacao !== 'sem_vinculo')
+    if (validos.length === 0 || (!enviarEstoque && !enviarPreco)) return
+    const oque = [enviarEstoque ? 'estoque' : '', enviarPreco ? 'preço' : '']
+      .filter(Boolean)
+      .join(' e ')
+    if (
+      !window.confirm(
+        `Enviar ${oque} de ${validos.length} anúncio(s) para a Tray? Isso altera o site e os marketplaces ligados a ele.`,
+      )
+    )
+      return
+    setEnviando(true)
+    setEnviados(0)
+    setAEnviar(validos.length)
+    let feitos = 0
+    try {
+      for (let i = 0; i < validos.length; i += 20) {
+        const lote = validos.slice(i, i + 20)
+        const resp = await enviarParaTray({
+          empresa_id: empresaId,
+          itens: lote.map((l) => ({ anuncio_id: l.anuncio, variacao_id: l.variacaoId })),
+          enviar_estoque: enviarEstoque,
+          enviar_preco: enviarPreco,
+          descontar_negativo_ids: descontarNegativo,
+        })
+        const novos: Record<string, { ok: boolean; msg: string }> = {}
+        for (const r of resp.resultados || []) {
+          const ok = r.ok_estoque !== false && r.ok_preco !== false && !r.mensagem
+          novos[`${r.anuncio_id}|${r.variacao_id || ''}`] = {
+            ok,
+            msg: ok
+              ? `Enviado${r.estoque !== null ? ` · estoque ${r.estoque}` : ''}${
+                  r.preco !== null ? ` · ${fmt(r.preco)}` : ''
+                }`
+              : r.mensagem || 'Erro',
+          }
+        }
+        setResultadoEnvio((atual) => ({ ...atual, ...novos }))
+        feitos += lote.length
+        setEnviados(feitos)
+      }
+    } catch (err) {
+      toast({
+        title: 'Erro ao enviar para a Tray',
+        description: mensagemErroTray(err, 'Tente novamente.'),
+        variant: 'destructive',
+      })
+    } finally {
+      setEnviando(false)
+    }
+  }
 
   const simular = async () => {
     if (!assinanteId) return
@@ -163,6 +229,7 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
               chave,
               nome: l.nome,
               anuncio: l.produto_id,
+              variacaoId: l.variacao_id || '',
               variacao: [l.variacao_id, l.variacao].filter(Boolean).join(' · '),
               produtoCodigo: null,
               produtoDescricao: '',
@@ -189,6 +256,7 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
             chave,
             nome: l.nome,
             anuncio: l.produto_id,
+            variacaoId: l.variacao_id || '',
             variacao: [l.variacao_id, l.variacao].filter(Boolean).join(' · '),
             produtoCodigo: Number(prod.codigo),
             produtoDescricao: prod.descricao,
@@ -346,6 +414,54 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
             </Button>
           )}
           {rodando && <Loader2 className="h-4 w-4 animate-spin text-violet-600" />}
+          {administrador && linhas.length > 0 && !rodando && (
+            <>
+              <label className="ml-2 flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={enviarEstoque}
+                  disabled={enviando}
+                  onChange={(e) => setEnviarEstoque(e.target.checked)}
+                />
+                estoque
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={enviarPreco}
+                  disabled={enviando}
+                  onChange={(e) => setEnviarPreco(e.target.checked)}
+                />
+                preço
+              </label>
+              <Button
+                size="sm"
+                className="bg-rose-600 text-white hover:bg-rose-700"
+                disabled={enviando || (!enviarEstoque && !enviarPreco)}
+                onClick={() =>
+                  void enviar(
+                    linhas.filter(
+                      (l) =>
+                        (enviarEstoque && (l.situacao === 'estoque' || l.situacao === 'ambos')) ||
+                        (enviarPreco && (l.situacao === 'preco' || l.situacao === 'ambos')),
+                    ),
+                  )
+                }
+              >
+                {enviando ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-1 h-4 w-4" />
+                )}
+                Enviar diferenças para a Tray
+              </Button>
+              {enviando && (
+                <span className="text-slate-600">
+                  {enviados} de {aEnviar}
+                </span>
+              )}
+            </>
+          )}
           {(rodando || linhas.length > 0) && (
             <span className="text-slate-600">
               {lidos} de {total || '?'} produtos lidos · {linhas.length} anúncios
@@ -379,6 +495,7 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
                     <TableHead className="text-[11px] text-right">Estoque Tray → Trevvo</TableHead>
                     <TableHead className="text-[11px] text-right">Preço Tray → Trevvo</TableHead>
                     <TableHead className="text-[11px]">Situação</TableHead>
+                    {administrador && <TableHead className="text-[11px]">Envio</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -424,6 +541,31 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
                           {ROTULO[l.situacao]}
                         </Badge>
                       </TableCell>
+                      {administrador && (
+                        <TableCell className="text-[11px]">
+                          {resultadoEnvio[l.chave] ? (
+                            <span
+                              className={
+                                resultadoEnvio[l.chave].ok ? 'text-emerald-700' : 'text-rose-700'
+                              }
+                            >
+                              {resultadoEnvio[l.chave].msg}
+                            </span>
+                          ) : l.situacao !== 'sem_vinculo' ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px]"
+                              disabled={enviando || (!enviarEstoque && !enviarPreco)}
+                              onClick={() => void enviar([l])}
+                              title="Enviar só este anúncio (estoque e/ou preço marcados)"
+                            >
+                              <Send className="mr-1 h-3 w-3" />
+                              Enviar
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
