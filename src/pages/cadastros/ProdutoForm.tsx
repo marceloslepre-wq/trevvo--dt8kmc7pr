@@ -1695,6 +1695,9 @@ export const ProdutoForm: React.FC = () => {
                         %
                       </span>
                     </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      0 ou vazio = sem limite no produto (vale o limite do usuário).
+                    </p>
                   </div>
                 )}
               </div>
