@@ -80,20 +80,18 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
     try {
       const filtroAss = assinanteId ? `assinante_id = '${assinanteId}'` : ''
       const [produtos, precosLoja, vinculos, saldos] = await Promise.all([
-        pb
-          .collection('produtos')
-          .getFullList<{
-            id: string
-            codigo: number
-            descricao: string
-            preco_venda: number
-            ativo: boolean
-          }>({
-            fields: 'id,codigo,descricao,preco_venda,ativo',
-            filter: filtroAss,
-            batch: 1000,
-            requestKey: null,
-          }),
+        pb.collection('produtos').getFullList<{
+          id: string
+          codigo: number
+          descricao: string
+          preco_venda: number
+          ativo: boolean
+        }>({
+          fields: 'id,codigo,descricao,preco_venda,ativo',
+          filter: filtroAss,
+          batch: 1000,
+          requestKey: null,
+        }),
         pb
           .collection('produtos_precos_empresa')
           .getFullList<{ produto_id: string; preco_venda: number }>({
@@ -102,19 +100,17 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
             batch: 1000,
             requestKey: null,
           }),
-        pb
-          .collection('produtos_vinculos_anuncios')
-          .getFullList<{
-            produto_id: string
-            anuncio_id: string
-            variacao_id: string
-            unidades: number
-          }>({
-            filter: `empresa_id = '${empresaId}' && marketplace = 'tray'`,
-            fields: 'produto_id,anuncio_id,variacao_id,unidades',
-            batch: 1000,
-            requestKey: null,
-          }),
+        pb.collection('produtos_vinculos_anuncios').getFullList<{
+          produto_id: string
+          anuncio_id: string
+          variacao_id: string
+          unidades: number
+        }>({
+          filter: `empresa_id = '${empresaId}' && marketplace = 'tray'`,
+          fields: 'produto_id,anuncio_id,variacao_id,unidades',
+          batch: 1000,
+          requestKey: null,
+        }),
         pb
           .collection('estoque_saldos')
           .getFullList<{ empresa_id: string; produto_id: string; quantidade: number }>({
