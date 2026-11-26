@@ -76,6 +76,9 @@ export interface LinhaProdutoTray {
   variacao: string
   codigo_tray: string
   referencia: string
+  ean?: string
+  /** Como o produto do Trevvo foi achado: 'referencia', 'ean' ou '' (não achou) */
+  metodo?: string
   estoque: number
   preco: number
   situacao: string

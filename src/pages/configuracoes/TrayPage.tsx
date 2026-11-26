@@ -21,6 +21,8 @@ import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
 import ConferenciaProdutosTray from '@/components/tray/ConferenciaProdutosTray'
 import HomologacaoTray from '@/components/tray/HomologacaoTray'
 import ImportarMidiaTray from '@/components/tray/ImportarMidiaTray'
+import VinculosTray from '@/components/tray/VinculosTray'
+import SimulacaoEnvioTray from '@/components/tray/SimulacaoEnvioTray'
 import {
   StatusTray,
   desconectarTray,
@@ -322,6 +324,14 @@ export const TrayPage: React.FC = () => {
 
           {situacao === 'Conectada' && (
             <ConferenciaProdutosTray key={empresaId} empresaId={empresaId} />
+          )}
+
+          {situacao === 'Conectada' && podeGerenciar && (
+            <VinculosTray key={`vinculos-${empresaId}`} empresaId={empresaId} />
+          )}
+
+          {situacao === 'Conectada' && podeGerenciar && (
+            <SimulacaoEnvioTray key={`simulacao-${empresaId}`} empresaId={empresaId} />
           )}
 
           {situacao === 'Conectada' && podeGerenciar && (
