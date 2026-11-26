@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-} from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   RotateCcw,
   Search,
@@ -26,18 +20,12 @@ import {
   RefreshCw,
   Eye,
   Info,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+} from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -45,7 +33,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from '@/components/ui/table'
 import {
   Dialog,
   DialogContent,
@@ -53,17 +41,12 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
-import { useEmpresaAtiva } from "@/contexts/EmpresaContext";
-import { usePermissoes } from "@/contexts/PermissoesContext";
-import { useToast } from "@/hooks/use-toast";
-import { obterOuCriarConfigVendasEmpresa } from "@/services/configVendas";
-import {
-  obterVendaCompleta,
-  listarVendas,
-  Venda,
-  VendaItem,
-} from "@/services/vendas";
+} from '@/components/ui/dialog'
+import { useEmpresaAtiva } from '@/contexts/EmpresaContext'
+import { usePermissoes } from '@/contexts/PermissoesContext'
+import { useToast } from '@/hooks/use-toast'
+import { obterOuCriarConfigVendasEmpresa } from '@/services/configVendas'
+import { obterVendaCompleta, listarVendas, Venda, VendaItem } from '@/services/vendas'
 import {
   processarDevolucao,
   ItemDevolucaoInput,
@@ -72,332 +55,301 @@ import {
   listarValesTroca,
   ValeTroca,
   DevolucaoVendaRegistro,
-} from "@/services/devolucoes";
+} from '@/services/devolucoes'
 import {
   emitirNfeDevolucaoVenda,
   confirmarAutorizacaoDevolucaoVenda,
   consultarSituacaoNFe,
   baixarArquivoFiscal,
-} from "@/services/fiscalIntegracao";
-import {
-  obterDocumentoFiscalDaVenda,
-  DocumentoFiscalRegistro,
-} from "@/services/documentosFiscais";
-import { ModalAutorizacaoSupervisor } from "@/components/ModalAutorizacaoSupervisor";
-import { perfilEhGerente } from "@/services/descontos";
-import pb from "@/lib/pocketbase/client";
+} from '@/services/fiscalIntegracao'
+import { obterDocumentoFiscalDaVenda, DocumentoFiscalRegistro } from '@/services/documentosFiscais'
+import { ModalAutorizacaoSupervisor } from '@/components/ModalAutorizacaoSupervisor'
+import { perfilEhGerente } from '@/services/descontos'
+import pb from '@/lib/pocketbase/client'
 
 export const TrocasDevolucoesPage: React.FC = () => {
-  const { empresaAtiva } = useEmpresaAtiva();
-  const { pode, perfil, administrador } = usePermissoes();
+  const { empresaAtiva } = useEmpresaAtiva()
+  const { pode, perfil, administrador } = usePermissoes()
   // Gerente/Administrador devolve em dinheiro sem pedir autorização
-  const usuarioEhGerente = administrador || perfilEhGerente(perfil);
-  const { toast } = useToast();
+  const usuarioEhGerente = administrador || perfilEhGerente(perfil)
+  const { toast } = useToast()
 
-  const podeCriarVendas = pode("vendas", "criar");
-  const podeEmitirNotas = pode("notas_saida", "criar");
+  const podeCriarVendas = pode('vendas', 'criar')
+  const podeEmitirNotas = pode('notas_saida', 'criar')
 
   // Aba ativa: "Nova Troca/Devolução", "Histórico de Devoluções" ou "Histórico de Vales-Troca"
-  const [abaAtiva, setAbaAtiva] = useState<"nova" | "historico" | "vales">(
-    "nova",
-  );
+  const [abaAtiva, setAbaAtiva] = useState<'nova' | 'historico' | 'vales'>('nova')
 
   // Configuração da empresa (dias_para_troca)
-  const [diasParaTroca, setDiasParaTroca] = useState<number>(30);
+  const [diasParaTroca, setDiasParaTroca] = useState<number>(30)
 
   // 1. Busca da venda original
-  const [termoBusca, setTermoBusca] = useState("");
-  const [dataBusca, setDataBusca] = useState("");
-  const [buscando, setBuscando] = useState(false);
-  const [vendasEncontradas, setVendasEncontradas] = useState<Venda[]>([]);
+  const [termoBusca, setTermoBusca] = useState('')
+  const [dataBusca, setDataBusca] = useState('')
+  const [buscando, setBuscando] = useState(false)
+  const [vendasEncontradas, setVendasEncontradas] = useState<Venda[]>([])
 
   // Venda original selecionada para devolução
-  const [vendaSelecionada, setVendaSelecionada] = useState<Venda | null>(null);
-  const [itensVendaOriginal, setItensVendaOriginal] = useState<VendaItem[]>([]);
-  const [carregandoItens, setCarregandoItens] = useState(false);
+  const [vendaSelecionada, setVendaSelecionada] = useState<Venda | null>(null)
+  const [itensVendaOriginal, setItensVendaOriginal] = useState<VendaItem[]>([])
+  const [carregandoItens, setCarregandoItens] = useState(false)
 
   // Itens selecionados para devolver: Map<venda_item_id, quantidade_devolver>
-  const [itensParaDevolver, setItensParaDevolver] = useState<
-    Record<string, number>
-  >({});
+  const [itensParaDevolver, setItensParaDevolver] = useState<Record<string, number>>({})
 
   // Destino do valor
-  const [destino, setDestino] = useState<DestinoDevolucaoTipo>("vale_troca");
-  const [diasValidadeVale, setDiasValidadeVale] = useState<number>(30);
-  const [contaFinanceiraId, setContaFinanceiraId] = useState<string>("");
-  const [observacao, setObservacao] = useState<string>("");
-  const [contasFinanceiras, setContasFinanceiras] = useState<
-    Array<{ id: string; nome: string }>
-  >([]);
+  const [destino, setDestino] = useState<DestinoDevolucaoTipo>('vale_troca')
+  const [diasValidadeVale, setDiasValidadeVale] = useState<number>(30)
+  const [contaFinanceiraId, setContaFinanceiraId] = useState<string>('')
+  const [observacao, setObservacao] = useState<string>('')
+  const [contasFinanceiras, setContasFinanceiras] = useState<Array<{ id: string; nome: string }>>(
+    [],
+  )
 
   // Controle de autorização do supervisor se prazo excedido
-  const [prazoExcedido, setPrazoExcedido] = useState(false);
-  const [diasCorridos, setDiasCorridos] = useState(0);
-  const [supervisorAutorizado, setSupervisorAutorizado] = useState(false);
-  const [modalSupervisorAberto, setModalSupervisorAberto] = useState(false);
+  const [prazoExcedido, setPrazoExcedido] = useState(false)
+  const [diasCorridos, setDiasCorridos] = useState(0)
+  const [supervisorAutorizado, setSupervisorAutorizado] = useState(false)
+  const [modalSupervisorAberto, setModalSupervisorAberto] = useState(false)
   // Devolução em dinheiro do caixa: vendedor/caixa precisa de autorização do gerente
-  const [gerenteAutorizouDinheiro, setGerenteAutorizouDinheiro] =
-    useState(false);
-  const [modalGerenteDinheiroAberto, setModalGerenteDinheiroAberto] =
-    useState(false);
+  const [gerenteAutorizouDinheiro, setGerenteAutorizouDinheiro] = useState(false)
+  const [modalGerenteDinheiroAberto, setModalGerenteDinheiroAberto] = useState(false)
 
   // Estado de processamento e modal de comprovante/impressão
-  const [processando, setProcessando] = useState(false);
-  const [resultadoSucesso, setResultadoSucesso] =
-    useState<ResultadoDevolucao | null>(null);
-  const [modalComprovanteAberto, setModalComprovanteAberto] = useState(false);
+  const [processando, setProcessando] = useState(false)
+  const [resultadoSucesso, setResultadoSucesso] = useState<ResultadoDevolucao | null>(null)
+  const [modalComprovanteAberto, setModalComprovanteAberto] = useState(false)
 
   // Listagem de vales-troca
-  const [valesLista, setValesLista] = useState<ValeTroca[]>([]);
-  const [carregandoVales, setCarregandoVales] = useState(false);
-  const [filtroValeStatus, setFiltroValeStatus] = useState("todos");
-  const [filtroValeCodigo, setFiltroValeCodigo] = useState("");
+  const [valesLista, setValesLista] = useState<ValeTroca[]>([])
+  const [carregandoVales, setCarregandoVales] = useState(false)
+  const [filtroValeStatus, setFiltroValeStatus] = useState('todos')
+  const [filtroValeCodigo, setFiltroValeCodigo] = useState('')
 
   // 4. Fluxo de NF-e de entrada própria de devolução
-  const [docFiscalVendaOrig, setDocFiscalVendaOrig] =
-    useState<DocumentoFiscalRegistro | null>(null);
-  const [modalConferenciaNFeAberto, setModalConferenciaNFeAberto] =
-    useState(false);
-  const [clienteAvulsoNome, setClienteAvulsoNome] = useState("");
-  const [clienteAvulsoCpf, setClienteAvulsoCpf] = useState("");
-  const [erroValidacaoClienteAvulso, setErroValidacaoClienteAvulso] =
-    useState("");
+  const [docFiscalVendaOrig, setDocFiscalVendaOrig] = useState<DocumentoFiscalRegistro | null>(null)
+  const [modalConferenciaNFeAberto, setModalConferenciaNFeAberto] = useState(false)
+  const [clienteAvulsoNome, setClienteAvulsoNome] = useState('')
+  const [clienteAvulsoCpf, setClienteAvulsoCpf] = useState('')
+  const [erroValidacaoClienteAvulso, setErroValidacaoClienteAvulso] = useState('')
 
   // Polling e estado de transmissão
   const [faseTransmissao, setFaseTransmissao] = useState<
-    | "idle"
-    | "enviando"
-    | "polling"
-    | "sucesso"
-    | "erro"
-    | "timeout"
-    | "denegado"
-  >("idle");
-  const [tempoPolling, setTempoPolling] = useState(0);
-  const [mensagemTransmissao, setMensagemTransmissao] = useState("");
-  const [modalTransmissaoAberto, setModalTransmissaoAberto] = useState(false);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    'idle' | 'enviando' | 'polling' | 'sucesso' | 'erro' | 'timeout' | 'denegado'
+  >('idle')
+  const [tempoPolling, setTempoPolling] = useState(0)
+  const [mensagemTransmissao, setMensagemTransmissao] = useState('')
+  const [modalTransmissaoAberto, setModalTransmissaoAberto] = useState(false)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Histórico de Devoluções
-  const [devolucoesLista, setDevolucoesLista] = useState<
-    DevolucaoVendaRegistro[]
-  >([]);
-  const [carregandoDevolucoes, setCarregandoDevolucoes] = useState(false);
-  const [devolucaoDetalhe, setDevolucaoDetalhe] =
-    useState<DevolucaoVendaRegistro | null>(null);
-  const [docFiscalDetalhe, setDocFiscalDetalhe] =
-    useState<DocumentoFiscalRegistro | null>(null);
-  const [modalDetalheAberto, setModalDetalheAberto] = useState(false);
-  const [reemitindoId, setReemitindoId] = useState<string | null>(null);
-  const [baixandoXml, setBaixandoXml] = useState(false);
+  const [devolucoesLista, setDevolucoesLista] = useState<DevolucaoVendaRegistro[]>([])
+  const [carregandoDevolucoes, setCarregandoDevolucoes] = useState(false)
+  const [devolucaoDetalhe, setDevolucaoDetalhe] = useState<DevolucaoVendaRegistro | null>(null)
+  const [docFiscalDetalhe, setDocFiscalDetalhe] = useState<DocumentoFiscalRegistro | null>(null)
+  const [modalDetalheAberto, setModalDetalheAberto] = useState(false)
+  const [reemitindoId, setReemitindoId] = useState<string | null>(null)
+  const [baixandoXml, setBaixandoXml] = useState(false)
 
   // Carrega configurações da empresa e contas financeiras
   useEffect(() => {
-    if (!empresaAtiva?.id) return;
+    if (!empresaAtiva?.id) return
     obterOuCriarConfigVendasEmpresa(empresaAtiva.id)
       .then((cfg) => {
-        setDiasParaTroca(cfg.dias_para_troca ?? 30);
+        setDiasParaTroca(cfg.dias_para_troca ?? 30)
       })
-      .catch(() => setDiasParaTroca(30));
+      .catch(() => setDiasParaTroca(30))
 
-    pb.collection("contas_financeiras")
+    pb.collection('contas_financeiras')
       .getFullList({
         filter: `empresa_id = '${empresaAtiva.id}' && ativo = true`,
-        sort: "nome",
+        sort: 'nome',
       })
       .then((res) => {
-        setContasFinanceiras(
-          res.map((c) => ({ id: c.id, nome: (c as any).nome })),
-        );
-        if (res.length > 0) setContaFinanceiraId(res[0].id);
+        setContasFinanceiras(res.map((c) => ({ id: c.id, nome: (c as any).nome })))
+        if (res.length > 0) setContaFinanceiraId(res[0].id)
       })
-      .catch(() => setContasFinanceiras([]));
-  }, [empresaAtiva?.id]);
+      .catch(() => setContasFinanceiras([]))
+  }, [empresaAtiva?.id])
 
   // Busca vendas originais
   const handleBuscarVendas = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!empresaAtiva?.id) return;
+    if (e) e.preventDefault()
+    if (!empresaAtiva?.id) return
 
-    setBuscando(true);
+    setBuscando(true)
     try {
       const res = await listarVendas({
         empresa_id: empresaAtiva.id,
-        status: "Finalizada",
+        status: 'Finalizada',
         termo_busca: termoBusca.trim() || undefined,
         data_inicio: dataBusca || undefined,
         data_fim: dataBusca || undefined,
         por_pagina: 15,
-      });
+      })
       // Filtra para remover vendas do tipo Devolução da lista de origem
-      setVendasEncontradas(res.items.filter((v) => v.tipo !== "Devolução"));
+      setVendasEncontradas(res.items.filter((v) => v.tipo !== 'Devolução'))
     } catch {
       toast({
-        title: "Erro na busca",
-        description: "Não foi possível localizar as vendas.",
-        variant: "destructive",
-      });
+        title: 'Erro na busca',
+        description: 'Não foi possível localizar as vendas.',
+        variant: 'destructive',
+      })
     } finally {
-      setBuscando(false);
+      setBuscando(false)
     }
-  };
+  }
 
   // Ao selecionar uma venda original
   const handleSelecionarVenda = async (venda: Venda) => {
-    setVendaSelecionada(venda);
-    setCarregandoItens(true);
-    setItensParaDevolver({});
-    setSupervisorAutorizado(false);
-    setGerenteAutorizouDinheiro(false);
+    setVendaSelecionada(venda)
+    setCarregandoItens(true)
+    setItensParaDevolver({})
+    setSupervisorAutorizado(false)
+    setGerenteAutorizouDinheiro(false)
 
     // Calcula diferença em dias da emissão
-    const dtEmissao = new Date(
-      (venda.data_emissao || venda.created || "").slice(0, 10),
-    );
-    const dtHoje = new Date(new Date().toISOString().slice(0, 10));
-    const diffTime = dtHoje.getTime() - dtEmissao.getTime();
-    const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
-    setDiasCorridos(diffDays);
+    const dtEmissao = new Date((venda.data_emissao || venda.created || '').slice(0, 10))
+    const dtHoje = new Date(new Date().toISOString().slice(0, 10))
+    const diffTime = dtHoje.getTime() - dtEmissao.getTime()
+    const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)))
+    setDiasCorridos(diffDays)
 
-    const excedeu = diffDays > diasParaTroca;
-    setPrazoExcedido(excedeu);
+    const excedeu = diffDays > diasParaTroca
+    setPrazoExcedido(excedeu)
 
     try {
-      const comp = await obterVendaCompleta(venda.id);
-      setItensVendaOriginal(comp.itens);
+      const comp = await obterVendaCompleta(venda.id)
+      setItensVendaOriginal(comp.itens)
 
       // Se a venda tem status fiscal Autorizada, carregar documento fiscal para conferência
-      if (venda.documento_fiscal_status === "Autorizada") {
-        let doc = null;
+      if (venda.documento_fiscal_status === 'Autorizada') {
+        let doc = null
         if (venda.documento_fiscal_id) {
           try {
             doc = await pb
-              .collection("documentos_fiscais")
-              .getOne<DocumentoFiscalRegistro>(venda.documento_fiscal_id);
+              .collection('documentos_fiscais')
+              .getOne<DocumentoFiscalRegistro>(venda.documento_fiscal_id)
           } catch {
             /* intentionally ignored */
           }
         }
         if (!doc) {
-          doc = await obterDocumentoFiscalDaVenda(venda.id, "55");
+          doc = await obterDocumentoFiscalDaVenda(venda.id, '55')
           if (!doc) {
-            doc = await obterDocumentoFiscalDaVenda(venda.id, "65");
+            doc = await obterDocumentoFiscalDaVenda(venda.id, '65')
           }
         }
-        setDocFiscalVendaOrig(doc);
+        setDocFiscalVendaOrig(doc)
 
         // Se venda não tem cliente vinculado, pré-popular ou limpar campos avulsos
         const nomeCli =
           (venda.expand as any)?.cliente_id?.nome_razao_social ||
           (venda.expand as any)?.cliente_id?.nome ||
           doc?.destinatario_nome ||
-          "";
+          ''
         const cpfCli =
           venda.cpf_cnpj_consumidor ||
           (venda.expand as any)?.cliente_id?.cpf_cnpj ||
           doc?.destinatario_cpf_cnpj ||
-          "";
-        setClienteAvulsoNome(nomeCli);
-        setClienteAvulsoCpf(cpfCli);
+          ''
+        setClienteAvulsoNome(nomeCli)
+        setClienteAvulsoCpf(cpfCli)
       } else {
-        setDocFiscalVendaOrig(null);
+        setDocFiscalVendaOrig(null)
       }
     } catch {
       toast({
-        title: "Erro ao carregar itens",
-        description: "Falha ao buscar os itens da venda selecionada.",
-        variant: "destructive",
-      });
+        title: 'Erro ao carregar itens',
+        description: 'Falha ao buscar os itens da venda selecionada.',
+        variant: 'destructive',
+      })
     } finally {
-      setCarregandoItens(false);
+      setCarregandoItens(false)
     }
-  };
+  }
 
   // Manipular quantidade a devolver de um item
-  const handleAlterarQtdItem = (
-    itemId: string,
-    maximo: number,
-    valorStr: string,
-  ) => {
-    const num = parseFloat(valorStr.replace(",", "."));
+  const handleAlterarQtdItem = (itemId: string, maximo: number, valorStr: string) => {
+    const num = parseFloat(valorStr.replace(',', '.'))
     if (isNaN(num) || num <= 0) {
-      const copy = { ...itensParaDevolver };
-      delete copy[itemId];
-      setItensParaDevolver(copy);
-      return;
+      const copy = { ...itensParaDevolver }
+      delete copy[itemId]
+      setItensParaDevolver(copy)
+      return
     }
-    const valFinal = Math.min(maximo, Math.max(0, num));
+    const valFinal = Math.min(maximo, Math.max(0, num))
     setItensParaDevolver((prev) => ({
       ...prev,
       [itemId]: valFinal,
-    }));
-  };
+    }))
+  }
 
   // Resumo de valores dos itens selecionados para devolução
   const resumoDevolucao = useMemo(() => {
-    let valorTotal = 0;
-    let totalItens = 0;
-    const listaItensInput: ItemDevolucaoInput[] = [];
+    let valorTotal = 0
+    let totalItens = 0
+    const listaItensInput: ItemDevolucaoInput[] = []
 
     itensVendaOriginal.forEach((it) => {
-      const qtdDev = itensParaDevolver[it.id] || 0;
+      const qtdDev = itensParaDevolver[it.id] || 0
       if (qtdDev > 0) {
-        totalItens += qtdDev;
-        const precoUnit = Number(it.preco_unitario) || 0;
-        const qtdVendida = Number(it.quantidade) || 1;
-        const descTot = Number(it.desconto_valor) || 0;
-        const descUnit = qtdVendida > 0 ? descTot / qtdVendida : 0;
-        const unitLiq = Math.max(0, precoUnit - descUnit);
-        const subtotal = Number((qtdDev * unitLiq).toFixed(2));
-        valorTotal += subtotal;
+        totalItens += qtdDev
+        const precoUnit = Number(it.preco_unitario) || 0
+        const qtdVendida = Number(it.quantidade) || 1
+        const descTot = Number(it.desconto_valor) || 0
+        const descUnit = qtdVendida > 0 ? descTot / qtdVendida : 0
+        const unitLiq = Math.max(0, precoUnit - descUnit)
+        const subtotal = Number((qtdDev * unitLiq).toFixed(2))
+        valorTotal += subtotal
 
         listaItensInput.push({
           venda_item_id: it.id,
           produto_id: it.produto_id,
           descricao: it.descricao,
-          unidade: it.unidade || "UN",
+          unidade: it.unidade || 'UN',
           quantidade: qtdDev,
           preco_unitario: unitLiq,
           custo_unitario: Number(it.custo_unitario) || 0,
           lote_id: it.lote_id || undefined,
-        });
+        })
       }
-    });
+    })
 
     return {
       valorTotal: Number(valorTotal.toFixed(2)),
       totalItens,
       itensInput: listaItensInput,
-    };
-  }, [itensVendaOriginal, itensParaDevolver]);
+    }
+  }, [itensVendaOriginal, itensParaDevolver])
 
   // Executa polling da situação da NF-e na SEFAZ (a cada 3s por até 30s)
   const iniciarPollingNfe = useCallback(
     (documentoId: string, devolucaoId: string) => {
-      setFaseTransmissao("polling");
-      setTempoPolling(0);
-      setMensagemTransmissao("Consultando autorização na SEFAZ...");
+      setFaseTransmissao('polling')
+      setTempoPolling(0)
+      setMensagemTransmissao('Consultando autorização na SEFAZ...')
 
-      let tentativas = 0;
-      const maxTentativas = 10; // 10 * 3s = 30s
+      let tentativas = 0
+      const maxTentativas = 10 // 10 * 3s = 30s
 
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (pollingRef.current) clearInterval(pollingRef.current)
 
       pollingRef.current = setInterval(async () => {
-        tentativas++;
-        setTempoPolling(tentativas * 3);
+        tentativas++
+        setTempoPolling(tentativas * 3)
 
         try {
           const resConsulta = await consultarSituacaoNFe({
             documento_id: documentoId,
-          });
+          })
 
-          if (resConsulta.status === "Autorizada") {
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            setFaseTransmissao("sucesso");
+          if (resConsulta.status === 'Autorizada') {
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('sucesso')
             setMensagemTransmissao(
-              `NF-e autorizada pela SEFAZ! Chave: ${resConsulta.chave || "-"}. Confirmando movimentações...`,
-            );
+              `NF-e autorizada pela SEFAZ! Chave: ${resConsulta.chave || '-'}. Confirmando movimentações...`,
+            )
 
             // Chamar confirmação de autorização para movimentar estoque e financeiro
             try {
@@ -405,138 +357,123 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 devolucao_id: devolucaoId,
                 documento_id: documentoId,
                 destino,
-                dias_validade_vale:
-                  destino === "vale_troca" ? diasValidadeVale : undefined,
-                conta_financeira_id:
-                  destino === "dinheiro_volta" ? contaFinanceiraId : undefined,
-              });
+                dias_validade_vale: destino === 'vale_troca' ? diasValidadeVale : undefined,
+                conta_financeira_id: destino === 'dinheiro_volta' ? contaFinanceiraId : undefined,
+              })
 
               setMensagemTransmissao(
                 `Devolução concluída com sucesso! ${
-                  resConf.vale_troca_codigo
-                    ? `Vale gerado: ${resConf.vale_troca_codigo}`
-                    : ""
+                  resConf.vale_troca_codigo ? `Vale gerado: ${resConf.vale_troca_codigo}` : ''
                 }`,
-              );
+              )
               toast({
-                title: "NF-e Autorizada e Devolução Concluída!",
-                description: `Estoque e financeiro movimentados. NF-e nº ${resConsulta.numero || ""}.`,
-              });
+                title: 'NF-e Autorizada e Devolução Concluída!',
+                description: `Estoque e financeiro movimentados. NF-e nº ${resConsulta.numero || ''}.`,
+              })
 
               // Limpar seleção
-              setVendaSelecionada(null);
-              setItensVendaOriginal([]);
-              setItensParaDevolver({});
-              setModalConferenciaNFeAberto(false);
+              setVendaSelecionada(null)
+              setItensVendaOriginal([])
+              setItensParaDevolver({})
+              setModalConferenciaNFeAberto(false)
             } catch (errConf: any) {
               setMensagemTransmissao(
-                `Nota autorizada, mas ocorreu erro na finalização: ${errConf?.message || "Falha"}`,
-              );
+                `Nota autorizada, mas ocorreu erro na finalização: ${errConf?.message || 'Falha'}`,
+              )
             }
-          } else if (resConsulta.status === "Rejeitada") {
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            setFaseTransmissao("erro");
+          } else if (resConsulta.status === 'Rejeitada') {
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('erro')
             const motivo =
-              resConsulta.mensagem_sefaz ||
-              resConsulta.message ||
-              "Nota rejeitada pela SEFAZ";
+              resConsulta.mensagem_sefaz || resConsulta.message || 'Nota rejeitada pela SEFAZ'
             setMensagemTransmissao(
               `Rejeição da SEFAZ: ${motivo}. Devolução mantida como "Pendente de nota".`,
-            );
+            )
             toast({
-              title: "NF-e Rejeitada pela SEFAZ",
+              title: 'NF-e Rejeitada pela SEFAZ',
               description: motivo,
-              variant: "destructive",
-            });
-          } else if (resConsulta.status === "Denegada") {
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            setFaseTransmissao("denegado");
+              variant: 'destructive',
+            })
+          } else if (resConsulta.status === 'Denegada') {
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('denegado')
             const motivo =
-              resConsulta.mensagem_sefaz ||
-              resConsulta.message ||
-              "Uso denegado pela SEFAZ";
+              resConsulta.mensagem_sefaz || resConsulta.message || 'Uso denegado pela SEFAZ'
             setMensagemTransmissao(
               `Aviso: Nota DENEGADA pela SEFAZ. ${motivo}. Nota fiscal denegada não pode ser reutilizada nem cancelada.`,
-            );
+            )
             toast({
-              title: "NF-e Denegada pela SEFAZ",
-              description: "Nota fiscal denegada não pode ser reutilizada.",
-              variant: "destructive",
-            });
+              title: 'NF-e Denegada pela SEFAZ',
+              description: 'Nota fiscal denegada não pode ser reutilizada.',
+              variant: 'destructive',
+            })
           } else if (tentativas >= maxTentativas) {
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            setFaseTransmissao("timeout");
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('timeout')
             setMensagemTransmissao(
               'A SEFAZ ainda está processando a nota fiscal. A devolução permanece como "Pendente de nota" e será atualizada automaticamente na próxima consulta.',
-            );
+            )
             toast({
-              title: "Processamento em andamento",
+              title: 'Processamento em andamento',
               description:
-                "O retorno da SEFAZ demorou mais de 30s. Acompanhe a devolução na lista para reconsultar.",
-            });
+                'O retorno da SEFAZ demorou mais de 30s. Acompanhe a devolução na lista para reconsultar.',
+            })
           }
         } catch (errQuery: any) {
           if (tentativas >= maxTentativas) {
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            setFaseTransmissao("timeout");
-            setMensagemTransmissao(
-              "Tempo limite atingido. A devolução segue pendente de nota.",
-            );
+            if (pollingRef.current) clearInterval(pollingRef.current)
+            setFaseTransmissao('timeout')
+            setMensagemTransmissao('Tempo limite atingido. A devolução segue pendente de nota.')
           }
         }
-      }, 3000);
+      }, 3000)
     },
     [destino, diasValidadeVale, contaFinanceiraId, toast],
-  );
+  )
 
   // Ao fechar ou desmontar, limpar polling
   useEffect(() => {
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
+  }, [])
 
   // Submissão do processamento da devolução
   const handleConfirmarDevolucao = async () => {
-    if (!empresaAtiva?.id || !vendaSelecionada) return;
+    if (!empresaAtiva?.id || !vendaSelecionada) return
     if (resumoDevolucao.itensInput.length === 0) {
       toast({
-        title: "Nenhum item selecionado",
-        description: "Informe ao menos uma quantidade para devolução.",
-        variant: "destructive",
-      });
-      return;
+        title: 'Nenhum item selecionado',
+        description: 'Informe ao menos uma quantidade para devolução.',
+        variant: 'destructive',
+      })
+      return
     }
 
     // Prazo excedido sem autorização
     if (prazoExcedido && !supervisorAutorizado) {
-      setModalSupervisorAberto(true);
-      return;
+      setModalSupervisorAberto(true)
+      return
     }
 
     // Devolução em dinheiro do caixa: exige autorização de Gerente/Administrador
-    if (
-      destino === "dinheiro_volta" &&
-      !usuarioEhGerente &&
-      !gerenteAutorizouDinheiro
-    ) {
-      setModalGerenteDinheiroAberto(true);
-      return;
+    if (destino === 'dinheiro_volta' && !usuarioEhGerente && !gerenteAutorizouDinheiro) {
+      setModalGerenteDinheiroAberto(true)
+      return
     }
 
     // Venda original tem nota fiscal autorizada (NF-e ou NFC-e)?
-    const temNotaAutorizada =
-      vendaSelecionada.documento_fiscal_status === "Autorizada";
+    const temNotaAutorizada = vendaSelecionada.documento_fiscal_status === 'Autorizada'
 
     if (temNotaAutorizada) {
       // Abre modal de conferência da NF-e de entrada própria antes de processar
-      setErroValidacaoClienteAvulso("");
-      setModalConferenciaNFeAberto(true);
-      return;
+      setErroValidacaoClienteAvulso('')
+      setModalConferenciaNFeAberto(true)
+      return
     }
 
     // Venda original SEM nota autorizada: fluxo atual inalterado, sem nota
-    setProcessando(true);
+    setProcessando(true)
     try {
       const res = await processarDevolucao({
         empresa_id: empresaAtiva.id,
@@ -544,63 +481,56 @@ export const TrocasDevolucoesPage: React.FC = () => {
         itens: resumoDevolucao.itensInput,
         destino,
         observacao,
-        conta_financeira_id:
-          destino === "dinheiro_volta" ? contaFinanceiraId : undefined,
-        dias_validade_vale:
-          destino === "vale_troca" ? diasValidadeVale : undefined,
-      });
+        conta_financeira_id: destino === 'dinheiro_volta' ? contaFinanceiraId : undefined,
+        dias_validade_vale: destino === 'vale_troca' ? diasValidadeVale : undefined,
+      })
 
-      setResultadoSucesso(res);
-      setModalComprovanteAberto(true);
+      setResultadoSucesso(res)
+      setModalComprovanteAberto(true)
 
       toast({
-        title: "Devolução concluída com sucesso!",
+        title: 'Devolução concluída com sucesso!',
         description: `Devolução #${res.numero_devolucao} registrada.`,
-      });
+      })
 
       // Limpar formulário de devolução
-      setVendaSelecionada(null);
-      setItensVendaOriginal([]);
-      setItensParaDevolver({});
+      setVendaSelecionada(null)
+      setItensVendaOriginal([])
+      setItensParaDevolver({})
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "Falha ao processar devolução.";
+      const msg = err instanceof Error ? err.message : 'Falha ao processar devolução.'
       toast({
-        title: "Erro na devolução",
+        title: 'Erro na devolução',
         description: msg,
-        variant: "destructive",
-      });
+        variant: 'destructive',
+      })
     } finally {
-      setProcessando(false);
+      setProcessando(false)
     }
-  };
+  }
 
   // Confirma e emite a NF-e de devolução de venda
   const handleConfirmarEEmitirNFe = async () => {
-    if (!empresaAtiva?.id || !vendaSelecionada) return;
+    if (!empresaAtiva?.id || !vendaSelecionada) return
 
     // Validação de cliente quando a venda não tem cliente vinculado
-    const clienteId = vendaSelecionada.cliente_id;
-    let nomeFinal = clienteAvulsoNome.trim();
-    let cpfFinal = clienteAvulsoCpf.replace(/\D/g, "");
+    const clienteId = vendaSelecionada.cliente_id
+    let nomeFinal = clienteAvulsoNome.trim()
+    let cpfFinal = clienteAvulsoCpf.replace(/\D/g, '')
 
     if (!clienteId && (!nomeFinal || !cpfFinal)) {
-      setErroValidacaoClienteAvulso(
-        "Nome e CPF do cliente são obrigatórios para emissão da NF-e.",
-      );
-      return;
+      setErroValidacaoClienteAvulso('Nome e CPF do cliente são obrigatórios para emissão da NF-e.')
+      return
     }
     if (cpfFinal && cpfFinal.length !== 11 && cpfFinal.length !== 14) {
-      setErroValidacaoClienteAvulso(
-        "CPF ou CNPJ inválido (deve conter 11 ou 14 dígitos).",
-      );
-      return;
+      setErroValidacaoClienteAvulso('CPF ou CNPJ inválido (deve conter 11 ou 14 dígitos).')
+      return
     }
 
-    setProcessando(true);
-    setFaseTransmissao("enviando");
-    setMensagemTransmissao("Criando registro de devolução pendente de nota...");
-    setModalTransmissaoAberto(true);
+    setProcessando(true)
+    setFaseTransmissao('enviando')
+    setMensagemTransmissao('Criando registro de devolução pendente de nota...')
+    setModalTransmissaoAberto(true)
 
     try {
       // 1. Criar devolução com status 'Pendente de nota' (sem tocar estoque nem financeiro)
@@ -610,174 +540,152 @@ export const TrocasDevolucoesPage: React.FC = () => {
         itens: resumoDevolucao.itensInput,
         destino,
         observacao,
-        conta_financeira_id:
-          destino === "dinheiro_volta" ? contaFinanceiraId : undefined,
-        dias_validade_vale:
-          destino === "vale_troca" ? diasValidadeVale : undefined,
+        conta_financeira_id: destino === 'dinheiro_volta' ? contaFinanceiraId : undefined,
+        dias_validade_vale: destino === 'vale_troca' ? diasValidadeVale : undefined,
         com_emissao_nfe: true,
-      });
+      })
 
-      const devolucaoId = resDev.venda_devolucao_id;
+      const devolucaoId = resDev.venda_devolucao_id
 
-      setMensagemTransmissao("Transmitindo NF-e de devolução para a SEFAZ...");
+      setMensagemTransmissao('Transmitindo NF-e de devolução para a SEFAZ...')
 
       // 2. Transmitir NF-e para a Focus NFe
       const resEnvio = await emitirNfeDevolucaoVenda({
         devolucao_id: devolucaoId,
         cliente_nome: nomeFinal || undefined,
         cliente_cpf: cpfFinal || undefined,
-      });
+      })
 
-      if (!resEnvio.sucesso && resEnvio.status === "Rejeitada") {
-        setFaseTransmissao("erro");
-        setMensagemTransmissao(
-          `Rejeição: ${resEnvio.message || "Erro na transmissão"}`,
-        );
-        return;
+      if (!resEnvio.sucesso && resEnvio.status === 'Rejeitada') {
+        setFaseTransmissao('erro')
+        setMensagemTransmissao(`Rejeição: ${resEnvio.message || 'Erro na transmissão'}`)
+        return
       }
 
       if (resEnvio.ja_autorizada) {
-        setFaseTransmissao("sucesso");
-        setMensagemTransmissao(
-          "NF-e já estava autorizada. Confirmando devolução...",
-        );
+        setFaseTransmissao('sucesso')
+        setMensagemTransmissao('NF-e já estava autorizada. Confirmando devolução...')
         await confirmarAutorizacaoDevolucaoVenda({
           devolucao_id: devolucaoId,
-          documento_id: resEnvio.documento_id || "",
+          documento_id: resEnvio.documento_id || '',
           destino,
-          dias_validade_vale:
-            destino === "vale_troca" ? diasValidadeVale : undefined,
-          conta_financeira_id:
-            destino === "dinheiro_volta" ? contaFinanceiraId : undefined,
-        });
-        setMensagemTransmissao(
-          "Devolução autorizada e finalizada com sucesso!",
-        );
-        return;
+          dias_validade_vale: destino === 'vale_troca' ? diasValidadeVale : undefined,
+          conta_financeira_id: destino === 'dinheiro_volta' ? contaFinanceiraId : undefined,
+        })
+        setMensagemTransmissao('Devolução autorizada e finalizada com sucesso!')
+        return
       }
 
-      const docId = resEnvio.documento_id;
+      const docId = resEnvio.documento_id
       if (docId) {
         // 3. Polling de consultarSituacaoNFe a cada 3s por até 30s
-        iniciarPollingNfe(docId, devolucaoId);
+        iniciarPollingNfe(docId, devolucaoId)
       } else {
-        setFaseTransmissao("timeout");
-        setMensagemTransmissao(
-          "Nota transmitida. Acompanhe a autorização na lista de devoluções.",
-        );
+        setFaseTransmissao('timeout')
+        setMensagemTransmissao('Nota transmitida. Acompanhe a autorização na lista de devoluções.')
       }
     } catch (err: any) {
-      setFaseTransmissao("erro");
+      setFaseTransmissao('erro')
       // Mostra o campo recusado pelo banco (ex.: status: Invalid value ...) em vez de só
       // "Failed to create record."
-      const campos = err?.response?.data;
+      const campos = err?.response?.data
       const detalhe =
-        campos && typeof campos === "object"
+        campos && typeof campos === 'object'
           ? Object.entries(campos)
               .map(([k, v]: [string, any]) => `${k}: ${v?.message || v}`)
-              .join("; ")
-          : "";
+              .join('; ')
+          : ''
       setMensagemTransmissao(
-        `Erro: ${err?.message || "Falha ao emitir NF-e de devolução."}${detalhe ? ` (${detalhe})` : ""}`,
-      );
+        `Erro: ${err?.message || 'Falha ao emitir NF-e de devolução.'}${detalhe ? ` (${detalhe})` : ''}`,
+      )
     } finally {
-      setProcessando(false);
+      setProcessando(false)
     }
-  };
+  }
 
   // Reenviar emissão de devolução que ficou "Pendente de nota"
   const handleTentarDeNovo = async (dev: DevolucaoVendaRegistro) => {
-    setReemitindoId(dev.id);
-    setFaseTransmissao("enviando");
-    setMensagemTransmissao(`Reenviando NF-e da Devolução #${dev.numero}...`);
-    setModalTransmissaoAberto(true);
+    setReemitindoId(dev.id)
+    setFaseTransmissao('enviando')
+    setMensagemTransmissao(`Reenviando NF-e da Devolução #${dev.numero}...`)
+    setModalTransmissaoAberto(true)
 
     try {
       const resEnvio = await emitirNfeDevolucaoVenda({
         devolucao_id: dev.id,
-      });
+      })
 
-      if (!resEnvio.sucesso && resEnvio.status === "Rejeitada") {
-        setFaseTransmissao("erro");
-        setMensagemTransmissao(
-          `Rejeição da SEFAZ: ${resEnvio.message || "Falha no envio"}`,
-        );
-        carregarDevolucoes();
-        return;
+      if (!resEnvio.sucesso && resEnvio.status === 'Rejeitada') {
+        setFaseTransmissao('erro')
+        setMensagemTransmissao(`Rejeição da SEFAZ: ${resEnvio.message || 'Falha no envio'}`)
+        carregarDevolucoes()
+        return
       }
 
       if (resEnvio.ja_autorizada) {
-        setFaseTransmissao("sucesso");
-        setMensagemTransmissao(
-          "NF-e já está autorizada na SEFAZ. Finalizando devolução...",
-        );
+        setFaseTransmissao('sucesso')
+        setMensagemTransmissao('NF-e já está autorizada na SEFAZ. Finalizando devolução...')
         await confirmarAutorizacaoDevolucaoVenda({
           devolucao_id: dev.id,
-          documento_id: resEnvio.documento_id || dev.documento_fiscal_id || "",
-        });
-        carregarDevolucoes();
-        return;
+          documento_id: resEnvio.documento_id || dev.documento_fiscal_id || '',
+        })
+        carregarDevolucoes()
+        return
       }
 
-      const docId = resEnvio.documento_id || dev.documento_fiscal_id;
+      const docId = resEnvio.documento_id || dev.documento_fiscal_id
       if (docId) {
-        iniciarPollingNfe(docId, dev.id);
+        iniciarPollingNfe(docId, dev.id)
       } else {
-        setFaseTransmissao("timeout");
-        setMensagemTransmissao(
-          "NF-e transmitida. Consulte a situação em instantes.",
-        );
+        setFaseTransmissao('timeout')
+        setMensagemTransmissao('NF-e transmitida. Consulte a situação em instantes.')
       }
     } catch (err: any) {
-      setFaseTransmissao("erro");
-      setMensagemTransmissao(
-        `Erro ao reenviar: ${err?.message || "Falha na comunicação."}`,
-      );
+      setFaseTransmissao('erro')
+      setMensagemTransmissao(`Erro ao reenviar: ${err?.message || 'Falha na comunicação.'}`)
     } finally {
-      setReemitindoId(null);
-      carregarDevolucoes();
+      setReemitindoId(null)
+      carregarDevolucoes()
     }
-  };
+  }
 
   // Carregar histórico de devoluções
   const carregarDevolucoes = useCallback(async () => {
-    if (!empresaAtiva?.id) return;
-    setCarregandoDevolucoes(true);
+    if (!empresaAtiva?.id) return
+    setCarregandoDevolucoes(true)
     try {
-      const res = await pb
-        .collection("vendas")
-        .getList<DevolucaoVendaRegistro>(1, 50, {
-          filter: `empresa_id = '${empresaAtiva.id}' && tipo = 'Devolução' && ativo = true`,
-          sort: "-created",
-          expand: "venda_origem_id,cliente_id,documento_fiscal_id",
-        });
-      setDevolucoesLista(res.items);
+      const res = await pb.collection('vendas').getList<DevolucaoVendaRegistro>(1, 50, {
+        filter: `empresa_id = '${empresaAtiva.id}' && tipo = 'Devolução' && ativo = true`,
+        sort: '-created',
+        expand: 'venda_origem_id,cliente_id,documento_fiscal_id',
+      })
+      setDevolucoesLista(res.items)
     } catch {
       //
     } finally {
-      setCarregandoDevolucoes(false);
+      setCarregandoDevolucoes(false)
     }
-  }, [empresaAtiva?.id]);
+  }, [empresaAtiva?.id])
 
   useEffect(() => {
-    if (abaAtiva === "historico") {
-      carregarDevolucoes();
+    if (abaAtiva === 'historico') {
+      carregarDevolucoes()
     }
-  }, [abaAtiva, carregarDevolucoes]);
+  }, [abaAtiva, carregarDevolucoes])
 
   // Abrir detalhe da devolução
   const handleAbrirDetalheDevolucao = async (dev: DevolucaoVendaRegistro) => {
-    setDevolucaoDetalhe(dev);
-    setDocFiscalDetalhe(null);
-    setModalDetalheAberto(true);
+    setDevolucaoDetalhe(dev)
+    setDocFiscalDetalhe(null)
+    setModalDetalheAberto(true)
 
     // Se possui documento fiscal vinculado, carregar registro detalhado
     if (dev.documento_fiscal_id) {
       try {
         const doc = await pb
-          .collection("documentos_fiscais")
-          .getOne<DocumentoFiscalRegistro>(dev.documento_fiscal_id);
-        setDocFiscalDetalhe(doc);
+          .collection('documentos_fiscais')
+          .getOne<DocumentoFiscalRegistro>(dev.documento_fiscal_id)
+        setDocFiscalDetalhe(doc)
       } catch {
         //
       }
@@ -785,114 +693,107 @@ export const TrocasDevolucoesPage: React.FC = () => {
       // Tentar buscar por devolucao_venda_id
       try {
         const docs = await pb
-          .collection("documentos_fiscais")
+          .collection('documentos_fiscais')
           .getList<DocumentoFiscalRegistro>(1, 1, {
             filter: `devolucao_venda_id = '${dev.id}'`,
-            sort: "-created",
-          });
+            sort: '-created',
+          })
         if (docs.items.length > 0) {
-          setDocFiscalDetalhe(docs.items[0]);
+          setDocFiscalDetalhe(docs.items[0])
         }
       } catch {
         //
       }
     }
-  };
+  }
 
   // Baixar XML da nota fiscal
   const handleBaixarXml = async (docId?: string) => {
-    if (!docId && !docFiscalDetalhe?.id) return;
-    const idFinal = docId || docFiscalDetalhe?.id || "";
-    if (!empresaAtiva?.id || !idFinal) return;
+    if (!docId && !docFiscalDetalhe?.id) return
+    const idFinal = docId || docFiscalDetalhe?.id || ''
+    if (!empresaAtiva?.id || !idFinal) return
 
-    setBaixandoXml(true);
+    setBaixandoXml(true)
     try {
       const res = await baixarArquivoFiscal({
         empresaId: empresaAtiva.id,
         caminho: `documentos_fiscais/${idFinal}/xml`,
-      });
+      })
 
       if (res.sucesso && res.conteudo) {
         const blob = new Blob([res.conteudo], {
-          type: "application/xml;charset=utf-8",
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `nfe_devolucao_${docFiscalDetalhe?.numero || idFinal}.xml`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+          type: 'application/xml;charset=utf-8',
+        })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `nfe_devolucao_${docFiscalDetalhe?.numero || idFinal}.xml`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
         toast({
-          title: "Download concluído",
-          description: "Arquivo XML baixado com sucesso.",
-        });
+          title: 'Download concluído',
+          description: 'Arquivo XML baixado com sucesso.',
+        })
       } else {
         // Fallback para arquivo anexado no PocketBase se existir
         if (docFiscalDetalhe?.xml_arquivo) {
-          const urlPb = pb.files.getURL(
-            docFiscalDetalhe,
-            docFiscalDetalhe.xml_arquivo,
-          );
-          window.open(urlPb, "_blank");
+          const urlPb = pb.files.getURL(docFiscalDetalhe, docFiscalDetalhe.xml_arquivo)
+          window.open(urlPb, '_blank')
         } else {
           toast({
-            title: "XML não disponível",
-            description:
-              res.message || "Arquivo XML ainda não disponível na SEFAZ.",
-            variant: "destructive",
-          });
+            title: 'XML não disponível',
+            description: res.message || 'Arquivo XML ainda não disponível na SEFAZ.',
+            variant: 'destructive',
+          })
         }
       }
     } catch (err: any) {
       if (docFiscalDetalhe?.xml_arquivo) {
-        const urlPb = pb.files.getURL(
-          docFiscalDetalhe,
-          docFiscalDetalhe.xml_arquivo,
-        );
-        window.open(urlPb, "_blank");
+        const urlPb = pb.files.getURL(docFiscalDetalhe, docFiscalDetalhe.xml_arquivo)
+        window.open(urlPb, '_blank')
       } else {
         toast({
-          title: "Erro no download",
-          description: err?.message || "Falha ao baixar XML da NF-e.",
-          variant: "destructive",
-        });
+          title: 'Erro no download',
+          description: err?.message || 'Falha ao baixar XML da NF-e.',
+          variant: 'destructive',
+        })
       }
     } finally {
-      setBaixandoXml(false);
+      setBaixandoXml(false)
     }
-  };
+  }
 
   // Carregar vales-troca
   const carregarVales = useCallback(async () => {
-    if (!empresaAtiva?.id) return;
-    setCarregandoVales(true);
+    if (!empresaAtiva?.id) return
+    setCarregandoVales(true)
     try {
       const res = await listarValesTroca({
         empresaId: empresaAtiva.id,
         status: filtroValeStatus,
         termoBusca: filtroValeCodigo || undefined,
-      });
-      setValesLista(res.items);
+      })
+      setValesLista(res.items)
     } catch {
       //
     } finally {
-      setCarregandoVales(false);
+      setCarregandoVales(false)
     }
-  }, [empresaAtiva?.id, filtroValeStatus, filtroValeCodigo]);
+  }, [empresaAtiva?.id, filtroValeStatus, filtroValeCodigo])
 
   useEffect(() => {
-    if (abaAtiva === "vales") {
-      carregarVales();
+    if (abaAtiva === 'vales') {
+      carregarVales()
     }
-  }, [abaAtiva, carregarVales]);
+  }, [abaAtiva, carregarVales])
 
   // Impressão do comprovante do Vale-Troca
   const handleImprimirVale = (vale: ValeTroca) => {
-    const janela = window.open("", "_blank", "width=450,height=600");
-    if (!janela) return;
-    const clienteNome = (vale.expand as any)?.cliente_id?.nome || "Portador";
+    const janela = window.open('', '_blank', 'width=450,height=600')
+    if (!janela) return
+    const clienteNome = (vale.expand as any)?.cliente_id?.nome || 'Portador'
 
     janela.document.write(`
       <!DOCTYPE html>
@@ -908,7 +809,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
         </style>
       </head>
       <body>
-        <div class="center bold">${empresaAtiva?.nome_fantasia || "ERP COMERCIAL"}</div>
+        <div class="center bold">${empresaAtiva?.nome_fantasia || 'ERP COMERCIAL'}</div>
         <div class="center">COMPROVANTE DE VALE-TROCA</div>
         <div class="border">
           <div><strong>Código:</strong></div>
@@ -916,8 +817,8 @@ export const TrocasDevolucoesPage: React.FC = () => {
           <div><strong>Valor Original:</strong> R$ ${Number(vale.valor).toFixed(2)}</div>
           <div><strong>Saldo Atual:</strong> R$ ${Number(vale.saldo).toFixed(2)}</div>
           <div><strong>Cliente:</strong> ${clienteNome}</div>
-          <div><strong>Validade:</strong> ${vale.validade ? new Date(vale.validade + "T00:00:00").toLocaleDateString("pt-BR") : "Sem expiração"}</div>
-          <div><strong>Emissão:</strong> ${new Date().toLocaleDateString("pt-BR")}</div>
+          <div><strong>Validade:</strong> ${vale.validade ? new Date(vale.validade + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem expiração'}</div>
+          <div><strong>Emissão:</strong> ${new Date().toLocaleDateString('pt-BR')}</div>
         </div>
         <div class="center" style="font-size: 11px;">
           Apresente este vale no caixa para abater em novas compras no PDV ou Balcão.
@@ -927,9 +828,9 @@ export const TrocasDevolucoesPage: React.FC = () => {
         </script>
       </body>
       </html>
-    `);
-    janela.document.close();
-  };
+    `)
+    janela.document.close()
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
@@ -941,16 +842,16 @@ export const TrocasDevolucoesPage: React.FC = () => {
             Trocas e Devoluções de Vendas
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Reintegração ao estoque, emissão de vale-troca, estorno financeiro e
-            abatimento de crediário.
+            Reintegração ao estoque, emissão de vale-troca, estorno financeiro e abatimento de
+            crediário.
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button
-            variant={abaAtiva === "nova" ? "default" : "outline"}
+            variant={abaAtiva === 'nova' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setAbaAtiva("nova")}
+            onClick={() => setAbaAtiva('nova')}
             className="text-xs h-9"
           >
             <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
@@ -958,9 +859,9 @@ export const TrocasDevolucoesPage: React.FC = () => {
           </Button>
 
           <Button
-            variant={abaAtiva === "historico" ? "default" : "outline"}
+            variant={abaAtiva === 'historico' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setAbaAtiva("historico")}
+            onClick={() => setAbaAtiva('historico')}
             className="text-xs h-9"
           >
             <FileText className="h-3.5 w-3.5 mr-1.5" />
@@ -968,9 +869,9 @@ export const TrocasDevolucoesPage: React.FC = () => {
           </Button>
 
           <Button
-            variant={abaAtiva === "vales" ? "default" : "outline"}
+            variant={abaAtiva === 'vales' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setAbaAtiva("vales")}
+            onClick={() => setAbaAtiva('vales')}
             className="text-xs h-9"
           >
             <Ticket className="h-3.5 w-3.5 mr-1.5" />
@@ -979,7 +880,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
         </div>
       </div>
 
-      {abaAtiva === "nova" ? (
+      {abaAtiva === 'nova' ? (
         <div className="space-y-6">
           {/* PASSO 1: Buscar a venda original */}
           <Card className="border-slate-200">
@@ -989,16 +890,12 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 1. Localizar Venda Original
               </CardTitle>
               <CardDescription className="text-xs text-slate-500">
-                Busque pelo número da venda, cliente ou data de emissão. Prazo
-                padrão de troca da empresa:{" "}
-                <strong>{diasParaTroca} dias</strong>.
+                Busque pelo número da venda, cliente ou data de emissão. Prazo padrão de troca da
+                empresa: <strong>{diasParaTroca} dias</strong>.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <form
-                onSubmit={handleBuscarVendas}
-                className="flex flex-wrap items-end gap-3"
-              >
+              <form onSubmit={handleBuscarVendas} className="flex flex-wrap items-end gap-3">
                 <div className="flex-1 min-w-[200px] space-y-1">
                   <Label className="text-xs font-medium text-slate-700">
                     Número da Venda ou Cliente
@@ -1012,9 +909,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 </div>
 
                 <div className="w-[180px] space-y-1">
-                  <Label className="text-xs font-medium text-slate-700">
-                    Data da Venda
-                  </Label>
+                  <Label className="text-xs font-medium text-slate-700">Data da Venda</Label>
                   <Input
                     type="date"
                     value={dataBusca}
@@ -1030,7 +925,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                   className="text-xs h-9 bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   <Search className="h-3.5 w-3.5 mr-1.5" />
-                  {buscando ? "Buscando..." : "Buscar"}
+                  {buscando ? 'Buscando...' : 'Buscar'}
                 </Button>
               </form>
 
@@ -1044,12 +939,8 @@ export const TrocasDevolucoesPage: React.FC = () => {
                         <TableHead className="text-xs">Data</TableHead>
                         <TableHead className="text-xs">Cliente</TableHead>
                         <TableHead className="text-xs">Tipo</TableHead>
-                        <TableHead className="text-xs text-right">
-                          Total (R$)
-                        </TableHead>
-                        <TableHead className="text-xs text-center w-24">
-                          Ação
-                        </TableHead>
+                        <TableHead className="text-xs text-right">Total (R$)</TableHead>
+                        <TableHead className="text-xs text-center w-24">Ação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1058,7 +949,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                           (v.expand as any)?.cliente_id?.nome_razao_social ||
                           (v.expand as any)?.cliente_id?.nome ||
                           v.cpf_cnpj_consumidor ||
-                          "Consumidor";
+                          'Consumidor'
                         return (
                           <TableRow key={v.id} className="hover:bg-blue-50/40">
                             <TableCell className="text-xs font-semibold font-mono">
@@ -1066,14 +957,10 @@ export const TrocasDevolucoesPage: React.FC = () => {
                             </TableCell>
                             <TableCell className="text-xs">
                               {v.data_emissao
-                                ? new Date(
-                                    v.data_emissao + "T00:00:00",
-                                  ).toLocaleDateString("pt-BR")
-                                : "-"}
+                                ? new Date(v.data_emissao + 'T00:00:00').toLocaleDateString('pt-BR')
+                                : '-'}
                             </TableCell>
-                            <TableCell className="text-xs">
-                              {clienteNome}
-                            </TableCell>
+                            <TableCell className="text-xs">{clienteNome}</TableCell>
                             <TableCell className="text-xs">
                               <Badge variant="outline" className="text-[10px]">
                                 {v.tipo}
@@ -1093,7 +980,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                               </Button>
                             </TableCell>
                           </TableRow>
-                        );
+                        )
                       })}
                     </TableBody>
                   </Table>
@@ -1113,8 +1000,8 @@ export const TrocasDevolucoesPage: React.FC = () => {
                       2. Venda #{vendaSelecionada.numero} Selecionada
                     </CardTitle>
                     <CardDescription className="text-xs text-slate-500">
-                      Escolha os itens e as quantidades devolvidas. A quantidade
-                      máxima é o saldo não devolvido.
+                      Escolha os itens e as quantidades devolvidas. A quantidade máxima é o saldo
+                      não devolvido.
                     </CardDescription>
                   </div>
 
@@ -1135,8 +1022,8 @@ export const TrocasDevolucoesPage: React.FC = () => {
                     <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="space-y-1">
                       <p className="font-semibold">
-                        Prazo de troca excedido ({diasCorridos} dias corridos
-                        desde a emissão / limite: {diasParaTroca} dias).
+                        Prazo de troca excedido ({diasCorridos} dias corridos desde a emissão /
+                        limite: {diasParaTroca} dias).
                       </p>
                       <p className="text-[11px] text-amber-700">
                         {supervisorAutorizado ? (
@@ -1145,7 +1032,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                             Autorização de supervisor concedida com sucesso.
                           </span>
                         ) : (
-                          "A conclusão desta troca/devolução exigirá autorização de um supervisor com senha."
+                          'A conclusão desta troca/devolução exigirá autorização de um supervisor com senha.'
                         )}
                       </p>
                     </div>
@@ -1154,54 +1041,33 @@ export const TrocasDevolucoesPage: React.FC = () => {
 
                 {/* Tabela de Itens da Venda */}
                 {carregandoItens ? (
-                  <p className="text-xs text-slate-400 py-4 text-center">
-                    Carregando itens...
-                  </p>
+                  <p className="text-xs text-slate-400 py-4 text-center">Carregando itens...</p>
                 ) : (
                   <div className="border border-slate-200 rounded-md overflow-hidden">
                     <Table>
                       <TableHeader className="bg-slate-50">
                         <TableRow>
                           <TableHead className="text-xs">Produto</TableHead>
-                          <TableHead className="text-xs text-right">
-                            Qtd Vendida
-                          </TableHead>
-                          <TableHead className="text-xs text-right">
-                            Já Devolvida
-                          </TableHead>
-                          <TableHead className="text-xs text-right">
-                            Saldo Disp.
-                          </TableHead>
-                          <TableHead className="text-xs text-right">
-                            Preço Líq. (R$)
-                          </TableHead>
-                          <TableHead className="text-xs text-center w-36">
-                            Qtd a Devolver
-                          </TableHead>
-                          <TableHead className="text-xs text-right">
-                            Subtotal (R$)
-                          </TableHead>
+                          <TableHead className="text-xs text-right">Qtd Vendida</TableHead>
+                          <TableHead className="text-xs text-right">Já Devolvida</TableHead>
+                          <TableHead className="text-xs text-right">Saldo Disp.</TableHead>
+                          <TableHead className="text-xs text-right">Preço Líq. (R$)</TableHead>
+                          <TableHead className="text-xs text-center w-36">Qtd a Devolver</TableHead>
+                          <TableHead className="text-xs text-right">Subtotal (R$)</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {itensVendaOriginal.map((it) => {
-                          const qtdVendida = Number(it.quantidade) || 0;
-                          const qtdJaDevolvida =
-                            Number(it.quantidade_devolvida) || 0;
-                          const saldoDevolvivel = Math.max(
-                            0,
-                            qtdVendida - qtdJaDevolvida,
-                          );
-                          const qtdDevolver = itensParaDevolver[it.id] || 0;
+                          const qtdVendida = Number(it.quantidade) || 0
+                          const qtdJaDevolvida = Number(it.quantidade_devolvida) || 0
+                          const saldoDevolvivel = Math.max(0, qtdVendida - qtdJaDevolvida)
+                          const qtdDevolver = itensParaDevolver[it.id] || 0
 
-                          const precoUnit = Number(it.preco_unitario) || 0;
-                          const descTot = Number(it.desconto_valor) || 0;
-                          const descUnit =
-                            qtdVendida > 0 ? descTot / qtdVendida : 0;
-                          const unitLiq = Math.max(0, precoUnit - descUnit);
-                          const subtotal = Number(
-                            (qtdDevolver * unitLiq).toFixed(2),
-                          );
+                          const precoUnit = Number(it.preco_unitario) || 0
+                          const descTot = Number(it.desconto_valor) || 0
+                          const descUnit = qtdVendida > 0 ? descTot / qtdVendida : 0
+                          const unitLiq = Math.max(0, precoUnit - descUnit)
+                          const subtotal = Number((qtdDevolver * unitLiq).toFixed(2))
 
                           return (
                             <TableRow key={it.id}>
@@ -1230,15 +1096,11 @@ export const TrocasDevolucoesPage: React.FC = () => {
                                   type="number"
                                   min={0}
                                   max={saldoDevolvivel}
-                                  step={it.unidade === "UN" ? 1 : 0.001}
+                                  step={it.unidade === 'UN' ? 1 : 0.001}
                                   disabled={saldoDevolvivel <= 0}
-                                  value={itensParaDevolver[it.id] ?? ""}
+                                  value={itensParaDevolver[it.id] ?? ''}
                                   onChange={(e) =>
-                                    handleAlterarQtdItem(
-                                      it.id,
-                                      saldoDevolvivel,
-                                      e.target.value,
-                                    )
+                                    handleAlterarQtdItem(it.id, saldoDevolvivel, e.target.value)
                                   }
                                   placeholder="0"
                                   className="text-xs h-8 w-24 mx-auto text-center font-mono"
@@ -1248,7 +1110,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                                 R$ {subtotal.toFixed(2)}
                               </TableCell>
                             </TableRow>
-                          );
+                          )
                         })}
                       </TableBody>
                     </Table>
@@ -1264,8 +1126,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-emerald-600" />
-                  3. Destino do Valor (R${" "}
-                  {resumoDevolucao.valorTotal.toFixed(2)})
+                  3. Destino do Valor (R$ {resumoDevolucao.valorTotal.toFixed(2)})
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">
                   Defina como o cliente receberá a compensação da devolução.
@@ -1275,11 +1136,11 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* Opção 1: Vale-troca */}
                   <div
-                    onClick={() => setDestino("vale_troca")}
+                    onClick={() => setDestino('vale_troca')}
                     className={`cursor-pointer p-4 rounded-lg border text-left transition-all ${
-                      destino === "vale_troca"
-                        ? "border-blue-600 bg-blue-50/50 ring-1 ring-blue-600"
-                        : "border-slate-200 hover:border-slate-300"
+                      destino === 'vale_troca'
+                        ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600'
+                        : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     <div className="flex items-center gap-2 font-semibold text-xs text-slate-900 mb-1">
@@ -1287,18 +1148,18 @@ export const TrocasDevolucoesPage: React.FC = () => {
                       Vale-Troca (Crédito Loja)
                     </div>
                     <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Gera um código único de cupom com validade configurável
-                      para abatimento em compras no PDV ou Balcão.
+                      Gera um código único de cupom com validade configurável para abatimento em
+                      compras no PDV ou Balcão.
                     </p>
                   </div>
 
                   {/* Opção 2: Dinheiro de volta */}
                   <div
-                    onClick={() => setDestino("dinheiro_volta")}
+                    onClick={() => setDestino('dinheiro_volta')}
                     className={`cursor-pointer p-4 rounded-lg border text-left transition-all ${
-                      destino === "dinheiro_volta"
-                        ? "border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600"
-                        : "border-slate-200 hover:border-slate-300"
+                      destino === 'dinheiro_volta'
+                        ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600'
+                        : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     <div className="flex items-center gap-2 font-semibold text-xs text-slate-900 mb-1">
@@ -1306,18 +1167,18 @@ export const TrocasDevolucoesPage: React.FC = () => {
                       Dinheiro de Volta (Caixa/Banco)
                     </div>
                     <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Registra saída avulsa no caixa físico ou conta bancária na
-                      conta analítica 2.2.05 (Devoluções de vendas).
+                      Registra saída avulsa no caixa físico ou conta bancária na conta analítica
+                      2.2.05 (Devoluções de vendas).
                     </p>
                   </div>
 
                   {/* Opção 3: Abater do crediário */}
                   <div
-                    onClick={() => setDestino("abater_crediario")}
+                    onClick={() => setDestino('abater_crediario')}
                     className={`cursor-pointer p-4 rounded-lg border text-left transition-all ${
-                      destino === "abater_crediario"
-                        ? "border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600"
-                        : "border-slate-200 hover:border-slate-300"
+                      destino === 'abater_crediario'
+                        ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600'
+                        : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     <div className="flex items-center gap-2 font-semibold text-xs text-slate-900 mb-1">
@@ -1325,14 +1186,14 @@ export const TrocasDevolucoesPage: React.FC = () => {
                       Abater do Crediário
                     </div>
                     <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Concede desconto/baixa direta nos títulos em aberto no
-                      Contas a Receber da própria venda original.
+                      Concede desconto/baixa direta nos títulos em aberto no Contas a Receber da
+                      própria venda original.
                     </p>
                   </div>
                 </div>
 
                 {/* Campos adicionais por tipo de destino */}
-                {destino === "vale_troca" && (
+                {destino === 'vale_troca' && (
                   <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 max-w-sm space-y-1">
                     <Label className="text-xs font-medium text-slate-700">
                       Validade do Vale (dias)
@@ -1342,15 +1203,13 @@ export const TrocasDevolucoesPage: React.FC = () => {
                       min={1}
                       max={365}
                       value={diasValidadeVale}
-                      onChange={(e) =>
-                        setDiasValidadeVale(Number(e.target.value) || 30)
-                      }
+                      onChange={(e) => setDiasValidadeVale(Number(e.target.value) || 30)}
                       className="text-xs h-8 bg-white w-32"
                     />
                   </div>
                 )}
 
-                {destino === "dinheiro_volta" && (
+                {destino === 'dinheiro_volta' && (
                   <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 max-w-sm space-y-1">
                     <Label className="text-xs font-medium text-slate-700">
                       Conta Financeira de Saída
@@ -1395,35 +1254,25 @@ export const TrocasDevolucoesPage: React.FC = () => {
                     disabled={
                       processando ||
                       !podeCriarVendas ||
-                      (vendaSelecionada?.documento_fiscal_status ===
-                        "Autorizada" &&
+                      (vendaSelecionada?.documento_fiscal_status === 'Autorizada' &&
                         !podeEmitirNotas)
                     }
                     onClick={handleConfirmarDevolucao}
                     className={`text-xs h-9 text-white gap-2 ${
-                      vendaSelecionada?.documento_fiscal_status === "Autorizada"
-                        ? "bg-blue-600 hover:bg-blue-700"
-                        : "bg-emerald-600 hover:bg-emerald-700"
+                      vendaSelecionada?.documento_fiscal_status === 'Autorizada'
+                        ? 'bg-blue-600 hover:bg-blue-700'
+                        : 'bg-emerald-600 hover:bg-emerald-700'
                     }`}
                   >
-                    {vendaSelecionada?.documento_fiscal_status ===
-                    "Autorizada" ? (
+                    {vendaSelecionada?.documento_fiscal_status === 'Autorizada' ? (
                       <>
                         <Send className="h-4 w-4" />
-                        <span>
-                          {processando
-                            ? "Processando..."
-                            : "Conferir e Emitir NF-e"}
-                        </span>
+                        <span>{processando ? 'Processando...' : 'Conferir e Emitir NF-e'}</span>
                       </>
                     ) : (
                       <>
                         <RotateCcw className="h-4 w-4" />
-                        <span>
-                          {processando
-                            ? "Processando..."
-                            : "Finalizar Devolução"}
-                        </span>
+                        <span>{processando ? 'Processando...' : 'Finalizar Devolução'}</span>
                       </>
                     )}
                   </Button>
@@ -1432,7 +1281,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
             </Card>
           )}
         </div>
-      ) : abaAtiva === "historico" ? (
+      ) : abaAtiva === 'historico' ? (
         /* ABA 2: Histórico de Devoluções de Vendas */
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
@@ -1443,8 +1292,8 @@ export const TrocasDevolucoesPage: React.FC = () => {
                   Histórico de Devoluções de Venda
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">
-                  Consulte devoluções finalizadas e com status &quot;Pendente de
-                  nota&quot; com opção de reenvio fiscal.
+                  Consulte devoluções finalizadas e com status &quot;Pendente de nota&quot; com
+                  opção de reenvio fiscal.
                 </CardDescription>
               </div>
 
@@ -1456,7 +1305,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 className="text-xs h-8 gap-1.5"
               >
                 <RefreshCw
-                  className={`h-3.5 w-3.5 ${carregandoDevolucoes ? "animate-spin" : ""}`}
+                  className={`h-3.5 w-3.5 ${carregandoDevolucoes ? 'animate-spin' : ''}`}
                 />
                 Atualizar
               </Button>
@@ -1464,9 +1313,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             {carregandoDevolucoes ? (
-              <p className="text-xs text-slate-400 py-6 text-center">
-                Carregando devoluções...
-              </p>
+              <p className="text-xs text-slate-400 py-6 text-center">Carregando devoluções...</p>
             ) : devolucoesLista.length === 0 ? (
               <p className="text-xs text-slate-400 py-6 text-center">
                 Nenhuma devolução de venda registrada nesta empresa.
@@ -1480,16 +1327,10 @@ export const TrocasDevolucoesPage: React.FC = () => {
                       <TableHead className="text-xs">Data</TableHead>
                       <TableHead className="text-xs">Venda Origem</TableHead>
                       <TableHead className="text-xs">Cliente</TableHead>
-                      <TableHead className="text-xs text-right">
-                        Total (R$)
-                      </TableHead>
-                      <TableHead className="text-xs text-center">
-                        Situação
-                      </TableHead>
+                      <TableHead className="text-xs text-right">Total (R$)</TableHead>
+                      <TableHead className="text-xs text-center">Situação</TableHead>
                       <TableHead className="text-xs">Nota Fiscal</TableHead>
-                      <TableHead className="text-xs text-center w-36">
-                        Ações
-                      </TableHead>
+                      <TableHead className="text-xs text-center w-36">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1498,33 +1339,26 @@ export const TrocasDevolucoesPage: React.FC = () => {
                         (dev.expand as any)?.cliente_id?.nome_razao_social ||
                         (dev.expand as any)?.cliente_id?.nome ||
                         dev.cpf_cnpj_consumidor ||
-                        "Consumidor";
-                      const numOrig = (dev.expand as any)?.venda_origem_id
-                        ?.numero;
-                      const doc = (dev.expand as any)?.documento_fiscal_id;
-                      const ehPendente = dev.status === "Pendente de nota";
+                        'Consumidor'
+                      const numOrig = (dev.expand as any)?.venda_origem_id?.numero
+                      const doc = (dev.expand as any)?.documento_fiscal_id
+                      const ehPendente = dev.status === 'Pendente de nota'
 
                       return (
                         <TableRow
                           key={dev.id}
-                          className={ehPendente ? "bg-amber-50/40" : undefined}
+                          className={ehPendente ? 'bg-amber-50/40' : undefined}
                         >
                           <TableCell className="text-xs font-mono font-bold text-slate-900">
                             #{dev.numero}
                           </TableCell>
                           <TableCell className="text-xs">
-                            {dev.created
-                              ? new Date(dev.created).toLocaleDateString(
-                                  "pt-BR",
-                                )
-                              : "-"}
+                            {dev.created ? new Date(dev.created).toLocaleDateString('pt-BR') : '-'}
                           </TableCell>
                           <TableCell className="text-xs font-mono">
-                            {numOrig ? `#${numOrig}` : "-"}
+                            {numOrig ? `#${numOrig}` : '-'}
                           </TableCell>
-                          <TableCell className="text-xs">
-                            {clienteNome}
-                          </TableCell>
+                          <TableCell className="text-xs">{clienteNome}</TableCell>
                           <TableCell className="text-xs text-right font-mono font-bold">
                             R$ {Number(dev.valor_total).toFixed(2)}
                           </TableCell>
@@ -1548,16 +1382,14 @@ export const TrocasDevolucoesPage: React.FC = () => {
                           <TableCell className="text-xs">
                             {doc?.numero ? (
                               <div className="font-mono text-[11px]">
-                                NF-e nº {doc.numero} (Série {doc.serie || "1"})
+                                NF-e nº {doc.numero} (Série {doc.serie || '1'})
                               </div>
                             ) : dev.documento_fiscal_status ? (
                               <Badge variant="outline" className="text-[10px]">
                                 {dev.documento_fiscal_status}
                               </Badge>
                             ) : (
-                              <span className="text-slate-400 text-[11px]">
-                                -
-                              </span>
+                              <span className="text-slate-400 text-[11px]">-</span>
                             )}
                             {ehPendente && dev.motivo_cancelamento && (
                               <div
@@ -1574,18 +1406,14 @@ export const TrocasDevolucoesPage: React.FC = () => {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  disabled={
-                                    reemitindoId === dev.id || !podeEmitirNotas
-                                  }
+                                  disabled={reemitindoId === dev.id || !podeEmitirNotas}
                                   onClick={() => handleTentarDeNovo(dev)}
                                   title="Tentar de novo a emissão da NF-e"
                                   className="text-xs h-7 px-2 text-amber-700 border-amber-300 hover:bg-amber-100 bg-amber-50"
                                 >
                                   <RefreshCw
                                     className={`h-3 w-3 mr-1 ${
-                                      reemitindoId === dev.id
-                                        ? "animate-spin"
-                                        : ""
+                                      reemitindoId === dev.id ? 'animate-spin' : ''
                                     }`}
                                   />
                                   Tentar de novo
@@ -1605,7 +1433,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                             </div>
                           </TableCell>
                         </TableRow>
-                      );
+                      )
                     })}
                   </TableBody>
                 </Table>
@@ -1624,8 +1452,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                   Vales-Troca Registrados
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">
-                  Consulte os cupons de crédito loja emitidos para clientes e
-                  seus saldos.
+                  Consulte os cupons de crédito loja emitidos para clientes e seus saldos.
                 </CardDescription>
               </div>
 
@@ -1651,9 +1478,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             {carregandoVales ? (
-              <p className="text-xs text-slate-400 py-6 text-center">
-                Carregando vales...
-              </p>
+              <p className="text-xs text-slate-400 py-6 text-center">Carregando vales...</p>
             ) : valesLista.length === 0 ? (
               <p className="text-xs text-slate-400 py-6 text-center">
                 Nenhum vale-troca encontrado.
@@ -1665,31 +1490,22 @@ export const TrocasDevolucoesPage: React.FC = () => {
                     <TableRow>
                       <TableHead className="text-xs">Código</TableHead>
                       <TableHead className="text-xs">Cliente</TableHead>
-                      <TableHead className="text-xs text-right">
-                        Valor Original (R$)
-                      </TableHead>
-                      <TableHead className="text-xs text-right">
-                        Saldo Restante (R$)
-                      </TableHead>
+                      <TableHead className="text-xs text-right">Valor Original (R$)</TableHead>
+                      <TableHead className="text-xs text-right">Saldo Restante (R$)</TableHead>
                       <TableHead className="text-xs">Validade</TableHead>
                       <TableHead className="text-xs">Status</TableHead>
-                      <TableHead className="text-xs text-center w-24">
-                        Ações
-                      </TableHead>
+                      <TableHead className="text-xs text-center w-24">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {valesLista.map((vale) => {
-                      const clienteNome =
-                        (vale.expand as any)?.cliente_id?.nome || "Portador";
+                      const clienteNome = (vale.expand as any)?.cliente_id?.nome || 'Portador'
                       return (
                         <TableRow key={vale.id}>
                           <TableCell className="text-xs font-mono font-bold text-blue-700">
                             {vale.codigo}
                           </TableCell>
-                          <TableCell className="text-xs">
-                            {clienteNome}
-                          </TableCell>
+                          <TableCell className="text-xs">{clienteNome}</TableCell>
                           <TableCell className="text-xs text-right font-mono">
                             R$ {Number(vale.valor).toFixed(2)}
                           </TableCell>
@@ -1698,20 +1514,18 @@ export const TrocasDevolucoesPage: React.FC = () => {
                           </TableCell>
                           <TableCell className="text-xs">
                             {vale.validade
-                              ? new Date(
-                                  vale.validade + "T00:00:00",
-                                ).toLocaleDateString("pt-BR")
-                              : "Sem expiração"}
+                              ? new Date(vale.validade + 'T00:00:00').toLocaleDateString('pt-BR')
+                              : 'Sem expiração'}
                           </TableCell>
                           <TableCell className="text-xs">
                             <Badge
                               variant="outline"
                               className={`text-[10px] ${
-                                vale.status === "Ativo"
-                                  ? "border-emerald-300 text-emerald-700 bg-emerald-50"
-                                  : vale.status === "Usado"
-                                    ? "border-slate-300 text-slate-600 bg-slate-50"
-                                    : "border-red-300 text-red-700 bg-red-50"
+                                vale.status === 'Ativo'
+                                  ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                                  : vale.status === 'Usado'
+                                    ? 'border-slate-300 text-slate-600 bg-slate-50'
+                                    : 'border-red-300 text-red-700 bg-red-50'
                               }`}
                             >
                               {vale.status}
@@ -1729,7 +1543,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                             </Button>
                           </TableCell>
                         </TableRow>
-                      );
+                      )
                     })}
                   </TableBody>
                 </Table>
@@ -1750,13 +1564,12 @@ export const TrocasDevolucoesPage: React.FC = () => {
         descricao="Troca/devolução fora do prazo"
         produtoNome={`Devolução Venda #${vendaSelecionada?.numero} fora do prazo (${diasCorridos} dias / limite ${diasParaTroca})`}
         onAutorizado={() => {
-          setSupervisorAutorizado(true);
-          setModalSupervisorAberto(false);
+          setSupervisorAutorizado(true)
+          setModalSupervisorAberto(false)
           toast({
-            title: "Supervisor Autorizou",
-            description:
-              "A troca fora do prazo foi autorizada. Prossiga com a finalização.",
-          });
+            title: 'Supervisor Autorizou',
+            description: 'A troca fora do prazo foi autorizada. Prossiga com a finalização.',
+          })
         }}
       />
 
@@ -1769,23 +1582,19 @@ export const TrocasDevolucoesPage: React.FC = () => {
         descricao="Devolução em dinheiro do caixa"
         empresaId={empresaAtiva?.id}
         origem="devolucao_dinheiro"
-        produtoNome={`Devolver R$ ${resumoDevolucao.valorTotal.toFixed(2).replace(".", ",")} em dinheiro (venda #${vendaSelecionada?.numero ?? ""})`}
+        produtoNome={`Devolver R$ ${resumoDevolucao.valorTotal.toFixed(2).replace('.', ',')} em dinheiro (venda #${vendaSelecionada?.numero ?? ''})`}
         onAutorizado={() => {
-          setGerenteAutorizouDinheiro(true);
-          setModalGerenteDinheiroAberto(false);
+          setGerenteAutorizouDinheiro(true)
+          setModalGerenteDinheiroAberto(false)
           toast({
-            title: "Gerente autorizou",
-            description:
-              "Devolução em dinheiro liberada. Clique de novo em confirmar a devolução.",
-          });
+            title: 'Gerente autorizou',
+            description: 'Devolução em dinheiro liberada. Clique de novo em confirmar a devolução.',
+          })
         }}
       />
 
       {/* Modal de Comprovante de Devolução Concluída */}
-      <Dialog
-        open={modalComprovanteAberto}
-        onOpenChange={setModalComprovanteAberto}
-      >
+      <Dialog open={modalComprovanteAberto} onOpenChange={setModalComprovanteAberto}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <div className="flex items-center gap-2">
@@ -1821,8 +1630,8 @@ export const TrocasDevolucoesPage: React.FC = () => {
 
             {resultadoSucesso?.vale_troca && (
               <p className="text-[11px] text-slate-500">
-                O cliente pode utilizar este código diretamente na forma de
-                pagamento &quot;Vale-troca&quot; no PDV ou no balcão.
+                O cliente pode utilizar este código diretamente na forma de pagamento
+                &quot;Vale-troca&quot; no PDV ou no balcão.
               </p>
             )}
           </div>
@@ -1834,7 +1643,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 size="sm"
                 onClick={() => {
                   if (resultadoSucesso?.vale_troca) {
-                    handleImprimirVale(resultadoSucesso.vale_troca);
+                    handleImprimirVale(resultadoSucesso.vale_troca)
                   }
                 }}
                 className="text-xs gap-1.5"
@@ -1855,10 +1664,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
       </Dialog>
 
       {/* MODAL 1: Conferência Pré-emissão da NF-e de Entrada Própria */}
-      <Dialog
-        open={modalConferenciaNFeAberto}
-        onOpenChange={setModalConferenciaNFeAberto}
-      >
+      <Dialog open={modalConferenciaNFeAberto} onOpenChange={setModalConferenciaNFeAberto}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -1866,8 +1672,8 @@ export const TrocasDevolucoesPage: React.FC = () => {
               Conferência da NF-e de Entrada Própria (Devolução de Venda)
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Revise os dados fiscais da nota fiscal de entrada própria antes da
-              transmissão para a SEFAZ.
+              Revise os dados fiscais da nota fiscal de entrada própria antes da transmissão para a
+              SEFAZ.
             </DialogDescription>
           </DialogHeader>
 
@@ -1882,8 +1688,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                   {empresaAtiva?.razao_social || empresaAtiva?.nome_fantasia}
                 </p>
                 <p className="text-slate-500 text-[11px] font-mono">
-                  CNPJ: {empresaAtiva?.cnpj || "-"} | UF:{" "}
-                  {empresaAtiva?.uf || "-"}
+                  CNPJ: {empresaAtiva?.cnpj || '-'} | UF: {empresaAtiva?.uf || '-'}
                 </p>
               </div>
 
@@ -1894,30 +1699,26 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 {vendaSelecionada?.cliente_id ? (
                   <>
                     <p className="text-slate-900 font-medium">
-                      {(vendaSelecionada.expand as any)?.cliente_id
-                        ?.nome_razao_social ||
+                      {(vendaSelecionada.expand as any)?.cliente_id?.nome_razao_social ||
                         (vendaSelecionada.expand as any)?.cliente_id?.nome ||
-                        "Cliente cadastrado"}
+                        'Cliente cadastrado'}
                     </p>
                     <p className="text-slate-500 text-[11px] font-mono">
-                      CPF/CNPJ:{" "}
+                      CPF/CNPJ:{' '}
                       {(vendaSelecionada.expand as any)?.cliente_id?.cpf_cnpj ||
                         vendaSelecionada.cpf_cnpj_consumidor ||
-                        "-"}
+                        '-'}
                     </p>
                   </>
                 ) : (
                   <div className="space-y-2">
                     <p className="text-amber-800 text-[11px] font-medium flex items-center gap-1">
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                      Venda sem cliente cadastrado. Informe Nome e CPF para a
-                      NF-e:
+                      Venda sem cliente cadastrado. Informe Nome e CPF para a NF-e:
                     </p>
                     <div className="grid grid-cols-1 gap-2">
                       <div>
-                        <Label className="text-[11px]">
-                          Nome / Razão Social
-                        </Label>
+                        <Label className="text-[11px]">Nome / Razão Social</Label>
                         <Input
                           value={clienteAvulsoNome}
                           onChange={(e) => setClienteAvulsoNome(e.target.value)}
@@ -1956,15 +1757,12 @@ export const TrocasDevolucoesPage: React.FC = () => {
               <p className="font-mono text-xs text-blue-950 font-semibold break-all">
                 {docFiscalVendaOrig?.chave_acesso ||
                   (vendaSelecionada as any)?.documento_referenciado_chave ||
-                  "Chave da nota original vinculada no documento fiscal"}
+                  'Chave da nota original vinculada no documento fiscal'}
               </p>
               <p className="text-[11px] text-blue-700">
-                Modelo:{" "}
-                {docFiscalVendaOrig?.modelo === "65"
-                  ? "NFC-e (65)"
-                  : "NF-e (55)"}{" "}
-                | Finalidade de emissão:{" "}
-                <strong>4 - Devolução de mercadoria</strong> (Entrada própria).
+                Modelo: {docFiscalVendaOrig?.modelo === '65' ? 'NFC-e (65)' : 'NF-e (55)'} |
+                Finalidade de emissão: <strong>4 - Devolução de mercadoria</strong> (Entrada
+                própria).
               </p>
             </div>
 
@@ -1975,8 +1773,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                   Itens Devolvidos &amp; CFOP Previsto:
                 </span>
                 <span className="text-slate-500 text-[11px]">
-                  Total:{" "}
-                  <strong>R$ {resumoDevolucao.valorTotal.toFixed(2)}</strong>
+                  Total: <strong>R$ {resumoDevolucao.valorTotal.toFixed(2)}</strong>
                 </span>
               </div>
 
@@ -1984,21 +1781,11 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 <Table>
                   <TableHeader className="bg-slate-50">
                     <TableRow>
-                      <TableHead className="text-[11px]">
-                        Item / Descrição
-                      </TableHead>
-                      <TableHead className="text-[11px] text-right">
-                        Qtd
-                      </TableHead>
-                      <TableHead className="text-[11px] text-right">
-                        Valor Unit.
-                      </TableHead>
-                      <TableHead className="text-[11px] text-center">
-                        CFOP Previsto
-                      </TableHead>
-                      <TableHead className="text-[11px] text-right">
-                        Total (R$)
-                      </TableHead>
+                      <TableHead className="text-[11px]">Item / Descrição</TableHead>
+                      <TableHead className="text-[11px] text-right">Qtd</TableHead>
+                      <TableHead className="text-[11px] text-right">Valor Unit.</TableHead>
+                      <TableHead className="text-[11px] text-center">CFOP Previsto</TableHead>
+                      <TableHead className="text-[11px] text-right">Total (R$)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2008,16 +1795,15 @@ export const TrocasDevolucoesPage: React.FC = () => {
                         empresaAtiva?.uf &&
                         docFiscalVendaOrig?.destinatario_uf &&
                         empresaAtiva.uf !== docFiscalVendaOrig.destinatario_uf
-                          ? "2202"
-                          : "1202";
+                          ? '2202'
+                          : '1202'
 
                       return (
                         <TableRow key={idx}>
                           <TableCell className="text-xs font-medium">
                             {it.descricao}
                             <span className="text-[10px] text-slate-400 block font-mono">
-                              Custo Unit: R${" "}
-                              {Number(it.custo_unitario).toFixed(2)}
+                              Custo Unit: R$ {Number(it.custo_unitario).toFixed(2)}
                             </span>
                           </TableCell>
                           <TableCell className="text-xs text-right font-mono">
@@ -2027,28 +1813,25 @@ export const TrocasDevolucoesPage: React.FC = () => {
                             R$ {Number(it.preco_unitario).toFixed(2)}
                           </TableCell>
                           <TableCell className="text-xs text-center font-mono font-bold text-blue-700">
-                            {cfopPrevisto}{" "}
+                            {cfopPrevisto}{' '}
                             <span className="text-[10px] font-normal text-slate-500">
                               (ou 1411/2411 c/ ST)
                             </span>
                           </TableCell>
                           <TableCell className="text-xs text-right font-mono font-bold">
-                            R${" "}
-                            {Number(it.quantidade * it.preco_unitario).toFixed(
-                              2,
-                            )}
+                            R$ {Number(it.quantidade * it.preco_unitario).toFixed(2)}
                           </TableCell>
                         </TableRow>
-                      );
+                      )
                     })}
                   </TableBody>
                 </Table>
               </div>
 
               <p className="text-[11px] text-slate-500 italic">
-                * As bases de cálculo e alíquotas de ICMS, PIS e COFINS são
-                calculadas proporcionalmente aos valores da nota fiscal de
-                origem no momento da transmissão para a SEFAZ.
+                * As bases de cálculo e alíquotas de ICMS, PIS e COFINS são calculadas
+                proporcionalmente aos valores da nota fiscal de origem no momento da transmissão
+                para a SEFAZ.
               </p>
             </div>
 
@@ -2059,10 +1842,9 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 Atenção ao fluxo fiscal de devolução:
               </span>
               <p className="text-[11px] text-amber-800">
-                O estoque e o financeiro (vale-troca, estorno em dinheiro ou
-                crediário) <strong>NÃO serão movimentados de imediato</strong>.
-                O sistema manterá a devolução com status{" "}
-                <strong>&quot;Pendente de nota&quot;</strong> e só confirmará a
+                O estoque e o financeiro (vale-troca, estorno em dinheiro ou crediário){' '}
+                <strong>NÃO serão movimentados de imediato</strong>. O sistema manterá a devolução
+                com status <strong>&quot;Pendente de nota&quot;</strong> e só confirmará a
                 reintegração após a SEFAZ autorizar a NF-e.
               </p>
             </div>
@@ -2084,9 +1866,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
               className="text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
             >
               <Send className="h-3.5 w-3.5" />
-              <span>
-                {processando ? "Transmitindo..." : "Confirmar e emitir NF-e"}
-              </span>
+              <span>{processando ? 'Transmitindo...' : 'Confirmar e emitir NF-e'}</span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2096,22 +1876,19 @@ export const TrocasDevolucoesPage: React.FC = () => {
       <Dialog
         open={modalTransmissaoAberto}
         onOpenChange={(aberto) => {
-          if (
-            !aberto &&
-            (faseTransmissao === "polling" || faseTransmissao === "enviando")
-          ) {
+          if (!aberto && (faseTransmissao === 'polling' || faseTransmissao === 'enviando')) {
             // Não fecha durante envio
-            return;
+            return
           }
-          setModalTransmissaoAberto(aberto);
+          setModalTransmissaoAberto(aberto)
           if (!aberto) {
             if (
-              faseTransmissao === "sucesso" ||
-              faseTransmissao === "erro" ||
-              faseTransmissao === "timeout"
+              faseTransmissao === 'sucesso' ||
+              faseTransmissao === 'erro' ||
+              faseTransmissao === 'timeout'
             ) {
-              setAbaAtiva("historico");
-              carregarDevolucoes();
+              setAbaAtiva('historico')
+              carregarDevolucoes()
             }
           }
         }}
@@ -2119,66 +1896,62 @@ export const TrocasDevolucoesPage: React.FC = () => {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              {faseTransmissao === "polling" ||
-              faseTransmissao === "enviando" ? (
+              {faseTransmissao === 'polling' || faseTransmissao === 'enviando' ? (
                 <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
-              ) : faseTransmissao === "sucesso" ? (
+              ) : faseTransmissao === 'sucesso' ? (
                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              ) : faseTransmissao === "denegado" ? (
+              ) : faseTransmissao === 'denegado' ? (
                 <AlertTriangle className="h-5 w-5 text-purple-600" />
               ) : (
                 <AlertTriangle className="h-5 w-5 text-red-600" />
               )}
-              {faseTransmissao === "polling"
-                ? "Aguardando Retorno da SEFAZ..."
-                : faseTransmissao === "enviando"
-                  ? "Transmitindo NF-e..."
-                  : faseTransmissao === "sucesso"
-                    ? "Devolução Autorizada!"
-                    : faseTransmissao === "denegado"
-                      ? "NF-e Denegada pela SEFAZ"
-                      : faseTransmissao === "timeout"
-                        ? "Processamento em Andamento"
-                        : "Rejeição na Emissão Fiscal"}
+              {faseTransmissao === 'polling'
+                ? 'Aguardando Retorno da SEFAZ...'
+                : faseTransmissao === 'enviando'
+                  ? 'Transmitindo NF-e...'
+                  : faseTransmissao === 'sucesso'
+                    ? 'Devolução Autorizada!'
+                    : faseTransmissao === 'denegado'
+                      ? 'NF-e Denegada pela SEFAZ'
+                      : faseTransmissao === 'timeout'
+                        ? 'Processamento em Andamento'
+                        : 'Rejeição na Emissão Fiscal'}
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              {faseTransmissao === "polling"
+              {faseTransmissao === 'polling'
                 ? `Consultando situação a cada 3s (${tempoPolling}s decorridos de até 30s)...`
-                : "Status da operação fiscal."}
+                : 'Status da operação fiscal.'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4 space-y-3 text-xs">
             <div
               className={`p-3.5 rounded-lg border ${
-                faseTransmissao === "sucesso"
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-900"
-                  : faseTransmissao === "denegado"
-                    ? "bg-purple-50 border-purple-200 text-purple-900"
-                    : faseTransmissao === "erro"
-                      ? "bg-red-50 border-red-200 text-red-900"
-                      : faseTransmissao === "timeout"
-                        ? "bg-amber-50 border-amber-200 text-amber-900"
-                        : "bg-blue-50 border-blue-200 text-blue-900"
+                faseTransmissao === 'sucesso'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : faseTransmissao === 'denegado'
+                    ? 'bg-purple-50 border-purple-200 text-purple-900'
+                    : faseTransmissao === 'erro'
+                      ? 'bg-red-50 border-red-200 text-red-900'
+                      : faseTransmissao === 'timeout'
+                        ? 'bg-amber-50 border-amber-200 text-amber-900'
+                        : 'bg-blue-50 border-blue-200 text-blue-900'
               }`}
             >
-              <p className="leading-relaxed font-medium">
-                {mensagemTransmissao}
-              </p>
+              <p className="leading-relaxed font-medium">{mensagemTransmissao}</p>
             </div>
 
-            {faseTransmissao === "denegado" && (
+            {faseTransmissao === 'denegado' && (
               <p className="text-[11px] text-purple-800">
-                Uma nota fiscal denegada decorre de irregularidade fiscal do
-                emitente ou destinatário. Ela não pode ser corrigida nem
-                reutilizada.
+                Uma nota fiscal denegada decorre de irregularidade fiscal do emitente ou
+                destinatário. Ela não pode ser corrigida nem reutilizada.
               </p>
             )}
 
-            {faseTransmissao === "timeout" && (
+            {faseTransmissao === 'timeout' && (
               <p className="text-[11px] text-slate-500">
-                A nota segue pendente na fila da SEFAZ. Você pode acompanhar e
-                reconsultar na aba <strong>Histórico de Devoluções</strong>.
+                A nota segue pendente na fila da SEFAZ. Você pode acompanhar e reconsultar na aba{' '}
+                <strong>Histórico de Devoluções</strong>.
               </p>
             )}
           </div>
@@ -2186,13 +1959,11 @@ export const TrocasDevolucoesPage: React.FC = () => {
           <DialogFooter>
             <Button
               size="sm"
-              disabled={
-                faseTransmissao === "enviando" || faseTransmissao === "polling"
-              }
+              disabled={faseTransmissao === 'enviando' || faseTransmissao === 'polling'}
               onClick={() => {
-                setModalTransmissaoAberto(false);
-                setAbaAtiva("historico");
-                carregarDevolucoes();
+                setModalTransmissaoAberto(false)
+                setAbaAtiva('historico')
+                carregarDevolucoes()
               }}
               className="text-xs bg-slate-900 text-white"
             >
@@ -2219,11 +1990,9 @@ export const TrocasDevolucoesPage: React.FC = () => {
             {/* Cabeçalho */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg font-mono">
               <div>
-                <span className="text-slate-500 text-[10px] block font-sans">
-                  Situação:
-                </span>
+                <span className="text-slate-500 text-[10px] block font-sans">Situação:</span>
                 <span className="font-bold text-slate-900">
-                  {devolucaoDetalhe?.status === "Pendente de nota" ? (
+                  {devolucaoDetalhe?.status === 'Pendente de nota' ? (
                     <Badge
                       variant="outline"
                       className="bg-amber-100 text-amber-800 border-amber-300"
@@ -2241,23 +2010,17 @@ export const TrocasDevolucoesPage: React.FC = () => {
                 </span>
               </div>
               <div>
-                <span className="text-slate-500 text-[10px] block font-sans">
-                  Valor Total:
-                </span>
+                <span className="text-slate-500 text-[10px] block font-sans">Valor Total:</span>
                 <span className="font-bold text-slate-900">
                   R$ {Number(devolucaoDetalhe?.valor_total).toFixed(2)}
                 </span>
               </div>
               <div>
-                <span className="text-slate-500 text-[10px] block font-sans">
-                  Data:
-                </span>
+                <span className="text-slate-500 text-[10px] block font-sans">Data:</span>
                 <span>
                   {devolucaoDetalhe?.created
-                    ? new Date(devolucaoDetalhe.created).toLocaleDateString(
-                        "pt-BR",
-                      )
-                    : "-"}
+                    ? new Date(devolucaoDetalhe.created).toLocaleDateString('pt-BR')
+                    : '-'}
                 </span>
               </div>
             </div>
@@ -2285,32 +2048,22 @@ export const TrocasDevolucoesPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
                   <div>
-                    <span className="text-slate-500 block font-sans text-[10px]">
-                      Número:
-                    </span>
-                    <span className="font-bold">
-                      {docFiscalDetalhe.numero || "-"}
-                    </span>
+                    <span className="text-slate-500 block font-sans text-[10px]">Número:</span>
+                    <span className="font-bold">{docFiscalDetalhe.numero || '-'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500 block font-sans text-[10px]">
-                      Série:
-                    </span>
-                    <span>{docFiscalDetalhe.serie || "1"}</span>
+                    <span className="text-slate-500 block font-sans text-[10px]">Série:</span>
+                    <span>{docFiscalDetalhe.serie || '1'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500 block font-sans text-[10px]">
-                      Status:
-                    </span>
+                    <span className="text-slate-500 block font-sans text-[10px]">Status:</span>
                     <Badge variant="outline" className="text-[10px]">
                       {docFiscalDetalhe.status}
                     </Badge>
                   </div>
                   <div>
-                    <span className="text-slate-500 block font-sans text-[10px]">
-                      Protocolo:
-                    </span>
-                    <span>{docFiscalDetalhe.protocolo || "-"}</span>
+                    <span className="text-slate-500 block font-sans text-[10px]">Protocolo:</span>
+                    <span>{docFiscalDetalhe.protocolo || '-'}</span>
                   </div>
                 </div>
 
@@ -2319,7 +2072,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                     Chave de Acesso (44 dígitos):
                   </span>
                   <span className="font-mono text-[11px] font-semibold break-all text-blue-950">
-                    {docFiscalDetalhe.chave_acesso || "-"}
+                    {docFiscalDetalhe.chave_acesso || '-'}
                   </span>
                 </div>
 
@@ -2329,9 +2082,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() =>
-                        window.open(docFiscalDetalhe.danfe_url, "_blank")
-                      }
+                      onClick={() => window.open(docFiscalDetalhe.danfe_url, '_blank')}
                       className="text-xs h-8 gap-1.5 bg-white text-blue-700 border-blue-300 hover:bg-blue-50"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
@@ -2346,9 +2097,7 @@ export const TrocasDevolucoesPage: React.FC = () => {
                     onClick={() => handleBaixarXml(docFiscalDetalhe.id)}
                     className="text-xs h-8 gap-1.5 bg-white text-slate-700 hover:bg-slate-50"
                   >
-                    <Download
-                      className={`h-3.5 w-3.5 ${baixandoXml ? "animate-spin" : ""}`}
-                    />
+                    <Download className={`h-3.5 w-3.5 ${baixandoXml ? 'animate-spin' : ''}`} />
                     Baixar XML
                   </Button>
                 </div>
@@ -2360,16 +2109,14 @@ export const TrocasDevolucoesPage: React.FC = () => {
             )}
 
             {/* Ação de tentar de novo se estiver Pendente de nota */}
-            {devolucaoDetalhe?.status === "Pendente de nota" && (
+            {devolucaoDetalhe?.status === 'Pendente de nota' && (
               <div className="pt-2 border-t border-slate-200 flex justify-end">
                 <Button
                   size="sm"
-                  disabled={
-                    reemitindoId === devolucaoDetalhe.id || !podeEmitirNotas
-                  }
+                  disabled={reemitindoId === devolucaoDetalhe.id || !podeEmitirNotas}
                   onClick={() => {
-                    setModalDetalheAberto(false);
-                    handleTentarDeNovo(devolucaoDetalhe);
+                    setModalDetalheAberto(false)
+                    handleTentarDeNovo(devolucaoDetalhe)
                   }}
                   className="text-xs bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
                 >
@@ -2393,5 +2140,5 @@ export const TrocasDevolucoesPage: React.FC = () => {
         </DialogContent>
       </Dialog>
     </div>
-  );
-};
+  )
+}

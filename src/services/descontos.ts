@@ -1,20 +1,20 @@
-import PocketBase, { BaseAuthStore } from "pocketbase";
-import pb from "@/lib/pocketbase/client";
-import { registrarAuditoria } from "@/services/auditoria";
-import type { Produto } from "@/services/produtos";
-import type { Usuario } from "@/services/usuarios";
+import PocketBase, { BaseAuthStore } from 'pocketbase'
+import pb from '@/lib/pocketbase/client'
+import { registrarAuditoria } from '@/services/auditoria'
+import type { Produto } from '@/services/produtos'
+import type { Usuario } from '@/services/usuarios'
 
 export interface ValidarDescontoItemParams {
-  descontoPercentual: number;
-  produto: Partial<Produto>;
-  usuario: Partial<Usuario>;
+  descontoPercentual: number
+  produto: Partial<Produto>
+  usuario: Partial<Usuario>
 }
 
 export interface ResultadoValidacaoDesconto {
-  valido: boolean;
-  limitePermitido: number;
-  motivo?: string;
-  requerAutorizacaoSupervisor: boolean;
+  valido: boolean
+  limitePermitido: number
+  motivo?: string
+  requerAutorizacaoSupervisor: boolean
 }
 
 /**
@@ -32,7 +32,7 @@ export function validarDescontoItem({
   produto,
   usuario,
 }: ValidarDescontoItemParams): ResultadoValidacaoDesconto {
-  const desconto = Math.max(0, Number(descontoPercentual) || 0);
+  const desconto = Math.max(0, Number(descontoPercentual) || 0)
 
   // 1. Se desconto for 0, sempre válido
   if (desconto === 0) {
@@ -40,7 +40,7 @@ export function validarDescontoItem({
       valido: true,
       limitePermitido: 100,
       requerAutorizacaoSupervisor: false,
-    };
+    }
   }
 
   // 2. Produto permite desconto?
@@ -48,17 +48,16 @@ export function validarDescontoItem({
     return {
       valido: false,
       limitePermitido: 0,
-      motivo: `O produto "${produto.descricao || "Item"}" não aceita desconto.`,
+      motivo: `O produto "${produto.descricao || 'Item'}" não aceita desconto.`,
       requerAutorizacaoSupervisor: true,
-    };
+    }
   }
 
   // 3. Apura limite do produto
   // 0 ou vazio = produto sem limite próprio (vale só o limite do usuário).
   // Os produtos importados vieram com 0, o que travava qualquer desconto.
-  const limiteProdNum = Number(produto.desconto_maximo_percentual);
-  const limiteProd =
-    !isNaN(limiteProdNum) && limiteProdNum > 0 ? limiteProdNum : 100;
+  const limiteProdNum = Number(produto.desconto_maximo_percentual)
+  const limiteProd = !isNaN(limiteProdNum) && limiteProdNum > 0 ? limiteProdNum : 100
 
   // 4. Apura limite do usuário
   const limiteUser =
@@ -66,10 +65,10 @@ export function validarDescontoItem({
     usuario.desconto_maximo_percentual !== null &&
     !isNaN(Number(usuario.desconto_maximo_percentual))
       ? Number(usuario.desconto_maximo_percentual)
-      : 0; // se não especificado no usuário, 0%
+      : 0 // se não especificado no usuário, 0%
 
   // Regra: vale o MENOR dos dois limites
-  const limitePermitido = Math.min(limiteProd, limiteUser);
+  const limitePermitido = Math.min(limiteProd, limiteUser)
 
   if (desconto > limitePermitido) {
     return {
@@ -77,45 +76,45 @@ export function validarDescontoItem({
       limitePermitido,
       motivo: `Desconto informado (${desconto.toFixed(2)}%) excede o limite permitido de ${limitePermitido.toFixed(2)}% (usuário: ${limiteUser.toFixed(2)}%, produto: ${limiteProd.toFixed(2)}%).`,
       requerAutorizacaoSupervisor: true,
-    };
+    }
   }
 
   return {
     valido: true,
     limitePermitido,
     requerAutorizacaoSupervisor: false,
-  };
+  }
 }
 
 export interface AutorizarDescontoSupervisorParams {
-  email: string;
-  senha: string;
-  descontoPercentual: number;
-  produtoId?: string;
-  produtoNome?: string;
-  usuarioOperadorId?: string;
-  empresaId?: string;
-  origem?: string; // ex: "PDV", "Venda Balcão", "Orçamento"
-  vendaContexto?: Record<string, unknown>;
+  email: string
+  senha: string
+  descontoPercentual: number
+  produtoId?: string
+  produtoNome?: string
+  usuarioOperadorId?: string
+  empresaId?: string
+  origem?: string // ex: "PDV", "Venda Balcão", "Orçamento"
+  vendaContexto?: Record<string, unknown>
   /** Só perfil Gerente ou Administrador pode autorizar (ex.: devolução em dinheiro) */
-  exigeGerente?: boolean;
+  exigeGerente?: boolean
 }
 
 /** Perfil com poder de autorização: Administrador ou nome contendo "gerente". */
 export function perfilEhGerente(
   perfil?: { nome?: string; administrador?: boolean } | null,
 ): boolean {
-  if (!perfil) return false;
-  if (perfil.administrador === true) return true;
-  return (perfil.nome || "").toLowerCase().includes("gerente");
+  if (!perfil) return false
+  if (perfil.administrador === true) return true
+  return (perfil.nome || '').toLowerCase().includes('gerente')
 }
 
 export interface ResultadoAutorizacaoSupervisor {
-  autorizado: boolean;
-  supervisorId?: string;
-  supervisorNome?: string;
-  limiteSupervisor?: number;
-  mensagem?: string;
+  autorizado: boolean
+  supervisorId?: string
+  supervisorNome?: string
+  limiteSupervisor?: number
+  mensagem?: string
 }
 
 /**
@@ -126,56 +125,48 @@ export interface ResultadoAutorizacaoSupervisor {
 export async function autorizarDescontoSupervisor(
   params: AutorizarDescontoSupervisorParams,
 ): Promise<ResultadoAutorizacaoSupervisor> {
-  const { email, senha, descontoPercentual } = params;
+  const { email, senha, descontoPercentual } = params
   if (!email || !email.trim()) {
-    throw new Error("Informe o e-mail do supervisor.");
+    throw new Error('Informe o e-mail do supervisor.')
   }
   if (!senha) {
-    throw new Error("Informe a senha do supervisor.");
+    throw new Error('Informe a senha do supervisor.')
   }
 
   // 1. Tenta autenticar via collection 'users'
-  let authRecordId: string;
-  let authEmail: string;
-  let authName: string;
+  let authRecordId: string
+  let authEmail: string
+  let authName: string
   // Cliente SEPARADO, com sessão só em memória: autenticar no cliente principal
   // trocava o login do navegador (o caixa passava a operar logado como o supervisor).
-  const pbSup = new PocketBase(pb.baseURL, new BaseAuthStore());
-  pbSup.autoCancellation(false);
+  const pbSup = new PocketBase(pb.baseURL, new BaseAuthStore())
+  pbSup.autoCancellation(false)
   try {
-    const authData = await pbSup
-      .collection("users")
-      .authWithPassword(email.trim(), senha);
-    authRecordId = authData.record.id;
-    authEmail = authData.record.email;
-    authName = (authData.record.name as string) || authEmail;
+    const authData = await pbSup.collection('users').authWithPassword(email.trim(), senha)
+    authRecordId = authData.record.id
+    authEmail = authData.record.email
+    authName = (authData.record.name as string) || authEmail
   } catch (err: unknown) {
-    console.error("Falha de autenticação do supervisor:", err);
-    throw new Error("E-mail ou senha do supervisor incorretos.");
+    console.error('Falha de autenticação do supervisor:', err)
+    throw new Error('E-mail ou senha do supervisor incorretos.')
   }
 
   // 2. Busca o registro na coleção usuarios vinculado a este authRecordId
-  let usuarioSupervisor: Usuario | null = null;
+  let usuarioSupervisor: Usuario | null = null
   try {
     usuarioSupervisor = await pbSup
-      .collection("usuarios")
-      .getFirstListItem<Usuario>(
-        `auth_user_id = '${authRecordId}' && ativo = true`,
-        {
-          expand: "perfil_id",
-        },
-      );
+      .collection('usuarios')
+      .getFirstListItem<Usuario>(`auth_user_id = '${authRecordId}' && ativo = true`, {
+        expand: 'perfil_id',
+      })
   } catch {
     // Busca por email se auth_user_id ainda não estiver sincronizado
     try {
       usuarioSupervisor = await pbSup
-        .collection("usuarios")
-        .getFirstListItem<Usuario>(
-          `email = '${authEmail.trim()}' && ativo = true`,
-          {
-            expand: "perfil_id",
-          },
-        );
+        .collection('usuarios')
+        .getFirstListItem<Usuario>(`email = '${authEmail.trim()}' && ativo = true`, {
+          expand: 'perfil_id',
+        })
     } catch {
       // continua sem registro ERP
     }
@@ -184,33 +175,33 @@ export async function autorizarDescontoSupervisor(
   // 3. Checa permissões e limites do supervisor
   const perfilSup = usuarioSupervisor?.expand?.perfil_id as
     | { nome?: string; administrador?: boolean }
-    | undefined;
-  pbSup.authStore.clear();
-  const perfilAdmin = perfilEhGerente(perfilSup);
+    | undefined
+  pbSup.authStore.clear()
+  const perfilAdmin = perfilEhGerente(perfilSup)
   if (params.exigeGerente && !perfilAdmin) {
     throw new Error(
       `${usuarioSupervisor?.nome || authName} não tem perfil Gerente ou Administrador para autorizar esta operação.`,
-    );
+    )
   }
   const limiteSupervisor = perfilAdmin
     ? 100
-    : Number(usuarioSupervisor?.desconto_maximo_percentual || 0);
+    : Number(usuarioSupervisor?.desconto_maximo_percentual || 0)
 
   if (!perfilAdmin && descontoPercentual > limiteSupervisor) {
     throw new Error(
       `O supervisor ${usuarioSupervisor?.nome || authName} possui limite de desconto de apenas ${limiteSupervisor.toFixed(2)}%, insuficiente para autorizar ${descontoPercentual.toFixed(2)}%.`,
-    );
+    )
   }
 
   // 4. Registra em logs_auditoria
-  const supervisorId = usuarioSupervisor?.id || authRecordId;
-  const supervisorNome = usuarioSupervisor?.nome || authName;
+  const supervisorId = usuarioSupervisor?.id || authRecordId
+  const supervisorNome = usuarioSupervisor?.nome || authName
 
   await registrarAuditoria({
-    tabela: "autorizacoes_desconto",
+    tabela: 'autorizacoes_desconto',
     registro_id: params.produtoId || `desc_${Date.now()}`,
     empresa_id: params.empresaId || null,
-    acao: "inclusao",
+    acao: 'inclusao',
     valores_depois: {
       supervisor_id: supervisorId,
       supervisor_nome: supervisorNome,
@@ -219,11 +210,11 @@ export async function autorizarDescontoSupervisor(
       produto_id: params.produtoId || null,
       produto_nome: params.produtoNome || null,
       operador_id: params.usuarioOperadorId || pb.authStore.record?.id || null,
-      origem: params.origem || "venda_item",
+      origem: params.origem || 'venda_item',
       contexto: params.vendaContexto || null,
       data_autorizacao: new Date().toISOString(),
     },
-  });
+  })
 
   return {
     autorizado: true,
@@ -234,5 +225,5 @@ export async function autorizarDescontoSupervisor(
       descontoPercentual > 0
         ? `Desconto de ${descontoPercentual.toFixed(2)}% autorizado com sucesso por ${supervisorNome}.`
         : `Operação autorizada por ${supervisorNome}.`,
-  };
+  }
 }
