@@ -4,8 +4,8 @@
  * tray_produtos.js — Etapa 11 / Parte 11.2
  *
  * Conferência SOMENTE LEITURA dos produtos da loja Tray conectada. Lê os produtos e, para os que
- * têm variação, cada variação (código, referência, estoque e preço), e compara a referência com o
- * campo `referencia` dos produtos do Trevvo.
+ * têm variação, cada variação (código, referência, EAN, estoque e preço), e acha o produto do Trevvo
+ * pela referência (= código do Trevvo) ou, se não achar, pelo EAN (= GTIN do Trevvo).
  * Não grava nada na Tray e não altera produtos, estoque ou vendas no Trevvo.
  * (A única gravação possível é a renovação do token da própria conta, quando está para vencer.)
  *
@@ -261,6 +261,38 @@ routerAdd(
       }
     }
 
+    // Fallback quando a referência não resolve (ex.: variações sem referência própria):
+    // procura o produto pelo EAN da Tray no GTIN do Trevvo.
+    function produtosPorEan(assinanteId, ean) {
+      if (!ean || !/^[0-9]{8,14}$/.test(ean)) return []
+      try {
+        const recs = $app.findRecordsByFilter(
+          'produtos',
+          "assinante_id = '" +
+            assinanteId +
+            "' && (gtin = '" +
+            ean +
+            "' || gtin_tributavel = '" +
+            ean +
+            "')",
+          'codigo',
+          5,
+          0,
+        )
+        const out = []
+        for (let i = 0; i < recs.length; i++) {
+          out.push({
+            codigo: recs[i].getString('codigo'),
+            descricao: recs[i].getString('descricao'),
+            ativo: recs[i].getBool('ativo'),
+          })
+        }
+        return out
+      } catch (_) {
+        return []
+      }
+    }
+
     function texto(v, max) {
       if (v === null || v === undefined) return ''
       return String(v)
@@ -460,6 +492,7 @@ routerAdd(
             variacao_id: '',
             variacao: '',
             referencia: refProduto,
+            ean: texto(p.ean, 20).replace(/[^0-9]/g, ''),
             estoque: numero(p.stock),
             preco: numero(p.price),
             repetida: false,
@@ -472,6 +505,7 @@ routerAdd(
               variacao_id: texto(v.id, 40),
               variacao: descreverVariacao(v),
               referencia: rf,
+              ean: texto(v.ean, 20).replace(/[^0-9]/g, ''),
               estoque: numero(v.stock),
               preco: numero(v.price),
               repetida: !!(rf && contagem[rf] > 1),
@@ -481,13 +515,22 @@ routerAdd(
 
         for (let j = 0; j < itens.length; j++) {
           const it = itens[j]
-          const achados = produtosPorReferencia(ctx.assinanteId, it.referencia)
+          let achados = it.repetida ? [] : produtosPorReferencia(ctx.assinanteId, it.referencia)
+          let metodo = achados.length === 1 ? 'referencia' : ''
+          if (achados.length !== 1) {
+            const porEan = produtosPorEan(ctx.assinanteId, it.ean)
+            if (porEan.length === 1) {
+              achados = porEan
+              metodo = 'ean'
+            }
+          }
           let situacao = 'OK'
-          if (!it.referencia) situacao = 'Sem referência na Tray'
+          if (metodo && !achados[0].ativo) situacao = 'Produto inativo no Trevvo'
+          else if (metodo) situacao = 'OK'
           else if (it.repetida) situacao = 'Referência repetida entre variações'
+          else if (!it.referencia) situacao = 'Sem referência na Tray'
           else if (achados.length === 0) situacao = 'Sem produto no Trevvo'
           else if (achados.length > 1) situacao = 'Referência duplicada no Trevvo'
-          else if (!achados[0].ativo) situacao = 'Produto inativo no Trevvo'
 
           linhas.push({
             produto_id: produtoId,
@@ -499,6 +542,8 @@ routerAdd(
             // Código usado nos anúncios do Mercado Livre: produto ou produto_variação.
             codigo_tray: it.variacao_id ? produtoId + '_' + it.variacao_id : produtoId,
             referencia: it.referencia,
+            ean: it.ean,
+            metodo: metodo,
             estoque: it.estoque,
             preco: it.preco,
             situacao: situacao,
