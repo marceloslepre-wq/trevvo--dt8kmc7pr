@@ -84,6 +84,7 @@ import { listarTodasMarcasAtivas, Marca } from '@/services/marcas'
 import ImportarProdutosUniplusDialog from '@/components/produtos/ImportarProdutosUniplusDialog'
 import ImportarCodigosTrayDialog from '@/components/produtos/ImportarCodigosTrayDialog'
 import ImportarAnvisaDialog from '@/components/produtos/ImportarAnvisaDialog'
+import ImportarPrecosDialog from '@/components/produtos/ImportarPrecosDialog'
 import { listarTodosFornecedoresAtivos, Fornecedor } from '@/services/fornecedores'
 
 export const ProdutosLista: React.FC = () => {
@@ -163,6 +164,7 @@ export const ProdutosLista: React.FC = () => {
   const [importarUniplusAberto, setImportarUniplusAberto] = useState(false)
   const [importarTrayAberto, setImportarTrayAberto] = useState(false)
   const [importarAnvisaAberto, setImportarAnvisaAberto] = useState(false)
+  const [importarPrecosAberto, setImportarPrecosAberto] = useState(false)
   const [arquivoCSV, setArquivoCSV] = useState<File | null>(null)
   const [validandoCSV, setValidandoCSV] = useState(false)
   const [resumoImportacao, setResumoImportacao] = useState<ResumoValidacaoImportacao | null>(null)
@@ -684,6 +686,17 @@ export const ProdutosLista: React.FC = () => {
               >
                 <Upload size={14} className="mr-1.5" />
                 Registros ANVISA
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImportarPrecosAberto(true)}
+                className="text-xs h-9 border-slate-200 text-slate-700 hover:bg-slate-100"
+                title="Atualiza o preço geral e/ou o preço próprio de uma loja a partir de um arquivo"
+              >
+                <Upload size={14} className="mr-1.5" />
+                Importar preços
               </Button>
 
               <Button
@@ -1698,6 +1711,11 @@ export const ProdutosLista: React.FC = () => {
       <ImportarCodigosTrayDialog
         aberto={importarTrayAberto}
         onFechar={() => setImportarTrayAberto(false)}
+        onConcluido={carregarDados}
+      />
+      <ImportarPrecosDialog
+        aberto={importarPrecosAberto}
+        onFechar={() => setImportarPrecosAberto(false)}
         onConcluido={carregarDados}
       />
       <ImportarAnvisaDialog
