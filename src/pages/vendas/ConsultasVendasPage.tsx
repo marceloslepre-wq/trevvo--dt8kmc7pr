@@ -70,7 +70,15 @@ export const ConsultasVendasPage: React.FC = () => {
     tipo_data: 'emissao',
   })
 
-  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(() => ['datas_tipo_data'], [])
+  const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(
+    () => ['datas_tipo_data', 'produto_produtos'],
+    [],
+  )
+  // Produtos escolhidos no filtro, como string estável (evita recriar array a cada render)
+  const chaveProdutos = useMemo(
+    () => (filtros.produtos_ids || []).filter(Boolean).slice().sort().join(','),
+    [filtros.produtos_ids],
+  )
 
   const dataInicioEfetiva = filtros.periodo?.dataInicio || primeiroDiaMes
   const dataFimEfetiva = filtros.periodo?.dataFim || hojeIso
@@ -126,6 +134,7 @@ export const ConsultasVendasPage: React.FC = () => {
       if (abaAtiva === 'periodo') {
         const res = await consultarVendasPorPeriodo({
           empresa_ids: idsEmpresas,
+          produtos_ids: chaveProdutos ? chaveProdutos.split(',') : [],
           data_inicio: dataInicioEfetiva,
           data_fim: dataFimEfetiva,
         })
@@ -134,6 +143,7 @@ export const ConsultasVendasPage: React.FC = () => {
       } else if (abaAtiva === 'abc') {
         const res = await consultarCurvaAbcProdutos({
           empresa_ids: idsEmpresas,
+          produtos_ids: chaveProdutos ? chaveProdutos.split(',') : [],
           data_inicio: dataInicioEfetiva,
           data_fim: dataFimEfetiva,
           criterio: criterioAbc,
@@ -144,6 +154,7 @@ export const ConsultasVendasPage: React.FC = () => {
         if (!podeVerMargem) return
         const res = await consultarMargemVendas({
           empresa_ids: idsEmpresas,
+          produtos_ids: chaveProdutos ? chaveProdutos.split(',') : [],
           data_inicio: dataInicioEfetiva,
           data_fim: dataFimEfetiva,
         })
@@ -170,6 +181,7 @@ export const ConsultasVendasPage: React.FC = () => {
     dataFimEfetiva,
     criterioAbc,
     podeVerMargem,
+    chaveProdutos,
     toast,
   ])
 
