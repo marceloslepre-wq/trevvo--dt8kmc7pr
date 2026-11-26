@@ -56,7 +56,12 @@ export const PosicaoEstoquePage: React.FC = () => {
   })
 
   const filtrosDeclarados = useMemo<ChaveFiltroDeclaravel[]>(
-    () => ['produto_grupos_categorias', 'produto_marcas', 'pessoas_fornecedores'],
+    () => [
+      'produto_grupos_categorias',
+      'produto_marcas',
+      'produto_produtos',
+      'pessoas_fornecedores',
+    ],
     [],
   )
 
@@ -179,6 +184,14 @@ export const PosicaoEstoquePage: React.FC = () => {
         filtros.categorias_ids &&
         filtros.categorias_ids.length > 0 &&
         (!p.categoria_id || !filtros.categorias_ids.includes(p.categoria_id))
+      ) {
+        return false
+      }
+
+      if (
+        filtros.produtos_ids &&
+        filtros.produtos_ids.length > 0 &&
+        !filtros.produtos_ids.includes(p.id)
       ) {
         return false
       }
@@ -486,7 +499,10 @@ export const PosicaoEstoquePage: React.FC = () => {
               Valor Total do Estoque
             </div>
             <div className="text-lg font-bold text-emerald-700 mt-1">
-              {totalValorGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              {totalValorGeral.toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+              })}
             </div>
             <div className="text-[10px] text-slate-400 mt-0.5">
               calculado por custo médio ponderado

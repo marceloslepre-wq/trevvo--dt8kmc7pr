@@ -6,6 +6,42 @@ export interface FiltrosConsultasVendas {
   empresa_id?: string
   data_inicio: string
   data_fim: string
+  /** Só estes produtos (vazio = todos). Valores passam a ser só os dos itens desses produtos. */
+  produtos_ids?: string[]
+}
+
+/** Monta (produto_id = "a" || produto_id = "b") ou '' quando não há produtos */
+function filtroProdutos(produtosIds?: string[], campo = 'produto_id'): string {
+  const ids = (produtosIds || []).filter(Boolean)
+  if (ids.length === 0) return ''
+  return `(${ids.map((id) => `${campo} = '${id}'`).join(' || ')})`
+}
+
+/**
+ * Com filtro de produto: valor (e custo) por venda somando só os itens dos produtos escolhidos.
+ * Retorna null quando não há filtro de produto.
+ */
+async function valoresPorVendaDosProdutos(
+  empresas: string[],
+  data_inicio: string,
+  data_fim: string,
+  produtosIds?: string[],
+): Promise<Map<string, { valor: number; custo: number }> | null> {
+  const fProd = filtroProdutos(produtosIds)
+  if (!fProd) return null
+  const itens = await pb.collection('vendas_itens').getFullList({
+    filter: `ativo = true && ${fProd} && ${filtroEmpresas(empresas, 'venda_id.empresa_id')} && venda_id.status = 'Finalizada' && venda_id.data_emissao >= '${data_inicio}' && venda_id.data_emissao <= '${data_fim}'`,
+    fields: 'venda_id,valor_total,quantidade,custo_unitario',
+  })
+  const mapa = new Map<string, { valor: number; custo: number }>()
+  for (const it of itens) {
+    const vid = (it as any).venda_id
+    const atual = mapa.get(vid) || { valor: 0, custo: 0 }
+    atual.valor += Number((it as any).valor_total) || 0
+    atual.custo += (Number((it as any).quantidade) || 0) * (Number((it as any).custo_unitario) || 0)
+    mapa.set(vid, atual)
+  }
+  return mapa
 }
 
 /** Monta o filtro de empresas: (empresa_id = "id1" || empresa_id = "id2" || ...) */
@@ -136,6 +172,23 @@ export async function consultarVendasPorPeriodo(
     expand: 'vendedor_id,cliente_id,pdv_terminal_id',
   })
 
+  // Filtro de produto: só vendas que têm o produto, com o valor só dos itens dele
+  const valoresProd = await valoresPorVendaDosProdutos(
+    empresas,
+    data_inicio,
+    data_fim,
+    filtros.produtos_ids,
+  )
+  // Proporção do valor da venda que é do(s) produto(s), para ratear os pagamentos
+  const fatorVenda = new Map<string, number>()
+  if (valoresProd) {
+    for (const v of vendas) {
+      const vp = valoresProd.get(v.id)
+      const tot = Number((v as any).valor_total) || 0
+      if (vp) fatorVenda.set(v.id, tot > 0 ? Math.min(1, vp.valor / tot) : 0)
+    }
+  }
+
   // Buscar todos os pagamentos das vendas finalizadas no período
   let pagamentos: any[] = []
   if (vendas.length > 0) {
@@ -161,7 +214,8 @@ export async function consultarVendasPorPeriodo(
   >()
 
   for (const v of vendas) {
-    const val = Number((v as any).valor_total) || 0
+    if (valoresProd && !valoresProd.has(v.id)) continue
+    const val = valoresProd ? valoresProd.get(v.id)!.valor : Number((v as any).valor_total) || 0
     const tipo = (v as any).tipo || 'Pedido'
     const dataIso = (v as any).data_emissao || (v.created ? v.created.slice(0, 10) : '')
     const empId = (v as any).empresa_id || '(sem empresa)'
@@ -169,7 +223,12 @@ export async function consultarVendasPorPeriodo(
     if (tipo === 'Devolução') {
       valorDevolucoes += val
       qtdDevolucoes += 1
-      const eInfo = mapEmpresa.get(empId) || { valor: 0, qtd: 0, devolucoes: 0, qtdDev: 0 }
+      const eInfo = mapEmpresa.get(empId) || {
+        valor: 0,
+        qtd: 0,
+        devolucoes: 0,
+        qtdDev: 0,
+      }
       eInfo.devolucoes += val
       eInfo.qtdDev += 1
       mapEmpresa.set(empId, eInfo)
@@ -178,7 +237,12 @@ export async function consultarVendasPorPeriodo(
 
     valorTotalVendas += val
     qtdVendas += 1
-    const eInfo = mapEmpresa.get(empId) || { valor: 0, qtd: 0, devolucoes: 0, qtdDev: 0 }
+    const eInfo = mapEmpresa.get(empId) || {
+      valor: 0,
+      qtd: 0,
+      devolucoes: 0,
+      qtdDev: 0,
+    }
     eInfo.valor += val
     eInfo.qtd += 1
     mapEmpresa.set(empId, eInfo)
@@ -197,7 +261,11 @@ export async function consultarVendasPorPeriodo(
       (v.expand as any)?.vendedor_id?.name ||
       (v.expand as any)?.vendedor_id?.email ||
       'Não identificado'
-    const vInfo = mapVendedor.get(vendId) || { nome: vendNome, valor: 0, qtd: 0 }
+    const vInfo = mapVendedor.get(vendId) || {
+      nome: vendNome,
+      valor: 0,
+      qtd: 0,
+    }
     vInfo.valor += val
     vInfo.qtd += 1
     mapVendedor.set(vendId, vInfo)
@@ -205,7 +273,11 @@ export async function consultarVendasPorPeriodo(
     // Terminal
     const termId = (v as any).pdv_terminal_id || 'balcao'
     const termNome = (v.expand as any)?.pdv_terminal_id?.nome || 'Balcão / Pedidos Web'
-    const tInfo = mapTerminal.get(termId) || { nome: termNome, valor: 0, qtd: 0 }
+    const tInfo = mapTerminal.get(termId) || {
+      nome: termNome,
+      valor: 0,
+      qtd: 0,
+    }
     tInfo.valor += val
     tInfo.qtd += 1
     mapTerminal.set(termId, tInfo)
@@ -254,7 +326,9 @@ export async function consultarVendasPorPeriodo(
   let totalPagamentos = 0
 
   for (const pg of pagamentos) {
-    const val = Number((pg as any).valor) || 0
+    const vendaPg = (pg as any).venda_id
+    if (valoresProd && !fatorVenda.has(vendaPg)) continue
+    const val = (Number((pg as any).valor) || 0) * (valoresProd ? fatorVenda.get(vendaPg)! : 1)
     const fId = (pg as any).forma_pagamento_id || 'sem_forma'
     const fExp = (pg.expand as any)?.forma_pagamento_id
     const fDesc = fExp?.descricao || 'Outros'
@@ -313,6 +387,7 @@ export async function consultarCurvaAbcProdutos(params: {
   data_inicio: string
   data_fim: string
   criterio: 'valor' | 'quantidade'
+  produtos_ids?: string[]
 }): Promise<CurvaAbcResultado> {
   const { data_inicio, data_fim, criterio } = params
   const empresas = normalizarEmpresasIds(params)
@@ -320,7 +395,7 @@ export async function consultarCurvaAbcProdutos(params: {
 
   // Buscar itens de vendas finalizadas (não devoluções) no período
   const itensVenda = await pb.collection('vendas_itens').getFullList({
-    filter: `ativo = true && ${filtroEmpresa} && venda_id.status = 'Finalizada' && venda_id.tipo != 'Devolução' && venda_id.data_emissao >= '${data_inicio}' && venda_id.data_emissao <= '${data_fim}'`,
+    filter: `ativo = true && ${filtroEmpresa}${filtroProdutos(params.produtos_ids) ? ` && ${filtroProdutos(params.produtos_ids)}` : ''} && venda_id.status = 'Finalizada' && venda_id.tipo != 'Devolução' && venda_id.data_emissao >= '${data_inicio}' && venda_id.data_emissao <= '${data_fim}'`,
     // expand venda_id é obrigatório: a quebra por empresa lê venda_id.empresa_id do item
     // (sem o expand, tudo caía em "(sem empresa)" e virava a linha fantasma "Sem empresa")
     expand: 'produto_id,venda_id',
@@ -462,6 +537,7 @@ export async function consultarMargemVendas(params: {
   empresa_id?: string
   data_inicio: string
   data_fim: string
+  produtos_ids?: string[]
 }): Promise<MargemVendaItem[]> {
   const { data_inicio, data_fim } = params
   const empresas = normalizarEmpresasIds(params)
@@ -473,9 +549,18 @@ export async function consultarMargemVendas(params: {
     expand: 'cliente_id,vendedor_id',
   })
 
-  return vendas.map((v) => {
-    const valVenda = Number((v as any).valor_total) || 0
-    const custoTot = Number((v as any).custo_total) || 0
+  const valoresProd = await valoresPorVendaDosProdutos(
+    empresas,
+    data_inicio,
+    data_fim,
+    params.produtos_ids,
+  )
+  const vendasFiltradas = valoresProd ? vendas.filter((v) => valoresProd.has(v.id)) : vendas
+
+  return vendasFiltradas.map((v) => {
+    const vp = valoresProd?.get(v.id)
+    const valVenda = vp ? vp.valor : Number((v as any).valor_total) || 0
+    const custoTot = vp ? vp.custo : Number((v as any).custo_total) || 0
     const margemVal = valVenda - custoTot
     const margemPct = valVenda > 0 ? (margemVal / valVenda) * 100 : 0
 

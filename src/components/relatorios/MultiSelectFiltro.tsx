@@ -13,6 +13,9 @@ export interface ItemOpcaoFiltro {
   grupo?: string
 }
 
+// Listas grandes (ex.: 6 mil produtos) travavam a tela ao abrir: mostra só os primeiros
+const LIMITE_LISTA = 200
+
 export interface MultiSelectFiltroProps {
   label: string
   placeholder?: string
@@ -174,7 +177,7 @@ export const MultiSelectFiltro: React.FC<MultiSelectFiltroProps> = ({
             {opcoesFiltradas.length === 0 ? (
               <div className="py-4 text-center text-slate-400 text-xs">Nenhum item encontrado</div>
             ) : (
-              opcoesFiltradas.map((op) => {
+              opcoesFiltradas.slice(0, LIMITE_LISTA).map((op) => {
                 const selecionado = valoresSelecionados.includes(op.id)
                 return (
                   <div
@@ -208,6 +211,12 @@ export const MultiSelectFiltro: React.FC<MultiSelectFiltroProps> = ({
                   </div>
                 )
               })
+            )}
+            {opcoesFiltradas.length > LIMITE_LISTA && (
+              <div className="py-2 text-center text-[10px] text-slate-400">
+                Mostrando {LIMITE_LISTA} de {opcoesFiltradas.length}. Digite na busca para achar o
+                item.
+              </div>
             )}
           </div>
         </PopoverContent>
