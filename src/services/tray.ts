@@ -218,3 +218,27 @@ export async function importarMidiaTray(
     },
   })
 }
+
+/** Envio de estoque/preço para a Tray (pocketbase/hooks/tray_envio.js). Só administrador. */
+export interface ResultadoEnvioTray {
+  anuncio_id: string
+  variacao_id: string
+  estoque: number | null
+  preco: number | null
+  ok_estoque: boolean | null
+  ok_preco: boolean | null
+  mensagem: string
+}
+
+export async function enviarParaTray(dados: {
+  empresa_id: string
+  itens: { anuncio_id: string; variacao_id: string }[]
+  enviar_estoque: boolean
+  enviar_preco: boolean
+  descontar_negativo_ids: string[]
+}): Promise<{ sucesso: boolean; resultados: ResultadoEnvioTray[] }> {
+  return await pb.send('/backend/v1/tray/envio/executar', {
+    method: 'POST',
+    body: { ...dados, confirmar: true },
+  })
+}
