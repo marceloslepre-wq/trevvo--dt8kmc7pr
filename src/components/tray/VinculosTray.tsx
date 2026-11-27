@@ -18,6 +18,7 @@ import { toast } from '@/hooks/use-toast'
 import { useAssinanteId } from '@/hooks/useAssinanteId'
 import { LinhaProdutoTray, conferirProdutosTray, mensagemErroTray } from '@/services/tray'
 import { ImportarCaixasTray } from './ImportarCaixasTray'
+import { CorrigirVinculoTray } from './CorrigirVinculoTray'
 
 /**
  * Vínculo Trevvo x Tray (tabela produtos_vinculos_anuncios, marketplace 'tray').
@@ -360,6 +361,7 @@ export const VinculosTray: React.FC<Props> = ({ empresaId }) => {
           )}
         </div>
         {!rodando && <ImportarCaixasTray empresaId={empresaId} />}
+        {!rodando && <CorrigirVinculoTray empresaId={empresaId} />}
         {rodando && total > 0 && <Progress value={(lidos / total) * 100} />}
 
         {pendentes.length > 0 && (
