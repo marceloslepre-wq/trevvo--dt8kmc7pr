@@ -2,6 +2,17 @@
 
 Registro das rodadas de manutenção do projeto. Para regras do projeto, ver memória do projeto e `src/config/tabelaRotas.ts`.
 
+## 2026-11-27 — Deploy-only: deploy do backend com a migration 0154 (tray_envios_log)
+
+- Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, telas, migrations e serviços não foram tocados (`fiscal_documentos_operacoes.js`, `fiscal_nfe_operacoes.js` e `fiscal_nfce_emitir.js` permanecem intocados, conforme PROJETO_ERP.md).
+- Objetivo: implantar o backend com os hooks atuais do repositório (inclusive `tray_produtos.js` e `tray_envio.js`) e aplicar a migration `0154_create_tray_envios_log.js`, já existente no repositório.
+- A 0154 cria a coleção `tray_envios_log` (log de cada envio de estoque/preço Trevvo → Tray, sem tokens; create/update/delete fechados, leitura pelo assinante), idempotente.
+- Verificação (pós-deploy):
+  - `list_migrations`: `0154_create_tray_envios_log.js` consta como `applied`; nenhuma pendente, nenhuma falha; próxima livre: 0155.
+  - `list_backend_functions`: família Tray completa — `tray_conexao`, `tray_produtos` (GET /backend/v1/tray/produtos/conferencia), `tray_midia`, `tray_homologacao`, `tray_envio` (POST /backend/v1/tray/envio/executar) — registrada sem erro, junto dos demais hooks (`fiscal_*`, `vendas_operacoes`, `caixa_*`, `financeiro_*`, `master_rotas`, `mercadolivre_*`, `shopee_conexao`, `anuncios_saude`, `ajuda_trevvo`).
+  - `list_logs` (hooks): sem erro de inicialização/boot; únicos erros são regras de negócio (`vendas/finalizar` — conta financeira padrão de recebimentos não configurada).
+  - `db_show_schema`: coleção `tray_envios_log` presente no schema live com índices `idx_tray_envios_log_empresa` e `idx_tray_envios_log_anuncio` e regras de API `list, view` (regra do assinante).
+
 ## 2026-11-26 — Deploy-only: recarga do backend (tray_produtos) e confirmação da migration 0153
 
 - Rodada **deploy-only**: nenhum arquivo de código foi alterado; hooks, telas, migrations e serviços não foram tocados.
