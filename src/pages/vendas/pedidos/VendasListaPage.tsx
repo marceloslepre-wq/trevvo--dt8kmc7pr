@@ -690,21 +690,22 @@ export const VendasListaPage: React.FC = () => {
                               </>
                             )}
 
-                            {ehFinalizada && podeExcluirVendas && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-red-600 font-semibold"
-                                  onClick={() => {
-                                    setVendaParaCancelar(v)
-                                    setModalCancelarAberto(true)
-                                  }}
-                                >
-                                  <Ban className="mr-2 h-3.5 w-3.5 text-red-600" />
-                                  Cancelar Venda
-                                </DropdownMenuItem>
-                              </>
-                            )}
+                            {(ehFinalizada || v.status === 'Pedido em aberto') &&
+                              podeExcluirVendas && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-red-600 font-semibold"
+                                    onClick={() => {
+                                      setVendaParaCancelar(v)
+                                      setModalCancelarAberto(true)
+                                    }}
+                                  >
+                                    <Ban className="mr-2 h-3.5 w-3.5 text-red-600" />
+                                    Cancelar Venda
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
