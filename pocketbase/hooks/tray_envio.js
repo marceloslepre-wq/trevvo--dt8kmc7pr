@@ -6,7 +6,8 @@
  * Para cada anúncio pedido (produto ou variação da Tray), procura o vínculo em
  * produtos_vinculos_anuncios (marketplace 'tray', empresa = loja conectada) e calcula:
  *  - estoque = saldo do produto na loja + saldos NEGATIVOS das empresas em
- *    descontar_negativo_ids, ÷ unidades do anúncio, arredondado para baixo, mínimo 0
+ *    descontar_negativo_ids − quantidade reservada em pedidos em aberto da loja (pedidos Tray
+ *    importados e ainda não faturados), ÷ unidades do anúncio, arredondado para baixo, mínimo 0
  *    (produto inativo no Trevvo = 0);
  *  - preço = preco_anuncio do vínculo, se > 0; senão preço próprio da loja
  *    (produtos_precos_empresa) ou preço geral, x unidades.
@@ -447,6 +448,28 @@ routerAdd(
         }
       }
 
+      // Reserva: quantidade do produto em pedidos de venda em aberto da empresa (ainda não
+      // faturados). Esses itens já foram vendidos (ex.: pedidos Tray importados) e não podem
+      // ser oferecidos de novo.
+      function reservadoEmPedidos(empresaId, produtoId) {
+        let total = 0
+        try {
+          const recs = $app.findRecordsByFilter(
+            'vendas_itens',
+            "produto_id = '" +
+              produtoId +
+              "' && venda_id.empresa_id = '" +
+              empresaId +
+              "' && venda_id.status = 'Pedido em aberto' && venda_id.ativo = true",
+            '',
+            2000,
+            0,
+          )
+          for (let i = 0; i < recs.length; i++) total += recs[i].getFloat('quantidade') || 0
+        } catch (_) {}
+        return total
+      }
+
       function precoDaLoja(produto) {
         try {
           const r = $app.findFirstRecordByFilter(
@@ -536,6 +559,9 @@ routerAdd(
             const s = saldoDe(descontar[j], produto.id)
             if (s < 0) saldo += s
           }
+          const reservado = reservadoEmPedidos(empresa.id, produto.id)
+          saldo -= reservado
+          res.reservado = reservado
           let estoque = produto.getBool('ativo') ? Math.floor(saldo / unidades) : 0
           if (!(estoque > 0)) estoque = 0
           res.estoque = estoque

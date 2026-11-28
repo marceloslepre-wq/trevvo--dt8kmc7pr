@@ -28,7 +28,9 @@ import { usePermissoes } from '@/contexts/PermissoesContext'
  * Regras (as mesmas que o envio real vai usar):
  *  - estoque = saldo da loja conectada + saldos NEGATIVOS das lojas marcadas (ex.: loja física
  *    que vende sem estoque e é reposta no fim do dia), dividido pelas unidades do anúncio
- *    (kit/caixa), arredondado para baixo, nunca menor que zero;
+ *    (kit/caixa), arredondado para baixo, nunca menor que zero, descontando o que está
+ *    reservado em pedidos de venda em aberto desta loja (pedidos Tray importados e ainda não
+ *    faturados);
  *  - preço = preço fixo do anúncio (caixa/kit), se houver; senão preço próprio da loja
  *    conectada (ou o preço geral) x unidades do anúncio;
  *  - produto inativo no Trevvo = estoque 0.
@@ -193,6 +195,16 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
           }),
       ])
 
+      // Reserva: itens de pedidos de venda em aberto desta loja (ainda não faturados)
+      const itensReservados = await pb
+        .collection('vendas_itens')
+        .getFullList<{ produto_id: string; quantidade: number }>({
+          filter: `venda_id.empresa_id = '${empresaId}' && venda_id.status = 'Pedido em aberto' && venda_id.ativo = true`,
+          fields: 'produto_id,quantidade',
+          batch: 1000,
+          requestKey: null,
+        })
+
       const prodPorId = new Map(produtos.map((p) => [p.id, p]))
       const precoLoja = new Map<string, number>()
       for (const r of precosLoja) if (r.preco_venda > 0) precoLoja.set(r.produto_id, r.preco_venda)
@@ -206,6 +218,12 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
           saldoBase.set(s.produto_id, (saldoBase.get(s.produto_id) || 0) + q)
         } else if (q < 0) {
           saldoBase.set(s.produto_id, (saldoBase.get(s.produto_id) || 0) + q)
+        }
+      }
+      for (const it of itensReservados) {
+        const q = Number(it.quantidade) || 0
+        if (it.produto_id && q > 0) {
+          saldoBase.set(it.produto_id, (saldoBase.get(it.produto_id) || 0) - q)
         }
       }
 
@@ -370,8 +388,8 @@ export const SimulacaoEnvioTray: React.FC<Props> = ({ empresaId }) => {
         <CardDescription className="text-xs">
           Calcula, para cada anúncio vinculado, o estoque e o preço que o Trevvo enviaria e compara
           com o que está na Tray agora. Não grava nada. Estoque = saldo desta loja (somado aos
-          saldos negativos das lojas marcadas) ÷ unidades do anúncio. Preço = preço fixo do anúncio
-          (caixa/kit) ou preço desta loja x unidades.
+          saldos negativos das lojas marcadas, menos o reservado em pedidos em aberto) ÷ unidades do
+          anúncio. Preço = preço fixo do anúncio (caixa/kit) ou preço desta loja x unidades.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-xs">
