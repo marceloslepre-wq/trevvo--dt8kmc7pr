@@ -337,17 +337,48 @@ export interface LoteImportacaoTray {
   ignorados: PedidoIgnoradoTray[]
   ja_importados: number
   outros_status: number
+  fora_do_periodo?: number
 }
 
 export async function importarPedidosTray(dados: {
   empresa_id: string
   pagina: number
+  data_inicio: string
+  execucao_id: string
   pedido_ids?: string[]
   ignorar_ids?: string[]
 }): Promise<LoteImportacaoTray> {
   return await pb.send<LoteImportacaoTray>('/backend/v1/tray/pedidos/importar', {
     method: 'POST',
     body: { ...dados, confirmar: true },
+    requestKey: null,
+  })
+}
+
+/** Apaga pedidos importados da Tray ainda em aberto (pocketbase/hooks/tray_pedidos_desfazer.js). */
+export async function previaDesfazerPedidosTray(empresaId: string): Promise<{
+  sucesso: boolean
+  quantidade: number
+  valor_total: number
+  data_mais_antiga: string
+  data_mais_nova: string
+}> {
+  return await pb.send('/backend/v1/tray/pedidos/desfazer', {
+    method: 'POST',
+    body: { empresa_id: empresaId, previa: true, confirmar: true },
+    requestKey: null,
+  })
+}
+
+export async function desfazerPedidosTray(empresaId: string): Promise<{
+  sucesso: boolean
+  apagados: number
+  falhas: { numero: number; motivo: string }[]
+  restantes: number
+}> {
+  return await pb.send('/backend/v1/tray/pedidos/desfazer', {
+    method: 'POST',
+    body: { empresa_id: empresaId, previa: false, confirmar: true },
     requestKey: null,
   })
 }

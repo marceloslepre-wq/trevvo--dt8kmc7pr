@@ -18,6 +18,10 @@
  * aberto só reserva (o envio de estoque para a Tray desconta essa reserva). O estoque baixa
  * quando o pedido é finalizado/faturado.
  *
+ * Só pedidos com data >= data_inicio (a Tray deixa "A ENVIAR" em pedidos antigos já faturados
+ * pelo Uniplus). Lista do mais novo para o mais antigo e para ao passar da data. Uma rodada por
+ * empresa de cada vez (trava em memória por execucao_id).
+ *
  * Trabalha em lotes curtos (até 8 pedidos novos por chamada); a tela chama de novo até
  * proxima_pagina = null.
  *
@@ -26,7 +30,8 @@
  *
  * Rota:
  *   POST /backend/v1/tray/pedidos/importar   (administrador)
- *   body { empresa_id, pagina, pedido_ids?: [], ignorar_ids?: [], confirmar: true }
+ *   body { empresa_id, pagina, data_inicio, execucao_id, pedido_ids?: [], ignorar_ids?: [],
+ *          confirmar: true }
  */
 routerAdd(
   'POST',
@@ -638,6 +643,45 @@ routerAdd(
       const LISTA_POR_PAGINA = 50
       const MAX_NOVOS_POR_CHAMADA = 8
 
+      // Só pedidos a partir desta data (a Tray mantém "A ENVIAR" em pedidos antigos que o
+      // Uniplus já faturou). Obrigatória na leitura da lista.
+      const dataInicio = String(corpo.data_inicio || '').trim()
+      const temIds = Array.isArray(corpo.pedido_ids) && corpo.pedido_ids.length > 0
+      if (!temIds && !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(dataInicio)) {
+        return c.json(400, {
+          sucesso: false,
+          mensagem: 'Informe a data inicial dos pedidos (data_inicio AAAA-MM-DD).',
+        })
+      }
+
+      // Uma importação por empresa de cada vez: a mesma rodada (execucao_id) segue; outra
+      // rodada só começa 90 s depois da última chamada da anterior.
+      const execucaoId = String(corpo.execucao_id || '')
+        .replace(/[^A-Za-z0-9_-]/g, '')
+        .slice(0, 40)
+      if (!execucaoId) {
+        return c.json(400, { sucesso: false, mensagem: 'execucao_id obrigatório.' })
+      }
+      const chaveTrava = 'tray_importar_pedidos_' + empresa.id
+      try {
+        const bruto = $app.store().get(chaveTrava)
+        if (bruto) {
+          const trava = JSON.parse(String(bruto))
+          if (
+            trava &&
+            trava.execucao_id !== execucaoId &&
+            Date.now() - (trava.em || 0) < 90 * 1000
+          ) {
+            return c.json(409, {
+              sucesso: false,
+              mensagem:
+                'Já existe uma importação de pedidos rodando nesta empresa. Aguarde ela terminar (ou 2 minutos) e tente de novo.',
+            })
+          }
+        }
+        $app.store().set(chaveTrava, JSON.stringify({ execucao_id: execucaoId, em: Date.now() }))
+      } catch (_) {}
+
       // Pedidos pedidos um a um (ex.: reimportar um que deu problema); senão, lê a lista.
       const idsPedidos = []
       if (Array.isArray(corpo.pedido_ids)) {
@@ -746,7 +790,7 @@ routerAdd(
         const rl = lerTray(
           '/orders?status=' +
             encodeURIComponent('A ENVIAR') +
-            '&sort=id_asc&limit=' +
+            '&sort=id_desc&limit=' +
             LISTA_POR_PAGINA +
             '&page=' +
             pagina,
@@ -757,7 +801,11 @@ routerAdd(
         const brutos = (rl.dados && (rl.dados.Orders || rl.dados.orders)) || []
         for (let i = 0; i < brutos.length; i++) {
           const r0 = desembrulhar(brutos[i], 'Order')
-          lista.push({ id: texto(r0.id, 20), status: texto(r0.status, 60) })
+          lista.push({
+            id: texto(r0.id, 20),
+            status: texto(r0.status, 60),
+            data: texto(r0.date, 10),
+          })
         }
         // Proteção: se a Tray ignorar o filtro de status, a lista viria com pedidos de todo o
         // histórico (do mais antigo). Nesse caso para, em vez de varrer pedidos antigos.
@@ -791,11 +839,21 @@ routerAdd(
       let outrosStatus = 0
       let novos = 0
       let paginaConcluida = true
+      let foraDoPeriodo = 0
+      let chegouNoInicio = false
 
       for (let i = 0; i < lista.length; i++) {
         const pedidoId = lista[i].id
         if (!/^[0-9]{1,20}$/.test(pedidoId)) continue
         if (pular[pedidoId]) continue
+        // Lista do mais novo para o mais antigo: ao passar da data inicial, acabou.
+        if (idsPedidos.length === 0 && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(lista[i].data)) {
+          if (lista[i].data < dataInicio) {
+            foraDoPeriodo++
+            chegouNoInicio = true
+            continue
+          }
+        }
         if (jaImportado(empresa.id, pedidoId)) {
           jaImportados++
           continue
@@ -819,6 +877,16 @@ routerAdd(
         const o = desembrulhar(rc.dados, 'Order')
         const canal = texto(o.point_sale, 60)
         const codigoMarketplace = texto(o.external_code, 60)
+        const dataDoPedido = texto(o.date, 10)
+        if (
+          idsPedidos.length === 0 &&
+          /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(dataDoPedido) &&
+          dataDoPedido < dataInicio
+        ) {
+          foraDoPeriodo++
+          chegouNoInicio = true
+          continue
+        }
         if (!statusAEnviar(o.status)) {
           if (idsPedidos.length > 0) {
             ignorados.push({
@@ -1023,6 +1091,7 @@ routerAdd(
 
       const temMaisPaginas =
         idsPedidos.length === 0 &&
+        !chegouNoInicio &&
         lista.length >= LISTA_POR_PAGINA &&
         pagina * LISTA_POR_PAGINA < total
       return c.json(200, {
@@ -1035,6 +1104,7 @@ routerAdd(
         ignorados: ignorados,
         ja_importados: jaImportados,
         outros_status: outrosStatus,
+        fora_do_periodo: foraDoPeriodo,
       })
     } catch (err) {
       const status = err && err.status ? err.status : 400
