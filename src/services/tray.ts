@@ -307,3 +307,47 @@ export async function conferirPedidosTray(
     { method: 'GET', requestKey: null },
   )
 }
+
+/** Importação dos pedidos "A ENVIAR" (pocketbase/hooks/tray_pedidos_importar.js). */
+export interface PedidoImportadoTray {
+  pedido_id: string
+  venda_id: string
+  venda_numero: number
+  canal: string
+  pedido_marketplace: string
+  cliente: string
+  cliente_novo: boolean
+  total: number
+  avisos: string[]
+}
+
+export interface PedidoIgnoradoTray {
+  pedido_id: string
+  canal: string
+  motivo: string
+}
+
+export interface LoteImportacaoTray {
+  sucesso: boolean
+  pagina: number
+  total_pedidos_lista: number
+  pagina_concluida: boolean
+  proxima_pagina: number | null
+  importados: PedidoImportadoTray[]
+  ignorados: PedidoIgnoradoTray[]
+  ja_importados: number
+  outros_status: number
+}
+
+export async function importarPedidosTray(dados: {
+  empresa_id: string
+  pagina: number
+  pedido_ids?: string[]
+  ignorar_ids?: string[]
+}): Promise<LoteImportacaoTray> {
+  return await pb.send<LoteImportacaoTray>('/backend/v1/tray/pedidos/importar', {
+    method: 'POST',
+    body: { ...dados, confirmar: true },
+    requestKey: null,
+  })
+}
