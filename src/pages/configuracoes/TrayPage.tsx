@@ -23,6 +23,7 @@ import HomologacaoTray from '@/components/tray/HomologacaoTray'
 import ImportarMidiaTray from '@/components/tray/ImportarMidiaTray'
 import VinculosTray from '@/components/tray/VinculosTray'
 import SimulacaoEnvioTray from '@/components/tray/SimulacaoEnvioTray'
+import PedidosTray from '@/components/tray/PedidosTray'
 import {
   StatusTray,
   desconectarTray,
@@ -332,6 +333,10 @@ export const TrayPage: React.FC = () => {
 
           {situacao === 'Conectada' && podeGerenciar && (
             <SimulacaoEnvioTray key={`simulacao-${empresaId}`} empresaId={empresaId} />
+          )}
+
+          {situacao === 'Conectada' && podeGerenciar && (
+            <PedidosTray key={`pedidos-${empresaId}`} empresaId={empresaId} />
           )}
 
           {situacao === 'Conectada' && podeGerenciar && (

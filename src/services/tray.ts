@@ -242,3 +242,68 @@ export async function enviarParaTray(dados: {
     body: { ...dados, confirmar: true },
   })
 }
+
+/** Pedidos da Tray (pocketbase/hooks/tray_pedidos.js): prévia somente leitura. */
+export interface ItemPedidoTray {
+  anuncio_id: string
+  variacao_id: string
+  nome: string
+  referencia: string
+  quantidade: number
+  preco: number
+  unidades: number
+  produto_codigo: string
+  produto_descricao: string
+  quantidade_trevvo: number
+  preco_unitario_trevvo: number
+  situacao: string
+}
+
+export interface PedidoTray {
+  pedido_id: string
+  data: string
+  hora: string
+  status: string
+  canal: string
+  codigo_externo: string
+  cliente_nome: string
+  cliente_documento: string
+  cliente_cidade: string
+  cliente_uf: string
+  cliente_trevvo_codigo: string
+  cliente_trevvo_nome: string
+  cliente_situacao: string
+  forma_pagamento: string
+  envio: string
+  subtotal: number
+  frete: number
+  desconto: number
+  total: number
+  itens: ItemPedidoTray[]
+  itens_ok: number
+  pronto: boolean
+}
+
+export interface PaginaPedidosTray {
+  sucesso: boolean
+  pagina: number
+  limite: number
+  total_pedidos: number
+  proxima_pagina: number | null
+  pedidos: PedidoTray[]
+  falhas: { pedido_id: string; motivo: string }[]
+  campos_pedido: string[]
+  campos_item: string[]
+  campos_cliente: string[]
+}
+
+export async function conferirPedidosTray(
+  empresaId: string,
+  pagina: number,
+  limite = 10,
+): Promise<PaginaPedidosTray> {
+  return await pb.send<PaginaPedidosTray>(
+    `/backend/v1/tray/pedidos/conferencia?empresa_id=${encodeURIComponent(empresaId)}&pagina=${pagina}&limite=${limite}`,
+    { method: 'GET', requestKey: null },
+  )
+}
